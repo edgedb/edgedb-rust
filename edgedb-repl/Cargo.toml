@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 edgedb-protocol = {path = "../edgedb-protocol"}
+snafu = {version="0.6.0", features=["backtraces"]}
 
 [dev-dependencies]
 assert_cmd = "0.10"

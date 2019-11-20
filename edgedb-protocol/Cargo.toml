@@ -5,5 +5,7 @@ authors = ["MagicStack Inc. <hello@magic.io>"]
 edition = "2018"
 
 [dependencies]
+bytes = "0.4.12"
+snafu = {version="0.6.0"}
 
 [lib]
