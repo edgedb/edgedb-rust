@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "edgedb-protocol",
+    "edgedb-repl",
+]
+
+[profile.release]
+debug = true
+lto = true

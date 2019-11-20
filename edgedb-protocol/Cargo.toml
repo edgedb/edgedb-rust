@@ -1,0 +1,9 @@
+[package]
+name = "edgedb-protocol"
+version = "0.1.0"
+authors = ["MagicStack Inc. <hello@magic.io>"]
+edition = "2018"
+
+[dependencies]
+
+[lib]

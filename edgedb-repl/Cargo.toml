@@ -1,0 +1,16 @@
+[package]
+name = "edgedb-repl"
+version = "0.1.0"
+authors = ["MagicStack Inc. <hello@magic.io>"]
+edition = "2018"
+
+[dependencies]
+edgedb-protocol = {path = "../edgedb-protocol"}
+
+[dev-dependencies]
+assert_cmd = "0.10"
+predicates = "1"
+
+[[bin]]
+name = "edgedb"
+path = "src/main.rs"
