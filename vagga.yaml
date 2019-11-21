@@ -21,6 +21,11 @@ commands:
     container: ubuntu
     run: [bulk]
 
+  repl: !Command
+    description: Run edgedb repl
+    container: ubuntu
+    run: [cargo, run, --bin, edgedb]
+
 containers:
 
   ubuntu:
