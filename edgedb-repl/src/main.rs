@@ -44,6 +44,8 @@ async fn run_repl() -> Result<(), Box<dyn Error>> {
         eprintln!("Error authenticating: {:?}", msg);
         exit(1);
     }
-
-    Ok(())
+    loop {
+        let msg = reader.message().await?;
+        println!("message: {:?}", msg);
+    }
 }

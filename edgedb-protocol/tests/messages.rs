@@ -7,6 +7,7 @@ use bytes::{Bytes, BytesMut};
 use edgedb_protocol::message::{Message, ClientHandshake};
 use edgedb_protocol::message::{ServerHandshake};
 use edgedb_protocol::message::{ErrorResponse, ErrorSeverity};
+use edgedb_protocol::message::{ReadyForCommand, TransactionState};
 
 macro_rules! encoding_eq {
     ($message: expr, $bytes: expr) => {
@@ -49,6 +50,15 @@ fn server_handshake() -> Result<(), Box<dyn Error>> {
         minor_ver: 0,
         extensions: HashMap::new(),
     }), b"v\0\0\0\n\0\x01\0\0\0\0");
+    Ok(())
+}
+
+#[test]
+fn ready_for_command() -> Result<(), Box<dyn Error>> {
+    encoding_eq!(Message::ReadyForCommand(ReadyForCommand {
+        transaction_state: TransactionState::NotInTransaction,
+        headers: HashMap::new(),
+    }), b"Z\0\0\0\x07\0\0I");
     Ok(())
 }
 

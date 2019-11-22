@@ -17,6 +17,8 @@ pub enum DecodeError {
     InvalidUtf8 { backtrace: Backtrace, source: str::Utf8Error },
     #[snafu(display("invalid auth status: {:x}", auth_status))]
     AuthStatusInvalid { backtrace: Backtrace, auth_status: u8 },
+    #[snafu(display("unsupported transaction state: {:x}", transaction_state))]
+    InvalidTransactionState { backtrace: Backtrace, transaction_state: u8 },
     #[doc(hidden)]
     __NonExhaustive1,
 }
@@ -49,8 +51,15 @@ pub enum Message {
     UnknownMessage(u8, Bytes),
     ErrorResponse(ErrorResponse),
     Authentication(Authentication),
+    ReadyForCommand(ReadyForCommand),
     #[doc(hidden)]
     __NonExhaustive,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReadyForCommand {
+    pub headers: Headers,
+    pub transaction_state: TransactionState,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,6 +84,19 @@ pub enum ErrorSeverity {
     Fatal,
     Panic,
     Unknown(u8),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransactionState {
+    // Not in a transaction block.
+    NotInTransaction = 0x49,
+
+    // In a transaction block.
+    InTransaction = 0x54,
+
+    // In a failed transaction block
+    // (commands will be rejected until the block is ended).
+    InFailedTransaction = 0x45
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -127,6 +149,7 @@ impl Message {
             ServerHandshake(h) => encode(buf, 0x76, h),
             ErrorResponse(h) => encode(buf, 0x45, h),
             Authentication(h) => encode(buf, 0x52, h),
+            ReadyForCommand(h) => encode(buf, 0x5a, h),
 
             UnknownMessage(_, _) => UnknownMessageCantBeEncoded.fail()?,
 
@@ -147,6 +170,7 @@ impl Message {
             0x76 => ServerHandshake::decode(&mut data).map(M::ServerHandshake),
             0x45 => ErrorResponse::decode(&mut data).map(M::ErrorResponse),
             0x52 => Authentication::decode(&mut data).map(M::Authentication),
+            0x5a => ReadyForCommand::decode(&mut data).map(M::ReadyForCommand),
             code => Ok(M::UnknownMessage(code, data.into_inner())),
         }
     }
@@ -381,6 +405,44 @@ impl Decode for Authentication {
             }
             c => AuthStatusInvalid { auth_status: c }.fail()?,
         }
+    }
+}
+
+impl Encode for ReadyForCommand {
+    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+        buf.reserve(3);
+        buf.put_u16_be(u16::try_from(self.headers.len()).ok()
+            .context(TooManyHeaders)?);
+        for (&name, value) in &self.headers {
+            buf.reserve(2);
+            buf.put_u16_be(name);
+            value.encode(buf)?;
+        }
+        buf.reserve(1);
+        buf.put_u8(self.transaction_state as u8);
+        Ok(())
+    }
+}
+impl Decode for ReadyForCommand {
+    fn decode(buf: &mut Cursor<Bytes>)
+        -> Result<ReadyForCommand, DecodeError>
+    {
+        use TransactionState::*;
+        ensure!(buf.remaining() >= 3, Underflow);
+        let mut headers = HashMap::new();
+        let num_headers = buf.get_u16_be();
+        for _ in 0..num_headers {
+            ensure!(buf.remaining() >= 4, Underflow);
+            headers.insert(buf.get_u16_be(), Bytes::decode(buf)?);
+        }
+        ensure!(buf.remaining() >= 1, Underflow);
+        let transaction_state = match buf.get_u8() {
+            0x49 => NotInTransaction,
+            0x54 => InTransaction,
+            0x45 => InFailedTransaction,
+            s => InvalidTransactionState { transaction_state: s }.fail()?
+        };
+        Ok(ReadyForCommand { headers, transaction_state })
     }
 }
 
