@@ -19,21 +19,25 @@ async fn run_repl() -> Result<(), Box<dyn Error>> {
     let mut stream = TcpStream::connect("127.0.0.1:5656").await?;
 
     let mut bytes = BytesMut::new();
+    let mut params = HashMap::new();
+    params.insert(String::from("user"), String::from("edgedb"));
+    params.insert(String::from("database"), String::from("edgedb"));
+
     Message::ClientHandshake(ClientHandshake {
         major_ver: 1,
-        minor_ver: 1,
-        params: HashMap::new(),
+        minor_ver: 0,
+        params,
         extensions: HashMap::new(),
     }).encode(&mut bytes)?;
 
     stream.write_all(&bytes[..]).await?;
     let mut reader = Reader::new(&stream);
-    let msg = reader.message().await?;
+    let mut msg = reader.message().await?;
     if let Message::ServerHandshake {..} = msg {
         println!("Handshake {:?}", msg);
-        let msg = reader.message().await?;
-        println!("Message {:?}", msg);
+        msg = reader.message().await?;
     }
+    println!("Message {:?}", msg);
 
     Ok(())
 }
