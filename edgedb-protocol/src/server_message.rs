@@ -20,6 +20,7 @@ pub enum ServerMessage {
     ReadyForCommand(ReadyForCommand),
     ServerKeyData(ServerKeyData),
     ParameterStatus(ParameterStatus),
+    CommandComplete(CommandComplete),
     #[doc(hidden)]
     __NonExhaustive,
 }
@@ -85,6 +86,12 @@ pub struct ParameterStatus {
     pub value: Bytes,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandComplete {
+    pub headers: Headers,
+    pub status_data: Bytes,
+}
+
 trait Encode {
     fn encode(&self, buf: &mut BytesMut)
         -> Result<(), EncodeError>;
@@ -121,6 +128,7 @@ impl ServerMessage {
             ReadyForCommand(h) => encode(buf, 0x5a, h),
             ServerKeyData(h) => encode(buf, 0x4b, h),
             ParameterStatus(h) => encode(buf, 0x53, h),
+            CommandComplete(h) => encode(buf, 0x43, h),
 
             UnknownMessage(_, _) => {
                 errors::UnknownMessageCantBeEncoded.fail()?
@@ -145,6 +153,7 @@ impl ServerMessage {
             0x5a => ReadyForCommand::decode(&mut data).map(M::ReadyForCommand),
             0x4b => ServerKeyData::decode(&mut data).map(M::ServerKeyData),
             0x53 => ParameterStatus::decode(&mut data).map(M::ParameterStatus),
+            0x43 => CommandComplete::decode(&mut data).map(M::CommandComplete),
             code => Ok(M::UnknownMessage(code, data.into_inner())),
         }
     }
@@ -414,5 +423,36 @@ impl Decode for ParameterStatus {
         let name = Bytes::decode(buf)?;
         let value = Bytes::decode(buf)?;
         Ok(ParameterStatus { name, value })
+    }
+}
+
+impl Encode for CommandComplete {
+    fn encode(&self, buf: &mut BytesMut)
+        -> Result<(), EncodeError>
+    {
+        buf.reserve(6);
+        buf.put_u16_be(u16::try_from(self.headers.len()).ok()
+            .context(errors::TooManyHeaders)?);
+        for (&name, value) in &self.headers {
+            buf.reserve(2);
+            buf.put_u16_be(name);
+            value.encode(buf)?;
+        }
+        self.status_data.encode(buf)?;
+        Ok(())
+    }
+}
+
+impl Decode for CommandComplete {
+    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+        ensure!(buf.remaining() >= 6, errors::Underflow);
+        let num_headers = buf.get_u16_be();
+        let mut headers = HashMap::new();
+        for _ in 0..num_headers {
+            ensure!(buf.remaining() >= 4, errors::Underflow);
+            headers.insert(buf.get_u16_be(), Bytes::decode(buf)?);
+        }
+        let status_data = Bytes::decode(buf)?;
+        Ok(CommandComplete { status_data, headers })
     }
 }

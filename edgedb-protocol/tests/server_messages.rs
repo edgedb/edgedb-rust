@@ -9,15 +9,17 @@ use edgedb_protocol::server_message::{ServerHandshake};
 use edgedb_protocol::server_message::{ErrorResponse, ErrorSeverity};
 use edgedb_protocol::server_message::{ReadyForCommand, TransactionState};
 use edgedb_protocol::server_message::{ServerKeyData, ParameterStatus};
+use edgedb_protocol::server_message::{CommandComplete};
 
 macro_rules! encoding_eq {
     ($message: expr, $bytes: expr) => {
         let data: &[u8] = $bytes;
-        assert_eq!(ServerMessage::decode(&data.into())?, $message);
         let mut bytes = BytesMut::new();
         $message.encode(&mut bytes)?;
+        println!("Serialized bytes {:?}", bytes);
         let bytes = bytes.freeze();
         assert_eq!(&bytes[..], data);
+        assert_eq!(ServerMessage::decode(&data.into())?, $message);
     }
 }
 macro_rules! map {
@@ -81,5 +83,14 @@ fn parameter_status() -> Result<(), Box<dyn Error>> {
         name: Bytes::from_static(b"pgaddr"),
         value: Bytes::from_static(b"/work/tmp/db/.s.PGSQL.60128"),
     }), &fs::read("tests/parameter_status.bin")?[..]);
+    Ok(())
+}
+
+#[test]
+fn command_complete() -> Result<(), Box<dyn Error>> {
+    encoding_eq!(ServerMessage::CommandComplete(CommandComplete {
+        headers: HashMap::new(),
+        status_data: Bytes::from_static(b"okay"),
+    }), b"C\0\0\0\x0e\0\0\0\0\0\x04okay");
     Ok(())
 }

@@ -13,6 +13,7 @@ use crate::errors::{self, EncodeError, DecodeError};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClientMessage {
     ClientHandshake(ClientHandshake),
+    ExecuteScript(ExecuteScript),
     UnknownMessage(u8, Bytes),
     #[doc(hidden)]
     __NonExhaustive,
@@ -26,11 +27,18 @@ pub struct ClientHandshake {
     pub extensions: HashMap<String, Headers>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecuteScript {
+    pub headers: Headers,
+    pub script_text: String,
+}
+
 impl ClientMessage {
     pub fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
         use ClientMessage::*;
         match self {
             ClientHandshake(h) => encode(buf, 0x56, h),
+            ExecuteScript(h) => encode(buf, 0x51, h),
 
             UnknownMessage(_, _) => {
                 errors::UnknownMessageCantBeEncoded.fail()?
@@ -50,6 +58,7 @@ impl ClientMessage {
         let mut data = Cursor::new(buf.slice_from(5));
         match buf[0] {
             0x56 => ClientHandshake::decode(&mut data).map(M::ClientHandshake),
+            0x51 => ExecuteScript::decode(&mut data).map(M::ExecuteScript),
             code => Ok(M::UnknownMessage(code, data.into_inner())),
         }
     }
@@ -114,5 +123,36 @@ impl Decode for ClientHandshake {
         Ok(ClientHandshake {
             major_ver, minor_ver, params, extensions,
         })
+    }
+}
+
+impl Encode for ExecuteScript {
+    fn encode(&self, buf: &mut BytesMut)
+        -> Result<(), EncodeError>
+    {
+        buf.reserve(6);
+        buf.put_u16_be(u16::try_from(self.headers.len()).ok()
+            .context(errors::TooManyHeaders)?);
+        for (&name, value) in &self.headers {
+            buf.reserve(2);
+            buf.put_u16_be(name);
+            value.encode(buf)?;
+        }
+        self.script_text.encode(buf)?;
+        Ok(())
+    }
+}
+
+impl Decode for ExecuteScript {
+    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+        ensure!(buf.remaining() >= 6, errors::Underflow);
+        let num_headers = buf.get_u16_be();
+        let mut headers = HashMap::new();
+        for _ in 0..num_headers {
+            ensure!(buf.remaining() >= 4, errors::Underflow);
+            headers.insert(buf.get_u16_be(), Bytes::decode(buf)?);
+        }
+        let script_text = String::decode(buf)?;
+        Ok(ExecuteScript { script_text, headers })
     }
 }

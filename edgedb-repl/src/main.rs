@@ -8,6 +8,7 @@ use async_std::net::{TcpStream};
 use async_std::io::prelude::WriteExt;
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
+use edgedb_protocol::client_message::{ExecuteScript};
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use crate::reader::Reader;
 
@@ -18,7 +19,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 async fn run_repl() -> Result<(), Box<dyn Error>> {
-    let mut stream = TcpStream::connect("127.0.0.1:5656").await?;
+    let stream = TcpStream::connect("127.0.0.1:5656").await?;
+    let (rd, mut stream) = (&stream, &stream);
+    let mut reader = Reader::new(rd);
 
     let mut bytes = BytesMut::new();
     let mut params = HashMap::new();
@@ -33,7 +36,6 @@ async fn run_repl() -> Result<(), Box<dyn Error>> {
     }).encode(&mut bytes)?;
 
     stream.write_all(&bytes[..]).await?;
-    let mut reader = Reader::new(&stream);
     let mut msg = reader.message().await?;
     if let ServerMessage::ServerHandshake {..} = msg {
         println!("Handshake {:?}", msg);
@@ -45,6 +47,22 @@ async fn run_repl() -> Result<(), Box<dyn Error>> {
         eprintln!("Error authenticating: {:?}", msg);
         exit(1);
     }
+    loop {
+        let msg = reader.message().await?;
+        println!("message: {:?}", msg);
+        match msg {
+            ServerMessage::ReadyForCommand(..) => break,
+            _ => continue,  // TODO(tailhook) consume msgs
+        }
+    }
+
+    bytes.truncate(0);
+    ClientMessage::ExecuteScript(ExecuteScript {
+        headers: HashMap::new(),
+        script_text: String::from("ROLLBACK"),
+    }).encode(&mut bytes)?;
+    stream.write_all(&bytes[..]).await?;
+
     loop {
         let msg = reader.message().await?;
         println!("message: {:?}", msg);

@@ -1,34 +1,22 @@
-use std::fs;
 use std::collections::HashMap;
 use std::error::Error;
 
-use bytes::{Bytes, BytesMut};
+use bytes::{BytesMut};
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
+use edgedb_protocol::client_message::{ExecuteScript};
 
 macro_rules! encoding_eq {
     ($message: expr, $bytes: expr) => {
         let data: &[u8] = $bytes;
-        assert_eq!(ClientMessage::decode(&data.into())?, $message);
         let mut bytes = BytesMut::new();
         $message.encode(&mut bytes)?;
+        println!("Serialized bytes {:?}", bytes);
         let bytes = bytes.freeze();
         assert_eq!(&bytes[..], data);
+        assert_eq!(ClientMessage::decode(&data.into())?, $message);
     }
 }
-macro_rules! map {
-    ($($key:expr => $value:expr),*) => {
-        {
-            #[allow(unused_mut)]
-            let mut h = HashMap::new();
-            $(
-                h.insert($key, $value);
-            )*
-            h
-        }
-    }
-}
-
 
 #[test]
 fn client_handshake() -> Result<(), Box<dyn Error>> {
@@ -38,5 +26,14 @@ fn client_handshake() -> Result<(), Box<dyn Error>> {
         params: HashMap::new(),
         extensions: HashMap::new(),
     }), b"\x56\x00\x00\x00\x0C\x00\x01\x00\x02\x00\x00\x00\x00");
+    Ok(())
+}
+
+#[test]
+fn execute_script() -> Result<(), Box<dyn Error>> {
+    encoding_eq!(ClientMessage::ExecuteScript(ExecuteScript {
+        headers: HashMap::new(),
+        script_text: String::from("START TRANSACTION"),
+    }), b"Q\0\0\0\x1b\0\0\0\0\0\x11START TRANSACTION");
     Ok(())
 }
