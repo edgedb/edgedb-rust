@@ -8,14 +8,16 @@ use edgedb_protocol::message::{Message, ClientHandshake};
 use edgedb_protocol::message::{ServerHandshake};
 use edgedb_protocol::message::{ErrorResponse, ErrorSeverity};
 use edgedb_protocol::message::{ReadyForCommand, TransactionState};
+use edgedb_protocol::message::{ServerKeyData, ParameterStatus};
 
 macro_rules! encoding_eq {
     ($message: expr, $bytes: expr) => {
+        let data: &[u8] = $bytes;
+        assert_eq!(Message::decode(&data.into())?, $message);
         let mut bytes = BytesMut::new();
         $message.encode(&mut bytes)?;
         let bytes = bytes.freeze();
-        assert_eq!(&bytes[..], $bytes);
-        assert_eq!(Message::decode(&bytes)?, $message);
+        assert_eq!(&bytes[..], data);
     }
 }
 macro_rules! map {
@@ -73,5 +75,22 @@ fn error_response() -> Result<(), Box<dyn Error>> {
             257 => Bytes::from_static("Traceback (most recent call last):\n  File \"edb/server/mng_port/edgecon.pyx\", line 1077, in edb.server.mng_port.edgecon.EdgeConnection.main\n    await self.auth()\n  File \"edb/server/mng_port/edgecon.pyx\", line 178, in auth\n    raise errors.BinaryProtocolError(\nedb.errors.BinaryProtocolError: missing required connection parameter in ClientHandshake message: \"user\"\n".as_bytes())
         },
     }), &fs::read("tests/error_response.bin")?[..]);
+    Ok(())
+}
+
+#[test]
+fn server_key_data() -> Result<(), Box<dyn Error>> {
+    encoding_eq!(Message::ServerKeyData(ServerKeyData {
+        data: [0u8; 32],
+    }), &fs::read("tests/server_key_data.bin")?[..]);
+    Ok(())
+}
+
+#[test]
+fn parameter_status() -> Result<(), Box<dyn Error>> {
+    encoding_eq!(Message::ParameterStatus(ParameterStatus {
+        name: Bytes::from_static(b"pgaddr"),
+        value: Bytes::from_static(b"/work/tmp/db/.s.PGSQL.60128"),
+    }), &fs::read("tests/parameter_status.bin")?[..]);
     Ok(())
 }

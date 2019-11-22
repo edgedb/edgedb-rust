@@ -52,6 +52,8 @@ pub enum Message {
     ErrorResponse(ErrorResponse),
     Authentication(Authentication),
     ReadyForCommand(ReadyForCommand),
+    ServerKeyData(ServerKeyData),
+    ParameterStatus(ParameterStatus),
     #[doc(hidden)]
     __NonExhaustive,
 }
@@ -116,6 +118,17 @@ pub struct ServerHandshake {
     pub extensions: HashMap<String, Headers>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerKeyData {
+    pub data: [u8; 32],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParameterStatus {
+    pub name: Bytes,
+    pub value: Bytes,
+}
+
 trait Encode {
     fn encode(&self, buf: &mut BytesMut)
         -> Result<(), EncodeError>;
@@ -150,6 +163,8 @@ impl Message {
             ErrorResponse(h) => encode(buf, 0x45, h),
             Authentication(h) => encode(buf, 0x52, h),
             ReadyForCommand(h) => encode(buf, 0x5a, h),
+            ServerKeyData(h) => encode(buf, 0x4b, h),
+            ParameterStatus(h) => encode(buf, 0x53, h),
 
             UnknownMessage(_, _) => UnknownMessageCantBeEncoded.fail()?,
 
@@ -171,6 +186,8 @@ impl Message {
             0x45 => ErrorResponse::decode(&mut data).map(M::ErrorResponse),
             0x52 => Authentication::decode(&mut data).map(M::Authentication),
             0x5a => ReadyForCommand::decode(&mut data).map(M::ReadyForCommand),
+            0x4b => ServerKeyData::decode(&mut data).map(M::ServerKeyData),
+            0x53 => ParameterStatus::decode(&mut data).map(M::ParameterStatus),
             code => Ok(M::UnknownMessage(code, data.into_inner())),
         }
     }
@@ -463,5 +480,40 @@ impl ErrorSeverity {
             Panic => 255,
             Unknown(code) => code,
         }
+    }
+}
+
+impl Encode for ServerKeyData {
+    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+        buf.extend(&self.data[..]);
+        Ok(())
+    }
+}
+impl Decode for ServerKeyData {
+    fn decode(buf: &mut Cursor<Bytes>)
+        -> Result<ServerKeyData, DecodeError>
+    {
+        ensure!(buf.remaining() >= 32, Underflow);
+        let mut data = [0u8; 32];
+        data.copy_from_slice(&buf.bytes()[..32]);
+        buf.advance(32);
+        Ok(ServerKeyData { data })
+    }
+}
+
+impl Encode for ParameterStatus {
+    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+        self.name.encode(buf)?;
+        self.value.encode(buf)?;
+        Ok(())
+    }
+}
+impl Decode for ParameterStatus {
+    fn decode(buf: &mut Cursor<Bytes>)
+        -> Result<ParameterStatus, DecodeError>
+    {
+        let name = Bytes::decode(buf)?;
+        let value = Bytes::decode(buf)?;
+        Ok(ParameterStatus { name, value })
     }
 }
