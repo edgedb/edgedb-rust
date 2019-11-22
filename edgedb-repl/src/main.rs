@@ -7,7 +7,8 @@ use async_std::task;
 use async_std::net::{TcpStream};
 use async_std::io::prelude::WriteExt;
 
-use edgedb_protocol::message::{Message, ClientHandshake, Authentication};
+use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
+use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use crate::reader::Reader;
 
 mod reader;
@@ -24,7 +25,7 @@ async fn run_repl() -> Result<(), Box<dyn Error>> {
     params.insert(String::from("user"), String::from("edgedb"));
     params.insert(String::from("database"), String::from("edgedb"));
 
-    Message::ClientHandshake(ClientHandshake {
+    ClientMessage::ClientHandshake(ClientHandshake {
         major_ver: 1,
         minor_ver: 0,
         params,
@@ -34,12 +35,12 @@ async fn run_repl() -> Result<(), Box<dyn Error>> {
     stream.write_all(&bytes[..]).await?;
     let mut reader = Reader::new(&stream);
     let mut msg = reader.message().await?;
-    if let Message::ServerHandshake {..} = msg {
+    if let ServerMessage::ServerHandshake {..} = msg {
         println!("Handshake {:?}", msg);
         // TODO(tailhook) react on this somehow
         msg = reader.message().await?;
     }
-    if let Message::Authentication(Authentication::Ok) = msg {
+    if let ServerMessage::Authentication(Authentication::Ok) = msg {
     } else {
         eprintln!("Error authenticating: {:?}", msg);
         exit(1);

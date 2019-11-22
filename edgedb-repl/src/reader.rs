@@ -8,7 +8,8 @@ use async_std::io;
 use bytes::{BytesMut, BufMut};
 use snafu::{Snafu, ResultExt};
 
-use edgedb_protocol::message::{Message, DecodeError};
+use edgedb_protocol::server_message::{ServerMessage};
+use edgedb_protocol::errors::{DecodeError};
 
 const BUFFER_SIZE: usize = 8192;
 const MAX_BUFFER: usize = 1_048_576;
@@ -50,7 +51,7 @@ impl<T: io::Read> Reader<T> {
 impl<'a, T> Future for MessageFuture<'a, T>
     where T: io::Read + Unpin,
 {
-    type Output = Result<Message, ReadError>;
+    type Output = Result<ServerMessage, ReadError>;
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let Reader { ref mut buf, ref mut stream } = &mut self.reader;
         let frame_len = loop {
@@ -82,7 +83,7 @@ impl<'a, T> Future for MessageFuture<'a, T>
         };
         let frame = buf.split_to(frame_len).freeze();
         println!("Frame {:?}", frame);
-        let result = Message::decode(&frame).context(Decode)?;
+        let result = ServerMessage::decode(&frame).context(Decode)?;
         return Poll::Ready(Ok(result));
     }
 }

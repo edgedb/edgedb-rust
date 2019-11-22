@@ -4,16 +4,16 @@ use std::error::Error;
 
 use bytes::{Bytes, BytesMut};
 
-use edgedb_protocol::message::{Message, ClientHandshake};
-use edgedb_protocol::message::{ServerHandshake};
-use edgedb_protocol::message::{ErrorResponse, ErrorSeverity};
-use edgedb_protocol::message::{ReadyForCommand, TransactionState};
-use edgedb_protocol::message::{ServerKeyData, ParameterStatus};
+use edgedb_protocol::server_message::{ServerMessage};
+use edgedb_protocol::server_message::{ServerHandshake};
+use edgedb_protocol::server_message::{ErrorResponse, ErrorSeverity};
+use edgedb_protocol::server_message::{ReadyForCommand, TransactionState};
+use edgedb_protocol::server_message::{ServerKeyData, ParameterStatus};
 
 macro_rules! encoding_eq {
     ($message: expr, $bytes: expr) => {
         let data: &[u8] = $bytes;
-        assert_eq!(Message::decode(&data.into())?, $message);
+        assert_eq!(ServerMessage::decode(&data.into())?, $message);
         let mut bytes = BytesMut::new();
         $message.encode(&mut bytes)?;
         let bytes = bytes.freeze();
@@ -35,19 +35,8 @@ macro_rules! map {
 
 
 #[test]
-fn client_handshake() -> Result<(), Box<dyn Error>> {
-    encoding_eq!(Message::ClientHandshake(ClientHandshake {
-        major_ver: 1,
-        minor_ver: 2,
-        params: HashMap::new(),
-        extensions: HashMap::new(),
-    }), b"\x56\x00\x00\x00\x0C\x00\x01\x00\x02\x00\x00\x00\x00");
-    Ok(())
-}
-
-#[test]
 fn server_handshake() -> Result<(), Box<dyn Error>> {
-    encoding_eq!(Message::ServerHandshake(ServerHandshake {
+    encoding_eq!(ServerMessage::ServerHandshake(ServerHandshake {
         major_ver: 1,
         minor_ver: 0,
         extensions: HashMap::new(),
@@ -57,7 +46,7 @@ fn server_handshake() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn ready_for_command() -> Result<(), Box<dyn Error>> {
-    encoding_eq!(Message::ReadyForCommand(ReadyForCommand {
+    encoding_eq!(ServerMessage::ReadyForCommand(ReadyForCommand {
         transaction_state: TransactionState::NotInTransaction,
         headers: HashMap::new(),
     }), b"Z\0\0\0\x07\0\0I");
@@ -66,7 +55,7 @@ fn ready_for_command() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn error_response() -> Result<(), Box<dyn Error>> {
-    encoding_eq!(Message::ErrorResponse(ErrorResponse {
+    encoding_eq!(ServerMessage::ErrorResponse(ErrorResponse {
         severity: ErrorSeverity::Error,
         code: 50397184,
         message: String::from("missing required connection parameter \
@@ -80,7 +69,7 @@ fn error_response() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn server_key_data() -> Result<(), Box<dyn Error>> {
-    encoding_eq!(Message::ServerKeyData(ServerKeyData {
+    encoding_eq!(ServerMessage::ServerKeyData(ServerKeyData {
         data: [0u8; 32],
     }), &fs::read("tests/server_key_data.bin")?[..]);
     Ok(())
@@ -88,7 +77,7 @@ fn server_key_data() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn parameter_status() -> Result<(), Box<dyn Error>> {
-    encoding_eq!(Message::ParameterStatus(ParameterStatus {
+    encoding_eq!(ServerMessage::ParameterStatus(ParameterStatus {
         name: Bytes::from_static(b"pgaddr"),
         value: Bytes::from_static(b"/work/tmp/db/.s.PGSQL.60128"),
     }), &fs::read("tests/parameter_status.bin")?[..]);
