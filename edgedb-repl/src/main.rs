@@ -1,12 +1,13 @@
 use std::error::Error;
 use std::collections::HashMap;
+use std::process::exit;
 
 use bytes::BytesMut;
 use async_std::task;
 use async_std::net::{TcpStream};
 use async_std::io::prelude::WriteExt;
 
-use edgedb_protocol::message::{Message, ClientHandshake};
+use edgedb_protocol::message::{Message, ClientHandshake, Authentication};
 use crate::reader::Reader;
 
 mod reader;
@@ -35,9 +36,14 @@ async fn run_repl() -> Result<(), Box<dyn Error>> {
     let mut msg = reader.message().await?;
     if let Message::ServerHandshake {..} = msg {
         println!("Handshake {:?}", msg);
+        // TODO(tailhook) react on this somehow
         msg = reader.message().await?;
     }
-    println!("Message {:?}", msg);
+    if let Message::Authentication(Authentication::Ok) = msg {
+    } else {
+        eprintln!("Error authenticating: {:?}", msg);
+        exit(1);
+    }
 
     Ok(())
 }

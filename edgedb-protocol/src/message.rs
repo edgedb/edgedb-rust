@@ -15,6 +15,8 @@ pub enum DecodeError {
     Underflow { backtrace: Backtrace },
     #[snafu(display("invalid utf8 when decoding string: {}", source))]
     InvalidUtf8 { backtrace: Backtrace, source: str::Utf8Error },
+    #[snafu(display("invalid auth status: {:x}", auth_status))]
+    AuthStatusInvalid { backtrace: Backtrace, auth_status: u8 },
     #[doc(hidden)]
     __NonExhaustive1,
 }
@@ -40,15 +42,23 @@ pub enum EncodeError {
 }
 
 
-// TODO(tailhook) non-exhaustive
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Message {
     ClientHandshake(ClientHandshake),
     ServerHandshake(ServerHandshake),
     UnknownMessage(u8, Bytes),
     ErrorResponse(ErrorResponse),
+    Authentication(Authentication),
     #[doc(hidden)]
     __NonExhaustive,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Authentication {
+    Ok,
+    Sasl { methods: Vec<String> },
+    SaslContinue { data: Bytes },
+    SaslFinal { data: Bytes },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -116,6 +126,7 @@ impl Message {
             ClientHandshake(h) => encode(buf, 0x56, h),
             ServerHandshake(h) => encode(buf, 0x76, h),
             ErrorResponse(h) => encode(buf, 0x45, h),
+            Authentication(h) => encode(buf, 0x52, h),
 
             UnknownMessage(_, _) => UnknownMessageCantBeEncoded.fail()?,
 
@@ -135,6 +146,7 @@ impl Message {
             0x56 => ClientHandshake::decode(&mut data).map(M::ClientHandshake),
             0x76 => ServerHandshake::decode(&mut data).map(M::ServerHandshake),
             0x45 => ErrorResponse::decode(&mut data).map(M::ErrorResponse),
+            0x52 => Authentication::decode(&mut data).map(M::Authentication),
             code => Ok(M::UnknownMessage(code, data.into_inner())),
         }
     }
@@ -337,6 +349,38 @@ impl Decode for Bytes {
         let result = buf.get_ref().slice(buf_pos, buf_pos + len);
         buf.advance(len);
         Ok(result)
+    }
+}
+
+impl Encode for Authentication {
+    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+        unimplemented!()
+    }
+}
+impl Decode for Authentication {
+    fn decode(buf: &mut Cursor<Bytes>) -> Result<Authentication, DecodeError> {
+        ensure!(buf.remaining() >= 1, Underflow);
+        match buf.get_u8() {
+            0x00 => Ok(Authentication::Ok),
+            0x0A => {
+                ensure!(buf.remaining() >= 4, Underflow);
+                let num_methods = buf.get_u32_be() as usize;
+                let mut methods = Vec::with_capacity(num_methods);
+                for _ in 0..num_methods {
+                    methods.push(String::decode(buf)?);
+                }
+                Ok(Authentication::Sasl { methods })
+            }
+            0x0B => {
+                let data = Bytes::decode(buf)?;
+                Ok(Authentication::SaslContinue { data })
+            }
+            0x0C => {
+                let data = Bytes::decode(buf)?;
+                Ok(Authentication::SaslFinal { data })
+            }
+            c => AuthStatusInvalid { auth_status: c }.fail()?,
+        }
     }
 }
 
