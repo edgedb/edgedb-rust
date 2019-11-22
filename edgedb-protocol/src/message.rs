@@ -354,7 +354,6 @@ impl Decode for String {
         let len = buf.get_u32_be() as usize;
         // TODO(tailhook) ensure size < i32::MAX
         ensure!(buf.remaining() >= len, Underflow);
-        let buf_pos = buf.position() as usize;
         let result = str::from_utf8(&buf.bytes()[..len])
             .map(String::from)
             .context(InvalidUtf8);
