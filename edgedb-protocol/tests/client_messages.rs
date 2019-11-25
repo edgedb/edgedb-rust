@@ -4,7 +4,7 @@ use std::error::Error;
 use bytes::{Bytes, BytesMut};
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
-use edgedb_protocol::client_message::{ExecuteScript};
+use edgedb_protocol::client_message::{ExecuteScript, Execute};
 use edgedb_protocol::client_message::{Prepare, IoFormat, Cardinality};
 use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
 
@@ -59,5 +59,15 @@ fn describe_statement() -> Result<(), Box<dyn Error>> {
         aspect: DescribeAspect::DataDescription,
         statement_name: Bytes::from_static(b"example"),
     }), b"D\0\0\0\x12\0\0T\0\0\0\x07example");
+    Ok(())
+}
+
+#[test]
+fn execute() -> Result<(), Box<dyn Error>> {
+    encoding_eq!(ClientMessage::Execute(Execute {
+        headers: HashMap::new(),
+        statement_name: Bytes::from_static(b"example"),
+        arguments: Bytes::new(),
+    }), b"E\0\0\0\x15\0\0\0\0\0\x07example\0\0\0\0");
     Ok(())
 }

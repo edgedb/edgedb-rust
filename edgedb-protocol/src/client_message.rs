@@ -16,6 +16,7 @@ pub enum ClientMessage {
     ExecuteScript(ExecuteScript),
     Prepare(Prepare),
     DescribeStatement(DescribeStatement),
+    Execute(Execute),
     UnknownMessage(u8, Bytes),
     #[doc(hidden)]
     __NonExhaustive,
@@ -51,6 +52,13 @@ pub struct DescribeStatement {
     pub statement_name: Bytes,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Execute {
+    pub headers: Headers,
+    pub statement_name: Bytes,
+    pub arguments: Bytes,
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum DescribeAspect {
     DataDescription = 0x54,
@@ -76,6 +84,7 @@ impl ClientMessage {
             ExecuteScript(h) => encode(buf, 0x51, h),
             Prepare(h) => encode(buf, 0x50, h),
             DescribeStatement(h) => encode(buf, 0x44, h),
+            Execute(h) => encode(buf, 0x45, h),
 
             UnknownMessage(_, _) => {
                 errors::UnknownMessageCantBeEncoded.fail()?
@@ -97,6 +106,7 @@ impl ClientMessage {
             0x56 => ClientHandshake::decode(&mut data).map(M::ClientHandshake),
             0x51 => ExecuteScript::decode(&mut data).map(M::ExecuteScript),
             0x50 => Prepare::decode(&mut data).map(M::Prepare),
+            0x45 => Execute::decode(&mut data).map(M::Execute),
             0x44 => {
                 DescribeStatement::decode(&mut data).map(M::DescribeStatement)
             }
@@ -284,6 +294,38 @@ impl Decode for DescribeStatement {
             headers,
             aspect,
             statement_name,
+        })
+    }
+}
+
+impl Encode for Execute {
+    fn encode(&self, buf: &mut BytesMut)
+        -> Result<(), EncodeError>
+    {
+        buf.reserve(10);
+        buf.put_u16_be(u16::try_from(self.headers.len()).ok()
+            .context(errors::TooManyHeaders)?);
+        self.statement_name.encode(buf)?;
+        self.arguments.encode(buf)?;
+        Ok(())
+    }
+}
+
+impl Decode for Execute {
+    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+        ensure!(buf.remaining() >= 12, errors::Underflow);
+        let num_headers = buf.get_u16_be();
+        let mut headers = HashMap::new();
+        for _ in 0..num_headers {
+            ensure!(buf.remaining() >= 4, errors::Underflow);
+            headers.insert(buf.get_u16_be(), Bytes::decode(buf)?);
+        }
+        let statement_name = Bytes::decode(buf)?;
+        let arguments = Bytes::decode(buf)?;
+        Ok(Execute {
+            headers,
+            statement_name,
+            arguments,
         })
     }
 }
