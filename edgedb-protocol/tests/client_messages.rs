@@ -71,3 +71,9 @@ fn execute() -> Result<(), Box<dyn Error>> {
     }), b"E\0\0\0\x15\0\0\0\0\0\x07example\0\0\0\0");
     Ok(())
 }
+
+#[test]
+fn sync() -> Result<(), Box<dyn Error>> {
+    encoding_eq!(ClientMessage::Sync, b"S\0\0\0\x04");
+    Ok(())
+}

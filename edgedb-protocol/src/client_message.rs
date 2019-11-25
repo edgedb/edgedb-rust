@@ -18,6 +18,7 @@ pub enum ClientMessage {
     DescribeStatement(DescribeStatement),
     Execute(Execute),
     UnknownMessage(u8, Bytes),
+    Sync,
     #[doc(hidden)]
     __NonExhaustive,
 }
@@ -76,6 +77,8 @@ pub enum Cardinality {
     Many = 0x6d,
 }
 
+struct Empty;
+
 impl ClientMessage {
     pub fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
         use ClientMessage::*;
@@ -85,6 +88,7 @@ impl ClientMessage {
             Prepare(h) => encode(buf, 0x50, h),
             DescribeStatement(h) => encode(buf, 0x44, h),
             Execute(h) => encode(buf, 0x45, h),
+            Sync => encode(buf, 0x53, &Empty),
 
             UnknownMessage(_, _) => {
                 errors::UnknownMessageCantBeEncoded.fail()?
@@ -107,11 +111,20 @@ impl ClientMessage {
             0x51 => ExecuteScript::decode(&mut data).map(M::ExecuteScript),
             0x50 => Prepare::decode(&mut data).map(M::Prepare),
             0x45 => Execute::decode(&mut data).map(M::Execute),
+            0x53 => Ok(M::Sync),
             0x44 => {
                 DescribeStatement::decode(&mut data).map(M::DescribeStatement)
             }
             code => Ok(M::UnknownMessage(code, data.into_inner())),
         }
+    }
+}
+
+impl Encode for Empty {
+    fn encode(&self, buf: &mut BytesMut)
+        -> Result<(), EncodeError>
+    {
+        Ok(())
     }
 }
 
