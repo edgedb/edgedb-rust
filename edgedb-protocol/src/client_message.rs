@@ -15,6 +15,7 @@ pub enum ClientMessage {
     ClientHandshake(ClientHandshake),
     ExecuteScript(ExecuteScript),
     Prepare(Prepare),
+    DescribeStatement(DescribeStatement),
     UnknownMessage(u8, Bytes),
     #[doc(hidden)]
     __NonExhaustive,
@@ -43,6 +44,18 @@ pub struct Prepare {
     pub command_text: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DescribeStatement {
+    pub headers: Headers,
+    pub aspect: DescribeAspect,
+    pub statement_name: Bytes,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum DescribeAspect {
+    DataDescription = 0x54,
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum IoFormat {
     Binary = 0x62,
@@ -62,6 +75,7 @@ impl ClientMessage {
             ClientHandshake(h) => encode(buf, 0x56, h),
             ExecuteScript(h) => encode(buf, 0x51, h),
             Prepare(h) => encode(buf, 0x50, h),
+            DescribeStatement(h) => encode(buf, 0x44, h),
 
             UnknownMessage(_, _) => {
                 errors::UnknownMessageCantBeEncoded.fail()?
@@ -83,6 +97,9 @@ impl ClientMessage {
             0x56 => ClientHandshake::decode(&mut data).map(M::ClientHandshake),
             0x51 => ExecuteScript::decode(&mut data).map(M::ExecuteScript),
             0x50 => Prepare::decode(&mut data).map(M::Prepare),
+            0x44 => {
+                DescribeStatement::decode(&mut data).map(M::DescribeStatement)
+            }
             code => Ok(M::UnknownMessage(code, data.into_inner())),
         }
     }
@@ -181,7 +198,6 @@ impl Decode for ExecuteScript {
     }
 }
 
-
 impl Encode for Prepare {
     fn encode(&self, buf: &mut BytesMut)
         -> Result<(), EncodeError>
@@ -231,6 +247,43 @@ impl Decode for Prepare {
             expected_cardinality,
             statement_name,
             command_text,
+        })
+    }
+}
+
+impl Encode for DescribeStatement {
+    fn encode(&self, buf: &mut BytesMut)
+        -> Result<(), EncodeError>
+    {
+        buf.reserve(7);
+        buf.put_u16_be(u16::try_from(self.headers.len()).ok()
+            .context(errors::TooManyHeaders)?);
+        buf.reserve(5);
+        buf.put_u8(self.aspect as u8);
+        self.statement_name.encode(buf)?;
+        Ok(())
+    }
+}
+
+impl Decode for DescribeStatement {
+    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+        ensure!(buf.remaining() >= 12, errors::Underflow);
+        let num_headers = buf.get_u16_be();
+        let mut headers = HashMap::new();
+        for _ in 0..num_headers {
+            ensure!(buf.remaining() >= 4, errors::Underflow);
+            headers.insert(buf.get_u16_be(), Bytes::decode(buf)?);
+        }
+        ensure!(buf.remaining() >= 8, errors::Underflow);
+        let aspect = match buf.get_u8() {
+            0x54 => DescribeAspect::DataDescription,
+            c => errors::InvalidAspect { aspect: c }.fail()?,
+        };
+        let statement_name = Bytes::decode(buf)?;
+        Ok(DescribeStatement {
+            headers,
+            aspect,
+            statement_name,
         })
     }
 }

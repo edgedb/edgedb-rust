@@ -6,6 +6,7 @@ use bytes::{Bytes, BytesMut};
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
 use edgedb_protocol::client_message::{ExecuteScript};
 use edgedb_protocol::client_message::{Prepare, IoFormat, Cardinality};
+use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
 
 macro_rules! encoding_eq {
     ($message: expr, $bytes: expr) => {
@@ -48,5 +49,15 @@ fn prepare() -> Result<(), Box<dyn Error>> {
         statement_name: Bytes::from_static(b"example"),
         command_text: String::from("SELECT 1;"),
     }), b"P\0\0\0 \0\0bo\0\0\0\x07example\0\0\0\tSELECT 1;");
+    Ok(())
+}
+
+#[test]
+fn describe_statement() -> Result<(), Box<dyn Error>> {
+    encoding_eq!(ClientMessage::DescribeStatement(DescribeStatement {
+        headers: HashMap::new(),
+        aspect: DescribeAspect::DataDescription,
+        statement_name: Bytes::from_static(b"example"),
+    }), b"D\0\0\0\x12\0\0T\0\0\0\x07example");
     Ok(())
 }

@@ -18,6 +18,8 @@ pub enum DecodeError {
     InvalidIoFormat { backtrace: Backtrace, io_format: u8 },
     #[snafu(display("unsupported cardinality: {:x}", cardinality))]
     InvalidCardinality { backtrace: Backtrace, cardinality: u8 },
+    #[snafu(display("unsupported describe aspect: {:x}", aspect))]
+    InvalidAspect { backtrace: Backtrace, aspect: u8 },
     #[doc(hidden)]
     __NonExhaustive1,
 }
