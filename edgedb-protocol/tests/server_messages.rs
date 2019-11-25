@@ -10,6 +10,7 @@ use edgedb_protocol::server_message::{ErrorResponse, ErrorSeverity};
 use edgedb_protocol::server_message::{ReadyForCommand, TransactionState};
 use edgedb_protocol::server_message::{ServerKeyData, ParameterStatus};
 use edgedb_protocol::server_message::{CommandComplete};
+use edgedb_protocol::server_message::{PrepareComplete, Cardinality};
 
 macro_rules! encoding_eq {
     ($message: expr, $bytes: expr) => {
@@ -92,5 +93,16 @@ fn command_complete() -> Result<(), Box<dyn Error>> {
         headers: HashMap::new(),
         status_data: Bytes::from_static(b"okay"),
     }), b"C\0\0\0\x0e\0\0\0\0\0\x04okay");
+    Ok(())
+}
+
+#[test]
+fn prepare_complete() -> Result<(), Box<dyn Error>> {
+    encoding_eq!(ServerMessage::PrepareComplete(PrepareComplete {
+        headers: HashMap::new(),
+        cardinality: Cardinality::One,
+        input_typedesc_id: *b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff",
+        output_typedesc_id: *b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05",
+    }), b"1\0\0\0'\0\0o\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05");
     Ok(())
 }

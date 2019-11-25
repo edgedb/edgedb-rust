@@ -10,6 +10,7 @@ use snafu::{ResultExt, OptionExt, ensure};
 
 use crate::errors::{self, EncodeError, DecodeError};
 use crate::encoding::Headers;
+pub use crate::common::Cardinality;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServerMessage {
@@ -21,6 +22,7 @@ pub enum ServerMessage {
     ServerKeyData(ServerKeyData),
     ParameterStatus(ParameterStatus),
     CommandComplete(CommandComplete),
+    PrepareComplete(PrepareComplete),
     #[doc(hidden)]
     __NonExhaustive,
 }
@@ -92,6 +94,15 @@ pub struct CommandComplete {
     pub status_data: Bytes,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrepareComplete {
+    pub headers: Headers,
+    pub cardinality: Cardinality,
+    pub input_typedesc_id: [u8; 16],
+    pub output_typedesc_id: [u8; 16],
+}
+
+
 trait Encode {
     fn encode(&self, buf: &mut BytesMut)
         -> Result<(), EncodeError>;
@@ -129,6 +140,7 @@ impl ServerMessage {
             ServerKeyData(h) => encode(buf, 0x4b, h),
             ParameterStatus(h) => encode(buf, 0x53, h),
             CommandComplete(h) => encode(buf, 0x43, h),
+            PrepareComplete(h) => encode(buf, 0x31, h),
 
             UnknownMessage(_, _) => {
                 errors::UnknownMessageCantBeEncoded.fail()?
@@ -154,6 +166,7 @@ impl ServerMessage {
             0x4b => ServerKeyData::decode(&mut data).map(M::ServerKeyData),
             0x53 => ParameterStatus::decode(&mut data).map(M::ParameterStatus),
             0x43 => CommandComplete::decode(&mut data).map(M::CommandComplete),
+            0x31 => PrepareComplete::decode(&mut data).map(M::PrepareComplete),
             code => Ok(M::UnknownMessage(code, data.into_inner())),
         }
     }
@@ -454,5 +467,55 @@ impl Decode for CommandComplete {
         }
         let status_data = Bytes::decode(buf)?;
         Ok(CommandComplete { status_data, headers })
+    }
+}
+
+impl Encode for PrepareComplete {
+    fn encode(&self, buf: &mut BytesMut)
+        -> Result<(), EncodeError>
+    {
+        buf.reserve(35);
+        buf.put_u16_be(u16::try_from(self.headers.len()).ok()
+            .context(errors::TooManyHeaders)?);
+        for (&name, value) in &self.headers {
+            buf.reserve(2);
+            buf.put_u16_be(name);
+            value.encode(buf)?;
+        }
+        buf.reserve(33);
+        buf.put_u8(self.cardinality as u8);
+        buf.extend(&self.input_typedesc_id[..]);
+        buf.extend(&self.output_typedesc_id[..]);
+        Ok(())
+    }
+}
+
+impl Decode for PrepareComplete {
+    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+        ensure!(buf.remaining() >= 35, errors::Underflow);
+        let num_headers = buf.get_u16_be();
+        let mut headers = HashMap::new();
+        for _ in 0..num_headers {
+            ensure!(buf.remaining() >= 4, errors::Underflow);
+            headers.insert(buf.get_u16_be(), Bytes::decode(buf)?);
+        }
+        ensure!(buf.remaining() >= 33, errors::Underflow);
+        let cardinality = match buf.get_u8() {
+            0x6f => Cardinality::One,
+            0x6d => Cardinality::Many,
+            c => errors::InvalidCardinality { cardinality: c }.fail()?,
+        };
+        let mut input_typedesc_id = [0u8; 16];
+        input_typedesc_id.copy_from_slice(&buf.bytes()[..16]);
+        buf.advance(16);
+        let mut output_typedesc_id = [0u8; 16];
+        output_typedesc_id.copy_from_slice(&buf.bytes()[..16]);
+        buf.advance(16);
+        Ok(PrepareComplete {
+            headers,
+            cardinality,
+            input_typedesc_id,
+            output_typedesc_id,
+        })
     }
 }

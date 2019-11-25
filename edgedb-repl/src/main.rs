@@ -2,13 +2,13 @@ use std::error::Error;
 use std::collections::HashMap;
 use std::process::exit;
 
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use async_std::task;
 use async_std::net::{TcpStream};
 use async_std::io::prelude::WriteExt;
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
-use edgedb_protocol::client_message::{ExecuteScript};
+use edgedb_protocol::client_message::{Prepare, IoFormat, Cardinality};
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use crate::reader::Reader;
 
@@ -57,10 +57,14 @@ async fn run_repl() -> Result<(), Box<dyn Error>> {
     }
 
     bytes.truncate(0);
-    ClientMessage::ExecuteScript(ExecuteScript {
+    ClientMessage::Prepare(Prepare {
         headers: HashMap::new(),
-        script_text: String::from("ROLLBACK"),
+        io_format: IoFormat::Binary,
+        expected_cardinality: Cardinality::One,
+        statement_name: Bytes::from_static(b""),
+        command_text: String::from("SELECT 1"),
     }).encode(&mut bytes)?;
+    ClientMessage::Sync.encode(&mut bytes)?;
     stream.write_all(&bytes[..]).await?;
 
     loop {

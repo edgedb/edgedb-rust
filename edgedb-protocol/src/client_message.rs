@@ -8,6 +8,7 @@ use snafu::{OptionExt, ensure};
 
 use crate::encoding::{Encode, Decode, Headers, encode};
 use crate::errors::{self, EncodeError, DecodeError};
+pub use crate::common::Cardinality;
 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,14 +72,8 @@ pub enum IoFormat {
     Json = 0x6a,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Cardinality {
-    One = 0x6f,
-    Many = 0x6d,
-}
 
 struct Empty;
-
 impl ClientMessage {
     pub fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
         use ClientMessage::*;
