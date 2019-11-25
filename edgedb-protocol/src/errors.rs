@@ -14,6 +14,10 @@ pub enum DecodeError {
     AuthStatusInvalid { backtrace: Backtrace, auth_status: u8 },
     #[snafu(display("unsupported transaction state: {:x}", transaction_state))]
     InvalidTransactionState { backtrace: Backtrace, transaction_state: u8 },
+    #[snafu(display("unsupported io format: {:x}", io_format))]
+    InvalidIoFormat { backtrace: Backtrace, io_format: u8 },
+    #[snafu(display("unsupported cardinality: {:x}", cardinality))]
+    InvalidCardinality { backtrace: Backtrace, cardinality: u8 },
     #[doc(hidden)]
     __NonExhaustive1,
 }

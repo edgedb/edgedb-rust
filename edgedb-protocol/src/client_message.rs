@@ -14,6 +14,7 @@ use crate::errors::{self, EncodeError, DecodeError};
 pub enum ClientMessage {
     ClientHandshake(ClientHandshake),
     ExecuteScript(ExecuteScript),
+    Prepare(Prepare),
     UnknownMessage(u8, Bytes),
     #[doc(hidden)]
     __NonExhaustive,
@@ -33,12 +34,34 @@ pub struct ExecuteScript {
     pub script_text: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Prepare {
+    pub headers: Headers,
+    pub io_format: IoFormat,
+    pub expected_cardinality: Cardinality,
+    pub statement_name: Bytes,
+    pub command_text: String,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum IoFormat {
+    Binary = 0x62,
+    Json = 0x6a,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Cardinality {
+    One = 0x6f,
+    Many = 0x6d,
+}
+
 impl ClientMessage {
     pub fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
         use ClientMessage::*;
         match self {
             ClientHandshake(h) => encode(buf, 0x56, h),
             ExecuteScript(h) => encode(buf, 0x51, h),
+            Prepare(h) => encode(buf, 0x50, h),
 
             UnknownMessage(_, _) => {
                 errors::UnknownMessageCantBeEncoded.fail()?
@@ -59,6 +82,7 @@ impl ClientMessage {
         match buf[0] {
             0x56 => ClientHandshake::decode(&mut data).map(M::ClientHandshake),
             0x51 => ExecuteScript::decode(&mut data).map(M::ExecuteScript),
+            0x50 => Prepare::decode(&mut data).map(M::Prepare),
             code => Ok(M::UnknownMessage(code, data.into_inner())),
         }
     }
@@ -154,5 +178,59 @@ impl Decode for ExecuteScript {
         }
         let script_text = String::decode(buf)?;
         Ok(ExecuteScript { script_text, headers })
+    }
+}
+
+
+impl Encode for Prepare {
+    fn encode(&self, buf: &mut BytesMut)
+        -> Result<(), EncodeError>
+    {
+        buf.reserve(12);
+        buf.put_u16_be(u16::try_from(self.headers.len()).ok()
+            .context(errors::TooManyHeaders)?);
+        for (&name, value) in &self.headers {
+            buf.reserve(2);
+            buf.put_u16_be(name);
+            value.encode(buf)?;
+        }
+        buf.reserve(10);
+        buf.put_u8(self.io_format as u8);
+        buf.put_u8(self.expected_cardinality as u8);
+        self.statement_name.encode(buf)?;
+        self.command_text.encode(buf)?;
+        Ok(())
+    }
+}
+
+impl Decode for Prepare {
+    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+        ensure!(buf.remaining() >= 12, errors::Underflow);
+        let num_headers = buf.get_u16_be();
+        let mut headers = HashMap::new();
+        for _ in 0..num_headers {
+            ensure!(buf.remaining() >= 4, errors::Underflow);
+            headers.insert(buf.get_u16_be(), Bytes::decode(buf)?);
+        }
+        ensure!(buf.remaining() >= 8, errors::Underflow);
+        let io_format = match buf.get_u8() {
+            0x62 => IoFormat::Binary,
+            0x6a => IoFormat::Json,
+            c => errors::InvalidIoFormat { io_format: c }.fail()?,
+        };
+        let expected_cardinality = match buf.get_u8() {
+            0x6f => Cardinality::One,
+            0x6d => Cardinality::Many,
+            c => errors::InvalidCardinality { cardinality: c }.fail()?,
+        };
+        let statement_name = Bytes::decode(buf)?;
+        let command_text = String::decode(buf)?;
+        Ok(Prepare {
+            headers,
+            io_format,
+            expected_cardinality,
+            statement_name,
+            command_text,
+        })
     }
 }
