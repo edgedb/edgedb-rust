@@ -24,6 +24,7 @@ pub enum ServerMessage {
     CommandComplete(CommandComplete),
     PrepareComplete(PrepareComplete),
     CommandDataDescription(CommandDataDescription),
+    Data(Data),
     #[doc(hidden)]
     __NonExhaustive,
 }
@@ -113,6 +114,11 @@ pub struct CommandDataDescription {
     pub output_typedesc: Bytes,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Data {
+    pub data: Vec<Bytes>,
+}
+
 trait Encode {
     fn encode(&self, buf: &mut BytesMut)
         -> Result<(), EncodeError>;
@@ -152,6 +158,7 @@ impl ServerMessage {
             CommandComplete(h) => encode(buf, 0x43, h),
             PrepareComplete(h) => encode(buf, 0x31, h),
             CommandDataDescription(h) => encode(buf, 0x54, h),
+            Data(h) => encode(buf, 0x44, h),
 
             UnknownMessage(_, _) => {
                 errors::UnknownMessageCantBeEncoded.fail()?
@@ -178,6 +185,7 @@ impl ServerMessage {
             0x53 => ParameterStatus::decode(&mut data).map(M::ParameterStatus),
             0x43 => CommandComplete::decode(&mut data).map(M::CommandComplete),
             0x31 => PrepareComplete::decode(&mut data).map(M::PrepareComplete),
+            0x44 => Data::decode(&mut data).map(M::Data),
             0x54 => {
                 CommandDataDescription::decode(&mut data)
                 .map(M::CommandDataDescription)
@@ -593,5 +601,31 @@ impl Decode for CommandDataDescription {
             output_typedesc_id,
             output_typedesc,
         })
+    }
+}
+
+impl Encode for Data {
+    fn encode(&self, buf: &mut BytesMut)
+        -> Result<(), EncodeError>
+    {
+        buf.reserve(2);
+        buf.put_u16_be(u16::try_from(self.data.len()).ok()
+            .context(errors::TooManyHeaders)?);
+        for chunk in &self.data {
+            chunk.encode(buf)?;
+        }
+        Ok(())
+    }
+}
+
+impl Decode for Data {
+    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+        ensure!(buf.remaining() >= 2, errors::Underflow);
+        let num_chunks = buf.get_u16_be() as usize;
+        let mut data = Vec::with_capacity(num_chunks);
+        for _ in 0..num_chunks {
+            data.push(Bytes::decode(buf)?);
+        }
+        return Ok(Data { data })
     }
 }

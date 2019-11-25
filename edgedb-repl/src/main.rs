@@ -2,7 +2,7 @@ use std::error::Error;
 use std::collections::HashMap;
 use std::process::exit;
 
-use bytes::{Bytes, BytesMut};
+use bytes::{Bytes, BytesMut, BufMut};
 use async_std::task;
 use async_std::net::{TcpStream};
 use async_std::io::prelude::WriteExt;
@@ -10,6 +10,7 @@ use async_std::io::prelude::WriteExt;
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
 use edgedb_protocol::client_message::{Prepare, IoFormat, Cardinality};
 use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
+use edgedb_protocol::client_message::{Execute};
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use crate::reader::Reader;
 
@@ -74,7 +75,7 @@ async fn run_repl() -> Result<(), Box<dyn Error>> {
         let msg = reader.message().await?;
         println!("message: {:?}", msg);
         match msg {
-            ServerMessage::CommandDataDescription(..) => {}
+            ServerMessage::PrepareComplete(..) => {}
             ServerMessage::ReadyForCommand(..) => break,
             _ => continue,  // TODO(tailhook) consume msgs
         }
@@ -88,7 +89,29 @@ async fn run_repl() -> Result<(), Box<dyn Error>> {
     }).encode(&mut bytes)?;
     ClientMessage::Sync.encode(&mut bytes)?;
     stream.write_all(&bytes[..]).await?;
-    println!("DESCRIBE SENT");
+
+    loop {
+        let msg = reader.message().await?;
+        println!("message: {:?}", msg);
+        match msg {
+            ServerMessage::CommandDataDescription(..) => {}
+            ServerMessage::ReadyForCommand(..) => break,
+            _ => continue,  // TODO(tailhook) consume msgs
+        }
+    }
+
+    let mut arguments = BytesMut::with_capacity(8);
+    // empty tuple
+    arguments.put_u32_be(0);
+
+    bytes.truncate(0);
+    ClientMessage::Execute(Execute {
+        headers: HashMap::new(),
+        statement_name: statement_name.clone(),
+        arguments: arguments.freeze(),
+    }).encode(&mut bytes)?;
+    ClientMessage::Sync.encode(&mut bytes)?;
+    stream.write_all(&bytes[..]).await?;
 
     loop {
         let msg = reader.message().await?;

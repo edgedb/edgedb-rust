@@ -11,7 +11,7 @@ use edgedb_protocol::server_message::{ReadyForCommand, TransactionState};
 use edgedb_protocol::server_message::{ServerKeyData, ParameterStatus};
 use edgedb_protocol::server_message::{CommandComplete};
 use edgedb_protocol::server_message::{PrepareComplete, Cardinality};
-use edgedb_protocol::server_message::{CommandDataDescription};
+use edgedb_protocol::server_message::{CommandDataDescription, Data};
 
 macro_rules! encoding_eq {
     ($message: expr, $bytes: expr) => {
@@ -120,5 +120,13 @@ fn command_data_description() -> Result<(), Box<dyn Error>> {
         output_typedesc: Bytes::from_static(
             b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"),
     }), &fs::read("tests/command_data_description.bin")?[..]);
+    Ok(())
+}
+
+#[test]
+fn data() -> Result<(), Box<dyn Error>> {
+    encoding_eq!(ServerMessage::Data(Data {
+        data: vec![Bytes::from_static(b"\0\0\0\0\0\0\0\x01")],
+    }), b"D\0\0\0\x12\0\x01\0\0\0\x08\0\0\0\0\0\0\0\x01");
     Ok(())
 }
