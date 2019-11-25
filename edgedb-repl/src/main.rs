@@ -9,6 +9,7 @@ use async_std::io::prelude::WriteExt;
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
 use edgedb_protocol::client_message::{Prepare, IoFormat, Cardinality};
+use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use crate::reader::Reader;
 
@@ -56,16 +57,38 @@ async fn run_repl() -> Result<(), Box<dyn Error>> {
         }
     }
 
+    let statement_name = Bytes::from_static(b"");
+
     bytes.truncate(0);
     ClientMessage::Prepare(Prepare {
         headers: HashMap::new(),
         io_format: IoFormat::Binary,
         expected_cardinality: Cardinality::One,
-        statement_name: Bytes::from_static(b""),
+        statement_name: statement_name.clone(),
         command_text: String::from("SELECT 1"),
     }).encode(&mut bytes)?;
     ClientMessage::Sync.encode(&mut bytes)?;
     stream.write_all(&bytes[..]).await?;
+
+    loop {
+        let msg = reader.message().await?;
+        println!("message: {:?}", msg);
+        match msg {
+            ServerMessage::CommandDataDescription(..) => {}
+            ServerMessage::ReadyForCommand(..) => break,
+            _ => continue,  // TODO(tailhook) consume msgs
+        }
+    }
+
+    bytes.truncate(0);
+    ClientMessage::DescribeStatement(DescribeStatement {
+        headers: HashMap::new(),
+        aspect: DescribeAspect::DataDescription,
+        statement_name: statement_name.clone(),
+    }).encode(&mut bytes)?;
+    ClientMessage::Sync.encode(&mut bytes)?;
+    stream.write_all(&bytes[..]).await?;
+    println!("DESCRIBE SENT");
 
     loop {
         let msg = reader.message().await?;

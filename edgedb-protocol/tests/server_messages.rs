@@ -11,6 +11,7 @@ use edgedb_protocol::server_message::{ReadyForCommand, TransactionState};
 use edgedb_protocol::server_message::{ServerKeyData, ParameterStatus};
 use edgedb_protocol::server_message::{CommandComplete};
 use edgedb_protocol::server_message::{PrepareComplete, Cardinality};
+use edgedb_protocol::server_message::{CommandDataDescription};
 
 macro_rules! encoding_eq {
     ($message: expr, $bytes: expr) => {
@@ -104,5 +105,20 @@ fn prepare_complete() -> Result<(), Box<dyn Error>> {
         input_typedesc_id: *b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff",
         output_typedesc_id: *b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05",
     }), b"1\0\0\0'\0\0o\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05");
+    Ok(())
+}
+
+#[test]
+fn command_data_description() -> Result<(), Box<dyn Error>> {
+    encoding_eq!(ServerMessage::CommandDataDescription(CommandDataDescription {
+        headers: HashMap::new(),
+        result_cardinality: Cardinality::One,
+        input_typedesc_id: *b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff",
+        input_typedesc: Bytes::from_static(
+            b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0"),
+        output_typedesc_id: *b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05",
+        output_typedesc: Bytes::from_static(
+            b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"),
+    }), &fs::read("tests/command_data_description.bin")?[..]);
     Ok(())
 }
