@@ -61,6 +61,7 @@ pub async fn interactive_main(data: Receiver<prompt::Input>,
         }
     }
 
+    let statement_name = Bytes::from_static(b"");
     control.send(prompt::Control::Input(db_name.into())).await;
     loop {
         let inp = match data.recv().await {
@@ -69,68 +70,59 @@ pub async fn interactive_main(data: Receiver<prompt::Input>,
             Some(prompt::Input::Text(inp)) => inp,
         };
 
-        eprintln!("LINE {:?}", inp);
+        bytes.truncate(0);
+        ClientMessage::Prepare(Prepare {
+            headers: HashMap::new(),
+            io_format: IoFormat::Binary,
+            expected_cardinality: Cardinality::One,
+            statement_name: statement_name.clone(),
+            command_text: String::from(inp),
+        }).encode(&mut bytes)?;
+        ClientMessage::Sync.encode(&mut bytes)?;
+        stream.write_all(&bytes[..]).await?;
+
+        loop {
+            let msg = reader.message().await?;
+            println!("message: {:?}", msg);
+            match msg {
+                ServerMessage::PrepareComplete(..) => {}
+                ServerMessage::ReadyForCommand(..) => break,
+                _ => continue,  // TODO(tailhook) consume msgs
+            }
+        }
+
+        bytes.truncate(0);
+        ClientMessage::DescribeStatement(DescribeStatement {
+            headers: HashMap::new(),
+            aspect: DescribeAspect::DataDescription,
+            statement_name: statement_name.clone(),
+        }).encode(&mut bytes)?;
+        ClientMessage::Sync.encode(&mut bytes)?;
+        stream.write_all(&bytes[..]).await?;
+
+        loop {
+            let msg = reader.message().await?;
+            println!("message: {:?}", msg);
+            match msg {
+                ServerMessage::CommandDataDescription(..) => {}
+                ServerMessage::ReadyForCommand(..) => break,
+                _ => continue,  // TODO(tailhook) consume msgs
+            }
+        }
+
+        let mut arguments = BytesMut::with_capacity(8);
+        // empty tuple
+        arguments.put_u32_be(0);
+
+        bytes.truncate(0);
+        ClientMessage::Execute(Execute {
+            headers: HashMap::new(),
+            statement_name: statement_name.clone(),
+            arguments: arguments.freeze(),
+        }).encode(&mut bytes)?;
+        ClientMessage::Sync.encode(&mut bytes)?;
+        stream.write_all(&bytes[..]).await?;
 
         control.send(prompt::Control::Input(db_name.into())).await;
-    }
-
-    let statement_name = Bytes::from_static(b"");
-
-    bytes.truncate(0);
-    ClientMessage::Prepare(Prepare {
-        headers: HashMap::new(),
-        io_format: IoFormat::Binary,
-        expected_cardinality: Cardinality::One,
-        statement_name: statement_name.clone(),
-        command_text: String::from("SELECT 1"),
-    }).encode(&mut bytes)?;
-    ClientMessage::Sync.encode(&mut bytes)?;
-    stream.write_all(&bytes[..]).await?;
-
-    loop {
-        let msg = reader.message().await?;
-        println!("message: {:?}", msg);
-        match msg {
-            ServerMessage::PrepareComplete(..) => {}
-            ServerMessage::ReadyForCommand(..) => break,
-            _ => continue,  // TODO(tailhook) consume msgs
-        }
-    }
-
-    bytes.truncate(0);
-    ClientMessage::DescribeStatement(DescribeStatement {
-        headers: HashMap::new(),
-        aspect: DescribeAspect::DataDescription,
-        statement_name: statement_name.clone(),
-    }).encode(&mut bytes)?;
-    ClientMessage::Sync.encode(&mut bytes)?;
-    stream.write_all(&bytes[..]).await?;
-
-    loop {
-        let msg = reader.message().await?;
-        println!("message: {:?}", msg);
-        match msg {
-            ServerMessage::CommandDataDescription(..) => {}
-            ServerMessage::ReadyForCommand(..) => break,
-            _ => continue,  // TODO(tailhook) consume msgs
-        }
-    }
-
-    let mut arguments = BytesMut::with_capacity(8);
-    // empty tuple
-    arguments.put_u32_be(0);
-
-    bytes.truncate(0);
-    ClientMessage::Execute(Execute {
-        headers: HashMap::new(),
-        statement_name: statement_name.clone(),
-        arguments: arguments.freeze(),
-    }).encode(&mut bytes)?;
-    ClientMessage::Sync.encode(&mut bytes)?;
-    stream.write_all(&bytes[..]).await?;
-
-    loop {
-        let msg = reader.message().await?;
-        println!("message: {:?}", msg);
     }
 }

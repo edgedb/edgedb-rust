@@ -33,13 +33,19 @@ pub fn main(data: Sender<Input>, control: Receiver<Control>)
                 }
             }
         }
-        match editor.readline(&prompt) {
-            Ok(text) => task::block_on(data.send(Input::Text(text))),
-            Err(ReadlineError::Eof) => task::block_on(data.send(Input::Eof)),
+        let text = match editor.readline(&prompt) {
+            Ok(text) => text,
+            Err(ReadlineError::Eof) => {
+                task::block_on(data.send(Input::Eof));
+                continue;
+            }
             Err(ReadlineError::Interrupted) => {
-                task::block_on(data.send(Input::Interrupt))
+                task::block_on(data.send(Input::Interrupt));
+                continue;
             }
             Err(e) => Err(e)?,
-        }
+        };
+        editor.add_history_entry(&text);
+        task::block_on(data.send(Input::Text(text)))
     }
 }
