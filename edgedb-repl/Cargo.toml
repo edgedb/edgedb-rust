@@ -13,7 +13,7 @@ async-std = {version="1", features=[
     "unstable",
 ]}
 bytes = "0.4.12"
-linefeed = "0.6.0"
+rustyline = { git="https://github.com/gwenn/rustyline", rev="86cb6f5" }
 
 
 [dev-dependencies]

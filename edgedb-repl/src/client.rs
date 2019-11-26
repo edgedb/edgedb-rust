@@ -7,7 +7,6 @@ use async_std::net::{TcpStream};
 use async_std::task;
 use async_std::sync::{Sender, Receiver};
 use bytes::{Bytes, BytesMut, BufMut};
-use linefeed::{ReadResult};
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
 use edgedb_protocol::client_message::{Prepare, IoFormat, Cardinality};
@@ -18,7 +17,7 @@ use crate::reader::Reader;
 use crate::prompt;
 
 
-pub async fn interactive_main(data: Receiver<ReadResult>,
+pub async fn interactive_main(data: Receiver<prompt::Input>,
         control: Sender<prompt::Control>)
     -> Result<(), anyhow::Error>
 {
@@ -65,12 +64,9 @@ pub async fn interactive_main(data: Receiver<ReadResult>,
     control.send(prompt::Control::Input(db_name.into())).await;
     loop {
         let inp = match data.recv().await {
-            None | Some(ReadResult::Eof) => return Ok(()),
-            Some(ReadResult::Signal(s)) => {
-                eprintln!("Signal {:?}", s);
-                continue;
-            }
-            Some(ReadResult::Input(inp)) => inp,
+            None | Some(prompt::Input::Eof) => return Ok(()),
+            Some(prompt::Input::Interrupt) => continue,
+            Some(prompt::Input::Text(inp)) => inp,
         };
 
         eprintln!("LINE {:?}", inp);

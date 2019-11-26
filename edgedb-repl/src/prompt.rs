@@ -3,29 +3,43 @@ use std::error::Error;
 use anyhow;
 use async_std::sync::{Sender, Receiver};
 use async_std::task;
-use linefeed::{Interface, ReadResult};
+use rustyline::{Editor, error::ReadlineError};
 
 
 pub enum Control {
     Input(String),
 }
 
-pub fn main(data: Sender<ReadResult>, control: Receiver<Control>)
+pub enum Input {
+    Text(String),
+    Eof,
+    Interrupt,
+}
+
+pub fn main(data: Sender<Input>, control: Receiver<Control>)
     -> Result<(), anyhow::Error>
 {
-    let interface = Interface::new("edgedb-repl")?;
+    let mut editor = rustyline::Editor::<()>::new();
+    let mut prompt = String::from("> ");
     loop {
         loop {
             match task::block_on(control.recv()) {
                 None => return Ok(()),
                 Some(Control::Input(name)) => {
-                    interface.set_prompt(&(name + "> "))?;
+                    prompt.clear();
+                    prompt.push_str(&name);
+                    prompt.push_str("> ");
                     break;
                 }
             }
         }
-        println!("READLINE");
-        let line = interface.read_line()?;
-        task::block_on(data.send(line));
+        match editor.readline(&prompt) {
+            Ok(text) => task::block_on(data.send(Input::Text(text))),
+            Err(ReadlineError::Eof) => task::block_on(data.send(Input::Eof)),
+            Err(ReadlineError::Interrupted) => {
+                task::block_on(data.send(Input::Interrupt))
+            }
+            Err(e) => Err(e)?,
+        }
     }
 }
