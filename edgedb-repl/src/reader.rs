@@ -82,7 +82,6 @@ impl<'a, T> Future for MessageFuture<'a, T>
             }
         };
         let frame = buf.split_to(frame_len).freeze();
-        println!("Frame {:?}", frame);
         let result = ServerMessage::decode(&frame).context(Decode)?;
         return Poll::Ready(Ok(result));
     }

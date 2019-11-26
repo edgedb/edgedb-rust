@@ -1,9 +1,7 @@
-use std::error::Error;
-
 use anyhow;
 use async_std::sync::{Sender, Receiver};
 use async_std::task;
-use rustyline::{Editor, error::ReadlineError};
+use rustyline::{self, error::ReadlineError};
 
 
 pub enum Control {

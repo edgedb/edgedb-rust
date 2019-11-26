@@ -1,10 +1,8 @@
 use std::collections::HashMap;
-use std::process::exit;
 
 use anyhow;
 use async_std::io::prelude::WriteExt;
 use async_std::net::{TcpStream};
-use async_std::task;
 use async_std::sync::{Sender, Receiver};
 use bytes::{Bytes, BytesMut, BufMut};
 
@@ -42,22 +40,28 @@ pub async fn interactive_main(data: Receiver<prompt::Input>,
     stream.write_all(&bytes[..]).await?;
     let mut msg = reader.message().await?;
     if let ServerMessage::ServerHandshake {..} = msg {
-        println!("Handshake {:?}", msg);
+        eprintln!("WARNING: Connection negotiantion issue {:?}", msg);
         // TODO(tailhook) react on this somehow
         msg = reader.message().await?;
     }
     if let ServerMessage::Authentication(Authentication::Ok) = msg {
     } else {
-        eprintln!("Error authenticating: {:?}", msg);
-        exit(1);
+        return Err(anyhow::anyhow!("Error authenticating: {:?}", msg));
     }
 
     loop {
         let msg = reader.message().await?;
-        println!("message: {:?}", msg);
         match msg {
             ServerMessage::ReadyForCommand(..) => break,
-            _ => continue,  // TODO(tailhook) consume msgs
+            ServerMessage::ServerKeyData(_) => {
+                // TODO(tailhook) store it somehow?
+            }
+            ServerMessage::ParameterStatus(_) => {
+                // TODO(tailhook) should we read any params?
+            }
+            _ => {
+                eprintln!("WARNING: unsolicited message {:?}", msg);
+            }
         }
     }
 
@@ -83,11 +87,12 @@ pub async fn interactive_main(data: Receiver<prompt::Input>,
 
         loop {
             let msg = reader.message().await?;
-            println!("message: {:?}", msg);
             match msg {
                 ServerMessage::PrepareComplete(..) => {}
                 ServerMessage::ReadyForCommand(..) => break,
-                _ => continue,  // TODO(tailhook) consume msgs
+                _ => {
+                    eprintln!("WARNING: unsolicited message {:?}", msg);
+                }
             }
         }
 
@@ -100,15 +105,26 @@ pub async fn interactive_main(data: Receiver<prompt::Input>,
         ClientMessage::Sync.encode(&mut bytes)?;
         stream.write_all(&bytes[..]).await?;
 
-        loop {
+        let mut tmp_desc = None;
+        let data_description = loop {
             let msg = reader.message().await?;
-            println!("message: {:?}", msg);
             match msg {
-                ServerMessage::CommandDataDescription(..) => {}
-                ServerMessage::ReadyForCommand(..) => break,
-                _ => continue,  // TODO(tailhook) consume msgs
+                ServerMessage::CommandDataDescription(data_desc) => {
+                    if tmp_desc.is_some() {
+                        eprintln!("WARNING: two data descriptions?");
+                    }
+                    tmp_desc = Some(data_desc);
+                }
+                ServerMessage::ReadyForCommand(..) => {
+                    if let Some(desc) = tmp_desc {
+                        break desc;
+                    }
+                }
+                _ => {
+                    eprintln!("WARNING: unsolicited message {:?}", msg);
+                }
             }
-        }
+        };
 
         let mut arguments = BytesMut::with_capacity(8);
         // empty tuple
@@ -122,6 +138,22 @@ pub async fn interactive_main(data: Receiver<prompt::Input>,
         }).encode(&mut bytes)?;
         ClientMessage::Sync.encode(&mut bytes)?;
         stream.write_all(&bytes[..]).await?;
+
+        loop {
+            let msg = reader.message().await?;
+            match msg {
+                ServerMessage::Data(data) => {
+                    println!("DATA {:?}", data);
+                }
+                ServerMessage::CommandComplete(..) => {
+                    // TODO(tailhook) flag state somehow?
+                }
+                ServerMessage::ReadyForCommand(..) => break,
+                _ => {
+                    eprintln!("WARNING: unsolicited message {:?}", msg);
+                }
+            }
+        }
 
         control.send(prompt::Control::Input(db_name.into())).await;
     }
