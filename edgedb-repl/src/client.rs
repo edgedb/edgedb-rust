@@ -139,6 +139,7 @@ pub async fn interactive_main(data: Receiver<prompt::Input>,
                 }
             }
         };
+        println!("Descriptor: {:?}", data_description);
 
         let mut arguments = BytesMut::with_capacity(8);
         // empty tuple

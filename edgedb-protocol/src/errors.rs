@@ -1,6 +1,7 @@
 use std::str;
 
 use snafu::{Snafu, Backtrace};
+use uuid;
 
 
 #[derive(Snafu, Debug)]
@@ -20,6 +21,10 @@ pub enum DecodeError {
     InvalidCardinality { backtrace: Backtrace, cardinality: u8 },
     #[snafu(display("unsupported describe aspect: {:x}", aspect))]
     InvalidAspect { backtrace: Backtrace, aspect: u8 },
+    #[snafu(display("unsupported type descriptor: {:x}", descriptor))]
+    InvalidTypeDescriptor { backtrace: Backtrace, descriptor: u8 },
+    #[snafu(display("invalid uuid: {}", source))]
+    InvalidUuid { backtrace: Backtrace, source: uuid::Error },
     #[doc(hidden)]
     __NonExhaustive1,
 }
