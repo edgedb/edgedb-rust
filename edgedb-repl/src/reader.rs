@@ -34,7 +34,7 @@ pub enum ReadError {
 }
 
 
-impl<T: io::Read> Reader<T> {
+impl<T: io::Read + Unpin> Reader<T> {
     pub fn new(stream: T) -> Reader<T> {
         return Reader {
             stream,
@@ -44,6 +44,17 @@ impl<T: io::Read> Reader<T> {
     pub fn message(&mut self) -> MessageFuture<T> {
         MessageFuture {
             reader: self,
+        }
+    }
+    pub async fn wait_ready(&mut self) -> Result<(), ReadError> {
+        loop {
+            let msg = self.message().await?;
+            match msg {
+                ServerMessage::ReadyForCommand(..) => return Ok(()),
+                // TODO(tailhook) should we react on messages somehow?
+                //                At list parse LogMessage's?
+                _ => {},
+            }
         }
     }
 }

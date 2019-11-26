@@ -66,8 +66,8 @@ pub async fn interactive_main(data: Receiver<prompt::Input>,
     }
 
     let statement_name = Bytes::from_static(b"");
-    control.send(prompt::Control::Input(db_name.into())).await;
-    loop {
+    'input_loop: loop {
+        control.send(prompt::Control::Input(db_name.into())).await;
         let inp = match data.recv().await {
             None | Some(prompt::Input::Eof) => return Ok(()),
             Some(prompt::Input::Interrupt) => continue,
@@ -89,6 +89,11 @@ pub async fn interactive_main(data: Receiver<prompt::Input>,
             let msg = reader.message().await?;
             match msg {
                 ServerMessage::PrepareComplete(..) => {}
+                ServerMessage::ErrorResponse(err) => {
+                    eprintln!("{}", err);
+                    reader.wait_ready().await?;
+                    continue 'input_loop;
+                }
                 ServerMessage::ReadyForCommand(..) => break,
                 _ => {
                     eprintln!("WARNING: unsolicited message {:?}", msg);
@@ -115,9 +120,18 @@ pub async fn interactive_main(data: Receiver<prompt::Input>,
                     }
                     tmp_desc = Some(data_desc);
                 }
+                ServerMessage::ErrorResponse(err) => {
+                    eprintln!("{}", err);
+                    reader.wait_ready().await?;
+                    continue 'input_loop;
+                }
                 ServerMessage::ReadyForCommand(..) => {
                     if let Some(desc) = tmp_desc {
                         break desc;
+                    } else {
+                        eprintln!("PROTOCOL ERROR: Got no description");
+                        reader.wait_ready().await?;
+                        continue 'input_loop;
                     }
                 }
                 _ => {
@@ -146,7 +160,8 @@ pub async fn interactive_main(data: Receiver<prompt::Input>,
                     println!("DATA {:?}", data);
                 }
                 ServerMessage::CommandComplete(..) => {
-                    // TODO(tailhook) flag state somehow?
+                    reader.wait_ready().await?;
+                    break;
                 }
                 ServerMessage::ReadyForCommand(..) => break,
                 _ => {
@@ -154,7 +169,5 @@ pub async fn interactive_main(data: Receiver<prompt::Input>,
                 }
             }
         }
-
-        control.send(prompt::Control::Input(db_name.into())).await;
     }
 }
