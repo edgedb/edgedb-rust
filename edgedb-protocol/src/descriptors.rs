@@ -1,4 +1,5 @@
 use std::io::Cursor;
+use std::str;
 
 use bytes::{Bytes, Buf};
 use uuid::Uuid;
@@ -150,7 +151,7 @@ impl Decode for ShapeElement {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 7, errors::Underflow);
         let flags = buf.get_u8();
-        let name = String::decode(buf)?;
+        let name = decode16str(buf)?;
         ensure!(buf.remaining() >= 2, errors::Underflow);
         let type_pos = TypePos(buf.get_u16_be());
         Ok(ShapeElement {
@@ -213,7 +214,7 @@ impl Decode for NamedTupleTypeDescriptor {
 
 impl Decode for TupleElement {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
-        let name = String::decode(buf)?;
+        let name = decode16str(buf)?;
         ensure!(buf.remaining() >= 2, errors::Underflow);
         let type_pos = TypePos(buf.get_u16_be());
         Ok(TupleElement {
@@ -247,7 +248,7 @@ impl Decode for EnumerationTypeDescriptor {
         let member_count = buf.get_u16_be();
         let mut members = Vec::with_capacity(member_count as usize);
         for _ in 0..member_count {
-            members.push(String::decode(buf)?);
+            members.push(decode16str(buf)?);
         }
         Ok(EnumerationTypeDescriptor { id, members })
     }
@@ -259,7 +260,7 @@ impl Decode for TypeAnnotationDescriptor {
         let annotated_type = buf.get_u8();
         assert!(annotated_type >= 0xF0);
         let id = Uuid::decode(buf)?;
-        let annotation = String::decode(buf)?;
+        let annotation = decode16str(buf)?;
         Ok(TypeAnnotationDescriptor { annotated_type, id, annotation })
     }
 }
@@ -272,4 +273,16 @@ impl Decode for Uuid {
         buf.advance(16);
         Ok(result)
     }
+}
+
+fn decode16str(buf: &mut Cursor<Bytes>) -> Result<String, DecodeError> {
+    ensure!(buf.remaining() >= 4, errors::Underflow);
+    let len = buf.get_u16_be() as usize;
+    // TODO(tailhook) ensure size < i16::MAX
+    ensure!(buf.remaining() >= len, errors::Underflow);
+    let result = str::from_utf8(&buf.bytes()[..len])
+        .map(String::from)
+        .context(errors::InvalidUtf8);
+    buf.advance(len);
+    return result;
 }

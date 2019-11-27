@@ -4,13 +4,14 @@ use anyhow;
 use async_std::io::prelude::WriteExt;
 use async_std::net::{TcpStream};
 use async_std::sync::{Sender, Receiver};
-use bytes::{Bytes, BytesMut, BufMut};
+use bytes::{Bytes, BytesMut, BufMut, Buf};
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
 use edgedb_protocol::client_message::{Prepare, IoFormat, Cardinality};
 use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
 use edgedb_protocol::client_message::{Execute};
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
+use edgedb_protocol::descriptors::{Descriptor};
 use crate::reader::Reader;
 use crate::prompt;
 
@@ -19,7 +20,7 @@ pub async fn interactive_main(data: Receiver<prompt::Input>,
         control: Sender<prompt::Control>)
     -> Result<(), anyhow::Error>
 {
-    let db_name = "edgedb";
+    let db_name = "tutorial";
 
     let stream = TcpStream::connect("127.0.0.1:5656").await?;
     let (rd, mut stream) = (&stream, &stream);
@@ -78,7 +79,7 @@ pub async fn interactive_main(data: Receiver<prompt::Input>,
         ClientMessage::Prepare(Prepare {
             headers: HashMap::new(),
             io_format: IoFormat::Binary,
-            expected_cardinality: Cardinality::One,
+            expected_cardinality: Cardinality::Many,
             statement_name: statement_name.clone(),
             command_text: String::from(inp),
         }).encode(&mut bytes)?;
@@ -140,6 +141,13 @@ pub async fn interactive_main(data: Receiver<prompt::Input>,
             }
         };
         println!("Descriptor: {:?}", data_description);
+        let mut cur = std::io::Cursor::new(data_description.output_typedesc);
+        let mut desc = Vec::new();
+        while cur.bytes() != b"" {
+            desc.push(Descriptor::decode(&mut cur)?);
+            println!("So far: {:?}", desc);
+        }
+        println!("Decoded descriptors: {:?}", desc);
 
         let mut arguments = BytesMut::with_capacity(8);
         // empty tuple
