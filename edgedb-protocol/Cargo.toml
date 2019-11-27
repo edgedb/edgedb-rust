@@ -8,5 +8,6 @@ edition = "2018"
 bytes = "0.4.12"
 snafu = {version="0.6.0"}
 uuid = "0.8.1"
+bigdecimal = "0.1.0"
 
 [lib]

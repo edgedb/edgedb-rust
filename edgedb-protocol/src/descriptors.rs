@@ -7,7 +7,7 @@ use snafu::{ensure, ResultExt};
 
 use crate::encoding::{Decode};
 use crate::errors::{self, DecodeError};
-use crate::errors::{InvalidTypeDescriptor, InvalidUuid};
+use crate::errors::{InvalidTypeDescriptor};
 
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -97,6 +97,20 @@ pub struct TypeAnnotationDescriptor {
 }
 
 impl Descriptor {
+    pub fn id(&self) -> &Uuid {
+        use Descriptor::*;
+        match self {
+            Set(i) => &i.id,
+            ObjectShape(i) => &i.id,
+            BaseScalar(i) => &i.id,
+            Scalar(i) => &i.id,
+            Tuple(i) => &i.id,
+            NamedTuple(i) => &i.id,
+            Array(i) => &i.id,
+            Enumeration(i) => &i.id,
+            TypeAnnotation(i) => &i.id,
+        }
+    }
     pub fn decode(buf: &mut Cursor<Bytes>) -> Result<Descriptor, DecodeError> {
         <Descriptor as Decode>::decode(buf)
     }
@@ -262,16 +276,6 @@ impl Decode for TypeAnnotationDescriptor {
         let id = Uuid::decode(buf)?;
         let annotation = decode16str(buf)?;
         Ok(TypeAnnotationDescriptor { annotated_type, id, annotation })
-    }
-}
-
-impl Decode for Uuid {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
-        ensure!(buf.remaining() >= 16, errors::Underflow);
-        let result = Uuid::from_slice(&buf.bytes()[..16])
-            .context(InvalidUuid)?;
-        buf.advance(16);
-        Ok(result)
     }
 }
 

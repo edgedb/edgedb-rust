@@ -4,6 +4,7 @@ use std::str;
 use std::convert::TryFrom;
 use std::io::Cursor;
 
+use uuid::Uuid;
 use bytes::{Bytes, BytesMut, BufMut, Buf};
 use snafu::{ResultExt, OptionExt, ensure};
 
@@ -89,3 +90,21 @@ impl Decode for Bytes {
     }
 }
 
+impl Decode for Uuid {
+    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+        ensure!(buf.remaining() >= 16, errors::Underflow);
+        let result = Uuid::from_slice(&buf.bytes()[..16])
+            .context(errors::InvalidUuid)?;
+        buf.advance(16);
+        Ok(result)
+    }
+}
+
+impl Encode for Uuid {
+    fn encode(&self, buf: &mut BytesMut)
+        -> Result<(), EncodeError>
+    {
+        buf.extend(self.as_bytes());
+        Ok(())
+    }
+}

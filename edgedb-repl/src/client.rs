@@ -1,3 +1,4 @@
+use std::io;
 use std::collections::HashMap;
 
 use anyhow;
@@ -12,6 +13,7 @@ use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
 use edgedb_protocol::client_message::{Execute};
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use edgedb_protocol::descriptors::{Descriptor};
+use edgedb_protocol::codec::{build_codec};
 use crate::reader::Reader;
 use crate::prompt;
 
@@ -141,13 +143,13 @@ pub async fn interactive_main(data: Receiver<prompt::Input>,
             }
         };
         println!("Descriptor: {:?}", data_description);
-        let mut cur = std::io::Cursor::new(data_description.output_typedesc);
+        let mut cur = io::Cursor::new(data_description.output_typedesc);
         let mut desc = Vec::new();
         while cur.bytes() != b"" {
             desc.push(Descriptor::decode(&mut cur)?);
-            println!("So far: {:?}", desc);
         }
-        println!("Decoded descriptors: {:?}", desc);
+        let codec = build_codec(&data_description.output_typedesc_id, &desc)?;
+        println!("Codec {:?}", codec);
 
         let mut arguments = BytesMut::with_capacity(8);
         // empty tuple
@@ -166,7 +168,12 @@ pub async fn interactive_main(data: Receiver<prompt::Input>,
             let msg = reader.message().await?;
             match msg {
                 ServerMessage::Data(data) => {
-                    println!("DATA {:?}", data);
+                    for chunk in data.data {
+                        let mut cur = io::Cursor::new(chunk);
+                        let value = codec.decode(&mut cur);
+                        assert!(cur.bytes() == b"");
+                        println!("Row {:?}", value);
+                    }
                 }
                 ServerMessage::CommandComplete(..) => {
                     reader.wait_ready().await?;

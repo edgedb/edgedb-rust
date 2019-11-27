@@ -49,3 +49,18 @@ pub enum EncodeError {
     #[doc(hidden)]
     __NonExhaustive2,
 }
+
+#[derive(Snafu, Debug)]
+#[snafu(visibility(pub(crate)))]
+pub enum CodecError {
+    #[snafu(display("type position {} is absent", position))]
+    UnexpectedTypePos { backtrace: Backtrace, position: u16 },
+    #[snafu(display("uuid {} not found", uuid))]
+    UuidNotFound { backtrace: Backtrace, uuid: uuid::Uuid },
+    #[snafu(display("base scalar with uuid {} not found", uuid))]
+    UndefinedBaseScalar { backtrace: Backtrace, uuid: uuid::Uuid },
+    #[snafu(display("too may descriptors ({})", index))]
+    TooManyDescriptors { backtrace: Backtrace, index: usize },
+    #[doc(hidden)]
+    __NonExhaustive3,
+}

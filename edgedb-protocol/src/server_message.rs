@@ -5,6 +5,7 @@ use std::convert::TryFrom;
 use std::io::Cursor;
 
 use bytes::{Bytes, BytesMut, BufMut, Buf};
+use uuid::Uuid;
 use snafu::{OptionExt, ensure};
 
 use crate::errors::{self, EncodeError, DecodeError};
@@ -100,17 +101,17 @@ pub struct CommandComplete {
 pub struct PrepareComplete {
     pub headers: Headers,
     pub cardinality: Cardinality,
-    pub input_typedesc_id: [u8; 16],
-    pub output_typedesc_id: [u8; 16],
+    pub input_typedesc_id: Uuid,
+    pub output_typedesc_id: Uuid,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandDataDescription {
     pub headers: Headers,
     pub result_cardinality: Cardinality,
-    pub input_typedesc_id: [u8; 16],
+    pub input_typedesc_id: Uuid,
     pub input_typedesc: Bytes,
-    pub output_typedesc_id: [u8; 16],
+    pub output_typedesc_id: Uuid,
     pub output_typedesc: Bytes,
 }
 
@@ -447,8 +448,8 @@ impl Encode for PrepareComplete {
         }
         buf.reserve(33);
         buf.put_u8(self.cardinality as u8);
-        buf.extend(&self.input_typedesc_id[..]);
-        buf.extend(&self.output_typedesc_id[..]);
+        self.input_typedesc_id.encode(buf)?;
+        self.output_typedesc_id.encode(buf)?;
         Ok(())
     }
 }
@@ -468,12 +469,8 @@ impl Decode for PrepareComplete {
             0x6d => Cardinality::Many,
             c => errors::InvalidCardinality { cardinality: c }.fail()?,
         };
-        let mut input_typedesc_id = [0u8; 16];
-        input_typedesc_id.copy_from_slice(&buf.bytes()[..16]);
-        buf.advance(16);
-        let mut output_typedesc_id = [0u8; 16];
-        output_typedesc_id.copy_from_slice(&buf.bytes()[..16]);
-        buf.advance(16);
+        let input_typedesc_id = Uuid::decode(buf)?;
+        let output_typedesc_id = Uuid::decode(buf)?;
         Ok(PrepareComplete {
             headers,
             cardinality,
@@ -497,10 +494,8 @@ impl Encode for CommandDataDescription {
         }
         buf.reserve(41);
         buf.put_u8(self.result_cardinality as u8);
-        buf.extend(&self.input_typedesc_id[..]);
-        self.input_typedesc.encode(buf)?;
-        buf.extend(&self.output_typedesc_id[..]);
-        self.output_typedesc.encode(buf)?;
+        self.input_typedesc_id.encode(buf)?;
+        self.output_typedesc_id.encode(buf)?;
         Ok(())
     }
 }
@@ -521,16 +516,9 @@ impl Decode for CommandDataDescription {
             c => errors::InvalidCardinality { cardinality: c }.fail()?,
         };
 
-        let mut input_typedesc_id = [0u8; 16];
-        input_typedesc_id.copy_from_slice(&buf.bytes()[..16]);
-        buf.advance(16);
-
+        let input_typedesc_id = Uuid::decode(buf)?;
         let input_typedesc = Bytes::decode(buf)?;
-
-        let mut output_typedesc_id = [0u8; 16];
-        output_typedesc_id.copy_from_slice(&buf.bytes()[..16]);
-        buf.advance(16);
-
+        let output_typedesc_id = Uuid::decode(buf)?;
         let output_typedesc = Bytes::decode(buf)?;
 
         Ok(CommandDataDescription {
