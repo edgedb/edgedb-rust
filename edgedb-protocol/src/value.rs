@@ -5,7 +5,7 @@ use bigdecimal::BigDecimal;
 use crate::codec::{NamedTupleShape, ObjectShape, EnumValue};
 
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Set(Vec<Value>),
     Object { shape: ObjectShape, fields: Vec<Value> },
@@ -16,7 +16,7 @@ pub enum Value {
     Enum(EnumValue),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Scalar {
     Uuid(Uuid),
     Str(String),
@@ -36,17 +36,17 @@ pub enum Scalar {
     Json(String),  // or should we use serde::Json?
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LocalDatetime {
     // TODO(tailhook)
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LocalDate {
     // TODO(tailhook)
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LocalTime {
     // TODO(tailhook)
 }

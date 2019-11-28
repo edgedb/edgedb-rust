@@ -20,36 +20,34 @@ pub trait Codec: fmt::Debug + Send + Sync + 'static {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnumValue(Arc<String>);
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ObjectShape(Arc<ObjectShapeInfo>);
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NamedTupleShape(Arc<NamedTupleShapeInfo>);
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 struct ObjectShapeInfo {
     elements: Vec<ShapeElement>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ShapeElement {
     pub flag_implicit: bool,
     pub flag_link_property: bool,
     pub flag_link: bool,
     pub name: String,
-    pub codec: Arc<dyn Codec>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 struct NamedTupleShapeInfo {
     elements: Vec<TupleElement>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct TupleElement {
     pub name: String,
-    pub codec: Arc<dyn Codec>,
 }
 
 #[derive(Debug)]
@@ -104,7 +102,7 @@ pub fn scalar_codec(uuid: &Uuid) -> Result<Arc<dyn Codec>, CodecError> {
 
 impl Codec for Int32 {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 8, errors::Underflow);
+        ensure!(buf.remaining() >= 4, errors::Underflow);
         let inner = buf.get_i32_be();
         Ok(Value::Scalar(Scalar::Int32(inner)))
     }
