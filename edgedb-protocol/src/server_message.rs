@@ -495,7 +495,9 @@ impl Encode for CommandDataDescription {
         buf.reserve(41);
         buf.put_u8(self.result_cardinality as u8);
         self.input_typedesc_id.encode(buf)?;
+        self.input_typedesc.encode(buf)?;
         self.output_typedesc_id.encode(buf)?;
+        self.output_typedesc.encode(buf)?;
         Ok(())
     }
 }

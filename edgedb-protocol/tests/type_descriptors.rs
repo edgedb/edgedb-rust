@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::io::Cursor;
-use bytes::{Bytes, Buf, BytesMut};
+use bytes::{Bytes, Buf};
 
 use edgedb_protocol::errors::DecodeError;
 use edgedb_protocol::descriptors::{Descriptor, TypePos};
@@ -8,17 +8,8 @@ use edgedb_protocol::descriptors::TupleTypeDescriptor;
 use edgedb_protocol::descriptors::{ObjectShapeDescriptor, ShapeElement};
 use edgedb_protocol::descriptors::BaseScalarTypeDescriptor;
 
-macro_rules! bconcat {
-    ($($token: expr)*) => {
-        &{
-            let mut buf = BytesMut::new();
-            $(
-                buf.extend($token);
-            )*
-            buf
-        }
-    }
-}
+mod base;
+
 
 fn decode(bytes: &[u8]) -> Result<Vec<Descriptor>, DecodeError> {
     let bytes = Bytes::from(bytes);

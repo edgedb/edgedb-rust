@@ -2,6 +2,7 @@ use std::fs;
 use std::collections::HashMap;
 use std::error::Error;
 
+use uuid::Uuid;
 use bytes::{Bytes, BytesMut};
 
 use edgedb_protocol::server_message::{ServerMessage};
@@ -12,6 +13,9 @@ use edgedb_protocol::server_message::{ServerKeyData, ParameterStatus};
 use edgedb_protocol::server_message::{CommandComplete};
 use edgedb_protocol::server_message::{PrepareComplete, Cardinality};
 use edgedb_protocol::server_message::{CommandDataDescription, Data};
+
+mod base;
+
 
 macro_rules! encoding_eq {
     ($message: expr, $bytes: expr) => {
@@ -24,6 +28,7 @@ macro_rules! encoding_eq {
         assert_eq!(ServerMessage::decode(&data.into())?, $message);
     }
 }
+
 macro_rules! map {
     ($($key:expr => $value:expr),*) => {
         {
@@ -102,8 +107,8 @@ fn prepare_complete() -> Result<(), Box<dyn Error>> {
     encoding_eq!(ServerMessage::PrepareComplete(PrepareComplete {
         headers: HashMap::new(),
         cardinality: Cardinality::One,
-        input_typedesc_id: *b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff",
-        output_typedesc_id: *b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05",
+        input_typedesc_id: Uuid::from_u128(0xFF),
+        output_typedesc_id: Uuid::from_u128(0x105),
     }), b"1\0\0\0'\0\0o\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05");
     Ok(())
 }
@@ -113,13 +118,19 @@ fn command_data_description() -> Result<(), Box<dyn Error>> {
     encoding_eq!(ServerMessage::CommandDataDescription(CommandDataDescription {
         headers: HashMap::new(),
         result_cardinality: Cardinality::One,
-        input_typedesc_id: *b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff",
+        input_typedesc_id: Uuid::from_u128(0xFF),
         input_typedesc: Bytes::from_static(
             b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0"),
-        output_typedesc_id: *b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05",
+        output_typedesc_id: Uuid::from_u128(0x105),
         output_typedesc: Bytes::from_static(
             b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"),
-    }), &fs::read("tests/command_data_description.bin")?[..]);
+    }), bconcat!(b"T\0\0\0S\0\0o"
+                 b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff"
+                 b"\0\0\0\x13"
+                 b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0"
+                 b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"
+                 b"\0\0\0\x11"
+                 b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"));
     Ok(())
 }
 
