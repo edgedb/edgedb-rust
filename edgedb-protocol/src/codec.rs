@@ -1,11 +1,12 @@
 use std::convert::TryInto;
 use std::fmt;
+use std::str;
 use std::io::Cursor;
 use std::sync::Arc;
 
 use bytes::{Bytes, Buf};
 use uuid::Uuid;
-use snafu::{ensure, OptionExt};
+use snafu::{ensure, OptionExt, ResultExt};
 
 use crate::descriptors::{Descriptor, TypePos};
 use crate::errors::{self, CodecError, DecodeError};
@@ -14,6 +15,7 @@ use crate::value::{Value, Scalar};
 
 const STD_INT32: Uuid = Uuid::from_u128(0x104);
 const STD_INT64: Uuid = Uuid::from_u128(0x105);
+const STD_STR: Uuid = Uuid::from_u128(0x101);
 
 
 pub trait Codec: fmt::Debug + Send + Sync + 'static {
@@ -56,6 +58,9 @@ struct Int32 { }
 #[derive(Debug)]
 struct Int64 { }
 
+#[derive(Debug)]
+struct Str { }
+
 struct CodecBuilder<'a> {
     descriptors: &'a [Descriptor],
 }
@@ -96,6 +101,7 @@ pub fn scalar_codec(uuid: &Uuid) -> Result<Arc<dyn Codec>, CodecError> {
     match *uuid {
         STD_INT32 => Ok(Arc::new(Int32 {})),
         STD_INT64 => Ok(Arc::new(Int64 {})),
+        STD_STR => Ok(Arc::new(Str {})),
         _ => return errors::UndefinedBaseScalar { uuid: uuid.clone() }.fail()?,
     }
 }
@@ -107,10 +113,21 @@ impl Codec for Int32 {
         Ok(Value::Scalar(Scalar::Int32(inner)))
     }
 }
+
 impl Codec for Int64 {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 8, errors::Underflow);
         let inner = buf.get_i64_be();
         Ok(Value::Scalar(Scalar::Int64(inner)))
+    }
+}
+
+impl Codec for Str {
+    fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
+        let val = str::from_utf8(&buf.bytes())
+            .context(errors::InvalidUtf8)?
+            .to_owned();
+        buf.advance(buf.bytes().len());
+        Ok(Value::Scalar(Scalar::Str(val)))
     }
 }

@@ -67,3 +67,23 @@ fn int64() -> Result<(), Box<dyn Error>> {
                Value::Scalar(Scalar::Int64(-1)));
     Ok(())
 }
+
+#[test]
+fn str() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(
+        &"00000000-0000-0000-0000-000000000101".parse()?,
+        &[
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-000000000101".parse()?,
+            })
+        ]
+    )?;
+    assert_eq!(decode(&codec, b"hello")?,
+               Value::Scalar(Scalar::Str(String::from("hello"))));
+    assert_eq!(decode(&codec, b"")?,
+               Value::Scalar(Scalar::Str(String::from(""))));
+    assert_eq!(decode(&codec,
+        b"\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82")?,
+        Value::Scalar(Scalar::Str(String::from("привет"))));
+    Ok(())
+}
