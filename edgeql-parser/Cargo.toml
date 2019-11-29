@@ -1,0 +1,11 @@
+[package]
+name = "edgeql-parser"
+version = "0.1.0"
+authors = ["MagicStack Inc. <hello@magic.io>"]
+edition = "2018"
+
+[dependencies]
+snafu = "0.6.0"
+combine = "4.0.0-beta.1"
+
+[lib]
