@@ -3,6 +3,7 @@ use std::error::Error;
 use std::i32;
 use std::i64;
 use std::sync::Arc;
+use std::time::Duration;
 
 use bytes::{Bytes, Buf};
 
@@ -85,5 +86,26 @@ fn str() -> Result<(), Box<dyn Error>> {
     assert_eq!(decode(&codec,
         b"\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82")?,
         Value::Scalar(Scalar::Str(String::from("привет"))));
+    Ok(())
+}
+
+#[test]
+fn duration() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(
+        &"00000000-0000-0000-0000-00000000010e".parse()?,
+        &[
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-00000000010e".parse()?,
+            })
+        ]
+    )?;
+
+    assert_eq!(decode(&codec, b"\0\0\0\0\0\0\0\0\0\0\0\x01\0\0\0\0")?,
+               Value::Scalar(Scalar::Duration(
+               Duration::from_secs(86400))));
+    // SELECT <datetime>'2019-11-29T00:00:00' - <datetime>'2000-01-01T00:00:00'
+    assert_eq!(decode(&codec, b"\0\0\0\0\0\0\0\0\0\0\x1ch\0\0\0\0")?,
+               Value::Scalar(Scalar::Duration(
+               Duration::from_secs(7272*86400))));
     Ok(())
 }

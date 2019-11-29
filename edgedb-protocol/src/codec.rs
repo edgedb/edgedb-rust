@@ -16,6 +16,7 @@ use crate::value::{Value, Scalar};
 const STD_INT32: Uuid = Uuid::from_u128(0x104);
 const STD_INT64: Uuid = Uuid::from_u128(0x105);
 const STD_STR: Uuid = Uuid::from_u128(0x101);
+const STD_DURATION: Uuid = Uuid::from_u128(0x10e);
 
 
 pub trait Codec: fmt::Debug + Send + Sync + 'static {
@@ -61,6 +62,9 @@ struct Int64 { }
 #[derive(Debug)]
 struct Str { }
 
+#[derive(Debug)]
+struct Duration { }
+
 struct CodecBuilder<'a> {
     descriptors: &'a [Descriptor],
 }
@@ -102,6 +106,7 @@ pub fn scalar_codec(uuid: &Uuid) -> Result<Arc<dyn Codec>, CodecError> {
         STD_INT32 => Ok(Arc::new(Int32 {})),
         STD_INT64 => Ok(Arc::new(Int64 {})),
         STD_STR => Ok(Arc::new(Str {})),
+        STD_DURATION => Ok(Arc::new(Duration {})),
         _ => return errors::UndefinedBaseScalar { uuid: uuid.clone() }.fail()?,
     }
 }
@@ -129,5 +134,20 @@ impl Codec for Str {
             .to_owned();
         buf.advance(buf.bytes().len());
         Ok(Value::Scalar(Scalar::Str(val)))
+    }
+}
+
+impl Codec for Duration {
+    fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
+        ensure!(buf.remaining() >= 16, errors::Underflow);
+        let micros = buf.get_u64_be();
+        let days = buf.get_u32_be();
+        let months = buf.get_u32_be();
+        if months != 0 {
+            errors::InvalidDuration.fail()?;
+        }
+        let days = std::time::Duration::from_secs(days as u64 * 86400);
+        let micros = std::time::Duration::from_micros(micros);
+        Ok(Value::Scalar(Scalar::Duration(days + micros)))
     }
 }

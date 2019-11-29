@@ -1,5 +1,6 @@
+use std::time::{SystemTime, Duration};
+
 use uuid::Uuid;
-use std::time::SystemTime;
 use bigdecimal::BigDecimal;
 
 use crate::codec::{NamedTupleShape, ObjectShape, EnumValue};
@@ -32,7 +33,7 @@ pub enum Scalar {
     LocalDatetime(LocalDatetime),
     LocalDate(LocalDate),
     LocalTime(LocalTime),
-    Duration(LocalTime),
+    Duration(Duration),
     Json(String),  // or should we use serde::Json?
 }
 

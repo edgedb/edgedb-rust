@@ -25,6 +25,8 @@ pub enum DecodeError {
     InvalidTypeDescriptor { backtrace: Backtrace, descriptor: u8 },
     #[snafu(display("invalid uuid: {}", source))]
     InvalidUuid { backtrace: Backtrace, source: uuid::Error },
+    #[snafu(display("invalid duration"))]
+    InvalidDuration { backtrace: Backtrace },
     #[doc(hidden)]
     __NonExhaustive1,
 }

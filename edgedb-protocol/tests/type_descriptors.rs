@@ -65,6 +65,17 @@ fn single_int() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn duration() -> Result<(), Box<dyn Error>> {
+    assert_eq!(decode(b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x0e")?,
+        vec![
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-00000000010e".parse()?,
+            })
+        ]);
+    Ok(())
+}
+
+#[test]
 fn object() -> Result<(), Box<dyn Error>> {
     assert_eq!(decode(bconcat!(
         b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\0"
