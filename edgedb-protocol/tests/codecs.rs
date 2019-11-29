@@ -103,9 +103,13 @@ fn duration() -> Result<(), Box<dyn Error>> {
     assert_eq!(decode(&codec, b"\0\0\0\0\0\0\0\0\0\0\0\x01\0\0\0\0")?,
                Value::Scalar(Scalar::Duration(
                Duration::from_secs(86400))));
-    // SELECT <datetime>'2019-11-29T00:00:00' - <datetime>'2000-01-01T00:00:00'
+    // SELECT <datetime>'2019-11-29T00:00:00Z'-<datetime>'2000-01-01T00:00:00Z'
     assert_eq!(decode(&codec, b"\0\0\0\0\0\0\0\0\0\0\x1ch\0\0\0\0")?,
                Value::Scalar(Scalar::Duration(
                Duration::from_secs(7272*86400))));
+    // SELECT <datetime>'2019-11-29T00:00:00Z'-<datetime>'2019-11-28T01:00:00Z'
+    assert_eq!(decode(&codec, b"\0\0\0\x13GC\xbc\0\0\0\0\0\0\0\0\0")?,
+               Value::Scalar(Scalar::Duration(
+               Duration::from_secs(82800))));
     Ok(())
 }
