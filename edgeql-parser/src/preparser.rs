@@ -1,5 +1,8 @@
-/// Returns index of semicolon if present (and not quoted) else None
-pub fn full_statement(data: &[u8]) -> Option<usize> {
+use twoway::find_bytes;
+
+/// Returns index of semicolon, or position where to continue search on new
+/// data
+pub fn full_statement(data: &[u8]) -> Result<usize, usize> {
     let mut iter = data.iter().enumerate().peekable();
     'outer: while let Some((idx, b)) = iter.next() {
         match b {
@@ -10,10 +13,11 @@ pub fn full_statement(data: &[u8]) -> Option<usize> {
                             // skip any next char, even quote
                             iter.next();
                         }
-                        b'"' => break,
+                        b'"' => continue 'outer,
                         _ => continue,
                     }
                 }
+                return Err(idx);
             }
             b'\'' => {
                 while let Some((_, b)) = iter.next() {
@@ -22,18 +26,20 @@ pub fn full_statement(data: &[u8]) -> Option<usize> {
                             // skip any next char, even quote
                             iter.next();
                         }
-                        b'\'' => break,
+                        b'\'' => continue 'outer,
                         _ => continue,
                     }
                 }
+                return Err(idx);
             }
             b'`' => {
                 while let Some((_, b)) = iter.next() {
                     match b {
-                        b'`' => break,
+                        b'`' => continue 'outer,
                         _ => continue,
                     }
                 }
+                return Err(idx);
             }
             b'#' => {
                 while let Some((_, &b)) = iter.next() {
@@ -41,10 +47,24 @@ pub fn full_statement(data: &[u8]) -> Option<usize> {
                         continue 'outer;
                     }
                 }
+                return Err(idx);
             }
-            b';' => return Some(idx),
+            b'$' => {
+                while let Some((end_idx, &b)) = iter.next() {
+                    if b == b'$' {
+                        if let Some(end) = find_bytes(&data[end_idx+1..],
+                                                      &data[idx..end_idx+1])
+                        {
+                            iter.nth(end + end_idx - idx);
+                            continue 'outer;
+                        }
+                    }
+                }
+                return Err(idx);
+            }
+            b';' => return Ok(idx),
             _ => continue,
         }
     }
-    return None
+    return Err(data.len());
 }
