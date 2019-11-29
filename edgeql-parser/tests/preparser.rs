@@ -82,8 +82,8 @@ fn test_dollar_semicolon() {
         full_statement(b"select $$$ ; $$;"),
         Ok(b"select $$$ ; $$".len()));
     assert_eq!(
-        full_statement(b"select $some-long/name$ ; $some-long/name$;"),
-        Ok(b"select $some-long/name$ ; $some-long/name$".len()));
+        full_statement(b"select $some_L0ng_name$ ; $some_L0ng_name$;"),
+        Ok(b"select $some_L0ng_name$ ; $some_L0ng_name$".len()));
 }
 
 #[test]
@@ -99,6 +99,9 @@ fn test_nested_dollar() {
 #[test]
 fn test_dollar_continuation() {
     assert_eq!(
+        full_statement(b"select $$ ; $ab$ test;"),
+        Err(7));
+    assert_eq!(
         full_statement(b"select $a$ ; $$ test;"),
         Err(7));
     assert_eq!(
@@ -110,4 +113,14 @@ fn test_dollar_continuation() {
     assert_eq!(
         full_statement(b"select $a$ ; $b$ ; $c$ ; $b$ test;"),
         Err(7));
+}
+
+#[test]
+fn test_dollar_var() {
+    assert_eq!(
+        full_statement(b"select $a+b; $ test; $a+b; $ ;"),
+        Ok("select $a+b".len()));
+    assert_eq!(
+        full_statement(b"select $a b; $ test; $a b; $ ;"),
+        Ok("select $a b".len()));
 }

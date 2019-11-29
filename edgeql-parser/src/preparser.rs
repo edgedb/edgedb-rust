@@ -50,17 +50,40 @@ pub fn full_statement(data: &[u8]) -> Result<usize, usize> {
                 return Err(idx);
             }
             b'$' => {
-                while let Some((end_idx, &b)) = iter.next() {
-                    if b == b'$' {
-                        if let Some(end) = find_bytes(&data[end_idx+1..],
-                                                      &data[idx..end_idx+1])
-                        {
-                            iter.nth(end + end_idx - idx);
-                            continue 'outer;
+                if let Some((end_idx, &b)) = iter.next() {
+                    match b {
+                        b'$' => {
+                            if let Some(end) = find_bytes(&data[end_idx+1..],
+                                                          b"$$")
+                            {
+                                iter.nth(end + end_idx - idx);
+                                continue 'outer;
+                            }
+                            return Err(idx);
                         }
+                        b'A'..=b'Z' | b'a'..=b'z' | b'_' => { }
+                        // Not a dollar-quote
+                        _ => continue 'outer,
                     }
                 }
-                return Err(idx);
+                while let Some((end_idx, &b)) = iter.next() {
+                    match b {
+                        b'$' => {
+                            if let Some(end) = find_bytes(&data[end_idx+1..],
+                                                          &data[idx..end_idx+1])
+                            {
+                                iter.nth(end + end_idx - idx);
+                                continue 'outer;
+                            }
+                            return Err(idx);
+                        }
+                        b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_'
+                        => continue,
+                        // Not a dollar-quote
+                        _ => continue 'outer,
+
+                    }
+                }
             }
             b';' => return Ok(idx),
             _ => continue,
