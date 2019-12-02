@@ -152,3 +152,13 @@ fn dot_tokens() {
     assert_eq!(tok_str("a ..< b"), ["a", ".", ".<", "b"]);
     assert_eq!(tok_typ("a ..< b"), [Ident, Dot, BackwardLink, Ident]);
 }
+
+#[test]
+fn div_tokens() {
+    assert_eq!(tok_str("a // c"), ["a", "//", "c"]);
+    assert_eq!(tok_typ("a // c"), [Ident, FloorDiv, Ident]);
+    assert_eq!(tok_str("a / / b"), ["a", "/", "/", "b"]);
+    assert_eq!(tok_typ("a / / b"), [Ident, Div, Div, Ident]);
+    assert_eq!(tok_str("a/b"), ["a", "/", "b"]);
+    assert_eq!(tok_typ("a/b"), [Ident, Div, Ident]);
+}

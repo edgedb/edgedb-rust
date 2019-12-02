@@ -22,7 +22,7 @@ pub enum Kind {
     Namespace,        // ::
     ForwardLink,      // .>
     BackwardLink,     // .<
-    FloorDivision,    // //
+    FloorDiv,         // //
     Concat,           // ++
     GreaterEq,        // >=
     LessEq,           // <=
@@ -196,6 +196,10 @@ impl<'a> TokenStream<'a> {
                 Some((_, '=')) => return Ok((AddAssign, 2)),
                 Some((_, '+')) => return Ok((Concat, 2)),
                 _ => return Ok((Add, 1)),
+            },
+            '/' => match iter.next() {
+                Some((_, '/')) => return Ok((FloorDiv, 2)),
+                _ => return Ok((Div, 1)),
             },
             '.' => match iter.next() {
                 Some((_, '>')) => return Ok((ForwardLink, 2)),
