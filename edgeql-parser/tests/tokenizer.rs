@@ -82,3 +82,13 @@ fn greater_tokens() {
     assert_eq!(tok_str("a>b"), ["a", ">", "b"]);
     assert_eq!(tok_typ("a>b"), [Ident, Greater, Ident]);
 }
+
+#[test]
+fn plus_tokens() {
+    assert_eq!(tok_str("a+b += c"), ["a", "+", "b", "+=", "c"]);
+    assert_eq!(tok_typ("a+b += c"), [Ident, Add, Ident, AddAssign, Ident]);
+    assert_eq!(tok_str("a + = b"), ["a", "+", "=", "b"]);
+    assert_eq!(tok_typ("a + = b"), [Ident, Add, Eq, Ident]);
+    assert_eq!(tok_str("a ++= b"), ["a", "++", "=", "b"]);
+    assert_eq!(tok_typ("a ++= b"), [Ident, Concat, Eq, Ident]);
+}

@@ -188,6 +188,11 @@ impl<'a> TokenStream<'a> {
                 Some((_, '=')) => return Ok((GreaterEq, 2)),
                 _ => return Ok((Greater, 1)),
             },
+            '+' => match iter.next() {
+                Some((_, '=')) => return Ok((AddAssign, 2)),
+                Some((_, '+')) => return Ok((Concat, 2)),
+                _ => return Ok((Add, 1)),
+            },
             '=' => return Ok((Eq, 1)),
             c if c == '_' || c.is_alphabetic() => {
                 for (idx, c) in iter {
