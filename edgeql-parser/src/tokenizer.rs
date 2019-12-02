@@ -1,4 +1,5 @@
 use std::fmt;
+use std::borrow::Cow;
 
 use combine::{StreamOnce, Positioned};
 use combine::error::{StreamError};
@@ -53,6 +54,7 @@ pub enum Kind {
     DecimalConst,
     FloatConst,
     IntConst,
+    BigIntConst,
     BinStr,           // b"xx", b'xx'
     Str,              // "xx", 'xx', r"xx", r'xx', $$xx$$
     Keyword,
@@ -182,6 +184,7 @@ impl<'a> TokenStream<'a> {
             '-' => match iter.next() {
                 Some((_, '>')) => return Ok((Arrow, 2)),
                 Some((_, '=')) => return Ok((SubAssign, 2)),
+                Some((_, '0'..='9')) => self.parse_number(),
                 _ => return Ok((Sub, 1)),
             },
             '>' => match iter.next() {
@@ -195,6 +198,7 @@ impl<'a> TokenStream<'a> {
             '+' => match iter.next() {
                 Some((_, '=')) => return Ok((AddAssign, 2)),
                 Some((_, '+')) => return Ok((Concat, 2)),
+                Some((_, '0'..='9')) => self.parse_number(),
                 _ => return Ok((Add, 1)),
             },
             '/' => match iter.next() {
@@ -271,12 +275,147 @@ impl<'a> TokenStream<'a> {
                     return Ok((Ident, len));
                 }
             }
+            '0'..='9' => self.parse_number(),
             _ => return Err(
                 Error::unexpected_format(
                     format_args!("{}: unexpected character {:?}",
                         cur_char, self.position)
                 )
             ),
+        }
+    }
+    fn parse_number(&mut self)
+        -> Result<(Kind, usize), Error<Token<'a>, Token<'a>>>
+    {
+        #[derive(PartialEq, PartialOrd)]
+        enum Break {
+            Dot,
+            Exponent,
+            Letter,
+        }
+        use self::Kind::*;
+        let mut iter = self.buf[self.off+1..].char_indices();
+        let mut suffix = None;
+        let mut float = false;
+        // decimal part
+        let mut bstate = loop {
+            match iter.next() {
+                Some((_, '0'..='9')) => continue,
+                Some((_, 'e')) => break Break::Exponent,
+                Some((_, '.')) => break Break::Dot,
+                Some((idx, c)) if c.is_alphabetic() => {
+                    suffix = Some(idx+1);
+                    break Break::Letter;
+                }
+                Some((idx, _)) => return Ok((IntConst, idx+1)),
+                None => return Ok((IntConst, self.buf.len() - self.off)),
+            }
+        };
+        if bstate == Break::Dot {
+            float = true;
+            bstate = loop {
+                if let Some((idx, c)) = iter.next() {
+                    match c {
+                        '0'..='9' => continue,
+                        'e' => break Break::Exponent,
+                        '.' => return Err(Error::unexpected_format(
+                            format_args!("{}: extra decimal dot in number",
+                                self.position))),
+                        c if c.is_alphabetic() => {
+                            suffix = Some(idx+1);
+                            break Break::Letter;
+                        }
+                        _ => return Ok((FloatConst, idx+1)),
+                    }
+                } else {
+                    return Ok((FloatConst, self.buf.len() - self.off));
+                }
+            }
+        }
+        if bstate == Break::Exponent {
+            float = true;
+            match iter.next() {
+                Some((_, '0'..='9')) => {},
+                Some((_, '+')) | Some((_, '-'))=> {
+                    match iter.next() {
+                        Some((_, '0'..='9')) => {},
+                        Some((_, '.')) => return Err(Error::unexpected_format(
+                            format_args!("{}: extra decimal dot \
+                                in number",
+                                self.position))),
+                        _ => return Err(Error::unexpected_format(
+                            format_args!("{}: optional `+` or `-` \
+                                followed by digits must \
+                                follow `e` in float const",
+                                self.position))),
+                    }
+                }
+                _ => return Err(Error::unexpected_format(
+                    format_args!("{}: optional `+` or `-` \
+                        followed by digits must \
+                        follow `e` in float const",
+                        self.position))),
+            }
+            loop {
+                match iter.next() {
+                    Some((_, '0'..='9')) => continue,
+                    Some((_, '.')) => return Err(Error::unexpected_format(
+                        format_args!("{}: extra decimal dot in number",
+                            self.position))),
+                    Some((idx, c)) if c.is_alphabetic() => {
+                        suffix = Some(idx+1);
+                        break;
+                    }
+                    Some((idx, _)) => return Ok((FloatConst, idx+1)),
+                    None => return Ok((FloatConst, self.buf.len() - self.off)),
+                }
+            }
+        }
+        let soff = suffix.expect("tokenizer integrity error");
+        let end = loop {
+            if let Some((idx, c)) = iter.next() {
+                if c != '_' && !c.is_alphanumeric() {
+                    break idx+1;
+                }
+            } else {
+                break self.buf.len() - self.off;
+            }
+        };
+        let suffix = &self.buf[self.off+soff..self.off+end];
+        if suffix == "n" {
+            if float {
+                return Ok((DecimalConst, end));
+            } else {
+                return Ok((BigIntConst, end));
+            }
+        } else {
+            let suffix = if suffix.len() > 8 {
+                Cow::Owned(format!("{}...", &suffix[..8]))
+            } else {
+                Cow::Borrowed(suffix)
+            };
+            let val = if soff < 20 {
+                &self.buf[self.off..soff]
+            } else {
+                "123"
+            };
+            if suffix.chars().next() == Some('O') {
+                return Err(Error::unexpected_format(
+                    format_args!("{}: suffix {:?} is invalid for \
+                        numbers, perhaps mixed up letter `O` \
+                        with zero `0`?",
+                        self.position, suffix)));
+            } else if float {
+                return Err(Error::unexpected_format(
+                    format_args!("{}: suffix {:?} is invalid for \
+                        numbers, perhaps you wanted `{}n` (decimal)?",
+                        self.position, suffix, val)));
+            } else {
+                return Err(Error::unexpected_format(
+                    format_args!("{}: suffix {:?} is invalid for \
+                        numbers, perhaps you wanted `{}n` (bigint)?",
+                        self.position, suffix, val)));
+            }
         }
     }
 
