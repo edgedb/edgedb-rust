@@ -48,7 +48,7 @@ pub enum Kind {
     Less,             // <
     Greater,          // >
     Eq,               // =
-    Amper,            // &
+    Ampersand,        // &
     Pipe,             // |
     DecimalConst,
     FloatConst,
@@ -239,6 +239,19 @@ impl<'a> TokenStream<'a> {
                 }
             },
             '=' => return Ok((Eq, 1)),
+            ',' => return Ok((Comma, 1)),
+            '(' => return Ok((OpenParen, 1)),
+            ')' => return Ok((CloseParen, 1)),
+            '[' => return Ok((OpenBracket, 1)),
+            ']' => return Ok((CloseBracket, 1)),
+            '{' => return Ok((OpenBrace, 1)),
+            '}' => return Ok((CloseBrace, 1)),
+            ';' => return Ok((Semicolon, 1)),
+            '*' => return Ok((Mul, 1)),
+            '%' => return Ok((Modulo, 1)),
+            '^' => return Ok((Pow, 1)),
+            '&' => return Ok((Ampersand, 1)),
+            '|' => return Ok((Pipe, 1)),
             c if c == '_' || c.is_alphabetic() => {
                 for (idx, c) in iter {
                     if c != '_' && !c.is_alphanumeric() {
