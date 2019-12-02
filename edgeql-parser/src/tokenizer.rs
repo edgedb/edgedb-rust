@@ -48,8 +48,8 @@ pub enum Kind {
     Less,             // <
     Greater,          // >
     Eq,               // =
-    BinAnd,           // &
-    BinOr,            // |
+    Amper,            // &
+    Pipe,             // |
     DecimalConst,
     FloatConst,
     IntConst,
@@ -224,6 +224,16 @@ impl<'a> TokenStream<'a> {
                     return Err(Error::unexpected_format(
                         format_args!("{}: Bare `?` is not an operator, \
                             did you mean `?=` or `??` ?",
+                            self.position)
+                    ))
+                }
+            },
+            '!' => match iter.next() {
+                Some((_, '=')) => return Ok((NotEq, 2)),
+                _ => {
+                    return Err(Error::unexpected_format(
+                        format_args!("{}: Bare `!` is not an operator, \
+                            did you mean `!=`?",
                             self.position)
                     ))
                 }

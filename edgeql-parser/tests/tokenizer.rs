@@ -117,6 +117,17 @@ fn plus_tokens() {
 }
 
 #[test]
+fn not_equals_tokens() {
+    assert_eq!(tok_str("a != c"), ["a", "!=", "c"]);
+    assert_eq!(tok_typ("a != c"), [Ident, NotEq, Ident]);
+    assert_eq!(tok_str("a!=b"), ["a", "!=", "b"]);
+    assert_eq!(tok_typ("a!=b"), [Ident, NotEq, Ident]);
+    assert_eq!(tok_err("a ! = b"),
+        "Unexpected `1:3: Bare `!` is not an operator, \
+         did you mean `!=`?`");
+}
+
+#[test]
 fn question_tokens() {
     assert_eq!(tok_str("a??b ?= c"), ["a", "??", "b", "?=", "c"]);
     assert_eq!(tok_typ("a??b ?= c"),
