@@ -16,13 +16,14 @@ use edgedb_protocol::descriptors::{Descriptor};
 use edgedb_protocol::codec::{build_codec};
 use crate::reader::Reader;
 use crate::prompt;
+use crate::options::Options;
 
 
-pub async fn interactive_main(data: Receiver<prompt::Input>,
+pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
         control: Sender<prompt::Control>)
     -> Result<(), anyhow::Error>
 {
-    let db_name = "tutorial";
+    let db_name = &options.database;
 
     let stream = TcpStream::connect("127.0.0.1:5656").await?;
     let (rd, mut stream) = (&stream, &stream);
@@ -30,7 +31,7 @@ pub async fn interactive_main(data: Receiver<prompt::Input>,
 
     let mut bytes = BytesMut::new();
     let mut params = HashMap::new();
-    params.insert(String::from("user"), String::from("edgedb"));
+    params.insert(String::from("user"), String::from(options.user));
     params.insert(String::from("database"), String::from(db_name));
 
     ClientMessage::ClientHandshake(ClientHandshake {
@@ -47,9 +48,15 @@ pub async fn interactive_main(data: Receiver<prompt::Input>,
         // TODO(tailhook) react on this somehow
         msg = reader.message().await?;
     }
-    if let ServerMessage::Authentication(Authentication::Ok) = msg {
-    } else {
-        return Err(anyhow::anyhow!("Error authenticating: {:?}", msg));
+    match msg {
+        ServerMessage::Authentication(Authentication::Ok) => {}
+        ServerMessage::ErrorResponse(err) => {
+            return Err(anyhow::anyhow!("Error authenticating: {}", err));
+        }
+        msg => {
+            return Err(anyhow::anyhow!(
+                "Error authenticating, unexpected message {:?}", msg));
+        }
     }
 
     loop {

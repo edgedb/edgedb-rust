@@ -24,7 +24,7 @@ commands:
   repl: !Command
     description: Run edgedb repl
     container: ubuntu
-    run: [cargo, run, --bin, edgedb]
+    run: [cargo, run, --bin, edgedb, '--']
 
 containers:
 
