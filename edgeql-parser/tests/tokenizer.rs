@@ -97,6 +97,16 @@ fn greater_tokens() {
 }
 
 #[test]
+fn less_tokens() {
+    assert_eq!(tok_str("a <= c"), ["a", "<=", "c"]);
+    assert_eq!(tok_typ("a <= c"), [Ident, LessEq, Ident]);
+    assert_eq!(tok_str("a < = b"), ["a", "<", "=", "b"]);
+    assert_eq!(tok_typ("a < = b"), [Ident, Less, Eq, Ident]);
+    assert_eq!(tok_str("a<b"), ["a", "<", "b"]);
+    assert_eq!(tok_typ("a<b"), [Ident, Less, Ident]);
+}
+
+#[test]
 fn plus_tokens() {
     assert_eq!(tok_str("a+b += c"), ["a", "+", "b", "+=", "c"]);
     assert_eq!(tok_typ("a+b += c"), [Ident, Add, Ident, AddAssign, Ident]);
@@ -120,4 +130,25 @@ fn question_tokens() {
     assert_eq!(tok_err("something ?!"),
         "Unexpected `1:11: `?!` is not an operator, \
          did you mean `?!=` ?`");
+}
+
+#[test]
+fn dot_tokens() {
+    assert_eq!(tok_str("a.b .> c"), ["a", ".", "b", ".>", "c"]);
+    assert_eq!(tok_typ("a.b .> c"), [Ident, Dot, Ident, ForwardLink, Ident]);
+    assert_eq!(tok_str("a . > b"), ["a", ".", ">", "b"]);
+    assert_eq!(tok_typ("a . > b"), [Ident, Dot, Greater, Ident]);
+    assert_eq!(tok_str("a .>> b"), ["a", ".>", ">", "b"]);
+    assert_eq!(tok_typ("a .>> b"), [Ident, ForwardLink, Greater, Ident]);
+    assert_eq!(tok_str("a ..> b"), ["a", ".", ".>", "b"]);
+    assert_eq!(tok_typ("a ..> b"), [Ident, Dot, ForwardLink, Ident]);
+
+    assert_eq!(tok_str("a.b .< c"), ["a", ".", "b", ".<", "c"]);
+    assert_eq!(tok_typ("a.b .< c"), [Ident, Dot, Ident, BackwardLink, Ident]);
+    assert_eq!(tok_str("a . < b"), ["a", ".", "<", "b"]);
+    assert_eq!(tok_typ("a . < b"), [Ident, Dot, Less, Ident]);
+    assert_eq!(tok_str("a .<< b"), ["a", ".<", "<", "b"]);
+    assert_eq!(tok_typ("a .<< b"), [Ident, BackwardLink, Less, Ident]);
+    assert_eq!(tok_str("a ..< b"), ["a", ".", ".<", "b"]);
+    assert_eq!(tok_typ("a ..< b"), [Ident, Dot, BackwardLink, Ident]);
 }

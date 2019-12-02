@@ -188,10 +188,19 @@ impl<'a> TokenStream<'a> {
                 Some((_, '=')) => return Ok((GreaterEq, 2)),
                 _ => return Ok((Greater, 1)),
             },
+            '<' => match iter.next() {
+                Some((_, '=')) => return Ok((LessEq, 2)),
+                _ => return Ok((Less, 1)),
+            },
             '+' => match iter.next() {
                 Some((_, '=')) => return Ok((AddAssign, 2)),
                 Some((_, '+')) => return Ok((Concat, 2)),
                 _ => return Ok((Add, 1)),
+            },
+            '.' => match iter.next() {
+                Some((_, '>')) => return Ok((ForwardLink, 2)),
+                Some((_, '<')) => return Ok((BackwardLink, 2)),
+                _ => return Ok((Dot, 1)),
             },
             '?' => match iter.next() {
                 Some((_, '?')) => return Ok((Coalesce, 2)),
