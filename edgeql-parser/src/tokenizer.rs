@@ -193,6 +193,28 @@ impl<'a> TokenStream<'a> {
                 Some((_, '+')) => return Ok((Concat, 2)),
                 _ => return Ok((Add, 1)),
             },
+            '?' => match iter.next() {
+                Some((_, '?')) => return Ok((Coalesce, 2)),
+                Some((_, '=')) => return Ok((NotDistinctFrom, 2)),
+                Some((_, '!')) => {
+                    if let Some((_, '=')) = iter.next() {
+                        return Ok((DistinctFrom, 3));
+                    } else {
+                        return Err(Error::unexpected_format(
+                            format_args!("{}: `?!` is not an operator, \
+                                did you mean `?!=` ?",
+                                self.position)
+                        ))
+                    }
+                }
+                _ => {
+                    return Err(Error::unexpected_format(
+                        format_args!("{}: Bare `?` is not an operator, \
+                            did you mean `?=` or `??` ?",
+                            self.position)
+                    ))
+                }
+            },
             '=' => return Ok((Eq, 1)),
             c if c == '_' || c.is_alphabetic() => {
                 for (idx, c) in iter {
@@ -215,7 +237,8 @@ impl<'a> TokenStream<'a> {
             }
             _ => return Err(
                 Error::unexpected_format(
-                    format_args!("unexpected character {:?}", cur_char)
+                    format_args!("{}: unexpected character {:?}",
+                        cur_char, self.position)
                 )
             ),
         }

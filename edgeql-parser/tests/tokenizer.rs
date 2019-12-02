@@ -16,6 +16,7 @@ fn tok_str(s: &str) -> Vec<&str> {
     }
     return r;
 }
+
 fn tok_typ(s: &str) -> Vec<Kind> {
     let mut r = Vec::new();
     let mut s = TokenStream::new(s);
@@ -27,6 +28,18 @@ fn tok_typ(s: &str) -> Vec<Kind> {
         }
     }
     return r;
+}
+
+fn tok_err(s: &str) -> String {
+    let mut s = TokenStream::new(s);
+    loop {
+        match s.uncons() {
+            Ok(_) => {}
+            Err(ref e) if e == &Error::end_of_input() => break,
+            Err(e) => return format!("{}", e),
+        }
+    }
+    panic!("No error, where error expected");
 }
 
 #[test]
@@ -91,4 +104,20 @@ fn plus_tokens() {
     assert_eq!(tok_typ("a + = b"), [Ident, Add, Eq, Ident]);
     assert_eq!(tok_str("a ++= b"), ["a", "++", "=", "b"]);
     assert_eq!(tok_typ("a ++= b"), [Ident, Concat, Eq, Ident]);
+}
+
+#[test]
+fn question_tokens() {
+    assert_eq!(tok_str("a??b ?= c"), ["a", "??", "b", "?=", "c"]);
+    assert_eq!(tok_typ("a??b ?= c"),
+               [Ident, Coalesce, Ident, NotDistinctFrom, Ident]);
+    assert_eq!(tok_str("a ?!= b"), ["a", "?!=", "b"]);
+    assert_eq!(tok_typ("a ?!= b"), [Ident, DistinctFrom, Ident]);
+    assert_eq!(tok_err("a ? b"),
+        "Unexpected `1:3: Bare `?` is not an operator, \
+         did you mean `?=` or `??` ?`");
+
+    assert_eq!(tok_err("something ?!"),
+        "Unexpected `1:11: `?!` is not an operator, \
+         did you mean `?!=` ?`");
 }
