@@ -510,3 +510,130 @@ fn tuple_paths() {
         "Unexpected `1:5: unexpected char \'n\' only integers \
         are allowed after dot (for tuple access)`");
 }
+
+#[test]
+fn strings() {
+    assert_eq!(tok_str(r#" ""  "#), [r#""""#]);
+    assert_eq!(tok_typ(r#" ""  "#), [Str]);
+    assert_eq!(tok_str(r#" ''  "#), [r#"''"#]);
+    assert_eq!(tok_typ(r#" ''  "#), [Str]);
+    assert_eq!(tok_str(r#" r""  "#), [r#"r"""#]);
+    assert_eq!(tok_typ(r#" r""  "#), [Str]);
+    assert_eq!(tok_str(r#" r''  "#), [r#"r''"#]);
+    assert_eq!(tok_typ(r#" r''  "#), [Str]);
+    assert_eq!(tok_str(r#" b""  "#), [r#"b"""#]);
+    assert_eq!(tok_typ(r#" b""  "#), [BinStr]);
+    assert_eq!(tok_str(r#" b''  "#), [r#"b''"#]);
+    assert_eq!(tok_typ(r#" b''  "#), [BinStr]);
+    assert_eq!(tok_str(r#" ``  "#), [r#"``"#]);
+    assert_eq!(tok_typ(r#" ``  "#), [BacktickName]);
+
+    assert_eq!(tok_str(r#" "hello"  "#), [r#""hello""#]);
+    assert_eq!(tok_typ(r#" "hello"  "#), [Str]);
+    assert_eq!(tok_str(r#" 'hello'  "#), [r#"'hello'"#]);
+    assert_eq!(tok_typ(r#" 'hello'  "#), [Str]);
+    assert_eq!(tok_str(r#" r"hello"  "#), [r#"r"hello""#]);
+    assert_eq!(tok_typ(r#" r"hello"  "#), [Str]);
+    assert_eq!(tok_str(r#" r'hello'  "#), [r#"r'hello'"#]);
+    assert_eq!(tok_typ(r#" r'hello'  "#), [Str]);
+    assert_eq!(tok_str(r#" b"hello"  "#), [r#"b"hello""#]);
+    assert_eq!(tok_typ(r#" b"hello"  "#), [BinStr]);
+    assert_eq!(tok_str(r#" b'hello'  "#), [r#"b'hello'"#]);
+    assert_eq!(tok_typ(r#" b'hello'  "#), [BinStr]);
+    assert_eq!(tok_str(r#" `hello`  "#), [r#"`hello`"#]);
+    assert_eq!(tok_typ(r#" `hello`  "#), [BacktickName]);
+
+    assert_eq!(tok_str(r#" "hello""#), [r#""hello""#]);
+    assert_eq!(tok_typ(r#" "hello""#), [Str]);
+    assert_eq!(tok_str(r#" 'hello'"#), [r#"'hello'"#]);
+    assert_eq!(tok_typ(r#" 'hello'"#), [Str]);
+    assert_eq!(tok_str(r#" r"hello""#), [r#"r"hello""#]);
+    assert_eq!(tok_typ(r#" r"hello""#), [Str]);
+    assert_eq!(tok_str(r#" r'hello'"#), [r#"r'hello'"#]);
+    assert_eq!(tok_typ(r#" r'hello'"#), [Str]);
+    assert_eq!(tok_str(r#" b"hello""#), [r#"b"hello""#]);
+    assert_eq!(tok_typ(r#" b"hello""#), [BinStr]);
+    assert_eq!(tok_str(r#" b'hello'"#), [r#"b'hello'"#]);
+    assert_eq!(tok_typ(r#" b'hello'"#), [BinStr]);
+    assert_eq!(tok_str(r#" `hello`"#), [r#"`hello`"#]);
+    assert_eq!(tok_typ(r#" `hello`"#), [BacktickName]);
+
+    assert_eq!(tok_str(r#" "h\"ello" "#), [r#""h\"ello""#]);
+    assert_eq!(tok_typ(r#" "h\"ello" "#), [Str]);
+    assert_eq!(tok_str(r#" 'h\'ello' "#), [r#"'h\'ello'"#]);
+    assert_eq!(tok_typ(r#" 'h\'ello' "#), [Str]);
+    assert_eq!(tok_str(r#" r"h\"ello" "#), [r#"r"h\"ello""#]);
+    assert_eq!(tok_typ(r#" r"h\"ello" "#), [Str]);
+    assert_eq!(tok_str(r#" r'h\'ello' "#), [r#"r'h\'ello'"#]);
+    assert_eq!(tok_typ(r#" r'h\'ello' "#), [Str]);
+    assert_eq!(tok_str(r#" b"h\"ello" "#), [r#"b"h\"ello""#]);
+    assert_eq!(tok_typ(r#" b"h\"ello" "#), [BinStr]);
+    assert_eq!(tok_str(r#" b'h\'ello' "#), [r#"b'h\'ello'"#]);
+    assert_eq!(tok_typ(r#" b'h\'ello' "#), [BinStr]);
+    assert_eq!(tok_str(r#" `hello\` "#), [r#"`hello\`"#]);
+    assert_eq!(tok_typ(r#" `hello\` "#), [BacktickName]);
+
+    assert_eq!(tok_str(r#" "h'el`lo" "#), [r#""h'el`lo""#]);
+    assert_eq!(tok_typ(r#" "h'el`lo" "#), [Str]);
+    assert_eq!(tok_str(r#" 'h"el`lo' "#), [r#"'h"el`lo'"#]);
+    assert_eq!(tok_typ(r#" 'h"el`lo' "#), [Str]);
+    assert_eq!(tok_str(r#" r"h'el`lo" "#), [r#"r"h'el`lo""#]);
+    assert_eq!(tok_typ(r#" r"h'el`lo" "#), [Str]);
+    assert_eq!(tok_str(r#" r'h"el`lo' "#), [r#"r'h"el`lo'"#]);
+    assert_eq!(tok_typ(r#" r'h"el`lo' "#), [Str]);
+    assert_eq!(tok_str(r#" b"h'el`lo" "#), [r#"b"h'el`lo""#]);
+    assert_eq!(tok_typ(r#" b"h'el`lo" "#), [BinStr]);
+    assert_eq!(tok_str(r#" b'h"el`lo' "#), [r#"b'h"el`lo'"#]);
+    assert_eq!(tok_typ(r#" b'h"el`lo' "#), [BinStr]);
+    assert_eq!(tok_str(r#" `h'el"lo` "#), [r#"`h'el"lo`"#]);
+    assert_eq!(tok_typ(r#" `h'el"lo\` "#), [BacktickName]);
+
+    assert_eq!(tok_str(" \"hel\nlo\" "), ["\"hel\nlo\""]);
+    assert_eq!(tok_typ(" \"hel\nlo\" "), [Str]);
+    assert_eq!(tok_str(" 'hel\nlo' "), ["'hel\nlo'"]);
+    assert_eq!(tok_typ(" 'hel\nlo' "), [Str]);
+    assert_eq!(tok_str(" r\"hel\nlo\" "), ["r\"hel\nlo\""]);
+    assert_eq!(tok_typ(" r\"hel\nlo\" "), [Str]);
+    assert_eq!(tok_str(" r'hel\nlo' "), ["r'hel\nlo'"]);
+    assert_eq!(tok_typ(" r'hel\nlo' "), [Str]);
+    assert_eq!(tok_str(" b\"hel\nlo\" "), ["b\"hel\nlo\""]);
+    assert_eq!(tok_typ(" b\"hel\nlo\" "), [BinStr]);
+    assert_eq!(tok_str(" b'hel\nlo' "), ["b'hel\nlo'"]);
+    assert_eq!(tok_typ(" b'hel\nlo' "), [BinStr]);
+    assert_eq!(tok_str(" `hel\nlo` "), ["`hel\nlo`"]);
+    assert_eq!(tok_typ(" `hel\nlo` "), [BacktickName]);
+
+    assert_eq!(tok_err(r#""hello"#),
+        "Unexpected `1:1: unclosed string, quoted by `\"``");
+    assert_eq!(tok_err(r#"'hello"#),
+        "Unexpected `1:1: unclosed string, quoted by `'``");
+    assert_eq!(tok_err(r#"r"hello"#),
+        "Unexpected `1:1: unclosed string, quoted by `\"``");
+    assert_eq!(tok_err(r#"r'hello"#),
+        "Unexpected `1:1: unclosed string, quoted by `'``");
+    assert_eq!(tok_err(r#"b"hello"#),
+        "Unexpected `1:1: unclosed string, quoted by `\"``");
+    assert_eq!(tok_err(r#"b'hello"#),
+        "Unexpected `1:1: unclosed string, quoted by `'``");
+    assert_eq!(tok_err(r#"`hello"#),
+        "Unexpected `1:1: unclosed backtick name`");
+
+    assert_eq!(tok_err(r#"name`type`"#),
+        "Unexpected `1:1: Prefix \"name\" is not allowed for field names, \
+        perhaps missing comma or dot?`");
+    assert_eq!(tok_err(r#"User`type`"#),
+        "Unexpected `1:1: Prefix \"User\" is not allowed for field names, \
+        perhaps missing comma or dot?`");
+    assert_eq!(tok_err(r#"r`hello"#),
+        "Unexpected `1:1: Prefix \"r\" is not allowed for field names, \
+        perhaps missing comma or dot?`");
+    assert_eq!(tok_err(r#"b`hello"#),
+        "Unexpected `1:1: Prefix \"b\" is not allowed for field names, \
+        perhaps missing comma or dot?`");
+    assert_eq!(tok_err(r#"test"hello""#),
+        "Unexpected `1:1: Prefix \"test\" is not allowed for strings, \
+        allowed: `b`, `r``");
+    assert_eq!(tok_err(r#"test'hello'"#),
+        "Unexpected `1:1: Prefix \"test\" is not allowed for strings, \
+        allowed: `b`, `r``");
+}

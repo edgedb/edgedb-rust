@@ -57,6 +57,7 @@ pub enum Kind {
     BigIntConst,
     BinStr,           // b"xx", b'xx'
     Str,              // "xx", 'xx', r"xx", r'xx', $$xx$$
+    BacktickName,     // `xx`
     Keyword,
     Ident,
 }
@@ -249,6 +250,15 @@ impl<'a> TokenStream<'a> {
                     ))
                 }
             },
+            '"' | '\'' => self.parse_string(0, false),
+            '`' => {
+                for (idx, c) in iter {
+                    if c == '`' { return Ok((BacktickName, idx+1)); }
+                }
+                return Err(Error::unexpected_format(
+                    format_args!("{}: unclosed backtick name",
+                        self.position)));
+            }
             '=' => return Ok((Eq, 1)),
             ',' => return Ok((Comma, 1)),
             '(' => return Ok((OpenParen, 1)),
@@ -265,12 +275,35 @@ impl<'a> TokenStream<'a> {
             '|' => return Ok((Pipe, 1)),
             c if c == '_' || c.is_alphabetic() => {
                 for (idx, c) in iter {
-                    if c != '_' && !c.is_alphanumeric() {
-                        let val = &self.buf[self.off..self.off+idx];
-                        if self.is_keyword(val) {
-                            return Ok((Keyword, idx));
-                        } else {
-                            return Ok((Ident, idx));
+                    match c {
+                        '"' | '\'' => {
+                            let prefix = &self.buf[self.off..][..idx];
+                            let binary = match prefix {
+                                "r" => false,
+                                "b" => true,
+                                _ => return Err(Error::unexpected_format(
+                                    format_args!("{}: Prefix {:?} \
+                                    is not allowed for strings, \
+                                    allowed: `b`, `r`",
+                                    self.position, prefix))),
+                            };
+                            return self.parse_string(idx, binary);
+                        }
+                        '`' => {
+                            let prefix = &self.buf[self.off..idx];
+                            return Err(Error::unexpected_format(
+                                format_args!("{}: Prefix {:?} is not \
+                                allowed for field names, perhaps missing \
+                                comma or dot?", self.position, prefix)));
+                        }
+                        c if c == '_' || c.is_alphanumeric() => continue,
+                        _ => {
+                            let val = &self.buf[self.off..self.off+idx];
+                            if self.is_keyword(val) {
+                                return Ok((Keyword, idx));
+                            } else {
+                                return Ok((Ident, idx));
+                            }
                         }
                     }
                 }
@@ -311,6 +344,34 @@ impl<'a> TokenStream<'a> {
             ),
         }
     }
+
+    fn parse_string(&mut self, quote_off: usize, binary: bool)
+        -> Result<(Kind, usize), Error<Token<'a>, Token<'a>>>
+    {
+        let mut iter = self.buf[self.off+quote_off..].char_indices();
+        let open_quote = iter.next().unwrap().1;
+        while let Some((idx, c)) = iter.next() {
+            match c {
+                '\\' => match iter.next() {
+                    // skip any next char, even quote
+                    Some((_, _)) => continue,
+                    None => break,
+                }
+                c if c == open_quote => {
+                    if binary {
+                        return Ok((Kind::BinStr, quote_off+idx+1))
+                    } else {
+                        return Ok((Kind::Str, quote_off+idx+1))
+                    }
+                }
+                _ => {}
+            }
+        }
+        return Err(Error::unexpected_format(
+            format_args!("{}: unclosed string, quoted by `{}`",
+                self.position, open_quote)));
+    }
+
     fn parse_number(&mut self)
         -> Result<(Kind, usize), Error<Token<'a>, Token<'a>>>
     {
