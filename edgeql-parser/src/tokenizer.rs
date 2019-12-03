@@ -72,6 +72,7 @@ pub struct TokenStream<'a> {
     buf: &'a str,
     position: Pos,
     off: usize,
+    dot: bool,
     next_state: Option<(usize, Token<'a>, usize, Pos)>,
     keyword_buf: String,
 }
@@ -80,6 +81,7 @@ pub struct TokenStream<'a> {
 pub struct Checkpoint {
     position: Pos,
     off: usize,
+    dot: bool,
 }
 
 impl<'a> StreamOnce for TokenStream<'a> {
@@ -104,6 +106,7 @@ impl<'a> StreamOnce for TokenStream<'a> {
         // note we may want to get rid of "update_position" here as it's
         // faster to update 'as you go', but this is easier to get right first
         self.update_position(len);
+        self.dot = kind == Kind::Dot;
 
         let value = &self.buf[self.off-len..self.off];
         self.skip_whitespace();
@@ -126,11 +129,13 @@ impl<'a> ResetStream for TokenStream<'a> {
         Checkpoint {
             position: self.position,
             off: self.off,
+            dot: self.dot,
         }
     }
     fn reset(&mut self, checkpoint: Checkpoint) -> Result<(), Self::Error> {
         self.position = checkpoint.position;
         self.off = checkpoint.off;
+        self.dot = checkpoint.dot;
         Ok(())
     }
 }
@@ -141,6 +146,7 @@ impl<'a> TokenStream<'a> {
             buf: s,
             position: Pos { line: 1, column: 1, offset: 0 },
             off: 0,
+            dot: false,
             next_state: None,
             // Current max keyword length is 10, but we're reserving some
             // space
@@ -158,6 +164,7 @@ impl<'a> TokenStream<'a> {
             buf: s,
             position: position,
             off: 0,
+            dot: false,
             next_state: None,
             keyword_buf: String::with_capacity(MAX_KEYWORD_LENGTH),
         };
@@ -275,7 +282,27 @@ impl<'a> TokenStream<'a> {
                     return Ok((Ident, len));
                 }
             }
-            '0'..='9' => self.parse_number(),
+            '0'..='9' => {
+                if self.dot {
+                    for (idx, c) in iter {
+                        match c {
+                            '0'..='9' => continue,
+                            c if c.is_alphabetic() => {
+                                return Err(Error::unexpected_format(
+                                    format_args!("{}: unexpected char {:?} \
+                                        only integers are allowed after dot \
+                                        (for tuple access)",
+                                        self.position, c)
+                                ));
+                            }
+                            _ => return Ok((IntConst, idx)),
+                        }
+                    }
+                    Ok((IntConst, self.buf.len() - self.off))
+                } else {
+                    self.parse_number()
+                }
+            }
             _ => return Err(
                 Error::unexpected_format(
                     format_args!("{}: unexpected character {:?}",

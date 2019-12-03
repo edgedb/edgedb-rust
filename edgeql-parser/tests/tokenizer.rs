@@ -498,3 +498,15 @@ fn num_errors() {
         "Unexpected `1:1: suffix \"O00\" is invalid for numbers, \
         perhaps mixed up letter `O` with zero `0`?`");
 }
+
+#[test]
+fn tuple_paths() {
+    assert_eq!(tok_str("tup.1.2.3.4.5"),
+        ["tup", ".", "1", ".", "2", ".", "3", ".", "4", ".", "5"]);
+    assert_eq!(tok_typ("tup.1.2.3.4.5"),
+        [Ident, Dot, IntConst, Dot, IntConst,
+                Dot, IntConst, Dot, IntConst, Dot, IntConst]);
+    assert_eq!(tok_err("tup.1n"),
+        "Unexpected `1:5: unexpected char \'n\' only integers \
+        are allowed after dot (for tuple access)`");
+}
