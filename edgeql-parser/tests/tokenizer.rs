@@ -637,3 +637,39 @@ fn strings() {
         "Unexpected `1:1: Prefix \"test\" is not allowed for strings, \
         allowed: `b`, `r``");
 }
+
+#[test]
+fn test_dollar() {
+    assert_eq!(tok_str("select $$ something $$; x"),
+                       ["select", "$$ something $$", ";", "x"]);
+    assert_eq!(tok_typ("select $$ something $$; x"),
+                       [Keyword, Str, Semicolon, Ident]);
+    assert_eq!(tok_str("select $a$ ; $b$ ; $b$ ; $a$; x"),
+                       ["select", "$a$ ; $b$ ; $b$ ; $a$", ";", "x"]);
+    assert_eq!(tok_typ("select $a$ ; $b$ ; $b$ ; $a$; x"),
+                       [Keyword, Str, Semicolon, Ident]);
+    assert_eq!(tok_str("select $a$ ; $b$ ; $a$; x"),
+                       ["select", "$a$ ; $b$ ; $a$", ";", "x"]);
+    assert_eq!(tok_typ("select $a$ ; $b$ ; $a$; x"),
+                       [Keyword, Str, Semicolon, Ident]);
+    assert_eq!(tok_err("select $$ ; $ab$ test;"),
+        "Unexpected `1:8: unclosed string started with $$`");
+    assert_eq!(tok_err("select $a$ ; $$ test;"),
+        "Unexpected `1:8: unclosed string started with \"$a$\"`");
+    assert_eq!(tok_str("select $a$a$ ; $a$ test;"),
+        ["select", "$a$a$ ; $a$", "test", ";"]);
+    assert_eq!(tok_typ("select $a$a$ ; $a$ test;"),
+        [Keyword, Str, Ident, Semicolon]);
+    assert_eq!(tok_str("select $a+b; $ test; $a+b; $ ;"),
+        ["select", "$", "a", "+", "b", ";", "$", "test",
+         ";", "$", "a", "+", "b", ";", "$", ";"]);
+    assert_eq!(tok_typ("select $a+b; $ test; $a+b; $ ;"),
+        [Keyword, Dollar, Ident, Add, Ident, Semicolon, Dollar, Ident,
+         Semicolon, Dollar, Ident, Add, Ident, Semicolon, Dollar, Semicolon]);
+    assert_eq!(tok_str("select $def x$ test; $def x$"),
+        ["select", "$", "def", "x", "$", "test",
+         ";", "$", "def", "x", "$"]);
+    assert_eq!(tok_typ("select $def x$ test; $def x$"),
+        [Keyword, Dollar, Ident, Ident, Dollar, Ident,
+         Semicolon, Dollar, Ident, Ident, Dollar]);
+}

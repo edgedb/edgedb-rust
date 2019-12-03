@@ -5,6 +5,7 @@ use combine::{StreamOnce, Positioned};
 use combine::error::{StreamError};
 use combine::stream::{ResetStream};
 use combine::easy::{Error, Errors};
+use twoway::find_str;
 
 use crate::position::Pos;
 
@@ -51,6 +52,7 @@ pub enum Kind {
     Eq,               // =
     Ampersand,        // &
     Pipe,             // |
+    Dollar,           // $
     DecimalConst,
     FloatConst,
     IntConst,
@@ -335,6 +337,47 @@ impl<'a> TokenStream<'a> {
                 } else {
                     self.parse_number()
                 }
+            }
+            '$' => {
+                if let Some((_, c)) = iter.next() {
+                    match c {
+                        '$' => {
+                            if let Some(end) = find_str(
+                                &self.buf[self.off+2..], "$$")
+                            {
+                                return Ok((Str, 2+end+2));
+                            } else {
+                                return Err(Error::unexpected_format(
+                                    format_args!("{}: unclosed string started \
+                                        with $$", self.position)));
+                            }
+                        }
+                        'A'..='Z' | 'a'..='z' | '_' => { }
+                        _ => return Ok((Dollar, 1)),
+                    }
+                }
+                while let Some((end_idx, c)) = iter.next() {
+                    match c {
+                        '$' => {
+                            let msize = end_idx+1;
+                            let marker = &self.buf[self.off..][..msize];
+                            if let Some(end) = find_str(
+                                &self.buf[self.off+msize..],
+                                &marker)
+                            {
+                                return Ok((Str, msize+end+msize));
+                            } else {
+                                return Err(Error::unexpected_format(
+                                    format_args!("{}: unclosed string started \
+                                        with {:?}", self.position, marker)));
+                            }
+                        }
+                        'A'..='Z' | 'a'..='z' | '0'..='9' | '_' => continue,
+                        _ => return Ok((Dollar, 1)),
+
+                    }
+                }
+                return Ok((Dollar, 1));
             }
             _ => return Err(
                 Error::unexpected_format(
