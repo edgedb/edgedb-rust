@@ -165,6 +165,18 @@ fn dot_tokens() {
 }
 
 #[test]
+fn tuple_dot_vs_float() {
+    assert_eq!(tok_str("tuple.1.<"), ["tuple", ".", "1", ".<"]);
+    assert_eq!(tok_typ("tuple.1.<"), [Ident, Dot, IntConst, BackwardLink]);
+    assert_eq!(tok_str("1.<"), ["1.", "<"]);
+    assert_eq!(tok_typ("1.<"), [FloatConst, Less]);
+    assert_eq!(tok_str("1.e123"), ["1.e123"]);
+    assert_eq!(tok_typ("1.e123"), [FloatConst]);
+    assert_eq!(tok_str("tuple.1.e123"), ["tuple", ".", "1", ".", "e123"]);
+    assert_eq!(tok_typ("tuple.1.e123"), [Ident, Dot, IntConst, Dot, Ident]);
+}
+
+#[test]
 fn div_tokens() {
     assert_eq!(tok_str("a // c"), ["a", "//", "c"]);
     assert_eq!(tok_typ("a // c"), [Ident, FloorDiv, Ident]);
