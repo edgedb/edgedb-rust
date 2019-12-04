@@ -243,6 +243,16 @@ version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "cpython"
+version = "0.3.0"
+source = "git+git://github.com/dgrunwald/rust-cpython?rev=dabc06c#dabc06c035800514b9a4ccf2f8e1726ce3023c17"
+dependencies = [
+ "libc 0.2.65 (registry+https://github.com/rust-lang/crates.io-index)",
+ "num-traits 0.2.9 (registry+https://github.com/rust-lang/crates.io-index)",
+ "python3-sys 0.3.0 (git+git://github.com/dgrunwald/rust-cpython?rev=dabc06c)",
+]
+
+[[package]]
 name = "crossbeam-channel"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -361,6 +371,14 @@ dependencies = [
  "combine 4.0.0-beta.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "snafu 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "twoway 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "edgeql-python"
+version = "0.1.0"
+dependencies = [
+ "cpython 0.3.0 (git+git://github.com/dgrunwald/rust-cpython?rev=dabc06c)",
+ "edgedb-protocol 0.1.0",
 ]
 
 [[package]]
@@ -745,6 +763,15 @@ version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "unicode-xid 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "python3-sys"
+version = "0.3.0"
+source = "git+git://github.com/dgrunwald/rust-cpython?rev=dabc06c#dabc06c035800514b9a4ccf2f8e1726ce3023c17"
+dependencies = [
+ "libc 0.2.65 (registry+https://github.com/rust-lang/crates.io-index)",
+ "regex 1.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -1238,6 +1265,7 @@ dependencies = [
 "checksum cloudabi 0.0.3 (registry+https://github.com/rust-lang/crates.io-index)" = "ddfc5b9aa5d4507acaf872de71051dfd0e309860e88966e1051e462a077aac4f"
 "checksum combine 4.0.0-beta.1 (registry+https://github.com/rust-lang/crates.io-index)" = "df504a6393dde01b4ed9e4a4876aa982c8c89de5b429abac068ad44531f2aeed"
 "checksum constant_time_eq 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)" = "995a44c877f9212528ccc74b21a232f66ad69001e40ede5bcee2ac9ef2657120"
+"checksum cpython 0.3.0 (git+git://github.com/dgrunwald/rust-cpython?rev=dabc06c)" = "<none>"
 "checksum crossbeam-channel 0.3.9 (registry+https://github.com/rust-lang/crates.io-index)" = "c8ec7fcd21571dc78f96cc96243cab8d8f035247c3efd16c687be154c3fa9efa"
 "checksum crossbeam-deque 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)" = "c3aa945d63861bfe624b55d153a39684da1e8c0bc8fba932f7ee3a3c16cea3ca"
 "checksum crossbeam-epoch 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)" = "5064ebdbf05ce3cb95e45c8b086f72263f4166b29b97f6baff7ef7fe047b55ac"
@@ -1296,6 +1324,7 @@ dependencies = [
 "checksum predicates-tree 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "8e63c4859013b38a76eca2414c64911fba30def9e3202ac461a2d22831220124"
 "checksum proc-macro-error 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)" = "aeccfe4d5d8ea175d5f0e4a2ad0637e0f4121d63bd99d356fb1f39ab2e7c6097"
 "checksum proc-macro2 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)" = "9c9e470a8dc4aeae2dee2f335e8f533e2d4b347e1434e5671afc49b054592f27"
+"checksum python3-sys 0.3.0 (git+git://github.com/dgrunwald/rust-cpython?rev=dabc06c)" = "<none>"
 "checksum quote 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "053a8c8bcc71fcce321828dc897a98ab9760bef03a4fc36693c231e5b3216cfe"
 "checksum rand_core 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "7a6fdeb83b075e8266dcc8762c22776f6877a63111121f5f8c7411e5be7eed4b"
 "checksum rand_core 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)" = "9c33a3c44ca05fa6f1807d8e6743f3824e8509beca625669633be0acbdf509dc"

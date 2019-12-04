@@ -1,3 +1,4 @@
 /tmp
 /.vagga
 /target
+/edgeql_python.cpython-*.so

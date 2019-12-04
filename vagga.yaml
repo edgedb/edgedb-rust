@@ -26,12 +26,29 @@ commands:
     container: ubuntu
     run: [cargo, run, --bin, edgedb, '--']
 
+  py: !Command
+    description: Build the python library and run python interpreter
+    container: ubuntu
+    run: |
+      cargo build
+      cp ./target/debug/libedgeql_python.so ./edgeql_python.cpython-38-x86_64-linux-gnu.so
+      python3.8 -i -c 'import edgeql_python'
+
 containers:
 
   ubuntu:
     setup:
     - !Ubuntu xenial
-    - !Install [ca-certificates, git, build-essential, vim]
+    - !UbuntuPPA deadsnakes/ppa
+    - !AptTrust keys: [BA6932366A755776]
+    - !Install
+      - ca-certificates
+      - git
+      - build-essential
+      - vim
+      # for edgeql-python
+      - python3.8
+      - python3.8-dev
 
     - !TarInstall
       url: "https://static.rust-lang.org/dist/rust-1.39.0-x86_64-unknown-linux-gnu.tar.gz"
@@ -45,3 +62,4 @@ containers:
     environ:
       HOME: /work/target
       RUST_BACKTRACE: 1
+      PYTHON_SYS_EXECUTABLE: /usr/bin/python3.8

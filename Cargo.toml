@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "edgeql-parser",
+    "edgeql-python",
     "edgedb-protocol",
     "edgedb-repl",
 ]

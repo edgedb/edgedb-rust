@@ -1,0 +1,18 @@
+[package]
+name = "edgeql-python"
+version = "0.1.0"
+authors = ["MagicStack Inc. <hello@magic.io>"]
+edition = "2018"
+
+[dependencies]
+edgedb-protocol = {path = "../edgedb-protocol"}
+
+[dependencies.cpython]
+git = "git://github.com/dgrunwald/rust-cpython"
+rev = "dabc06c"
+features = ["extension-module"]
+
+[lib]
+crate-type = ["cdylib"]
+name = "edgeql_python"
+path = "src/lib.rs"
