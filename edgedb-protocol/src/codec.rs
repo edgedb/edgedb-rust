@@ -15,6 +15,8 @@ use crate::value::{Value, Scalar};
 
 const STD_INT32: Uuid = Uuid::from_u128(0x104);
 const STD_INT64: Uuid = Uuid::from_u128(0x105);
+const STD_FLOAT32: Uuid = Uuid::from_u128(0x106);
+const STD_FLOAT64: Uuid = Uuid::from_u128(0x107);
 const STD_STR: Uuid = Uuid::from_u128(0x101);
 const STD_DURATION: Uuid = Uuid::from_u128(0x10e);
 
@@ -58,6 +60,12 @@ struct Int32 { }
 
 #[derive(Debug)]
 struct Int64 { }
+
+#[derive(Debug)]
+struct Float32 { }
+
+#[derive(Debug)]
+struct Float64 { }
 
 #[derive(Debug)]
 struct Str { }
@@ -105,6 +113,8 @@ pub fn scalar_codec(uuid: &Uuid) -> Result<Arc<dyn Codec>, CodecError> {
     match *uuid {
         STD_INT32 => Ok(Arc::new(Int32 {})),
         STD_INT64 => Ok(Arc::new(Int64 {})),
+        STD_FLOAT32 => Ok(Arc::new(Float32 {})),
+        STD_FLOAT64 => Ok(Arc::new(Float64 {})),
         STD_STR => Ok(Arc::new(Str {})),
         STD_DURATION => Ok(Arc::new(Duration {})),
         _ => return errors::UndefinedBaseScalar { uuid: uuid.clone() }.fail()?,
@@ -124,6 +134,22 @@ impl Codec for Int64 {
         ensure!(buf.remaining() >= 8, errors::Underflow);
         let inner = buf.get_i64_be();
         Ok(Value::Scalar(Scalar::Int64(inner)))
+    }
+}
+
+impl Codec for Float32 {
+    fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
+        ensure!(buf.remaining() >= 4, errors::Underflow);
+        let inner = buf.get_f32_be();
+        Ok(Value::Scalar(Scalar::Float32(inner)))
+    }
+}
+
+impl Codec for Float64 {
+    fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
+        ensure!(buf.remaining() >= 8, errors::Underflow);
+        let inner = buf.get_f64_be();
+        Ok(Value::Scalar(Scalar::Float64(inner)))
     }
 }
 

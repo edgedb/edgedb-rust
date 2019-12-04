@@ -70,6 +70,94 @@ fn int64() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn float32() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(
+        &"00000000-0000-0000-0000-000000000106".parse()?,
+        &[
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-000000000106".parse()?,
+            })
+        ]
+    )?;
+
+    assert_eq!(decode(&codec, b"\0\0\0\0")?,
+               Value::Scalar(Scalar::Float32(0.0)));
+    assert_eq!(decode(&codec, b"\x80\0\0\0")?,
+               Value::Scalar(Scalar::Float32(-0.0)));
+    assert_eq!(decode(&codec, b"?\x80\0\0")?,
+               Value::Scalar(Scalar::Float32(1.0)));
+    assert_eq!(decode(&codec, b"\xbf\x8f\xbew")?,
+               Value::Scalar(Scalar::Float32(-1.123)));
+
+    match decode(&codec, b"\x7f\xc0\0\0")? {
+        Value::Scalar(Scalar::Float32(val)) => assert!(val.is_nan()),
+        _ => panic!("could not parse NaN")
+    };
+
+    match decode(&codec, b"\x7f\x80\0\0")? {
+        Value::Scalar(Scalar::Float32(val)) => {
+            assert!(val.is_infinite());
+            assert!(val.is_sign_positive())
+        },
+        _ => panic!("could not parse +inf")
+    };
+
+    match decode(&codec, b"\xff\x80\0\0")? {
+        Value::Scalar(Scalar::Float32(val)) => {
+            assert!(val.is_infinite());
+            assert!(val.is_sign_negative())
+        }
+        _ => panic!("could not parse -inf")
+    };
+
+    Ok(())
+}
+
+#[test]
+fn float64() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(
+        &"00000000-0000-0000-0000-000000000107".parse()?,
+        &[
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-000000000107".parse()?,
+            })
+        ]
+    )?;
+
+    assert_eq!(decode(&codec, b"\0\0\0\0\0\0\0\0")?,
+               Value::Scalar(Scalar::Float64(0.0)));
+    assert_eq!(decode(&codec, b"\x80\0\0\0\0\0\0\0")?,
+               Value::Scalar(Scalar::Float64(-0.0)));
+    assert_eq!(decode(&codec, b"?\xf0\0\0\0\0\0\0")?,
+               Value::Scalar(Scalar::Float64(1.0)));
+    assert_eq!(decode(&codec, b"T\xb2I\xad%\x94\xc3}")?,
+               Value::Scalar(Scalar::Float64(1e100)));
+
+    match decode(&codec, b"\x7f\xf8\0\0\0\0\0\0")? {
+        Value::Scalar(Scalar::Float64(val)) => assert!(val.is_nan()),
+        _ => panic!("could not parse NaN")
+    };
+
+    match decode(&codec, b"\x7f\xf0\0\0\0\0\0\0")? {
+        Value::Scalar(Scalar::Float64(val)) => {
+            assert!(val.is_infinite());
+            assert!(val.is_sign_positive())
+        }
+        _ => panic!("could not parse +inf")
+    };
+
+    match decode(&codec, b"\xff\xf0\0\0\0\0\0\0")? {
+        Value::Scalar(Scalar::Float64(val)) => {
+            assert!(val.is_infinite());
+            assert!(val.is_sign_negative())
+        },
+        _ => panic!("could not parse -inf")
+    };
+
+    Ok(())
+}
+
+#[test]
 fn str() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(
         &"00000000-0000-0000-0000-000000000101".parse()?,
