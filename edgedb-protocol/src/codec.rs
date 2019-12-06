@@ -169,11 +169,10 @@ impl Codec for Duration {
         let micros = buf.get_u64_be();
         let days = buf.get_u32_be();
         let months = buf.get_u32_be();
-        if months != 0 {
+        if months != 0 || days != 0 {
             errors::InvalidDuration.fail()?;
         }
-        let days = std::time::Duration::from_secs(days as u64 * 86400);
-        let micros = std::time::Duration::from_micros(micros);
-        Ok(Value::Scalar(Scalar::Duration(days + micros)))
+        let dur = std::time::Duration::from_micros(micros);
+        Ok(Value::Scalar(Scalar::Duration(dur)))
     }
 }
