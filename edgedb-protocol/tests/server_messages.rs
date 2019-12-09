@@ -13,6 +13,7 @@ use edgedb_protocol::server_message::{ServerKeyData, ParameterStatus};
 use edgedb_protocol::server_message::{CommandComplete};
 use edgedb_protocol::server_message::{PrepareComplete, Cardinality};
 use edgedb_protocol::server_message::{CommandDataDescription, Data};
+use edgedb_protocol::server_message::{Authentication};
 
 mod base;
 
@@ -139,5 +140,28 @@ fn data() -> Result<(), Box<dyn Error>> {
     encoding_eq!(ServerMessage::Data(Data {
         data: vec![Bytes::from_static(b"\0\0\0\0\0\0\0\x01")],
     }), b"D\0\0\0\x12\0\x01\0\0\0\x08\0\0\0\0\0\0\0\x01");
+    Ok(())
+}
+
+#[test]
+fn authentication() -> Result<(), Box<dyn Error>> {
+    encoding_eq!(
+        ServerMessage::Authentication(Authentication::Ok),
+        b"\x52\0\0\0\x05\x00");
+    encoding_eq!(
+        ServerMessage::Authentication(Authentication::Sasl {
+            methods: vec![String::from("test")],
+        }),
+        b"R\0\0\0\x11\n\0\0\0\x01\0\0\0\x04test");
+    encoding_eq!(
+        ServerMessage::Authentication(Authentication::SaslContinue {
+            data: Bytes::from_static(b"sasl_interim_data"),
+        }),
+        b"R\0\0\0\x1a\x0b\0\0\0\x11sasl_interim_data");
+    encoding_eq!(
+        ServerMessage::Authentication(Authentication::SaslFinal {
+            data: Bytes::from_static(b"sasl_final_data"),
+        }),
+        b"R\0\0\0\x18\x0c\0\0\0\x0fsasl_final_data");
     Ok(())
 }

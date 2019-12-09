@@ -46,6 +46,8 @@ pub enum EncodeError {
     TooManyParams { backtrace: Backtrace },
     #[snafu(display("more than 64Ki attributes"))]
     TooManyAttributes { backtrace: Backtrace },
+    #[snafu(display("more than 64Ki authentication methods"))]
+    TooManyMethods { backtrace: Backtrace },
     #[snafu(display("unknown message types can't be encoded"))]
     UnknownMessageCantBeEncoded { backtrace: Backtrace },
     #[doc(hidden)]

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::u32;
 use std::u16;
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use std::io::Cursor;
 
 use bytes::{Bytes, BytesMut, BufMut, Buf};
@@ -274,7 +274,29 @@ impl Decode for ErrorResponse {
 
 impl Encode for Authentication {
     fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
-        unimplemented!()
+        use Authentication as A;
+        buf.reserve(1);
+        match self {
+            A::Ok => buf.put_u8(0),
+            A::Sasl { methods } => {
+                buf.put_u8(0x0A);
+                buf.reserve(4);
+                buf.put_u32_be(methods.len().try_into()
+                    .ok().context(errors::TooManyMethods)?);
+                for meth in methods {
+                    meth.encode(buf)?;
+                }
+            }
+            A::SaslContinue { data } => {
+                buf.put_u8(0x0B);
+                data.encode(buf)?;
+            }
+            A::SaslFinal { data } => {
+                buf.put_u8(0x0C);
+                data.encode(buf)?;
+            }
+        }
+        Ok(())
     }
 }
 
