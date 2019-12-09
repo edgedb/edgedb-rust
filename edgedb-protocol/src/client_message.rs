@@ -116,7 +116,7 @@ impl ClientMessage {
 }
 
 impl Encode for Empty {
-    fn encode(&self, buf: &mut BytesMut)
+    fn encode(&self, _buf: &mut BytesMut)
         -> Result<(), EncodeError>
     {
         Ok(())
