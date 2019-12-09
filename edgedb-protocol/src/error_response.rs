@@ -8,9 +8,13 @@ const FIELD_DETAILS: u16 = 0x_00_02;
 const FIELD_SERVER_TRACEBACK: u16 = 0x_01_01;
 
 // TODO(tailhook) these might be deprecated?
+#[allow(unused)]
 const FIELD_POSITION_START: u16 = 0x_FF_F1;
+#[allow(unused)]
 const FIELD_POSITION_END: u16 = 0x_FF_F2;
+#[allow(unused)]
 const FIELD_LINE: u16 = 0x_FF_F3;
+#[allow(unused)]
 const FIELD_COLUMN: u16 = 0x_FF_F4;
 
 pub fn severity_marker(code: ErrorSeverity) -> &'static str {
