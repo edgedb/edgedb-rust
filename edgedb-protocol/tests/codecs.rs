@@ -3,12 +3,11 @@ use std::error::Error;
 use std::i32;
 use std::i64;
 use std::sync::Arc;
-use std::time::Duration;
 
 use bytes::{Bytes, Buf};
 
 use edgedb_protocol::codec::{build_codec, Codec};
-use edgedb_protocol::value::{Value, Scalar};
+use edgedb_protocol::value::{Value, Scalar, Duration};
 use edgedb_protocol::descriptors::Descriptor;
 use edgedb_protocol::descriptors::BaseScalarTypeDescriptor;
 
@@ -196,6 +195,10 @@ fn duration() -> Result<(), Box<dyn Error>> {
     assert_eq!(decode(&codec, b"\0\0\0\x13GC\xbc\0\0\0\0\0\0\0\0\0")?,
                Value::Scalar(Scalar::Duration(
                Duration::from_secs(82800))));
+    assert_eq!(decode(&codec,
+                   b"\xff\xff\xff\xff\xd3,\xba\xe0\0\0\0\0\0\0\0\0")?,
+               Value::Scalar(Scalar::Duration(
+               Duration::from_micros(-752043296))));
 
     assert_eq!(
         decode(&codec, b"\0\0\0\0\0\0\0\0\0\0\0\x01\0\0\0\0")
