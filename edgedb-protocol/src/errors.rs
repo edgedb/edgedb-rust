@@ -3,6 +3,8 @@ use std::str;
 use snafu::{Snafu, Backtrace};
 use uuid;
 
+use crate::value::Value;
+
 
 #[derive(Snafu, Debug)]
 #[snafu(visibility(pub(crate)))]
@@ -50,6 +52,10 @@ pub enum EncodeError {
     TooManyMethods { backtrace: Backtrace },
     #[snafu(display("unknown message types can't be encoded"))]
     UnknownMessageCantBeEncoded { backtrace: Backtrace },
+    #[snafu(display("trying to encode invalid value type {} with codec {}",
+                    value_type, codec))]
+    InvalidValue { backtrace: Backtrace,
+                   value_type: &'static str, codec: &'static str },
     #[doc(hidden)]
     __NonExhaustive2,
 }
@@ -67,4 +73,9 @@ pub enum CodecError {
     TooManyDescriptors { backtrace: Backtrace, index: usize },
     #[doc(hidden)]
     __NonExhaustive3,
+}
+
+pub fn invalid_value(codec: &'static str, value: &Value) -> EncodeError
+{
+    InvalidValue { codec, value_type: value.kind() }.fail::<()>().unwrap_err()
 }
