@@ -43,6 +43,7 @@ commands:
     description: Build the python library and run python interpreter
     container: ubuntu
     run: |
+      set -ex
       cargo build -p edgeql-python
       export PYTHONPATH=/work/edgeql-pytest
       python3.8 -i -c 'import edb.edgeql._edgeql_rust' -v
