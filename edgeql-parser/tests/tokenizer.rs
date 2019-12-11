@@ -56,6 +56,9 @@ fn idents() {
     assert_eq!(tok_str("тест тест_abc abc_тест"),
                        ["тест", "тест_abc", "abc_тест"]);
     assert_eq!(tok_typ("тест тест_abc abc_тест"), [Ident, Ident, Ident]);
+    assert_eq!(tok_err(" + __test__"),
+        "Unexpected `1:4: identifiers surrounded by double underscores \
+        are forbidden`");
 }
 
 #[test]
@@ -518,6 +521,16 @@ fn tuple_paths() {
     assert_eq!(tok_typ("tup.1.2.3.4.5"),
         [Ident, Dot, IntConst, Dot, IntConst,
                 Dot, IntConst, Dot, IntConst, Dot, IntConst]);
+    assert_eq!(tok_str("tup.1.2.>3.4.>5"),
+        ["tup", ".", "1", ".", "2", ".>", "3", ".", "4", ".>", "5"]);
+    assert_eq!(tok_typ("tup.1.2.>3.4.>5"),
+        [Ident, Dot, IntConst, Dot, IntConst,
+                ForwardLink, IntConst, Dot, IntConst, ForwardLink, IntConst]);
+    assert_eq!(tok_str("$0.1.2.3.4.5"),
+        ["$0", ".", "1", ".", "2", ".", "3", ".", "4", ".", "5"]);
+    assert_eq!(tok_typ("$0.1.2.3.4.5"),
+        [Argument, Dot, IntConst, Dot, IntConst,
+                Dot, IntConst, Dot, IntConst, Dot, IntConst]);
     assert_eq!(tok_err("tup.1n"),
         "Unexpected `1:5: unexpected char \'n\' only integers \
         are allowed after dot (for tuple access)`");
@@ -537,8 +550,8 @@ fn strings() {
     assert_eq!(tok_typ(r#" b""  "#), [BinStr]);
     assert_eq!(tok_str(r#" b''  "#), [r#"b''"#]);
     assert_eq!(tok_typ(r#" b''  "#), [BinStr]);
-    assert_eq!(tok_str(r#" ``  "#), [r#"``"#]);
-    assert_eq!(tok_typ(r#" ``  "#), [BacktickName]);
+    assert_eq!(tok_err(r#" ``  "#),
+        "Unexpected `1:2: backtick quotes must not be empty`");
 
     assert_eq!(tok_str(r#" "hello"  "#), [r#""hello""#]);
     assert_eq!(tok_typ(r#" "hello"  "#), [Str]);
@@ -584,6 +597,8 @@ fn strings() {
     assert_eq!(tok_typ(r#" b'h\'ello' "#), [BinStr]);
     assert_eq!(tok_str(r#" `hello\` "#), [r#"`hello\`"#]);
     assert_eq!(tok_typ(r#" `hello\` "#), [BacktickName]);
+    assert_eq!(tok_str(r#" `hel``lo` "#), [r#"`hel``lo`"#]);
+    assert_eq!(tok_typ(r#" `hel``lo` "#), [BacktickName]);
 
     assert_eq!(tok_str(r#" "h'el`lo" "#), [r#""h'el`lo""#]);
     assert_eq!(tok_typ(r#" "h'el`lo" "#), [Str]);
@@ -648,6 +663,13 @@ fn strings() {
     assert_eq!(tok_err(r#"test'hello'"#),
         "Unexpected `1:1: Prefix \"test\" is not allowed for strings, \
         allowed: `b`, `r``");
+    assert_eq!(tok_err(r#"`@x`"#),
+        "Unexpected `1:1: backtick-quoted name can't start with char `@``");
+    assert_eq!(tok_err(r#"`a::b`"#),
+        "Unexpected `1:1: backtick-quoted name can't contain `::``");
+    assert_eq!(tok_err(r#"`__x__`"#),
+        "Unexpected `1:1: backtick-quoted names surrounded by double \
+                    underscores are forbidden`");
 }
 
 #[test]
@@ -668,20 +690,47 @@ fn test_dollar() {
         "Unexpected `1:8: unclosed string started with $$`");
     assert_eq!(tok_err("select $a$ ; $$ test;"),
         "Unexpected `1:8: unclosed string started with \"$a$\"`");
+    assert_eq!(tok_err("select $0$"),
+        "Unexpected `1:8: dollar quote must not start with a digit`");
+    assert_eq!(tok_err("select $фыва$"),
+        "Unexpected `1:8: dollar quote supports only ascii chars`");
     assert_eq!(tok_str("select $a$a$ ; $a$ test;"),
         ["select", "$a$a$ ; $a$", "test", ";"]);
     assert_eq!(tok_typ("select $a$a$ ; $a$ test;"),
         [Keyword, Str, Ident, Semicolon]);
-    assert_eq!(tok_str("select $a+b; $ test; $a+b; $ ;"),
-        ["select", "$", "a", "+", "b", ";", "$", "test",
-         ";", "$", "a", "+", "b", ";", "$", ";"]);
-    assert_eq!(tok_typ("select $a+b; $ test; $a+b; $ ;"),
-        [Keyword, Dollar, Ident, Add, Ident, Semicolon, Dollar, Ident,
-         Semicolon, Dollar, Ident, Add, Ident, Semicolon, Dollar, Semicolon]);
-    assert_eq!(tok_str("select $def x$ test; $def x$"),
-        ["select", "$", "def", "x", "$", "test",
-         ";", "$", "def", "x", "$"]);
-    assert_eq!(tok_typ("select $def x$ test; $def x$"),
-        [Keyword, Dollar, Ident, Ident, Dollar, Ident,
-         Semicolon, Dollar, Ident, Ident, Dollar]);
+    assert_eq!(tok_str("select $a+b; $b test; $a+b; $b ;"),
+        ["select", "$a", "+", "b", ";", "$b", "test",
+         ";", "$a", "+", "b", ";", "$b", ";"]);
+    assert_eq!(tok_typ("select $a+b; $b test; $a+b; $b ;"),
+        [Keyword, Argument, Add, Ident, Semicolon, Argument, Ident,
+         Semicolon, Argument, Add, Ident, Semicolon, Argument, Semicolon]);
+    assert_eq!(tok_str("select $def x$y test; $def x$y"),
+        ["select", "$def", "x", "$y", "test",
+         ";", "$def", "x", "$y"]);
+    assert_eq!(tok_typ("select $def x$y test; $def x$y"),
+        [Keyword, Argument, Ident, Argument, Ident,
+         Semicolon, Argument, Ident, Argument]);
+    assert_eq!(tok_str("select $`x``y` + $0 + $`zz` + $1.2 + $фыва"),
+        ["select", "$`x``y`", "+", "$0", "+", "$`zz`", "+", "$1", ".", "2",
+         "+", "$фыва"]);
+    assert_eq!(tok_typ("select $`x``y` + $0 + $`zz` + $1.2 + $фыва"),
+        [Keyword, Argument, Add, Argument, Add, Argument,
+         Add, Argument, Dot, IntConst, Add, Argument]);
+    assert_eq!(tok_err(r#"$-"#),
+        "Unexpected `1:1: bare $ is not allowed`");
+    assert_eq!(tok_err(r#"$0abc"#),
+        "Unexpected `1:1: the \"$0abc\" is not a valid argument, \
+         either name starting with letter or only digits are expected`");
+    assert_eq!(tok_err(r#"-$"#),
+        "Unexpected `1:2: bare $ is not allowed`");
+    assert_eq!(tok_err(r#" $``  "#),
+        "Unexpected `1:2: backtick-quoted argument must not be empty`");
+    assert_eq!(tok_err(r#"$`@x`"#),
+        "Unexpected `1:1: backtick-quoted argument can't \
+        start with char `@``");
+    assert_eq!(tok_err(r#"$`a::b`"#),
+        "Unexpected `1:1: backtick-quoted argument can't contain `::``");
+    assert_eq!(tok_err(r#"$`__x__`"#),
+        "Unexpected `1:1: backtick-quoted arguments surrounded by double \
+                    underscores are forbidden`");
 }
