@@ -2,6 +2,7 @@
 members = [
     "edgeql-parser",
     "edgeql-python",
+    "edgeql-pytest",
     "edgedb-protocol",
     "edgedb-repl",
 ]

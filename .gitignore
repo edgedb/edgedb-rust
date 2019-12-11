@@ -2,3 +2,4 @@
 /.vagga
 /target
 /edgeql_python.cpython-*.so
+__pycache__

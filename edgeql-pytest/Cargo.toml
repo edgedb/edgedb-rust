@@ -1,5 +1,5 @@
 [package]
-name = "edgeql-python"
+name = "edgeql-pytest"
 license = "MIT/Apache-2.0"
 version = "0.1.0"
 authors = ["MagicStack Inc. <hello@magic.io>"]
@@ -7,13 +7,11 @@ edition = "2018"
 
 [dependencies]
 edgeql-parser = {path = "../edgeql-parser"}
+lazy_static = "1.4.0"
 
 [dependencies.cpython]
 git = "git://github.com/dgrunwald/rust-cpython"
 rev = "dabc06c"
-features = ["extension-module"]
 
-[lib]
-crate-type = ["cdylib"]
-name = "edgeql_python"
-path = "src/lib.rs"
+[[bin]]
+name = "edgeql-pytest"

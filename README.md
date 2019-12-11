@@ -4,6 +4,16 @@ EdgeDB Rust Binding
 Work in progress...
 
 
+Running Tests
+=============
+
+Due to cargo's limitation on propagation of "features", tests can only be
+run as two separate invocations:
+```
+cargo test --workspace --exclude edgeql-pytest
+cargo test -p edgeql-pytest
+```
+
 License
 =======
 

@@ -374,11 +374,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "edgeql-pytest"
+version = "0.1.0"
+dependencies = [
+ "cpython 0.3.0 (git+git://github.com/dgrunwald/rust-cpython?rev=dabc06c)",
+ "edgeql-parser 0.1.0",
+ "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "edgeql-python"
 version = "0.1.0"
 dependencies = [
  "cpython 0.3.0 (git+git://github.com/dgrunwald/rust-cpython?rev=dabc06c)",
- "edgedb-protocol 0.1.0",
+ "edgeql-parser 0.1.0",
 ]
 
 [[package]]

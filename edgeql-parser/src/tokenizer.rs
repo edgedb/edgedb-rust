@@ -14,7 +14,7 @@ use crate::position::Pos;
 const MAX_KEYWORD_LENGTH: usize = 16;
 
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum Kind {
     Assign,           // :=
     SubAssign,        // -=
