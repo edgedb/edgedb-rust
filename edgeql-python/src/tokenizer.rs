@@ -208,16 +208,14 @@ pub struct TokenInfo {
 pub fn tokenize(py: Python, s: &PyString) -> PyResult<PyList> {
     let tokens = unsafe { tokens::retrieve(py)? };
     let data = s.to_string(py)?;
-    let mut tokenizer = TokenStream::new(&data[..]);
-    let mut keyword_buf = String::with_capacity(MAX_KEYWORD_LENGTH);
 
-    let mut buf = Vec::new();
-    loop {
-        let tok = match tokenizer.next_token() {
-            Ok(Some(t)) => t,
-            Ok(None) => break,
-            Err(e) => return Err(TokenizerError::new(py, e.to_string())),
-        };
+    let rust_tokens: Vec<_> = py.allow_threads(|| -> Result<_, _> {
+        TokenStream::new(&data[..]).collect()
+    }).map_err(|e| TokenizerError::new(py, e.to_string()))?;
+
+    let mut buf = Vec::with_capacity(rust_tokens.len());
+    let mut keyword_buf = String::with_capacity(MAX_KEYWORD_LENGTH);
+    for tok in rust_tokens {
         let py_tok = match tok.kind {
             Kind::Keyword | Kind::Ident => {
                 if tok.value.len() > MAX_KEYWORD_LENGTH {

@@ -87,14 +87,13 @@ pub struct Checkpoint {
     dot: bool,
 }
 
-impl<'a> TokenStream<'a> {
-    pub fn next_token(&mut self)
-        -> Result<Option<Token<'a>>, Error<Token<'a>, Token<'a>>>
-    {
+impl<'a> Iterator for TokenStream<'a> {
+    type Item = Result<Token<'a>, Error<Token<'a>, Token<'a>>>;
+    fn next(&mut self) -> Option<Self::Item> {
         match self.uncons() {
-            Ok(t) => Ok(Some(t)),
-            Err(e) if e == Error::end_of_input() => Ok(None),
-            Err(e) => Err(e),
+            Ok(t) => Some(Ok(t)),
+            Err(e) if e == Error::end_of_input() => None,
+            Err(e) => Some(Err(e)),
         }
     }
 }
