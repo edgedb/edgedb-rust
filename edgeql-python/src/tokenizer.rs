@@ -173,7 +173,7 @@ const CURRENT_RESERVED_KEYWORDS: [&str; 51] = [
     "with",
 ];
 
-py_class!(class Token |py| {
+py_class!(pub class Token |py| {
     data _kind: PyString;
     data _value: PyString;
     def kind(&self) -> PyResult<PyString> {
