@@ -16,6 +16,7 @@ commands:
   test-py: !Command
     description: Run tests
     container: ubuntu
+    prerequisites: [make]
     run: [cargo, test, -p, edgeql-pytest]
 
   test-rust: !Command

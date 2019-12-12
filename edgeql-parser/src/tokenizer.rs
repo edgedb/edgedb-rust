@@ -11,7 +11,7 @@ use crate::position::Pos;
 
 
 // Current max keyword length is 10, but we're reserving some space
-const MAX_KEYWORD_LENGTH: usize = 16;
+pub const MAX_KEYWORD_LENGTH: usize = 16;
 
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
@@ -85,6 +85,18 @@ pub struct Checkpoint {
     position: Pos,
     off: usize,
     dot: bool,
+}
+
+impl<'a> TokenStream<'a> {
+    pub fn next_token(&mut self)
+        -> Result<Option<Token<'a>>, Error<Token<'a>, Token<'a>>>
+    {
+        match self.uncons() {
+            Ok(t) => Ok(Some(t)),
+            Err(e) if e == Error::end_of_input() => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
 }
 
 impl<'a> StreamOnce for TokenStream<'a> {
@@ -720,100 +732,105 @@ impl<'a> TokenStream<'a> {
         self.keyword_buf.clear();
         self.keyword_buf.push_str(s);
         self.keyword_buf.make_ascii_lowercase();
-        match &self.keyword_buf[..] {
-            // Reserved keywords
-            | "__source__"
-            | "__subject__"
-            | "__type__"
-            | "alter"
-            | "and"
-            | "anytuple"
-            | "anytype"
-            | "commit"
-            | "configure"
-            | "create"
-            | "declare"
-            | "delete"
-            | "describe"
-            | "detached"
-            | "distinct"
-            | "drop"
-            | "else"
-            | "empty"
-            | "exists"
-            | "extending"
-            | "false"
-            | "filter"
-            | "for"
-            | "function"
-            | "group"
-            | "if"
-            | "ilike"
-            | "in"
-            | "insert"
-            | "introspect"
-            | "is"
-            | "like"
-            | "limit"
-            | "module"
-            | "not"
-            | "offset"
-            | "optional"
-            | "or"
-            | "order"
-            | "release"
-            | "reset"
-            | "rollback"
-            | "select"
-            | "set"
-            | "start"
-            | "true"
-            | "typeof"
-            | "update"
-            | "union"
-            | "variadic"
-            | "with"
-            // Future reserved keywords
-            | "analyze"
-            | "anyarray"
-            | "begin"
-            | "case"
-            | "check"
-            | "deallocate"
-            | "discard"
-            | "do"
-            | "end"
-            | "execute"
-            | "explain"
-            | "fetch"
-            | "get"
-            | "global"
-            | "grant"
-            | "import"
-            | "listen"
-            | "load"
-            | "lock"
-            | "match"
-            | "move"
-            | "notify"
-            | "prepare"
-            | "partition"
-            | "policy"
-            | "raise"
-            | "refresh"
-            | "reindex"
-            | "revoke"
-            | "over"
-            | "when"
-            | "window"
-            => true,
-            _ => false,
-        }
+        return is_keyword(&self.keyword_buf)
     }
 }
 
 impl<'a> fmt::Display for Token<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}[{:?}]", self.value, self.kind)
+    }
+}
+
+/// Check if the lowercase name is a keyword
+pub fn is_keyword(s: &str) -> bool {
+    match s {
+        // Reserved keywords
+        | "__source__"
+        | "__subject__"
+        | "__type__"
+        | "alter"
+        | "and"
+        | "anytuple"
+        | "anytype"
+        | "commit"
+        | "configure"
+        | "create"
+        | "declare"
+        | "delete"
+        | "describe"
+        | "detached"
+        | "distinct"
+        | "drop"
+        | "else"
+        | "empty"
+        | "exists"
+        | "extending"
+        | "false"
+        | "filter"
+        | "for"
+        | "function"
+        | "group"
+        | "if"
+        | "ilike"
+        | "in"
+        | "insert"
+        | "introspect"
+        | "is"
+        | "like"
+        | "limit"
+        | "module"
+        | "not"
+        | "offset"
+        | "optional"
+        | "or"
+        | "order"
+        | "release"
+        | "reset"
+        | "rollback"
+        | "select"
+        | "set"
+        | "start"
+        | "true"
+        | "typeof"
+        | "update"
+        | "union"
+        | "variadic"
+        | "with"
+        // Future reserved keywords
+        | "analyze"
+        | "anyarray"
+        | "begin"
+        | "case"
+        | "check"
+        | "deallocate"
+        | "discard"
+        | "do"
+        | "end"
+        | "execute"
+        | "explain"
+        | "fetch"
+        | "get"
+        | "global"
+        | "grant"
+        | "import"
+        | "listen"
+        | "load"
+        | "lock"
+        | "match"
+        | "move"
+        | "notify"
+        | "prepare"
+        | "partition"
+        | "policy"
+        | "raise"
+        | "refresh"
+        | "reindex"
+        | "revoke"
+        | "over"
+        | "when"
+        | "window"
+        => true,
+        _ => false,
     }
 }
