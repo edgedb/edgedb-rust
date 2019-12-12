@@ -1,5 +1,5 @@
 use std::sync::Once;
-use cpython::{Python, PyDict, PyObject, PyString, GILGuard};
+use cpython::{Python, PyDict, GILGuard};
 pub use cpython::PyResult as Result;
 
 static PY_INIT: Once = Once::new();
@@ -22,10 +22,10 @@ pub fn run(s: &str) -> RunResult {
             let tb = py.import("traceback")
                 .expect("can import traceback");
             let locals = PyDict::new(py);
-            locals.set_item(py, "etype", e.get_type(py));
-            locals.set_item(py, "evalue", e.instance(py));
-            locals.set_item(py, "tb", &e.ptraceback);
-            locals.set_item(py, "traceback", tb);
+            locals.set_item(py, "etype", e.get_type(py))?;
+            locals.set_item(py, "evalue", e.instance(py))?;
+            locals.set_item(py, "tb", &e.ptraceback)?;
+            locals.set_item(py, "traceback", tb)?;
             println!("{}",
                 py.eval("''.join(\
                     traceback.format_exception(etype, evalue, tb)\
