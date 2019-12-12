@@ -20,7 +20,8 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: build
+          args: -p edgeql-python
       - uses: actions-rs/cargo@v1
         with:
           command: test
-          args: -p edgeql-python
+          args: -p edgeql-pytest

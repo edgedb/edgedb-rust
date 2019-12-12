@@ -11,10 +11,10 @@ Due to cargo's limitation on propagation of "features", tests can only be
 run as two separate invocations:
 ```
 cargo test --workspace --exclude edgeql-pytest
-cargo build
+cargo build -p edgeql-python
 cargo test -p edgeql-pytest
 ```
-The `cargo build` is required to build the library used by `edgeql-test`.
+The `cargo build` is required to build the library used by `edgeql-pytest`.
 
 License
 =======
