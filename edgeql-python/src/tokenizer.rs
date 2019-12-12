@@ -7,6 +7,8 @@ use edgeql_parser::tokenizer::{TokenStream, Kind, is_keyword};
 use edgeql_parser::tokenizer::{MAX_KEYWORD_LENGTH};
 use edgeql_parser::position::Pos;
 
+static mut TOKENS: Option<Tokens> = None;
+
 const UNRESERVED_KEYWORDS: [&str; 75] = [
     "abstract",
     "after",
@@ -203,8 +205,6 @@ py_class!(pub class Token |py| {
 
 py_exception!(_edgeql_rust, TokenizerError);
 
-py_capsule!(from edb.edgeql._edgeql_rust import _tokens as tokens for Tokens);
-
 pub struct Tokens {
     pub ident: PyString,
     pub tokens: HashMap<Kind, TokenInfo>,
@@ -217,8 +217,14 @@ pub struct TokenInfo {
     pub value: Option<PyString>,
 }
 
+pub fn init_module(py: Python) {
+    unsafe {
+        TOKENS = Some(Tokens::new(py))
+    }
+}
+
 pub fn tokenize(py: Python, s: &PyString) -> PyResult<PyList> {
-    let tokens = unsafe { tokens::retrieve(py)? };
+    let tokens = unsafe { TOKENS.as_ref().expect("module initialized") };
     let data = s.to_string(py)?;
 
     let rust_tokens: Vec<_> = py.allow_threads(|| -> Result<_, _> {
