@@ -70,13 +70,19 @@ pub struct Token<'a> {
     pub value: &'a str,
 }
 
+pub struct SpannedToken<'a> {
+    pub token: Token<'a>,
+    pub start: Pos,
+    pub end: Pos,
+}
+
 #[derive(Debug, PartialEq)]
 pub struct TokenStream<'a> {
     buf: &'a str,
     position: Pos,
     off: usize,
     dot: bool,
-    next_state: Option<(usize, Token<'a>, usize, Pos)>,
+    next_state: Option<(usize, Token<'a>, usize, Pos, Pos)>,
     keyword_buf: String,
 }
 
@@ -88,10 +94,13 @@ pub struct Checkpoint {
 }
 
 impl<'a> Iterator for TokenStream<'a> {
-    type Item = Result<Token<'a>, Error<Token<'a>, Token<'a>>>;
+    type Item = Result<SpannedToken<'a>, Error<Token<'a>, Token<'a>>>;
     fn next(&mut self) -> Option<Self::Item> {
-        match self.uncons() {
-            Ok(t) => Some(Ok(t)),
+        let start = Positioned::position(self);
+        match self.read_token() {
+            Ok((token, end)) => Some(Ok(SpannedToken {
+                token, start, end,
+            })),
             Err(e) if e == Error::end_of_input() => None,
             Err(e) => Some(Err(e)),
         }
@@ -105,32 +114,7 @@ impl<'a> StreamOnce for TokenStream<'a> {
     type Error = Errors<Token<'a>, Token<'a>, Pos>;
 
     fn uncons(&mut self) -> Result<Self::Token, Error<Token<'a>, Token<'a>>> {
-        // This quickly resets the stream one token back
-        // (the most common reset that used quite often)
-        if let Some((at, tok, off, pos)) = self.next_state {
-            if at == self.off {
-                self.off = off;
-                self.position = pos;
-                return Ok(tok);
-            }
-        }
-        let old_pos = self.off;
-        let (kind, len) = self.peek_token()?;
-
-        // note we may want to get rid of "update_position" here as it's
-        // faster to update 'as you go', but this is easier to get right first
-        self.update_position(len);
-        self.dot = match kind {
-            Kind::Dot | Kind::ForwardLink => true,
-            _ => false,
-        };
-
-        let value = &self.buf[self.off-len..self.off];
-        self.skip_whitespace();
-        let token = Token { kind, value };
-        // This is for quick reset on token back
-        self.next_state = Some((old_pos, token, self.off, self.position));
-        Ok(token)
+        self.read_token().map(|(t, _)| t)
     }
 }
 
@@ -187,6 +171,38 @@ impl<'a> TokenStream<'a> {
         };
         me.skip_whitespace();
         me
+    }
+
+    fn read_token(&mut self)
+        -> Result<(Token<'a>, Pos), Error<Token<'a>, Token<'a>>>
+    {
+        // This quickly resets the stream one token back
+        // (the most common reset that used quite often)
+        if let Some((at, tok, off, end, next)) = self.next_state {
+            if at == self.off {
+                self.off = off;
+                self.position = next;
+                return Ok((tok, end));
+            }
+        }
+        let old_pos = self.off;
+        let (kind, len) = self.peek_token()?;
+
+        // note we may want to get rid of "update_position" here as it's
+        // faster to update 'as you go', but this is easier to get right first
+        self.update_position(len);
+        self.dot = match kind {
+            Kind::Dot | Kind::ForwardLink => true,
+            _ => false,
+        };
+        let value = &self.buf[self.off-len..self.off];
+        let end = self.position;
+
+        self.skip_whitespace();
+        let token = Token { kind, value };
+        // This is for quick reset on token back
+        self.next_state = Some((old_pos, token, self.off, end, self.position));
+        Ok((token, end))
     }
 
     fn peek_token(&mut self)

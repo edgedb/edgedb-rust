@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
-use cpython::{PyString, PyList, PyResult, Python, PyClone, PythonObject};
+use cpython::{PyString, PyResult, Python, PyClone, PythonObject};
+use cpython::{PyTuple, PyList, ToPyObject};
 
 use edgeql_parser::tokenizer::{TokenStream, Kind, is_keyword};
 use edgeql_parser::tokenizer::{MAX_KEYWORD_LENGTH};
+use edgeql_parser::position::Pos;
 
 const UNRESERVED_KEYWORDS: [&str; 75] = [
     "abstract",
@@ -176,11 +178,21 @@ const CURRENT_RESERVED_KEYWORDS: [&str; 51] = [
 py_class!(pub class Token |py| {
     data _kind: PyString;
     data _value: PyString;
+    data _start: Pos;
+    data _end: Pos;
     def kind(&self) -> PyResult<PyString> {
         Ok(self._kind(py).clone_ref(py))
     }
     def value(&self) -> PyResult<PyString> {
         Ok(self._value(py).clone_ref(py))
+    }
+    def start(&self) -> PyResult<PyTuple> {
+        let pos = self._start(py);
+        Ok((pos.line, pos.column, pos.offset).to_py_object(py))
+    }
+    def end(&self) -> PyResult<PyTuple> {
+        let pos = self._end(py);
+        Ok((pos.line, pos.column, pos.offset).to_py_object(py))
     }
     def __repr__(&self) -> PyResult<PyString> {
         Ok(PyString::new(py, &format!("<Token {} {:?}>",
@@ -215,13 +227,12 @@ pub fn tokenize(py: Python, s: &PyString) -> PyResult<PyList> {
 
     let mut buf = Vec::with_capacity(rust_tokens.len());
     let mut keyword_buf = String::with_capacity(MAX_KEYWORD_LENGTH);
-    for tok in rust_tokens {
-        let py_tok = match tok.kind {
+    for spanned_tok in rust_tokens {
+        let tok = spanned_tok.token;
+        let (name, value) = match tok.kind {
             Kind::Keyword | Kind::Ident => {
                 if tok.value.len() > MAX_KEYWORD_LENGTH {
-                    Token::create_instance(py,
-                        tokens.ident.clone_ref(py),
-                        PyString::new(py, tok.value))?
+                    (tokens.ident.clone_ref(py), PyString::new(py, tok.value))
                 } else {
                     keyword_buf.clear();
                     keyword_buf.push_str(tok.value);
@@ -229,15 +240,13 @@ pub fn tokenize(py: Python, s: &PyString) -> PyResult<PyList> {
                     match tokens.keywords.get(&keyword_buf) {
                         Some(tok_info) => {
                             debug_assert_eq!(tok_info.kind, tok.kind);
-                            Token::create_instance(py,
-                                tok_info.name.clone_ref(py),
-                                tok_info.value.as_ref()
-                                    .unwrap().clone_ref(py))?
+                            (tok_info.name.clone_ref(py),
+                             tok_info.value.as_ref().unwrap()
+                             .clone_ref(py))
                         }
                         None => {
-                            Token::create_instance(py,
-                                tokens.ident.clone_ref(py),
-                                PyString::new(py, tok.value))?
+                            (tokens.ident.clone_ref(py),
+                             PyString::new(py, tok.value))
                         }
                     }
                 }
@@ -245,19 +254,18 @@ pub fn tokenize(py: Python, s: &PyString) -> PyResult<PyList> {
             _ => {
                 if let Some(tok_info) = tokens.tokens.get(&tok.kind) {
                     if let Some(ref value) = tok_info.value {
-                        Token::create_instance(py,
-                            tok_info.name.clone_ref(py),
-                            value.clone_ref(py))?
+                        (tok_info.name.clone_ref(py), value.clone_ref(py))
                     } else {
-                        Token::create_instance(py,
-                            tok_info.name.clone_ref(py),
-                            PyString::new(py, tok.value))?
+                        (tok_info.name.clone_ref(py),
+                         PyString::new(py, tok.value))
                     }
                 } else {
                     unimplemented!("token {:?}", tok.kind);
                 }
             }
         };
+        let py_tok = Token::create_instance(py, name, value,
+            spanned_tok.start, spanned_tok.end)?;
 
         buf.push(py_tok.into_object());
     }
