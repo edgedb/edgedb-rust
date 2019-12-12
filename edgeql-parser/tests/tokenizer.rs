@@ -117,6 +117,8 @@ fn plus_tokens() {
     assert_eq!(tok_typ("a + = b"), [Ident, Add, Eq, Ident]);
     assert_eq!(tok_str("a ++= b"), ["a", "++", "=", "b"]);
     assert_eq!(tok_typ("a ++= b"), [Ident, Concat, Eq, Ident]);
+    assert_eq!(tok_str("1+1"), ["1", "+", "1"]);
+    assert_eq!(tok_typ("1+1"), [IntConst, Add, IntConst]);
 }
 
 #[test]
@@ -212,29 +214,13 @@ fn integer() {
     assert_eq!(tok_typ("0"), [IntConst]);
     assert_eq!(tok_str("*0"), ["*", "0"]);
     assert_eq!(tok_typ("*0"), [Mul, IntConst]);
-    assert_eq!(tok_str("+0"), ["+0"]);
-    assert_eq!(tok_typ("+0"), [IntConst]);
-    assert_eq!(tok_str("-0"), ["-0"]);
-    assert_eq!(tok_typ("-0"), [IntConst]);
     assert_eq!(tok_str("123"), ["123"]);
     assert_eq!(tok_typ("123"), [IntConst]);
-    assert_eq!(tok_str("-123"), ["-123"]);
-    assert_eq!(tok_typ("-123"), [IntConst]);
-    assert_eq!(tok_str("+123"), ["+123"]);
-    assert_eq!(tok_typ("+123"), [IntConst]);
 
     assert_eq!(tok_str("0 "), ["0"]);
     assert_eq!(tok_typ("0 "), [IntConst]);
-    assert_eq!(tok_str("+0 "), ["+0"]);
-    assert_eq!(tok_typ("+0 "), [IntConst]);
-    assert_eq!(tok_str("-0 "), ["-0"]);
-    assert_eq!(tok_typ("-0 "), [IntConst]);
     assert_eq!(tok_str("123 "), ["123"]);
     assert_eq!(tok_typ("123 "), [IntConst]);
-    assert_eq!(tok_str("-123 "), ["-123"]);
-    assert_eq!(tok_typ("-123 "), [IntConst]);
-    assert_eq!(tok_str("+123 "), ["+123"]);
-    assert_eq!(tok_typ("+123 "), [IntConst]);
 }
 
 #[test]
@@ -243,29 +229,13 @@ fn bigint() {
     assert_eq!(tok_typ("0n"), [BigIntConst]);
     assert_eq!(tok_str("*0n"), ["*", "0n"]);
     assert_eq!(tok_typ("*0n"), [Mul, BigIntConst]);
-    assert_eq!(tok_str("+0n"), ["+0n"]);
-    assert_eq!(tok_typ("+0n"), [BigIntConst]);
-    assert_eq!(tok_str("-0n"), ["-0n"]);
-    assert_eq!(tok_typ("-0n"), [BigIntConst]);
     assert_eq!(tok_str("123n"), ["123n"]);
     assert_eq!(tok_typ("123n"), [BigIntConst]);
-    assert_eq!(tok_str("-123n"), ["-123n"]);
-    assert_eq!(tok_typ("-123n"), [BigIntConst]);
-    assert_eq!(tok_str("+123n"), ["+123n"]);
-    assert_eq!(tok_typ("+123n"), [BigIntConst]);
 
     assert_eq!(tok_str("0n "), ["0n"]);
     assert_eq!(tok_typ("0n "), [BigIntConst]);
-    assert_eq!(tok_str("+0n "), ["+0n"]);
-    assert_eq!(tok_typ("+0n "), [BigIntConst]);
-    assert_eq!(tok_str("-0n "), ["-0n"]);
-    assert_eq!(tok_typ("-0n "), [BigIntConst]);
     assert_eq!(tok_str("123n "), ["123n"]);
     assert_eq!(tok_typ("123n "), [BigIntConst]);
-    assert_eq!(tok_str("-123n "), ["-123n"]);
-    assert_eq!(tok_typ("-123n "), [BigIntConst]);
-    assert_eq!(tok_str("+123n "), ["+123n"]);
-    assert_eq!(tok_typ("+123n "), [BigIntConst]);
 }
 
 #[test]
@@ -274,16 +244,8 @@ fn float() {
     assert_eq!(tok_typ("0."), [FloatConst]);
     assert_eq!(tok_str("     0.0"), ["0.0"]);
     assert_eq!(tok_typ("     0.0"), [FloatConst]);
-    assert_eq!(tok_str("+0.123"), ["+0.123"]);
-    assert_eq!(tok_typ("+0.123"), [FloatConst]);
-    assert_eq!(tok_str("-0.234"), ["-0.234"]);
-    assert_eq!(tok_typ("-0.234"), [FloatConst]);
     assert_eq!(tok_str("123.999"), ["123.999"]);
     assert_eq!(tok_typ("123.999"), [FloatConst]);
-    assert_eq!(tok_str("-123.000"), ["-123.000"]);
-    assert_eq!(tok_typ("-123.000"), [FloatConst]);
-    assert_eq!(tok_str("+123.30"), ["+123.30"]);
-    assert_eq!(tok_typ("+123.30"), [FloatConst]);
     assert_eq!(tok_str("123.999e3"), ["123.999e3"]);
     assert_eq!(tok_typ("123.999e3"), [FloatConst]);
     assert_eq!(tok_str("123.999e+99"), ["123.999e+99"]);
@@ -301,16 +263,8 @@ fn float() {
     assert_eq!(tok_typ("0. "), [FloatConst]);
     assert_eq!(tok_str("     0.0 "), ["0.0"]);
     assert_eq!(tok_typ("     0.0 "), [FloatConst]);
-    assert_eq!(tok_str("+0.123 "), ["+0.123"]);
-    assert_eq!(tok_typ("+0.123 "), [FloatConst]);
-    assert_eq!(tok_str("-0.234 "), ["-0.234"]);
-    assert_eq!(tok_typ("-0.234 "), [FloatConst]);
     assert_eq!(tok_str("123.999 "), ["123.999"]);
     assert_eq!(tok_typ("123.999 "), [FloatConst]);
-    assert_eq!(tok_str("-123.000 "), ["-123.000"]);
-    assert_eq!(tok_typ("-123.000 "), [FloatConst]);
-    assert_eq!(tok_str("+123.30 "), ["+123.30"]);
-    assert_eq!(tok_typ("+123.30 "), [FloatConst]);
     assert_eq!(tok_str("123.999e3 "), ["123.999e3"]);
     assert_eq!(tok_typ("123.999e3 "), [FloatConst]);
     assert_eq!(tok_str("123.999e+99 "), ["123.999e+99"]);
@@ -331,16 +285,8 @@ fn decimal() {
     assert_eq!(tok_typ("0.n"), [DecimalConst]);
     assert_eq!(tok_str("     0.0n"), ["0.0n"]);
     assert_eq!(tok_typ("     0.0n"), [DecimalConst]);
-    assert_eq!(tok_str("+0.123n"), ["+0.123n"]);
-    assert_eq!(tok_typ("+0.123n"), [DecimalConst]);
-    assert_eq!(tok_str("-0.234n"), ["-0.234n"]);
-    assert_eq!(tok_typ("-0.234n"), [DecimalConst]);
     assert_eq!(tok_str("123.999n"), ["123.999n"]);
     assert_eq!(tok_typ("123.999n"), [DecimalConst]);
-    assert_eq!(tok_str("-123.000n"), ["-123.000n"]);
-    assert_eq!(tok_typ("-123.000n"), [DecimalConst]);
-    assert_eq!(tok_str("+123.30n"), ["+123.30n"]);
-    assert_eq!(tok_typ("+123.30n"), [DecimalConst]);
     assert_eq!(tok_str("123.999e3n"), ["123.999e3n"]);
     assert_eq!(tok_typ("123.999e3n"), [DecimalConst]);
     assert_eq!(tok_str("123.999e+99n"), ["123.999e+99n"]);
@@ -358,16 +304,8 @@ fn decimal() {
     assert_eq!(tok_typ("0.n "), [DecimalConst]);
     assert_eq!(tok_str("     0.0n "), ["0.0n"]);
     assert_eq!(tok_typ("     0.0n "), [DecimalConst]);
-    assert_eq!(tok_str("+0.123n "), ["+0.123n"]);
-    assert_eq!(tok_typ("+0.123n "), [DecimalConst]);
-    assert_eq!(tok_str("-0.234n "), ["-0.234n"]);
-    assert_eq!(tok_typ("-0.234n "), [DecimalConst]);
     assert_eq!(tok_str("123.999n "), ["123.999n"]);
     assert_eq!(tok_typ("123.999n "), [DecimalConst]);
-    assert_eq!(tok_str("-123.000n "), ["-123.000n"]);
-    assert_eq!(tok_typ("-123.000n "), [DecimalConst]);
-    assert_eq!(tok_str("+123.30n "), ["+123.30n"]);
-    assert_eq!(tok_typ("+123.30n "), [DecimalConst]);
     assert_eq!(tok_str("123.999e3n "), ["123.999e3n"]);
     assert_eq!(tok_typ("123.999e3n "), [DecimalConst]);
     assert_eq!(tok_str("123.999e+99n "), ["123.999e+99n"]);
@@ -386,10 +324,12 @@ fn decimal() {
 fn numbers_from_py() {
     assert_eq!(tok_str("SELECT 3.5432;"), ["SELECT", "3.5432", ";"]);
     assert_eq!(tok_typ("SELECT 3.5432;"), [Keyword, FloatConst, Semicolon]);
-    assert_eq!(tok_str("SELECT +3.5432;"), ["SELECT", "+3.5432", ";"]);
-    assert_eq!(tok_typ("SELECT +3.5432;"), [Keyword, FloatConst, Semicolon]);
-    assert_eq!(tok_str("SELECT -3.5432;"), ["SELECT", "-3.5432", ";"]);
-    assert_eq!(tok_typ("SELECT -3.5432;"), [Keyword, FloatConst, Semicolon]);
+    assert_eq!(tok_str("SELECT +3.5432;"), ["SELECT", "+", "3.5432", ";"]);
+    assert_eq!(tok_typ("SELECT +3.5432;"),
+        [Keyword, Add, FloatConst, Semicolon]);
+    assert_eq!(tok_str("SELECT -3.5432;"), ["SELECT", "-", "3.5432", ";"]);
+    assert_eq!(tok_typ("SELECT -3.5432;"),
+        [Keyword, Sub, FloatConst, Semicolon]);
     assert_eq!(tok_str("SELECT 354.32;"), ["SELECT", "354.32", ";"]);
     assert_eq!(tok_typ("SELECT 354.32;"), [Keyword, FloatConst, Semicolon]);
     assert_eq!(tok_str("SELECT 35400000000000.32;"),
@@ -417,9 +357,9 @@ fn numbers_from_py() {
     assert_eq!(tok_typ("SELECT 354.32e-20;"),
         [Keyword, FloatConst, Semicolon]);
     assert_eq!(tok_str("SELECT -0n;"),
-        ["SELECT", "-0n", ";"]);
+        ["SELECT", "-", "0n", ";"]);
     assert_eq!(tok_typ("SELECT -0n;"),
-        [Keyword, BigIntConst, Semicolon]);
+        [Keyword, Sub, BigIntConst, Semicolon]);
     assert_eq!(tok_str("SELECT 0n;"),
         ["SELECT", "0n", ";"]);
     assert_eq!(tok_typ("SELECT 0n;"),
@@ -429,37 +369,37 @@ fn numbers_from_py() {
     assert_eq!(tok_typ("SELECT 1n;"),
         [Keyword, BigIntConst, Semicolon]);
     assert_eq!(tok_str("SELECT -1n;"),
-        ["SELECT", "-1n", ";"]);
+        ["SELECT", "-", "1n", ";"]);
     assert_eq!(tok_typ("SELECT -1n;"),
-        [Keyword, BigIntConst, Semicolon]);
+        [Keyword, Sub, BigIntConst, Semicolon]);
     assert_eq!(tok_str("SELECT 100000n;"),
         ["SELECT", "100000n", ";"]);
     assert_eq!(tok_typ("SELECT 100000n;"),
         [Keyword, BigIntConst, Semicolon]);
     assert_eq!(tok_str("SELECT -100000n;"),
-        ["SELECT", "-100000n", ";"]);
+        ["SELECT", "-", "100000n", ";"]);
     assert_eq!(tok_typ("SELECT -100000n;"),
-        [Keyword, BigIntConst, Semicolon]);
+        [Keyword, Sub, BigIntConst, Semicolon]);
     assert_eq!(tok_str("SELECT -354.32n;"),
-        ["SELECT", "-354.32n", ";"]);
+        ["SELECT", "-", "354.32n", ";"]);
     assert_eq!(tok_typ("SELECT -354.32n;"),
-        [Keyword, DecimalConst, Semicolon]);
+        [Keyword, Sub, DecimalConst, Semicolon]);
     assert_eq!(tok_str("SELECT 35400000000000.32n;"),
         ["SELECT", "35400000000000.32n", ";"]);
     assert_eq!(tok_typ("SELECT 35400000000000.32n;"),
         [Keyword, DecimalConst, Semicolon]);
     assert_eq!(tok_str("SELECT -35400000000000000000.32n;"),
-        ["SELECT", "-35400000000000000000.32n", ";"]);
+        ["SELECT", "-", "35400000000000000000.32n", ";"]);
     assert_eq!(tok_typ("SELECT -35400000000000000000.32n;"),
-        [Keyword, DecimalConst, Semicolon]);
+        [Keyword, Sub, DecimalConst, Semicolon]);
     assert_eq!(tok_str("SELECT 3.5432e20n;"),
         ["SELECT", "3.5432e20n", ";"]);
     assert_eq!(tok_typ("SELECT 3.5432e20n;"),
         [Keyword, DecimalConst, Semicolon]);
     assert_eq!(tok_str("SELECT -3.5432e+20n;"),
-        ["SELECT", "-3.5432e+20n", ";"]);
+        ["SELECT", "-", "3.5432e+20n", ";"]);
     assert_eq!(tok_typ("SELECT -3.5432e+20n;"),
-        [Keyword, DecimalConst, Semicolon]);
+        [Keyword, Sub, DecimalConst, Semicolon]);
     assert_eq!(tok_str("SELECT 3.5432e-20n;"),
         ["SELECT", "3.5432e-20n", ";"]);
     assert_eq!(tok_typ("SELECT 3.5432e-20n;"),

@@ -210,7 +210,6 @@ impl<'a> TokenStream<'a> {
             '-' => match iter.next() {
                 Some((_, '>')) => return Ok((Arrow, 2)),
                 Some((_, '=')) => return Ok((SubAssign, 2)),
-                Some((_, '0'..='9')) => self.parse_number(),
                 _ => return Ok((Sub, 1)),
             },
             '>' => match iter.next() {
@@ -224,7 +223,6 @@ impl<'a> TokenStream<'a> {
             '+' => match iter.next() {
                 Some((_, '=')) => return Ok((AddAssign, 2)),
                 Some((_, '+')) => return Ok((Concat, 2)),
-                Some((_, '0'..='9')) => self.parse_number(),
                 _ => return Ok((Add, 1)),
             },
             '/' => match iter.next() {
