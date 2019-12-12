@@ -221,6 +221,8 @@ py_exception!(_edgeql_rust, TokenizerError);
 
 pub struct Tokens {
     pub ident: PyString,
+    pub eof: PyString,
+    pub empty: PyString,
 
     pub named_only: PyString,
     pub named_only_val: PyString,
@@ -261,8 +263,9 @@ pub fn tokenize(py: Python, s: &PyString) -> PyResult<PyList> {
     let mut import_cache = ImportCache { decimal: None };
     let data = s.to_string(py)?;
 
+    let mut token_stream = TokenStream::new(&data[..]);
     let rust_tokens: Vec<_> = py.allow_threads(|| -> Result<_, _> {
-        TokenStream::new(&data[..]).collect()
+        token_stream.collect()
     }).map_err(|e| TokenizerError::new(py, e.to_string()))?;
 
     let mut buf = Vec::with_capacity(rust_tokens.len());
@@ -328,6 +331,12 @@ pub fn tokenize(py: Python, s: &PyString) -> PyResult<PyList> {
 
         buf.push(py_tok.into_object());
     }
+    buf.push(Token::create_instance(py,
+        tokens.eof.clone_ref(py),
+        tokens.empty.clone_ref(py),
+        py.None(),
+        token_stream.current_pos(), token_stream.current_pos())?
+        .into_object());
     Ok(PyList::new(py, &buf[..]))
 }
 
@@ -337,6 +346,8 @@ impl Tokens {
         use Kind::*;
         let mut res = Tokens {
             ident: PyString::new(py, "IDENT"),
+            eof: PyString::new(py, "EOF"),
+            empty: PyString::new(py, ""),
             named_only: PyString::new(py, "NAMEDONLY"),
             named_only_val: PyString::new(py, "NAMED ONLY"),
             set_annotation: PyString::new(py, "SETANNOTATION"),

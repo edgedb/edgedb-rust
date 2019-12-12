@@ -14,6 +14,7 @@ fn simple_query() -> py::RunResult {
             '<Token +>',
             '<Token IDENT \\'x\\'>',
             '<Token ;>',
+            '<Token EOF>',
         ], tokens
     ")
 }
@@ -25,14 +26,17 @@ fn multi_keywords() -> py::RunResult {
         tokens = list(map(repr, tokenize('named only')))\n\
         assert tokens == [
             '<Token NAMEDONLY \\'named\\'>',
+            '<Token EOF>',
         ], tokens\n\
         tokens = list(map(repr, tokenize('SET ANNOTATION')))\n\
         assert tokens == [
             '<Token SETANNOTATION>',
+            '<Token EOF>',
         ], tokens\n\
         tokens = list(map(repr, tokenize('Set typE')))\n\
         assert tokens == [
             '<Token SETTYPE>',
+            '<Token EOF>',
         ], tokens\n\
     ")
 }

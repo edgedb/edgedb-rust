@@ -93,7 +93,7 @@ pub struct Checkpoint {
     dot: bool,
 }
 
-impl<'a> Iterator for TokenStream<'a> {
+impl<'a, 'b> Iterator for &'b mut TokenStream<'a> {
     type Item = Result<SpannedToken<'a>, Error<Token<'a>, Token<'a>>>;
     fn next(&mut self) -> Option<Self::Item> {
         let start = Positioned::position(self);
@@ -171,6 +171,10 @@ impl<'a> TokenStream<'a> {
         };
         me.skip_whitespace();
         me
+    }
+
+    pub fn current_pos(&self) -> Pos {
+        self.position
     }
 
     fn read_token(&mut self)
