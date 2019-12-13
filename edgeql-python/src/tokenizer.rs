@@ -10,6 +10,7 @@ use cpython::{PyTuple, PyList, PyInt, PyObject, ToPyObject, ObjectProtocol};
 use edgeql_parser::tokenizer::{TokenStream, Kind, is_keyword, SpannedToken};
 use edgeql_parser::tokenizer::{MAX_KEYWORD_LENGTH, Token as RsToken};
 use edgeql_parser::position::Pos;
+use crate::errors::TokenizerError;
 
 static mut TOKENS: Option<Tokens> = None;
 
@@ -217,7 +218,6 @@ py_class!(pub class Token |py| {
     }
 });
 
-py_exception!(_edgeql_rust, TokenizerError);
 
 pub struct Tokens {
     pub ident: PyString,

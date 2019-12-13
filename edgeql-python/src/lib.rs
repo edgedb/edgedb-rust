@@ -3,8 +3,10 @@
 use cpython::PyString;
 
 mod tokenizer;
+mod errors;
 
-use tokenizer::{Token, TokenizerError, tokenize};
+use errors::TokenizerError;
+use tokenizer::{Token,tokenize};
 
 py_module_initializer!(
     _edgeql_rust, init_edgeql_rust, PyInit__edgeql_rust,
