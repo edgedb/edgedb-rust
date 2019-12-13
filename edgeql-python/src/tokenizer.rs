@@ -182,6 +182,10 @@ const CURRENT_RESERVED_KEYWORDS: [&str; 51] = [
     "with",
 ];
 
+fn py_pos(py: Python, pos: &Pos) -> PyTuple {
+    (pos.line, pos.column, pos.offset).to_py_object(py)
+}
+
 py_class!(pub class Token |py| {
     data _kind: PyString;
     data _text: PyString;
@@ -198,12 +202,10 @@ py_class!(pub class Token |py| {
         Ok(self._value(py).clone_ref(py))
     }
     def start(&self) -> PyResult<PyTuple> {
-        let pos = self._start(py);
-        Ok((pos.line, pos.column, pos.offset).to_py_object(py))
+        Ok(py_pos(py, self._start(py)))
     }
     def end(&self) -> PyResult<PyTuple> {
-        let pos = self._end(py);
-        Ok((pos.line, pos.column, pos.offset).to_py_object(py))
+        Ok(py_pos(py, self._end(py)))
     }
     def __repr__(&self) -> PyResult<PyString> {
         let val = self._value(py);
@@ -320,9 +322,20 @@ pub fn tokenize(py: Python, s: &PyString) -> PyResult<PyList> {
     let data = s.to_string(py)?;
 
     let mut token_stream = TokenStream::new(&data[..]);
-    let rust_tokens: Vec<_> = py.allow_threads(|| -> Result<_, _> {
-        token_stream.collect()
-    }).map_err(|e| TokenizerError::new(py, e.to_string()))?;
+    let rust_tokens: Vec<_> = py.allow_threads(|| {
+        let mut tokens = Vec::new();
+        for res in &mut token_stream {
+            match res {
+                Ok(t) => tokens.push(t),
+                Err(e) => {
+                    return Err((e, token_stream.current_pos()));
+                }
+            }
+        }
+        Ok(tokens)
+    }).map_err(|(e, pos)| {
+        TokenizerError::new(py, (e.to_string(), py_pos(py, &pos)))
+    })?;
 
     let mut buf = Vec::with_capacity(rust_tokens.len());
     let mut tok_iter = rust_tokens.iter().peekable();
