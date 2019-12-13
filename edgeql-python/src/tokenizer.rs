@@ -259,6 +259,7 @@ pub struct Tokens {
     eq: PyString,
     ampersand: PyString,
     pipe: PyString,
+    at: PyString,
 
     iconst: PyString,
     niconst: PyString,
@@ -384,6 +385,7 @@ impl Tokens {
             eq: PyString::new(py, "="),
             ampersand: PyString::new(py, "&"),
             pipe: PyString::new(py, "|"),
+            at: PyString::new(py, "@"),
 
             iconst: PyString::new(py, "ICONST"),
             niconst: PyString::new(py, "NICONST"),
@@ -566,6 +568,9 @@ fn convert(py: Python, tokens: &Tokens, cache: &mut Cache, token: RsToken,
         Pipe => Ok((tokens.pipe.clone_ref(py),
                     tokens.pipe.clone_ref(py),
                     py.None())),
+        At => Ok((tokens.at.clone_ref(py),
+                  tokens.at.clone_ref(py),
+                  py.None())),
         Argument => {
             if token.value[1..].starts_with('`') {
                 Ok((tokens.argument.clone_ref(py),

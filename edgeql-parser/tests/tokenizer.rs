@@ -197,15 +197,15 @@ fn single_char_tokens() {
     assert_eq!(tok_typ(".;:+-*"), [Dot, Semicolon, Colon, Add, Sub, Mul]);
     assert_eq!(tok_str("/%^<>"), ["/", "%", "^", "<", ">"]);
     assert_eq!(tok_typ("/%^<>"), [Div, Modulo, Pow, Less, Greater]);
-    assert_eq!(tok_str("=&|"), ["=", "&", "|"]);
-    assert_eq!(tok_typ("=&|"), [Eq, Ampersand, Pipe]);
+    assert_eq!(tok_str("=&|@"), ["=", "&", "|", "@"]);
+    assert_eq!(tok_typ("=&|@"), [Eq, Ampersand, Pipe, At]);
 
     assert_eq!(tok_str(". ; : + - *"), [".", ";", ":", "+", "-", "*"]);
     assert_eq!(tok_typ(". ; : + - *"), [Dot, Semicolon, Colon, Add, Sub, Mul]);
     assert_eq!(tok_str("/ % ^ < >"), ["/", "%", "^", "<", ">"]);
     assert_eq!(tok_typ("/ % ^ < >"), [Div, Modulo, Pow, Less, Greater]);
-    assert_eq!(tok_str("= & |"), ["=", "&", "|"]);
-    assert_eq!(tok_typ("= & |"), [Eq, Ampersand, Pipe]);
+    assert_eq!(tok_str("= & | @"), ["=", "&", "|", "@"]);
+    assert_eq!(tok_typ("= & | @"), [Eq, Ampersand, Pipe, At]);
 }
 
 #[test]

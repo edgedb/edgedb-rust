@@ -52,6 +52,7 @@ pub enum Kind {
     Eq,               // =
     Ampersand,        // &
     Pipe,             // |
+    At,               // @
     Argument,         // $something, $`something`
     DecimalConst,
     FloatConst,
@@ -335,6 +336,7 @@ impl<'a> TokenStream<'a> {
             '^' => return Ok((Pow, 1)),
             '&' => return Ok((Ampersand, 1)),
             '|' => return Ok((Pipe, 1)),
+            '@' => return Ok((At, 1)),
             c if c == '_' || c.is_alphabetic() => {
                 let end_idx = loop {
                     match iter.next() {
