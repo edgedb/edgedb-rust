@@ -546,7 +546,7 @@ fn py_value(py: Python, _tokens: &Tokens, import_cache: &mut ImportCache,
                 Ok(PyString::new(py, &token.value[2..token.value.len()-1])
                    .into_object())
             } else if token.value.starts_with('$') {
-                let msize = token.value[1..].find('$').unwrap() + 1;
+                let msize = token.value[1..].find('$').unwrap() + 2;
                 Ok(PyString::new(py,
                     &token.value[msize..token.value.len()-msize])
                    .into_object())

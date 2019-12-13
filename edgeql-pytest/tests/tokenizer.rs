@@ -20,6 +20,19 @@ fn simple_query() -> py::RunResult {
 }
 
 #[test]
+fn dollar_quotes() -> py::RunResult {
+    py::run("\
+        from edb.edgeql._edgeql_rust import tokenize\n\
+        tokens = list(map(repr, tokenize('$$a$$ $x$ a+b$x$')))\n\
+        assert tokens == [
+            '<Token SCONST \\'a\\'>',
+            '<Token SCONST \\' a+b\\'>',
+            '<Token EOF>',
+        ], tokens
+    ")
+}
+
+#[test]
 fn multi_keywords() -> py::RunResult {
     py::run("\
         from edb.edgeql._edgeql_rust import tokenize\n\
