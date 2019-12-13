@@ -38,7 +38,7 @@ fn multi_keywords() -> py::RunResult {
         from edb.edgeql._edgeql_rust import tokenize\n\
         tokens = list(map(repr, tokenize('named only')))\n\
         assert tokens == [
-            '<Token NAMEDONLY \\'named\\'>',
+            '<Token NAMEDONLY>',
             '<Token EOF>',
         ], tokens\n\
         tokens = list(map(repr, tokenize('SET ANNOTATION')))\n\
