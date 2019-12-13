@@ -301,8 +301,7 @@ pub fn tokenize(py: Python, s: &PyString) -> PyResult<PyList> {
                             Some(tok_info) => {
                                 debug_assert_eq!(tok_info.kind, tok.kind);
                                 (tok_info.name.clone_ref(py),
-                                 tok_info.value.as_ref().unwrap()
-                                 .clone_ref(py))
+                                 PyString::new(py, tok.value))
                             }
                             None => {
                                 (tokens.ident.clone_ref(py),
@@ -445,8 +444,7 @@ impl Tokens {
         self.keywords.insert(name.into(), TokenInfo {
             kind: if is_keyword(name) { Kind::Keyword } else { Kind::Ident },
             name: tok_name,
-            // Or maybe provide original case of value?
-            value: Some(py_name),
+            value: None,
         });
     }
 }
