@@ -1,11 +1,13 @@
 use std::char;
 use std::collections::HashMap;
+use std::iter::Peekable;
+use std::slice::Iter;
 use std::str::FromStr;
 
 use cpython::{PyString, PyBytes, PyResult, Python, PyClone, PythonObject};
 use cpython::{PyTuple, PyList, PyInt, PyObject, ToPyObject, ObjectProtocol};
 
-use edgeql_parser::tokenizer::{TokenStream, Kind, is_keyword};
+use edgeql_parser::tokenizer::{TokenStream, Kind, is_keyword, SpannedToken};
 use edgeql_parser::tokenizer::{MAX_KEYWORD_LENGTH, Token as RsToken};
 use edgeql_parser::position::Pos;
 
@@ -219,6 +221,14 @@ py_exception!(_edgeql_rust, TokenizerError);
 
 pub struct Tokens {
     pub ident: PyString,
+
+    pub named_only: PyString,
+    pub named_only_val: PyString,
+    pub set_annotation: PyString,
+    pub set_annotation_val: PyString,
+    pub set_type: PyString,
+    pub set_type_val: PyString,
+
     pub tokens: HashMap<Kind, TokenInfo>,
     pub keywords: HashMap<String, TokenInfo>,
 }
@@ -239,6 +249,13 @@ pub fn init_module(py: Python) {
     }
 }
 
+fn peek_keyword(iter: &mut Peekable<Iter<SpannedToken>>, kw: &str) -> bool {
+    iter.peek()
+       .map(|t| t.token.kind == Kind::Ident &&
+                t.token.value.eq_ignore_ascii_case(kw))
+       .unwrap_or(false)
+}
+
 pub fn tokenize(py: Python, s: &PyString) -> PyResult<PyList> {
     let tokens = unsafe { TOKENS.as_ref().expect("module initialized") };
     let mut import_cache = ImportCache { decimal: None };
@@ -250,9 +267,10 @@ pub fn tokenize(py: Python, s: &PyString) -> PyResult<PyList> {
 
     let mut buf = Vec::with_capacity(rust_tokens.len());
     let mut keyword_buf = String::with_capacity(MAX_KEYWORD_LENGTH);
-    for spanned_tok in rust_tokens {
+    let mut tok_iter = rust_tokens.iter().peekable();
+    while let Some(spanned_tok) = tok_iter.next() {
         let tok = spanned_tok.token;
-        let (name, value) = match tok.kind {
+        let (name, text) = match tok.kind {
             Kind::Keyword | Kind::Ident => {
                 if tok.value.len() > MAX_KEYWORD_LENGTH {
                     (tokens.ident.clone_ref(py), PyString::new(py, tok.value))
@@ -260,17 +278,34 @@ pub fn tokenize(py: Python, s: &PyString) -> PyResult<PyList> {
                     keyword_buf.clear();
                     keyword_buf.push_str(tok.value);
                     keyword_buf.make_ascii_lowercase();
-                    match tokens.keywords.get(&keyword_buf) {
-                        Some(tok_info) => {
-                            debug_assert_eq!(tok_info.kind, tok.kind);
-                            (tok_info.name.clone_ref(py),
-                             tok_info.value.as_ref().unwrap()
-                             .clone_ref(py))
+                    match &keyword_buf[..] {
+                        "named" if peek_keyword(&mut tok_iter, "only") => {
+                            tok_iter.next();
+                            (tokens.named_only.clone_ref(py),
+                             tokens.named_only_val.clone_ref(py))
                         }
-                        None => {
-                            (tokens.ident.clone_ref(py),
-                             PyString::new(py, tok.value))
+                        "set" if peek_keyword(&mut tok_iter, "annotation") => {
+                            tok_iter.next();
+                            (tokens.set_annotation.clone_ref(py),
+                             tokens.set_annotation_val.clone_ref(py))
                         }
+                        "set" if peek_keyword(&mut tok_iter, "type") => {
+                            tok_iter.next();
+                            (tokens.set_type.clone_ref(py),
+                             tokens.set_type_val.clone_ref(py))
+                        }
+                        _ => match tokens.keywords.get(&keyword_buf) {
+                            Some(tok_info) => {
+                                debug_assert_eq!(tok_info.kind, tok.kind);
+                                (tok_info.name.clone_ref(py),
+                                 tok_info.value.as_ref().unwrap()
+                                 .clone_ref(py))
+                            }
+                            None => {
+                                (tokens.ident.clone_ref(py),
+                                 PyString::new(py, tok.value))
+                            }
+                        },
                     }
                 }
             }
@@ -287,7 +322,7 @@ pub fn tokenize(py: Python, s: &PyString) -> PyResult<PyList> {
                 }
             }
         };
-        let py_tok = Token::create_instance(py, name, value,
+        let py_tok = Token::create_instance(py, name, text,
             py_value(py, &tokens, &mut import_cache, spanned_tok.token)?,
             spanned_tok.start, spanned_tok.end)?;
 
@@ -302,6 +337,12 @@ impl Tokens {
         use Kind::*;
         let mut res = Tokens {
             ident: PyString::new(py, "IDENT"),
+            named_only: PyString::new(py, "NAMEDONLY"),
+            named_only_val: PyString::new(py, "NAMED ONLY"),
+            set_annotation: PyString::new(py, "SETANNOTATION"),
+            set_annotation_val: PyString::new(py, "SET ANNOTATION"),
+            set_type: PyString::new(py, "SETTYPE"),
+            set_type_val: PyString::new(py, "SET TYPE"),
             tokens: HashMap::new(),
             keywords: HashMap::new(),
         };
@@ -384,9 +425,15 @@ impl Tokens {
     }
     fn add_kw(&mut self, py: Python, name: &str) {
         let py_name = PyString::new(py, &name.to_ascii_uppercase());
+        let tok_name = if name.starts_with("__") && name.ends_with("__") {
+            format!("DUNDER{}", name[2..name.len()-2].to_ascii_uppercase())
+            .to_py_object(py)
+        } else {
+            py_name.clone_ref(py)
+        };
         self.keywords.insert(name.into(), TokenInfo {
             kind: if is_keyword(name) { Kind::Keyword } else { Kind::Ident },
-            name: py_name.clone_ref(py),
+            name: tok_name,
             // Or maybe provide original case of value?
             value: Some(py_name),
         });

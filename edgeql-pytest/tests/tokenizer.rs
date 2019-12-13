@@ -19,6 +19,25 @@ fn simple_query() -> py::RunResult {
 }
 
 #[test]
+fn multi_keywords() -> py::RunResult {
+    py::run("\
+        from edb.edgeql._edgeql_rust import tokenize\n\
+        tokens = list(map(repr, tokenize('named only')))\n\
+        assert tokens == [
+            '<Token NAMEDONLY \\'named\\'>',
+        ], tokens\n\
+        tokens = list(map(repr, tokenize('SET ANNOTATION')))\n\
+        assert tokens == [
+            '<Token SETANNOTATION>',
+        ], tokens\n\
+        tokens = list(map(repr, tokenize('Set typE')))\n\
+        assert tokens == [
+            '<Token SETTYPE>',
+        ], tokens\n\
+    ")
+}
+
+#[test]
 fn tokenizer_error() -> py::RunResult {
     py::run("\
         from edb.edgeql._edgeql_rust import tokenize, TokenizerError\n\
