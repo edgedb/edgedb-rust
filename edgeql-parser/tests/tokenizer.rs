@@ -57,7 +57,7 @@ fn idents() {
                        ["тест", "тест_abc", "abc_тест"]);
     assert_eq!(tok_typ("тест тест_abc abc_тест"), [Ident, Ident, Ident]);
     assert_eq!(tok_err(" + __test__"),
-        "Unexpected `1:4: identifiers surrounded by double underscores \
+        "Unexpected `identifiers surrounded by double underscores \
         are forbidden`");
 }
 
@@ -128,7 +128,7 @@ fn not_equals_tokens() {
     assert_eq!(tok_str("a!=b"), ["a", "!=", "b"]);
     assert_eq!(tok_typ("a!=b"), [Ident, NotEq, Ident]);
     assert_eq!(tok_err("a ! = b"),
-        "Unexpected `1:3: Bare `!` is not an operator, \
+        "Unexpected `Bare `!` is not an operator, \
          did you mean `!=`?`");
 }
 
@@ -140,11 +140,11 @@ fn question_tokens() {
     assert_eq!(tok_str("a ?!= b"), ["a", "?!=", "b"]);
     assert_eq!(tok_typ("a ?!= b"), [Ident, DistinctFrom, Ident]);
     assert_eq!(tok_err("a ? b"),
-        "Unexpected `1:3: Bare `?` is not an operator, \
+        "Unexpected `Bare `?` is not an operator, \
          did you mean `?=` or `??` ?`");
 
     assert_eq!(tok_err("something ?!"),
-        "Unexpected `1:11: `?!` is not an operator, \
+        "Unexpected ``?!` is not an operator, \
          did you mean `?!=` ?`");
 }
 
@@ -413,44 +413,44 @@ fn numbers_from_py() {
 #[test]
 fn num_errors() {
     assert_eq!(tok_err("1.0.x"),
-        "Unexpected `1:1: extra decimal dot in number`");
+        "Unexpected `extra decimal dot in number`");
     assert_eq!(tok_err("1.0e1."),
-        "Unexpected `1:1: extra decimal dot in number`");
+        "Unexpected `extra decimal dot in number`");
     assert_eq!(tok_err("1.0e."),
-        "Unexpected `1:1: optional `+` or `-` \
+        "Unexpected `optional `+` or `-` \
         followed by digits must follow `e` in float const`");
     assert_eq!(tok_err("1.0e"),
-        "Unexpected `1:1: optional `+` or `-` \
+        "Unexpected `optional `+` or `-` \
         followed by digits must follow `e` in float const`");
     assert_eq!(tok_err("1.0ex"),
-        "Unexpected `1:1: optional `+` or `-` \
+        "Unexpected `optional `+` or `-` \
         followed by digits must follow `e` in float const`");
     assert_eq!(tok_err("1.0en"),
-        "Unexpected `1:1: optional `+` or `-` \
+        "Unexpected `optional `+` or `-` \
         followed by digits must follow `e` in float const`");
     assert_eq!(tok_err("1.0e "),
-        "Unexpected `1:1: optional `+` or `-` \
+        "Unexpected `optional `+` or `-` \
         followed by digits must follow `e` in float const`");
     assert_eq!(tok_err("1.0e+"),
-        "Unexpected `1:1: optional `+` or `-` \
+        "Unexpected `optional `+` or `-` \
         followed by digits must follow `e` in float const`");
     assert_eq!(tok_err("1.0e+ "),
-        "Unexpected `1:1: optional `+` or `-` \
+        "Unexpected `optional `+` or `-` \
         followed by digits must follow `e` in float const`");
     assert_eq!(tok_err("1.0e+x"),
-        "Unexpected `1:1: optional `+` or `-` \
+        "Unexpected `optional `+` or `-` \
         followed by digits must follow `e` in float const`");
     assert_eq!(tok_err("1.0e+n"),
-        "Unexpected `1:1: optional `+` or `-` \
+        "Unexpected `optional `+` or `-` \
         followed by digits must follow `e` in float const`");
     assert_eq!(tok_err("1234numeric"),
-        "Unexpected `1:1: suffix \"numeric\" \
+        "Unexpected `suffix \"numeric\" \
         is invalid for numbers, perhaps you wanted `1234n` (bigint)?`");
     assert_eq!(tok_err("1234some_l0ng_trash"),
-        "Unexpected `1:1: suffix \"some_l0n...\" \
+        "Unexpected `suffix \"some_l0n...\" \
         is invalid for numbers, perhaps you wanted `1234n` (bigint)?`");
     assert_eq!(tok_err("100O00"),
-        "Unexpected `1:1: suffix \"O00\" is invalid for numbers, \
+        "Unexpected `suffix \"O00\" is invalid for numbers, \
         perhaps mixed up letter `O` with zero `0`?`");
 }
 
@@ -472,7 +472,7 @@ fn tuple_paths() {
         [Argument, Dot, IntConst, Dot, IntConst,
                 Dot, IntConst, Dot, IntConst, Dot, IntConst]);
     assert_eq!(tok_err("tup.1n"),
-        "Unexpected `1:5: unexpected char \'n\' only integers \
+        "Unexpected `unexpected char \'n\', only integers \
         are allowed after dot (for tuple access)`");
 }
 
@@ -491,7 +491,7 @@ fn strings() {
     assert_eq!(tok_str(r#" b''  "#), [r#"b''"#]);
     assert_eq!(tok_typ(r#" b''  "#), [BinStr]);
     assert_eq!(tok_err(r#" ``  "#),
-        "Unexpected `1:2: backtick quotes must not be empty`");
+        "Unexpected `backtick quotes must not be empty`");
 
     assert_eq!(tok_str(r#" "hello"  "#), [r#""hello""#]);
     assert_eq!(tok_typ(r#" "hello"  "#), [Str]);
@@ -571,44 +571,44 @@ fn strings() {
     assert_eq!(tok_typ(" `hel\nlo` "), [BacktickName]);
 
     assert_eq!(tok_err(r#""hello"#),
-        "Unexpected `1:1: unclosed string, quoted by `\"``");
+        "Unexpected `unclosed string, quoted by `\"``");
     assert_eq!(tok_err(r#"'hello"#),
-        "Unexpected `1:1: unclosed string, quoted by `'``");
+        "Unexpected `unclosed string, quoted by `'``");
     assert_eq!(tok_err(r#"r"hello"#),
-        "Unexpected `1:1: unclosed string, quoted by `\"``");
+        "Unexpected `unclosed string, quoted by `\"``");
     assert_eq!(tok_err(r#"r'hello"#),
-        "Unexpected `1:1: unclosed string, quoted by `'``");
+        "Unexpected `unclosed string, quoted by `'``");
     assert_eq!(tok_err(r#"b"hello"#),
-        "Unexpected `1:1: unclosed string, quoted by `\"``");
+        "Unexpected `unclosed string, quoted by `\"``");
     assert_eq!(tok_err(r#"b'hello"#),
-        "Unexpected `1:1: unclosed string, quoted by `'``");
+        "Unexpected `unclosed string, quoted by `'``");
     assert_eq!(tok_err(r#"`hello"#),
-        "Unexpected `1:1: unclosed backtick name`");
+        "Unexpected `unclosed backtick name`");
 
     assert_eq!(tok_err(r#"name`type`"#),
-        "Unexpected `1:1: Prefix \"name\" is not allowed for field names, \
+        "Unexpected `prefix \"name\" is not allowed for field names, \
         perhaps missing comma or dot?`");
     assert_eq!(tok_err(r#"User`type`"#),
-        "Unexpected `1:1: Prefix \"User\" is not allowed for field names, \
+        "Unexpected `prefix \"User\" is not allowed for field names, \
         perhaps missing comma or dot?`");
     assert_eq!(tok_err(r#"r`hello"#),
-        "Unexpected `1:1: Prefix \"r\" is not allowed for field names, \
+        "Unexpected `prefix \"r\" is not allowed for field names, \
         perhaps missing comma or dot?`");
     assert_eq!(tok_err(r#"b`hello"#),
-        "Unexpected `1:1: Prefix \"b\" is not allowed for field names, \
+        "Unexpected `prefix \"b\" is not allowed for field names, \
         perhaps missing comma or dot?`");
     assert_eq!(tok_err(r#"test"hello""#),
-        "Unexpected `1:1: Prefix \"test\" is not allowed for strings, \
+        "Unexpected `prefix \"test\" is not allowed for strings, \
         allowed: `b`, `r``");
     assert_eq!(tok_err(r#"test'hello'"#),
-        "Unexpected `1:1: Prefix \"test\" is not allowed for strings, \
+        "Unexpected `prefix \"test\" is not allowed for strings, \
         allowed: `b`, `r``");
     assert_eq!(tok_err(r#"`@x`"#),
-        "Unexpected `1:1: backtick-quoted name can't start with char `@``");
+        "Unexpected `backtick-quoted name can't start with char `@``");
     assert_eq!(tok_err(r#"`a::b`"#),
-        "Unexpected `1:1: backtick-quoted name can't contain `::``");
+        "Unexpected `backtick-quoted name can't contain `::``");
     assert_eq!(tok_err(r#"`__x__`"#),
-        "Unexpected `1:1: backtick-quoted names surrounded by double \
+        "Unexpected `backtick-quoted names surrounded by double \
                     underscores are forbidden`");
 }
 
@@ -627,13 +627,13 @@ fn test_dollar() {
     assert_eq!(tok_typ("select $a$ ; $b$ ; $a$; x"),
                        [Keyword, Str, Semicolon, Ident]);
     assert_eq!(tok_err("select $$ ; $ab$ test;"),
-        "Unexpected `1:8: unclosed string started with $$`");
+        "Unexpected `unclosed string started with $$`");
     assert_eq!(tok_err("select $a$ ; $$ test;"),
-        "Unexpected `1:8: unclosed string started with \"$a$\"`");
+        "Unexpected `unclosed string started with \"$a$\"`");
     assert_eq!(tok_err("select $0$"),
-        "Unexpected `1:8: dollar quote must not start with a digit`");
+        "Unexpected `dollar quote must not start with a digit`");
     assert_eq!(tok_err("select $фыва$"),
-        "Unexpected `1:8: dollar quote supports only ascii chars`");
+        "Unexpected `dollar quote supports only ascii chars`");
     assert_eq!(tok_str("select $a$a$ ; $a$ test;"),
         ["select", "$a$a$ ; $a$", "test", ";"]);
     assert_eq!(tok_typ("select $a$a$ ; $a$ test;"),
@@ -657,20 +657,20 @@ fn test_dollar() {
         [Keyword, Argument, Add, Argument, Add, Argument,
          Add, Argument, Dot, IntConst, Add, Argument]);
     assert_eq!(tok_err(r#"$-"#),
-        "Unexpected `1:1: bare $ is not allowed`");
+        "Unexpected `bare $ is not allowed`");
     assert_eq!(tok_err(r#"$0abc"#),
-        "Unexpected `1:1: the \"$0abc\" is not a valid argument, \
+        "Unexpected `the \"$0abc\" is not a valid argument, \
          either name starting with letter or only digits are expected`");
     assert_eq!(tok_err(r#"-$"#),
-        "Unexpected `1:2: bare $ is not allowed`");
+        "Unexpected `bare $ is not allowed`");
     assert_eq!(tok_err(r#" $``  "#),
-        "Unexpected `1:2: backtick-quoted argument must not be empty`");
+        "Unexpected `backtick-quoted argument must not be empty`");
     assert_eq!(tok_err(r#"$`@x`"#),
-        "Unexpected `1:1: backtick-quoted argument can't \
+        "Unexpected `backtick-quoted argument can't \
         start with char `@``");
     assert_eq!(tok_err(r#"$`a::b`"#),
-        "Unexpected `1:1: backtick-quoted argument can't contain `::``");
+        "Unexpected `backtick-quoted argument can't contain `::``");
     assert_eq!(tok_err(r#"$`__x__`"#),
-        "Unexpected `1:1: backtick-quoted arguments surrounded by double \
+        "Unexpected `backtick-quoted arguments surrounded by double \
                     underscores are forbidden`");
 }

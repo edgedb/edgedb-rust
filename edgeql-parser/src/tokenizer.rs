@@ -261,29 +261,23 @@ impl<'a> TokenStream<'a> {
                     if let Some((_, '=')) = iter.next() {
                         return Ok((DistinctFrom, 3));
                     } else {
-                        return Err(Error::unexpected_format(
-                            format_args!("{}: `?!` is not an operator, \
-                                did you mean `?!=` ?",
-                                self.position)
-                        ))
+                        return Err(Error::unexpected_static_message(
+                            "`?!` is not an operator, \
+                                did you mean `?!=` ?"))
                     }
                 }
                 _ => {
-                    return Err(Error::unexpected_format(
-                        format_args!("{}: Bare `?` is not an operator, \
-                            did you mean `?=` or `??` ?",
-                            self.position)
-                    ))
+                    return Err(Error::unexpected_static_message(
+                        "Bare `?` is not an operator, \
+                            did you mean `?=` or `??` ?"))
                 }
             },
             '!' => match iter.next() {
                 Some((_, '=')) => return Ok((NotEq, 2)),
                 _ => {
-                    return Err(Error::unexpected_format(
-                        format_args!("{}: Bare `!` is not an operator, \
-                            did you mean `!=`?",
-                            self.position)
-                    ))
+                    return Err(Error::unexpected_static_message(
+                        "Bare `!` is not an operator, \
+                            did you mean `!=`?"));
                 }
             },
             '"' | '\'' => self.parse_string(0, false),
@@ -295,32 +289,29 @@ impl<'a> TokenStream<'a> {
                         }
                         let val = &tail[..idx+1];
                         if val.starts_with("`@") {
-                            return Err(Error::unexpected_format(
-                                format_args!("{}: backtick-quoted name can't \
-                                    start with char `@`", self.position)));
+                            return Err(Error::unexpected_static_message(
+                                "backtick-quoted name can't \
+                                    start with char `@`"));
                         }
                         if val.contains("::") {
-                            return Err(Error::unexpected_format(
-                                format_args!("{}: backtick-quoted name can't \
-                                    contain `::`", self.position)));
+                            return Err(Error::unexpected_static_message(
+                                "backtick-quoted name can't \
+                                    contain `::`"));
                         }
                         if val.starts_with("`__") && val.ends_with("__`") {
-                            return Err(Error::unexpected_format(
-                                format_args!("{}: backtick-quoted names \
-                                    surrounded by double underscores are \
-                                    forbidden", self.position)));
+                            return Err(Error::unexpected_static_message(
+                                "backtick-quoted names surrounded by double \
+                                    underscores are forbidden"));
                         }
                         if idx == 1 {
-                            return Err(Error::unexpected_format(
-                                format_args!("{}: backtick quotes must \
-                                    not be empty", self.position)));
+                            return Err(Error::unexpected_static_message(
+                                "backtick quotes must not be empty"));
                         }
                         return Ok((BacktickName, idx+1));
                     }
                 }
-                return Err(Error::unexpected_format(
-                    format_args!("{}: unclosed backtick name",
-                        self.position)));
+                return Err(Error::unexpected_static_message(
+                    "unclosed backtick name"));
             }
             '=' => return Ok((Eq, 1)),
             ',' => return Ok((Comma, 1)),
@@ -346,19 +337,19 @@ impl<'a> TokenStream<'a> {
                                 "r" => false,
                                 "b" => true,
                                 _ => return Err(Error::unexpected_format(
-                                    format_args!("{}: Prefix {:?} \
+                                    format_args!("prefix {:?} \
                                     is not allowed for strings, \
                                     allowed: `b`, `r`",
-                                    self.position, prefix))),
+                                    prefix))),
                             };
                             return self.parse_string(idx, binary);
                         }
                         Some((idx, '`')) => {
                             let prefix = &tail[..idx];
                             return Err(Error::unexpected_format(
-                                format_args!("{}: Prefix {:?} is not \
+                                format_args!("prefix {:?} is not \
                                 allowed for field names, perhaps missing \
-                                comma or dot?", self.position, prefix)));
+                                comma or dot?", prefix)));
                         }
                         Some((_, c))
                             if c == '_' || c.is_alphanumeric() => continue,
@@ -370,9 +361,9 @@ impl<'a> TokenStream<'a> {
                 if self.is_keyword(val) {
                     return Ok((Keyword, end_idx));
                 } else if val.starts_with("__") && val.ends_with("__") {
-                    return Err(Error::unexpected_format(
-                        format_args!("{}: identifiers surrounded by double \
-                            underscores are forbidden", self.position)));
+                    return Err(Error::unexpected_static_message(
+                        "identifiers surrounded by double \
+                            underscores are forbidden"));
                 } else {
                     return Ok((Ident, end_idx));
                 }
@@ -384,10 +375,9 @@ impl<'a> TokenStream<'a> {
                             '0'..='9' => continue,
                             c if c.is_alphabetic() => {
                                 return Err(Error::unexpected_format(
-                                    format_args!("{}: unexpected char {:?} \
+                                    format_args!("unexpected char {:?}, \
                                         only integers are allowed after dot \
-                                        (for tuple access)",
-                                        self.position, c)
+                                        (for tuple access)", c)
                                 ));
                             }
                             _ => return Ok((IntConst, idx)),
@@ -408,9 +398,9 @@ impl<'a> TokenStream<'a> {
                             {
                                 return Ok((Str, 2+end+2));
                             } else {
-                                return Err(Error::unexpected_format(
-                                    format_args!("{}: unclosed string started \
-                                        with $$", self.position)));
+                                return Err(Error::unexpected_static_message(
+                                    "unclosed string started \
+                                        with $$"));
                             }
                         }
                         '`' => {
@@ -421,54 +411,49 @@ impl<'a> TokenStream<'a> {
                                     }
                                     let var = &tail[..idx+1];
                                     if var.starts_with("$`@") {
-                                        return Err(Error::unexpected_format(
-                                            format_args!(
-                                                "{}: backtick-quoted argument \
+                                        return Err(
+                                            Error::unexpected_static_message(
+                                                "backtick-quoted argument \
                                                 can't start with char `@`",
-                                                self.position)));
+                                            ));
                                     }
                                     if var.contains("::") {
-                                        return Err(Error::unexpected_format(
-                                            format_args!(
-                                                "{}: backtick-quoted argument \
-                                                can't contain `::`",
-                                                self.position)));
+                                        return Err(
+                                            Error::unexpected_static_message(
+                                                "backtick-quoted argument \
+                                                can't contain `::`"));
                                     }
                                     if var.starts_with("$`__") &&
                                         var.ends_with("__`")
                                     {
-                                        return Err(Error::unexpected_format(
-                                            format_args!("{}: backtick-quoted \
-                                                arguments surrounded by \
-                                                double underscores are \
-                                                forbidden", self.position)));
+                                        return Err(
+                                            Error::unexpected_static_message(
+                                                "backtick-quoted arguments \
+                                                surrounded by double \
+                                                underscores are forbidden"));
                                     }
                                     if idx == 2 {
-                                        return Err(Error::unexpected_format(
-                                            format_args!(
-                                                "{}: backtick-quoted argument \
-                                                must not be empty",
-                                                self.position)));
+                                        return Err(
+                                            Error::unexpected_static_message(
+                                                "backtick-quoted argument \
+                                                must not be empty"));
                                     }
                                     return Ok((Argument, idx+1));
                                 }
                             }
-                            return Err(Error::unexpected_format(
-                                format_args!("{}: unclosed backtick argument",
-                                    self.position)));
+                            return Err(Error::unexpected_static_message(
+                                "unclosed backtick argument"));
                         }
                         '0'..='9' => { }
                         c if c.is_alphabetic() || c == '_' => {
                             has_letter = true;
                         }
-                        _ => return Err(Error::unexpected_format(
-                            format_args!("{}: bare $ is not allowed",
-                                self.position))),
+                        _ => return Err(Error::unexpected_static_message(
+                            "bare $ is not allowed")),
                     }
                 } else {
-                    return Err(Error::unexpected_format(
-                        format_args!("{}: bare $ is not allowed",
-                            self.position)));
+                    return Err(Error::unexpected_static_message(
+                        "bare $ is not allowed"));
                 }
                 let end_idx = loop {
                     match iter.next() {
@@ -477,16 +462,13 @@ impl<'a> TokenStream<'a> {
                             let marker = &self.buf[self.off..][..msize];
                             if let Some('0'..='9') = marker[1..].chars().next()
                             {
-                                return Err(Error::unexpected_format(
-                                    format_args!("{}: dollar quote must not \
-                                        start with a digit",
-                                        self.position)));
+                                return Err(Error::unexpected_static_message(
+                                    "dollar quote must not start with a digit",
+                                ));
                             }
                             if !marker.is_ascii() {
-                                return Err(Error::unexpected_format(
-                                    format_args!("{}: dollar quote supports \
-                                        only ascii chars",
-                                        self.position)));
+                                return Err(Error::unexpected_static_message(
+                                    "dollar quote supports only ascii chars"));
                             }
                             if let Some(end) = find_str(
                                 &self.buf[self.off+msize..],
@@ -495,8 +477,8 @@ impl<'a> TokenStream<'a> {
                                 return Ok((Str, msize+end+msize));
                             } else {
                                 return Err(Error::unexpected_format(
-                                    format_args!("{}: unclosed string started \
-                                        with {:?}", self.position, marker)));
+                                    format_args!("unclosed string started \
+                                        with {:?}", marker)));
                             }
                         }
                         Some((_, '0'..='9')) => continue,
@@ -512,18 +494,17 @@ impl<'a> TokenStream<'a> {
                     let name = &tail[1..];
                     if let Some('0'..='9') = name.chars().next() {
                         return Err(Error::unexpected_format(
-                            format_args!("{}: the {:?} is not a valid \
+                            format_args!("the {:?} is not a valid \
                             argument, either name starting with letter \
                             or only digits are expected",
-                            self.position, &tail[..end_idx])));
+                            &tail[..end_idx])));
                     }
                 }
                 return Ok((Argument, end_idx));
             }
             _ => return Err(
                 Error::unexpected_format(
-                    format_args!("{}: unexpected character {:?}",
-                        cur_char, self.position)
+                    format_args!("unexpected character {:?}", cur_char)
                 )
             ),
         }
@@ -552,8 +533,7 @@ impl<'a> TokenStream<'a> {
             }
         }
         return Err(Error::unexpected_format(
-            format_args!("{}: unclosed string, quoted by `{}`",
-                self.position, open_quote)));
+            format_args!("unclosed string, quoted by `{}`", open_quote)));
     }
 
     fn parse_number(&mut self)
@@ -590,9 +570,8 @@ impl<'a> TokenStream<'a> {
                     match c {
                         '0'..='9' => continue,
                         'e' => break Break::Exponent,
-                        '.' => return Err(Error::unexpected_format(
-                            format_args!("{}: extra decimal dot in number",
-                                self.position))),
+                        '.' => return Err(Error::unexpected_static_message(
+                            "extra decimal dot in number")),
                         c if c.is_alphabetic() => {
                             suffix = Some(idx+1);
                             break Break::Letter;
@@ -611,29 +590,24 @@ impl<'a> TokenStream<'a> {
                 Some((_, '+')) | Some((_, '-'))=> {
                     match iter.next() {
                         Some((_, '0'..='9')) => {},
-                        Some((_, '.')) => return Err(Error::unexpected_format(
-                            format_args!("{}: extra decimal dot \
-                                in number",
-                                self.position))),
-                        _ => return Err(Error::unexpected_format(
-                            format_args!("{}: optional `+` or `-` \
-                                followed by digits must \
-                                follow `e` in float const",
-                                self.position))),
+                        Some((_, '.')) => return Err(
+                            Error::unexpected_static_message(
+                            "extra decimal dot in number")),
+                        _ => return Err(Error::unexpected_static_message(
+                            "optional `+` or `-` followed by digits must \
+                                follow `e` in float const")),
                     }
                 }
-                _ => return Err(Error::unexpected_format(
-                    format_args!("{}: optional `+` or `-` \
-                        followed by digits must \
-                        follow `e` in float const",
-                        self.position))),
+                _ => return Err(Error::unexpected_static_message(
+                    "optional `+` or `-` followed by digits must \
+                        follow `e` in float const")),
             }
             loop {
                 match iter.next() {
                     Some((_, '0'..='9')) => continue,
-                    Some((_, '.')) => return Err(Error::unexpected_format(
-                        format_args!("{}: extra decimal dot in number",
-                            self.position))),
+                    Some((_, '.')) => return Err(
+                        Error::unexpected_static_message(
+                        "extra decimal dot in number")),
                     Some((idx, c)) if c.is_alphabetic() => {
                         suffix = Some(idx+1);
                         break;
@@ -673,20 +647,19 @@ impl<'a> TokenStream<'a> {
             };
             if suffix.chars().next() == Some('O') {
                 return Err(Error::unexpected_format(
-                    format_args!("{}: suffix {:?} is invalid for \
+                    format_args!("suffix {:?} is invalid for \
                         numbers, perhaps mixed up letter `O` \
-                        with zero `0`?",
-                        self.position, suffix)));
+                        with zero `0`?", suffix)));
             } else if float {
                 return Err(Error::unexpected_format(
-                    format_args!("{}: suffix {:?} is invalid for \
+                    format_args!("suffix {:?} is invalid for \
                         numbers, perhaps you wanted `{}n` (decimal)?",
-                        self.position, suffix, val)));
+                        suffix, val)));
             } else {
                 return Err(Error::unexpected_format(
-                    format_args!("{}: suffix {:?} is invalid for \
+                    format_args!("suffix {:?} is invalid for \
                         numbers, perhaps you wanted `{}n` (bigint)?",
-                        self.position, suffix, val)));
+                        suffix, val)));
             }
         }
     }

@@ -334,7 +334,12 @@ pub fn tokenize(py: Python, s: &PyString) -> PyResult<PyList> {
         }
         Ok(tokens)
     }).map_err(|(e, pos)| {
-        TokenizerError::new(py, (e.to_string(), py_pos(py, &pos)))
+        use combine::easy::Error::*;
+        let err = match e {
+            Unexpected(s) => s.to_string(),
+            o => o.to_string(),
+        };
+        TokenizerError::new(py, (err, py_pos(py, &pos)))
     })?;
 
     let mut buf = Vec::with_capacity(rust_tokens.len());
@@ -373,7 +378,7 @@ impl Tokens {
 
             dot: PyString::new(py, "."),
             forward_link: PyString::new(py, ".>"),
-            backward_link: PyString::new(py, ".>"),
+            backward_link: PyString::new(py, ".<"),
             open_bracket: PyString::new(py, "["),
             close_bracket: PyString::new(py, "]"),
             open_paren: PyString::new(py, "("),

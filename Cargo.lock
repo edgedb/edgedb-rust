@@ -386,6 +386,7 @@ dependencies = [
 name = "edgeql-python"
 version = "0.1.0"
 dependencies = [
+ "combine 4.0.0-beta.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "cpython 0.3.0 (git+git://github.com/dgrunwald/rust-cpython?rev=dabc06c)",
  "edgeql-parser 0.1.0",
 ]
