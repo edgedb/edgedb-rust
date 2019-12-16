@@ -6,7 +6,7 @@ mod py;
 #[test]
 fn simple_query() -> py::RunResult {
     py::run("\
-        from edb.edgeql._edgeql_rust import tokenize\n\
+        from edb._edgeql_rust import tokenize\n\
         tokens = list(map(repr, tokenize('SELECT 1+ x;')))\n\
         assert tokens == [
             '<Token SELECT>',
@@ -22,7 +22,7 @@ fn simple_query() -> py::RunResult {
 #[test]
 fn dollar_quotes() -> py::RunResult {
     py::run("\
-        from edb.edgeql._edgeql_rust import tokenize\n\
+        from edb._edgeql_rust import tokenize\n\
         tokens = list(map(repr, tokenize('$$a$$ $x$ a+b$x$')))\n\
         assert tokens == [
             '<Token SCONST \\'a\\'>',
@@ -35,7 +35,7 @@ fn dollar_quotes() -> py::RunResult {
 #[test]
 fn multi_keywords() -> py::RunResult {
     py::run("\
-        from edb.edgeql._edgeql_rust import tokenize\n\
+        from edb._edgeql_rust import tokenize\n\
         tokens = list(map(repr, tokenize('named only')))\n\
         assert tokens == [
             '<Token NAMEDONLY>',
@@ -57,7 +57,7 @@ fn multi_keywords() -> py::RunResult {
 #[test]
 fn tokenizer_error() -> py::RunResult {
     py::run("\
-        from edb.edgeql._edgeql_rust import tokenize, TokenizerError\n\
+        from edb._edgeql_rust import tokenize, TokenizerError\n\
         try:\n    \
             tokenize('$``')\n\
         except TokenizerError:\n    \
@@ -70,7 +70,7 @@ fn tokenizer_error() -> py::RunResult {
 #[test]
 fn token_methods() -> py::RunResult {
     py::run("\
-        from edb.edgeql._edgeql_rust import tokenize\n\
+        from edb._edgeql_rust import tokenize\n\
         tokens = tokenize('SELECT 1+1;')\n\
         assert tokens[1].kind() == 'ICONST', tokens[1].kind()\n\
         assert tokens[1].text() == '1', tokens[1].text()\n\
@@ -83,7 +83,7 @@ fn token_methods() -> py::RunResult {
 #[test]
 fn bigint_decimal() -> py::RunResult {
     py::run("\
-        from edb.edgeql._edgeql_rust import tokenize\n\
+        from edb._edgeql_rust import tokenize\n\
         tokens = list(map(repr, tokenize('SELECT 1n+1.1n;')))\n\
         assert tokens == [
             '<Token SELECT>',

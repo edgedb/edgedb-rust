@@ -10,8 +10,8 @@ fn main() -> PyResult<()> {
             sys.path.append('.')
         ", None, None)?;
     py.run("\
-        import edb.edgeql._edgeql_rust\n\
-        help(edb.edgeql._edgeql_rust)
+        import edb._edgeql_rust\n\
+        help(edb._edgeql_rust)
     ", None, None)?;
     Ok(())
 }

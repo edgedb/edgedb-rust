@@ -47,7 +47,7 @@ commands:
       set -ex
       cargo build -p edgeql-python
       export PYTHONPATH=/work/edgeql-pytest
-      python3.8 -i -c 'import edb.edgeql._edgeql_rust' -v
+      python3.8 -i -c 'import edb._edgeql_rust' -v
 
   pytest-main: !Command
     description: Run binary from edgeql-pytest
