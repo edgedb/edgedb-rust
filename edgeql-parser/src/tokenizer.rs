@@ -305,7 +305,7 @@ impl<'a> TokenStream<'a> {
                         }
                         if idx == 1 {
                             return Err(Error::unexpected_static_message(
-                                "backtick quotes must not be empty"));
+                                "backtick quotes can't be empty"));
                         }
                         return Ok((BacktickName, idx+1));
                     }
@@ -441,7 +441,7 @@ impl<'a> TokenStream<'a> {
                                         return Err(
                                             Error::unexpected_static_message(
                                                 "backtick-quoted argument \
-                                                must not be empty"));
+                                                can't be empty"));
                                     }
                                     return Ok((Argument, idx+1));
                                 }

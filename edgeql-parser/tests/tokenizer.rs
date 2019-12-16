@@ -505,7 +505,7 @@ fn strings() {
     assert_eq!(tok_str(r#" b''  "#), [r#"b''"#]);
     assert_eq!(tok_typ(r#" b''  "#), [BinStr]);
     assert_eq!(tok_err(r#" ``  "#),
-        "Unexpected `backtick quotes must not be empty`");
+        "Unexpected `backtick quotes can't be empty`");
 
     assert_eq!(tok_str(r#" "hello"  "#), [r#""hello""#]);
     assert_eq!(tok_typ(r#" "hello"  "#), [Str]);
@@ -599,10 +599,6 @@ fn strings() {
     assert_eq!(tok_err(r#"`hello"#),
         "Unexpected `unterminated backtick name`");
 
-    assert_eq!(tok_err(r#"b'\☎''"#),
-        "Unexpected `invalid bytes literal: character '☎' is unexpected, \
-            only ascii chars are allowed in bytes literals`");
-
     assert_eq!(tok_err(r#"name`type`"#),
         "Unexpected `prefix \"name\" is not allowed for field names, \
         perhaps missing comma or dot?`");
@@ -682,7 +678,7 @@ fn test_dollar() {
     assert_eq!(tok_err(r#"-$"#),
         "Unexpected `bare $ is not allowed`");
     assert_eq!(tok_err(r#" $``  "#),
-        "Unexpected `backtick-quoted argument must not be empty`");
+        "Unexpected `backtick-quoted argument can't be empty`");
     assert_eq!(tok_err(r#"$`@x`"#),
         "Unexpected `backtick-quoted argument can't \
         start with char `@``");
