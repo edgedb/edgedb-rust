@@ -280,7 +280,7 @@ impl<'a> TokenStream<'a> {
                             did you mean `!=`?"));
                 }
             },
-            '"' | '\'' => self.parse_string(0, false),
+            '"' | '\'' => self.parse_string(0, false, false),
             '`' => {
                 while let Some((idx, c)) = iter.next() {
                     if c == '`' {
@@ -333,16 +333,16 @@ impl<'a> TokenStream<'a> {
                     match iter.next() {
                         Some((idx, '"')) | Some((idx, '\'')) => {
                             let prefix = &tail[..idx];
-                            let binary = match prefix {
-                                "r" => false,
-                                "b" => true,
+                            let (raw, binary) = match prefix {
+                                "r" => (true, false),
+                                "b" => (false, true),
                                 _ => return Err(Error::unexpected_format(
                                     format_args!("prefix {:?} \
                                     is not allowed for strings, \
                                     allowed: `b`, `r`",
                                     prefix))),
                             };
-                            return self.parse_string(idx, binary);
+                            return self.parse_string(idx, raw, binary);
                         }
                         Some((idx, '`')) => {
                             let prefix = &tail[..idx];
@@ -510,14 +510,14 @@ impl<'a> TokenStream<'a> {
         }
     }
 
-    fn parse_string(&mut self, quote_off: usize, binary: bool)
+    fn parse_string(&mut self, quote_off: usize, raw: bool, binary: bool)
         -> Result<(Kind, usize), Error<Token<'a>, Token<'a>>>
     {
         let mut iter = self.buf[self.off+quote_off..].char_indices();
         let open_quote = iter.next().unwrap().1;
         while let Some((idx, c)) = iter.next() {
             match c {
-                '\\' => match iter.next() {
+                '\\' if !raw => match iter.next() {
                     // skip any next char, even quote
                     Some((_, _)) => continue,
                     None => break,

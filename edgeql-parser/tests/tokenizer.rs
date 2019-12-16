@@ -527,10 +527,10 @@ fn strings() {
     assert_eq!(tok_typ(r#" "h\"ello" "#), [Str]);
     assert_eq!(tok_str(r#" 'h\'ello' "#), [r#"'h\'ello'"#]);
     assert_eq!(tok_typ(r#" 'h\'ello' "#), [Str]);
-    assert_eq!(tok_str(r#" r"h\"ello" "#), [r#"r"h\"ello""#]);
-    assert_eq!(tok_typ(r#" r"h\"ello" "#), [Str]);
-    assert_eq!(tok_str(r#" r'h\'ello' "#), [r#"r'h\'ello'"#]);
-    assert_eq!(tok_typ(r#" r'h\'ello' "#), [Str]);
+    assert_eq!(tok_str(r#" r"hello\" "#), [r#"r"hello\""#]);
+    assert_eq!(tok_typ(r#" r"hello\" "#), [Str]);
+    assert_eq!(tok_str(r#" r'hello\' "#), [r#"r'hello\'"#]);
+    assert_eq!(tok_typ(r#" r'hello\' "#), [Str]);
     assert_eq!(tok_str(r#" b"h\"ello" "#), [r#"b"h\"ello""#]);
     assert_eq!(tok_typ(r#" b"h\"ello" "#), [BinStr]);
     assert_eq!(tok_str(r#" b'h\'ello' "#), [r#"b'h\'ello'"#]);
