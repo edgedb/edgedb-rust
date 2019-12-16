@@ -8,7 +8,7 @@ use cpython::{PyString, PyBytes, PyResult, Python, PyClone, PythonObject};
 use cpython::{PyTuple, PyList, PyInt, PyObject, ToPyObject, ObjectProtocol};
 
 use edgeql_parser::tokenizer::{TokenStream, Kind, is_keyword, SpannedToken};
-use edgeql_parser::tokenizer::{MAX_KEYWORD_LENGTH, Token as RsToken};
+use edgeql_parser::tokenizer::{MAX_KEYWORD_LENGTH};
 use edgeql_parser::position::Pos;
 use crate::errors::TokenizerError;
 
@@ -346,7 +346,7 @@ pub fn tokenize(py: Python, s: &PyString) -> PyResult<PyList> {
     let mut tok_iter = rust_tokens.iter().peekable();
     while let Some(spanned_tok) = tok_iter.next() {
         let (name, text, value) = convert(py, &tokens, &mut cache,
-                                          spanned_tok.token, &mut tok_iter)?;
+                                          spanned_tok, &mut tok_iter)?;
         let py_tok = Token::create_instance(py, name, text, value,
             spanned_tok.start, spanned_tok.end)?;
 
@@ -472,12 +472,14 @@ impl Cache {
 }
 
 
-fn convert(py: Python, tokens: &Tokens, cache: &mut Cache, token: RsToken,
+fn convert(py: Python, tokens: &Tokens, cache: &mut Cache,
+    token: &SpannedToken,
     tok_iter: &mut Peekable<Iter<SpannedToken>>)
     -> PyResult<(PyString, PyString, PyObject)>
 {
     use Kind::*;
-    match token.kind {
+    let value = token.token.value;
+    match token.token.kind {
         Assign => Ok((tokens.assign.clone_ref(py),
                       tokens.assign_op.clone_ref(py),
                       py.None())),
@@ -590,93 +592,95 @@ fn convert(py: Python, tokens: &Tokens, cache: &mut Cache, token: RsToken,
                   tokens.at.clone_ref(py),
                   py.None())),
         Argument => {
-            if token.value[1..].starts_with('`') {
+            if value[1..].starts_with('`') {
                 Ok((tokens.argument.clone_ref(py),
-                    PyString::new(py, token.value),
-                    PyString::new(py, &token.value[2..token.value.len()-1]
+                    PyString::new(py, value),
+                    PyString::new(py, &value[2..value.len()-1]
                                      .replace("``", "`"))
                    .into_object()))
             } else {
                 Ok((tokens.argument.clone_ref(py),
-                    PyString::new(py, token.value),
-                    PyString::new(py, &token.value[1..])
+                    PyString::new(py, value),
+                    PyString::new(py, &value[1..])
                     .into_object()))
             }
         }
         DecimalConst => {
             Ok((tokens.nfconst.clone_ref(py),
-                PyString::new(py, token.value),
-                cache.decimal(py)?.call(py, (token.value,), None)?))
+                PyString::new(py, value),
+                cache.decimal(py)?.call(py, (value,), None)?))
         }
         FloatConst => {
             Ok((tokens.fconst.clone_ref(py),
-                PyString::new(py, token.value),
-                f64::from_str(token.value)
+                PyString::new(py, value),
+                f64::from_str(value)
                 .map_err(|e| TokenizerError::new(py,
-                    format!("error reading float: {}", e)))?
+                    (format!("error reading float: {}", e),
+                     py_pos(py, &token.start))))?
                .to_py_object(py)
                .into_object()))
         }
         IntConst => {
             Ok((tokens.iconst.clone_ref(py),
-                PyString::new(py, token.value),
-                i64::from_str(token.value)
+                PyString::new(py, value),
+                i64::from_str(value)
                 .map_err(|e| TokenizerError::new(py,
-                    format!("error reading int: {}", e)))?
+                    (format!("error reading int: {}", e),
+                     py_pos(py, &token.start))))?
                .to_py_object(py)
                .into_object()))
         }
         BigIntConst => {
             Ok((tokens.niconst.clone_ref(py),
-                PyString::new(py, token.value),
-                py.get_type::<PyInt>().call(py, (token.value,), None)?))
+                PyString::new(py, value),
+                py.get_type::<PyInt>().call(py, (value,), None)?))
         }
         BinStr => {
             Ok((tokens.bconst.clone_ref(py),
-                PyString::new(py, token.value),
+                PyString::new(py, value),
                 PyBytes::new(py,
-                    &unquote_bytes(&token.value[2..token.value.len()-1])
-                    .map_err(|s| TokenizerError::new(py, s))?)
+                    &unquote_bytes(&value[2..value.len()-1])
+                    .map_err(|s| TokenizerError::new(py,
+                        (s, py_pos(py, &token.start))))?)
                    .into_object()))
         }
         Str => {
-            if token.value.starts_with('r') {
+            if value.starts_with('r') {
                 Ok((tokens.sconst.clone_ref(py),
-                    PyString::new(py, token.value),
-                    PyString::new(py, &token.value[2..token.value.len()-1])
+                    PyString::new(py, value),
+                    PyString::new(py, &value[2..value.len()-1])
                        .into_object()))
-            } else if token.value.starts_with('$') {
-                let msize = token.value[1..].find('$').unwrap() + 2;
+            } else if value.starts_with('$') {
+                let msize = value[1..].find('$').unwrap() + 2;
                 Ok((tokens.sconst.clone_ref(py),
-                    PyString::new(py, token.value),
-                    PyString::new(py,
-                        &token.value[msize..token.value.len()-msize])
+                    PyString::new(py, value),
+                    PyString::new(py, &value[msize..value.len()-msize])
                        .into_object()))
             } else {
                 Ok((tokens.sconst.clone_ref(py),
-                    PyString::new(py, token.value),
+                    PyString::new(py, value),
                     PyString::new(py,
-                        &unquote_string(&token.value[1..token.value.len()-1])
-                        .map_err(|s| TokenizerError::new(py, s))?)
+                        &unquote_string(&value[1..value.len()-1])
+                        .map_err(|s| TokenizerError::new(py,
+                            (s, py_pos(py, &token.start))))?)
                        .into_object()))
             }
         },
         BacktickName => {
             Ok((tokens.ident.clone_ref(py),
-                PyString::new(py, token.value),
-                PyString::new(py,
-                &token.value[1..token.value.len()-1].replace("``", "`"))
+                PyString::new(py, value),
+                PyString::new(py, &value[1..value.len()-1].replace("``", "`"))
                .into_object()))
         }
         Ident | Keyword => {
-            if token.value.len() > MAX_KEYWORD_LENGTH {
-                let val = PyString::new(py, token.value);
+            if value.len() > MAX_KEYWORD_LENGTH {
+                let val = PyString::new(py, value);
                 Ok((tokens.ident.clone_ref(py),
                     val.clone_ref(py),
                     val.into_object()))
             } else {
                 cache.keyword_buf.clear();
-                cache.keyword_buf.push_str(token.value);
+                cache.keyword_buf.push_str(value);
                 cache.keyword_buf.make_ascii_lowercase();
                 match &cache.keyword_buf[..] {
                     "named" if peek_keyword(tok_iter, "only") => {
@@ -699,14 +703,14 @@ fn convert(py: Python, tokens: &Tokens, cache: &mut Cache, token: RsToken,
                     }
                     _ => match tokens.keywords.get(&cache.keyword_buf) {
                         Some(tok_info) => {
-                            debug_assert_eq!(tok_info.kind, token.kind);
+                            debug_assert_eq!(tok_info.kind, token.token.kind);
                             Ok((tok_info.name.clone_ref(py),
-                                 PyString::new(py, token.value),
+                                 PyString::new(py, value),
                                  py.None()))
                         }
                         None => {
-                            debug_assert_eq!(token.kind, Kind::Ident);
-                            let val = PyString::new(py, token.value);
+                            debug_assert_eq!(token.token.kind, Kind::Ident);
+                            let val = PyString::new(py, value);
                             Ok((tokens.ident.clone_ref(py),
                                 val.clone_ref(py),
                                 val.into_object()))
