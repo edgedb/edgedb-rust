@@ -386,7 +386,7 @@ impl Tokens {
             open_brace: PyString::new(py, "{"),
             close_brace: PyString::new(py, "}"),
             namespace: PyString::new(py, "::"),
-            coalesce: PyString::new(py, "::"),
+            coalesce: PyString::new(py, "??"),
             colon: PyString::new(py, ":"),
             semicolon: PyString::new(py, ";"),
             comma: PyString::new(py, ","),
