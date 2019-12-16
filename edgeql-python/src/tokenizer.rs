@@ -742,13 +742,15 @@ fn unquote_string<'a>(s: &'a str) -> Result<String, String> {
                         let code = hex.and_then(|s| {
                             u8::from_str_radix(s, 16).ok()
                         }).ok_or_else(|| {
-                            format!("invalid escape sequence '\\x{}'",
+                            format!("invalid string literal: \
+                                invalid escape sequence '\\x{}'",
                                 hex.unwrap_or_else(|| chars.as_str())
                                 .escape_debug())
                         })?;
                         if code > 0x7f {
                             return Err(format!(
-                                "invalid escape sequence '\\x{:x}' \
+                                "invalid string literal: \
+                                 invalid escape sequence '\\x{:x}' \
                                  (only ascii allowed)", code));
                         }
                         res.push(code as char);
@@ -761,7 +763,8 @@ fn unquote_string<'a>(s: &'a str) -> Result<String, String> {
                             })
                             .and_then(|code| char::from_u32(code))
                             .ok_or_else(|| {
-                                format!("invalid escape sequence '\\u{}'",
+                                format!("invalid string literal: \
+                                    invalid escape sequence '\\u{}'",
                                     hex.unwrap_or_else(|| chars.as_str())
                                     .escape_debug())
                             })?;
@@ -775,7 +778,8 @@ fn unquote_string<'a>(s: &'a str) -> Result<String, String> {
                             })
                             .and_then(|code| char::from_u32(code))
                             .ok_or_else(|| {
-                                format!("invalid escape sequence '\\U{}'",
+                                format!("invalid string literal: \
+                                    invalid escape sequence '\\U{}'",
                                     hex.unwrap_or_else(|| chars.as_str())
                                     .escape_debug())
                             })?;
@@ -788,7 +792,8 @@ fn unquote_string<'a>(s: &'a str) -> Result<String, String> {
                     }
                     c => {
                         return Err(format!(
-                            "invalid escape sequence '\\{:?}'",
+                            "invalid string literal: \
+                             invalid escape sequence '\\{}'",
                             c.escape_debug()));
                     }
                 }
@@ -819,7 +824,8 @@ fn unquote_bytes<'a>(s: &'a str) -> Result<Vec<u8>, String> {
                         let code = hex.and_then(|s| {
                             u8::from_str_radix(s, 16).ok()
                         }).ok_or_else(|| {
-                            format!("invalid escape sequence '\\x{}'",
+                            format!("invalid bytes literal: \
+                                invalid escape sequence '\\x{}'",
                                 hex.unwrap_or_else(|| tail).escape_debug())
                         })?;
                         res.push(code);
@@ -833,8 +839,9 @@ fn unquote_bytes<'a>(s: &'a str) -> Result<Vec<u8>, String> {
                             s[s.len()-bytes.as_slice().len()-1..]
                             .chars().next().unwrap()
                         };
-                        return Err(format!("invalid escape sequence '\\{}'",
-                                           ch.escape_debug()));
+                        return Err(format!("invalid bytes literal: \
+                            invalid escape sequence '\\{}'",
+                           ch.escape_debug()));
                     }
                 }
             }

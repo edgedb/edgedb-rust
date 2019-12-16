@@ -599,6 +599,10 @@ fn strings() {
     assert_eq!(tok_err(r#"`hello"#),
         "Unexpected `unterminated backtick name`");
 
+    assert_eq!(tok_err(r#"b'\☎''"#),
+        "Unexpected `invalid bytes literal: character '☎' is unexpected, \
+            only ascii chars are allowed in bytes literals`");
+
     assert_eq!(tok_err(r#"name`type`"#),
         "Unexpected `prefix \"name\" is not allowed for field names, \
         perhaps missing comma or dot?`");

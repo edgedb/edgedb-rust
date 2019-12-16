@@ -520,21 +520,39 @@ impl<'a> TokenStream<'a> {
     {
         let mut iter = self.buf[self.off+quote_off..].char_indices();
         let open_quote = iter.next().unwrap().1;
-        while let Some((idx, c)) = iter.next() {
-            match c {
-                '\\' if !raw => match iter.next() {
-                    // skip any next char, even quote
-                    Some((_, _)) => continue,
-                    None => break,
-                }
-                c if c == open_quote => {
-                    if binary {
+        if binary {
+            while let Some((idx, c)) = iter.next() {
+                match c {
+                    '\\' if !raw => match iter.next() {
+                        // skip any next char, even quote
+                        Some((_, _)) => continue,
+                        None => break,
+                    }
+                    c if c as u32 > 0x7f => {
+                        return Err(Error::unexpected_format(
+                            format_args!("invalid bytes literal: character \
+                                {:?} is unexpected, only ascii chars are \
+                                allowed in bytes literals", c)));
+                    }
+                    c if c == open_quote => {
                         return Ok((Kind::BinStr, quote_off+idx+1))
-                    } else {
+                    }
+                    _ => {}
+                }
+            }
+        } else {
+            while let Some((idx, c)) = iter.next() {
+                match c {
+                    '\\' if !raw => match iter.next() {
+                        // skip any next char, even quote
+                        Some((_, _)) => continue,
+                        None => break,
+                    }
+                    c if c == open_quote => {
                         return Ok((Kind::Str, quote_off+idx+1))
                     }
+                    _ => {}
                 }
-                _ => {}
             }
         }
         return Err(Error::unexpected_format(
