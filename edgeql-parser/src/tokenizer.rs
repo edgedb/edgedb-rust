@@ -311,7 +311,7 @@ impl<'a> TokenStream<'a> {
                     }
                 }
                 return Err(Error::unexpected_static_message(
-                    "unclosed backtick name"));
+                    "unterminated backtick name"));
             }
             '=' => return Ok((Eq, 1)),
             ',' => return Ok((Comma, 1)),
@@ -370,20 +370,25 @@ impl<'a> TokenStream<'a> {
             }
             '0'..='9' => {
                 if self.dot {
-                    for (idx, c) in iter {
-                        match c {
-                            '0'..='9' => continue,
-                            c if c.is_alphabetic() => {
+                    let len = loop {
+                        match iter.next() {
+                            Some((_, '0'..='9')) => continue,
+                            Some((_, c)) if c.is_alphabetic() => {
                                 return Err(Error::unexpected_format(
                                     format_args!("unexpected char {:?}, \
                                         only integers are allowed after dot \
                                         (for tuple access)", c)
                                 ));
                             }
-                            _ => return Ok((IntConst, idx)),
+                            Some((idx, _)) => break idx,
+                            None => break self.buf.len() - self.off,
                         }
+                    };
+                    if cur_char == '0' && len > 1 {
+                        return Err(Error::unexpected_static_message(
+                            "leading zeros are not allowed in numbers"));
                     }
-                    Ok((IntConst, self.buf.len() - self.off))
+                    Ok((IntConst, len))
                 } else {
                     self.parse_number()
                 }
@@ -399,7 +404,7 @@ impl<'a> TokenStream<'a> {
                                 return Ok((Str, 2+end+2));
                             } else {
                                 return Err(Error::unexpected_static_message(
-                                    "unclosed string started \
+                                    "unterminated string started \
                                         with $$"));
                             }
                         }
@@ -442,7 +447,7 @@ impl<'a> TokenStream<'a> {
                                 }
                             }
                             return Err(Error::unexpected_static_message(
-                                "unclosed backtick argument"));
+                                "unterminated backtick argument"));
                         }
                         '0'..='9' => { }
                         c if c.is_alphabetic() || c == '_' => {
@@ -477,7 +482,7 @@ impl<'a> TokenStream<'a> {
                                 return Ok((Str, msize+end+msize));
                             } else {
                                 return Err(Error::unexpected_format(
-                                    format_args!("unclosed string started \
+                                    format_args!("unterminated string started \
                                         with {:?}", marker)));
                             }
                         }
@@ -533,7 +538,7 @@ impl<'a> TokenStream<'a> {
             }
         }
         return Err(Error::unexpected_format(
-            format_args!("unclosed string, quoted by `{}`", open_quote)));
+            format_args!("unterminated string, quoted by `{}`", open_quote)));
     }
 
     fn parse_number(&mut self)
@@ -544,25 +549,33 @@ impl<'a> TokenStream<'a> {
             Dot,
             Exponent,
             Letter,
+            End,
         }
         use self::Kind::*;
         let mut iter = self.buf[self.off+1..].char_indices();
         let mut suffix = None;
         let mut float = false;
         // decimal part
-        let mut bstate = loop {
+        let (mut bstate, dec_len) = loop {
             match iter.next() {
                 Some((_, '0'..='9')) => continue,
-                Some((_, 'e')) => break Break::Exponent,
-                Some((_, '.')) => break Break::Dot,
+                Some((idx, 'e')) => break (Break::Exponent, idx+1),
+                Some((idx, '.')) => break (Break::Dot, idx+1),
                 Some((idx, c)) if c.is_alphabetic() => {
                     suffix = Some(idx+1);
-                    break Break::Letter;
+                    break (Break::Letter, idx+1);
                 }
-                Some((idx, _)) => return Ok((IntConst, idx+1)),
-                None => return Ok((IntConst, self.buf.len() - self.off)),
+                Some((idx, _)) => break (Break::End, idx+1),
+                None => break (Break::End, self.buf.len() - self.off),
             }
         };
+        if self.buf.as_bytes()[self.off] == b'0' && dec_len > 1 {
+            return Err(Error::unexpected_static_message(
+                "leading zeros are not allowed in numbers"));
+        }
+        if bstate == Break::End {
+            return Ok((IntConst, dec_len));
+        }
         if bstate == Break::Dot {
             float = true;
             bstate = loop {

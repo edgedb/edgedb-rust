@@ -742,12 +742,14 @@ fn unquote_string<'a>(s: &'a str) -> Result<String, String> {
                         let code = hex.and_then(|s| {
                             u8::from_str_radix(s, 16).ok()
                         }).ok_or_else(|| {
-                            format!("invalid \\x escape {:?}",
-                                hex.unwrap_or_else(|| chars.as_str()))
+                            format!("invalid escape sequence '\\x{}'",
+                                hex.unwrap_or_else(|| chars.as_str())
+                                .escape_debug())
                         })?;
                         if code > 0x7f {
-                            return Err(format!("invalid \\x escape {:x} \
-                                                (only ascii allowed)", code));
+                            return Err(format!(
+                                "invalid escape sequence '\\x{:x}' \
+                                 (only ascii allowed)", code));
                         }
                         res.push(code as char);
                         chars.nth(1);
@@ -759,8 +761,9 @@ fn unquote_string<'a>(s: &'a str) -> Result<String, String> {
                             })
                             .and_then(|code| char::from_u32(code))
                             .ok_or_else(|| {
-                                format!("invalid \\u escape {:?}",
-                                    hex.unwrap_or_else(|| chars.as_str()))
+                                format!("invalid escape sequence '\\u{}'",
+                                    hex.unwrap_or_else(|| chars.as_str())
+                                    .escape_debug())
                             })?;
                         res.push(ch);
                         chars.nth(3);
@@ -772,8 +775,9 @@ fn unquote_string<'a>(s: &'a str) -> Result<String, String> {
                             })
                             .and_then(|code| char::from_u32(code))
                             .ok_or_else(|| {
-                                format!("invalid \\U escape {:?}",
-                                    hex.unwrap_or_else(|| chars.as_str()))
+                                format!("invalid escape sequence '\\U{}'",
+                                    hex.unwrap_or_else(|| chars.as_str())
+                                    .escape_debug())
                             })?;
                         res.push(ch);
                         chars.nth(7);
@@ -783,7 +787,9 @@ fn unquote_string<'a>(s: &'a str) -> Result<String, String> {
                         chars.nth(chars.as_str().len() - nleft - 1);
                     }
                     c => {
-                        return Err(format!("bad escaped char {:?}", c));
+                        return Err(format!(
+                            "invalid escape sequence '\\{:?}'",
+                            c.escape_debug()));
                     }
                 }
             }
@@ -813,8 +819,8 @@ fn unquote_bytes<'a>(s: &'a str) -> Result<Vec<u8>, String> {
                         let code = hex.and_then(|s| {
                             u8::from_str_radix(s, 16).ok()
                         }).ok_or_else(|| {
-                            format!("invalid \\x escape {:?}",
-                                hex.unwrap_or_else(|| tail))
+                            format!("invalid escape sequence '\\x{}'",
+                                hex.unwrap_or_else(|| tail).escape_debug())
                         })?;
                         res.push(code);
                         bytes.nth(1);
@@ -827,7 +833,8 @@ fn unquote_bytes<'a>(s: &'a str) -> Result<Vec<u8>, String> {
                             s[s.len()-bytes.as_slice().len()-1..]
                             .chars().next().unwrap()
                         };
-                        return Err(format!("bad escaped char {:?}", ch));
+                        return Err(format!("invalid escape sequence '\\{}'",
+                                           ch.escape_debug()));
                     }
                 }
             }

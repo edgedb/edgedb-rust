@@ -221,6 +221,9 @@ fn integer() {
     assert_eq!(tok_typ("0 "), [IntConst]);
     assert_eq!(tok_str("123 "), ["123"]);
     assert_eq!(tok_typ("123 "), [IntConst]);
+
+    assert_eq!(tok_err("01"),
+        "Unexpected `leading zeros are not allowed in numbers`");
 }
 
 #[test]
@@ -236,6 +239,8 @@ fn bigint() {
     assert_eq!(tok_typ("0n "), [BigIntConst]);
     assert_eq!(tok_str("123n "), ["123n"]);
     assert_eq!(tok_typ("123n "), [BigIntConst]);
+    assert_eq!(tok_err("01n"),
+        "Unexpected `leading zeros are not allowed in numbers`");
 }
 
 #[test]
@@ -277,6 +282,9 @@ fn float() {
     assert_eq!(tok_typ("123e+99 "), [FloatConst]);
     assert_eq!(tok_str("2345e-7 "), ["2345e-7"]);
     assert_eq!(tok_typ("2345e-7 "), [FloatConst]);
+
+    assert_eq!(tok_err("01.2"),
+        "Unexpected `leading zeros are not allowed in numbers`");
 }
 
 #[test]
@@ -318,6 +326,9 @@ fn decimal() {
     assert_eq!(tok_typ("123e+99n "), [DecimalConst]);
     assert_eq!(tok_str("2345e-7n "), ["2345e-7n"]);
     assert_eq!(tok_typ("2345e-7n "), [DecimalConst]);
+
+    assert_eq!(tok_err("01.0n"),
+        "Unexpected `leading zeros are not allowed in numbers`");
 }
 
 #[test]
@@ -474,6 +485,9 @@ fn tuple_paths() {
     assert_eq!(tok_err("tup.1n"),
         "Unexpected `unexpected char \'n\', only integers \
         are allowed after dot (for tuple access)`");
+
+    assert_eq!(tok_err("tup.01"),
+        "Unexpected `leading zeros are not allowed in numbers`");
 }
 
 #[test]
@@ -571,19 +585,19 @@ fn strings() {
     assert_eq!(tok_typ(" `hel\nlo` "), [BacktickName]);
 
     assert_eq!(tok_err(r#""hello"#),
-        "Unexpected `unclosed string, quoted by `\"``");
+        "Unexpected `unterminated string, quoted by `\"``");
     assert_eq!(tok_err(r#"'hello"#),
-        "Unexpected `unclosed string, quoted by `'``");
+        "Unexpected `unterminated string, quoted by `'``");
     assert_eq!(tok_err(r#"r"hello"#),
-        "Unexpected `unclosed string, quoted by `\"``");
+        "Unexpected `unterminated string, quoted by `\"``");
     assert_eq!(tok_err(r#"r'hello"#),
-        "Unexpected `unclosed string, quoted by `'``");
+        "Unexpected `unterminated string, quoted by `'``");
     assert_eq!(tok_err(r#"b"hello"#),
-        "Unexpected `unclosed string, quoted by `\"``");
+        "Unexpected `unterminated string, quoted by `\"``");
     assert_eq!(tok_err(r#"b'hello"#),
-        "Unexpected `unclosed string, quoted by `'``");
+        "Unexpected `unterminated string, quoted by `'``");
     assert_eq!(tok_err(r#"`hello"#),
-        "Unexpected `unclosed backtick name`");
+        "Unexpected `unterminated backtick name`");
 
     assert_eq!(tok_err(r#"name`type`"#),
         "Unexpected `prefix \"name\" is not allowed for field names, \
@@ -627,9 +641,9 @@ fn test_dollar() {
     assert_eq!(tok_typ("select $a$ ; $b$ ; $a$; x"),
                        [Keyword, Str, Semicolon, Ident]);
     assert_eq!(tok_err("select $$ ; $ab$ test;"),
-        "Unexpected `unclosed string started with $$`");
+        "Unexpected `unterminated string started with $$`");
     assert_eq!(tok_err("select $a$ ; $$ test;"),
-        "Unexpected `unclosed string started with \"$a$\"`");
+        "Unexpected `unterminated string started with \"$a$\"`");
     assert_eq!(tok_err("select $0$"),
         "Unexpected `dollar quote must not start with a digit`");
     assert_eq!(tok_err("select $фыва$"),
