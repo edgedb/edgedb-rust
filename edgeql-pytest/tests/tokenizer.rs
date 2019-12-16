@@ -79,3 +79,19 @@ fn token_methods() -> py::RunResult {
         assert tokens[1].end() == (1, 9, 8), tokens[1].end()\n\
     ")
 }
+
+#[test]
+fn bigint_decimal() -> py::RunResult {
+    py::run("\
+        from edb.edgeql._edgeql_rust import tokenize\n\
+        tokens = list(map(repr, tokenize('SELECT 1n+1.1n;')))\n\
+        assert tokens == [
+            '<Token SELECT>',
+            '<Token NICONST 1>',
+            '<Token +>',
+            '<Token NFCONST Decimal(\\'1.1\\')>',
+            '<Token ;>',
+            '<Token EOF>',
+        ], tokens
+    ")
+}

@@ -608,7 +608,8 @@ fn convert(py: Python, tokens: &Tokens, cache: &mut Cache,
         DecimalConst => {
             Ok((tokens.nfconst.clone_ref(py),
                 PyString::new(py, value),
-                cache.decimal(py)?.call(py, (value,), None)?))
+                cache.decimal(py)?.call(py,
+                    (&value[..value.len()-1],), None)?))
         }
         FloatConst => {
             Ok((tokens.fconst.clone_ref(py),
@@ -633,7 +634,8 @@ fn convert(py: Python, tokens: &Tokens, cache: &mut Cache,
         BigIntConst => {
             Ok((tokens.niconst.clone_ref(py),
                 PyString::new(py, value),
-                py.get_type::<PyInt>().call(py, (value,), None)?))
+                py.get_type::<PyInt>().call(py,
+                    (&value[..value.len()-1],), None)?))
         }
         BinStr => {
             Ok((tokens.bconst.clone_ref(py),
@@ -776,6 +778,10 @@ fn unquote_string<'a>(s: &'a str) -> Result<String, String> {
                         res.push(ch);
                         chars.nth(7);
                     },
+                    '\n' => {
+                        let nleft = chars.as_str().trim_start().len();
+                        chars.nth(chars.as_str().len() - nleft - 1);
+                    }
                     c => {
                         return Err(format!("bad escaped char {:?}", c));
                     }
@@ -840,6 +846,8 @@ fn unquote_unicode_string() {
     assert_eq!(unquote_string(r#"\u000D"#).unwrap(), "\u{000D}");
     assert_eq!(unquote_string(r#"\u0020"#).unwrap(), "\u{0020}");
     assert_eq!(unquote_string(r#"\uFFFF"#).unwrap(), "\u{FFFF}");
+    assert_eq!(unquote_string(r"hello \
+                                world").unwrap(), "hello world");
 
     // a more complex string
     assert_eq!(unquote_string(r#"\u0009 hello \u000A there"#).unwrap(),
