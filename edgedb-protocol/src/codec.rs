@@ -99,7 +99,14 @@ impl<'a> CodecBuilder<'a> {
                 BaseScalar(base) => {
                     return scalar_codec(&base.id);
                 }
-                _ => unimplemented!(),
+                Set(..) => unimplemented!(),
+                ObjectShape(..) => unimplemented!(),
+                Scalar(..) => unimplemented!(),
+                Tuple(..) => unimplemented!(),
+                NamedTuple(..) => unimplemented!(),
+                Array(..) => unimplemented!(),
+                Enumeration(..) => unimplemented!(),
+                TypeAnnotation(..) => unimplemented!(),
             }
         } else {
             return errors::UnexpectedTypePos { position: pos.0 }.fail()?;
