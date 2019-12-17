@@ -11,6 +11,8 @@ use crate::value::Value;
 pub enum DecodeError {
     #[snafu(display("unexpected end of frame"))]
     Underflow { backtrace: Backtrace },
+    #[snafu(display("frame contains extra data after decoding"))]
+    ExtraData { backtrace: Backtrace },
     #[snafu(display("invalid utf8 when decoding string: {}", source))]
     InvalidUtf8 { backtrace: Backtrace, source: str::Utf8Error },
     #[snafu(display("invalid auth status: {:x}", auth_status))]
@@ -29,6 +31,8 @@ pub enum DecodeError {
     InvalidUuid { backtrace: Backtrace, source: uuid::Error },
     #[snafu(display("invalid duration"))]
     InvalidDuration { backtrace: Backtrace },
+    #[snafu(display("object data size does not match its shape"))]
+    ObjectSizeMismatch { backtrace: Backtrace },
     #[doc(hidden)]
     __NonExhaustive1,
 }
@@ -50,12 +54,18 @@ pub enum EncodeError {
     TooManyAttributes { backtrace: Backtrace },
     #[snafu(display("more than 64Ki authentication methods"))]
     TooManyMethods { backtrace: Backtrace },
+    #[snafu(display("more than 4Gi elements in the object"))]
+    TooManyElements { backtrace: Backtrace },
+    #[snafu(display("single element larger than 4Gi"))]
+    ElementTooLong { backtrace: Backtrace },
     #[snafu(display("unknown message types can't be encoded"))]
     UnknownMessageCantBeEncoded { backtrace: Backtrace },
     #[snafu(display("trying to encode invalid value type {} with codec {}",
                     value_type, codec))]
     InvalidValue { backtrace: Backtrace,
                    value_type: &'static str, codec: &'static str },
+    #[snafu(display("shape of data does not match shape of encoder"))]
+    ObjectShapeMismatch { backtrace: Backtrace },
     #[doc(hidden)]
     __NonExhaustive2,
 }

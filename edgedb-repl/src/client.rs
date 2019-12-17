@@ -180,8 +180,8 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
                     }
                     for chunk in data.data {
                         let mut cur = io::Cursor::new(chunk);
-                        let value = codec.decode(&mut cur);
-                        assert!(cur.bytes() == b"");
+                        let value = codec.decode_value(&mut cur);
+                        debug_assert_eq!(cur.bytes(), b"");
                         println!("Row {:?}", value);
                     }
                 }

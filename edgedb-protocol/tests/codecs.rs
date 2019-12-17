@@ -7,16 +7,19 @@ use bytes::{Bytes, Buf};
 
 use edgedb_protocol::codec::{build_codec, Codec};
 use edgedb_protocol::value::{Value, Scalar, Duration};
-use edgedb_protocol::descriptors::Descriptor;
+use edgedb_protocol::descriptors::{Descriptor, TypePos};
 use edgedb_protocol::descriptors::BaseScalarTypeDescriptor;
+use edgedb_protocol::descriptors::{ObjectShapeDescriptor, ShapeElement};
 
+mod base;
 
 macro_rules! encoding_eq {
     ($codec: expr, $bytes: expr, $value: expr) => {
+        let orig_value = $value;
         let value = decode($codec, $bytes)?;
-        assert_eq!(value, $value);
+        assert_eq!(value, orig_value);
         let mut bytes = bytes::BytesMut::new();
-        $codec.encode(&mut bytes, &$value)?;
+        $codec.encode(&mut bytes, &orig_value)?;
         println!("Serialized bytes {:?}", bytes);
         let bytes = bytes.freeze();
         assert_eq!(&bytes[..], $bytes);
@@ -262,5 +265,53 @@ fn null_codec() -> Result<(), Box<dyn Error>> {
         &[]
     )?;
     encoding_eq!(&codec, b"", Value::Nothing);
+    Ok(())
+}
+
+#[test]
+fn object_codec() -> Result<(), Box<dyn Error>> {
+    let elements = vec![
+        ShapeElement {
+            flag_implicit: true,
+            flag_link_property: false,
+            flag_link: false,
+            name: String::from("__tid__"),
+            type_pos: TypePos(0),
+        },
+        ShapeElement {
+            flag_implicit: false,
+            flag_link_property: false,
+            flag_link: false,
+            name: String::from("id"),
+            type_pos: TypePos(0),
+        },
+    ];
+    let shape = elements.as_slice().into();
+    let codec = build_codec(
+        &"5d5ebe41-eac8-eab7-a24e-cc3a8cd2766c".parse()?,
+        &[
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-000000000100".parse()?,
+            }),
+            Descriptor::ObjectShape(ObjectShapeDescriptor {
+                id: "5d5ebe41-eac8-eab7-a24e-cc3a8cd2766c".parse()?,
+                elements,
+            }),
+        ]
+    )?;
+    // TODO(tailhook) test with non-zero reserved bytes
+    encoding_eq!(&codec, bconcat!(
+        b"\0\0\0\x02\0\0\x00\x00\0\0\0\x100Wd\0 d"
+        b"\x11\xea\x98\xc53\xc5\xcf\xb4r^\0\0\x00"
+        b"\x00\0\0\0\x10I(\xcc\x1e e\x11\xea\x88H{S"
+        b"\xa6\xad\xb3\x83"), Value::Object {
+            shape,
+            fields: vec![
+                Value::Scalar(Scalar::Uuid(
+                    "30576400-2064-11ea-98c5-33c5cfb4725e".parse()?)),
+                Value::Scalar(Scalar::Uuid(
+                    "4928cc1e-2065-11ea-8848-7b53a6adb383".parse()?)),
+            ]
+        });
     Ok(())
 }

@@ -1,5 +1,5 @@
 use std::any::type_name;
-use std::convert::TryInto;
+use std::convert::{TryInto, TryFrom};
 use std::fmt;
 use std::str;
 use std::io::Cursor;
@@ -9,7 +9,7 @@ use bytes::{Bytes, Buf, BytesMut, BufMut};
 use uuid::Uuid;
 use snafu::{ensure, OptionExt, ResultExt};
 
-use crate::descriptors::{Descriptor, TypePos};
+use crate::descriptors::{self, Descriptor, TypePos};
 use crate::errors::{self, CodecError, DecodeError, EncodeError};
 use crate::value::{self, Value, Scalar};
 
@@ -87,8 +87,24 @@ struct Duration { }
 #[derive(Debug)]
 struct Nothing { }
 
+#[derive(Debug)]
+struct Object {
+    shape: ObjectShape,
+    codecs: Vec<Arc<dyn Codec>>,
+}
+
 struct CodecBuilder<'a> {
     descriptors: &'a [Descriptor],
+}
+
+impl dyn Codec {
+    pub fn decode_value(&self, buf: &mut Cursor<Bytes>)
+        -> Result<Value, DecodeError>
+    {
+        let result = Codec::decode(self, buf)?;
+        ensure!(buf.bytes().len() == 0, errors::ExtraData);
+        Ok(result)
+    }
 }
 
 impl<'a> CodecBuilder<'a> {
@@ -100,7 +116,9 @@ impl<'a> CodecBuilder<'a> {
                     return scalar_codec(&base.id);
                 }
                 Set(..) => unimplemented!(),
-                ObjectShape(..) => unimplemented!(),
+                ObjectShape(d) => {
+                    return Ok(Arc::new(Object::build(d, self)?))
+                }
                 Scalar(..) => unimplemented!(),
                 Tuple(..) => unimplemented!(),
                 NamedTuple(..) => unimplemented!(),
@@ -335,5 +353,90 @@ impl Codec for Nothing {
             Value::Nothing => Ok(()),
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         }
+    }
+}
+
+impl Object {
+    fn build(d: &descriptors::ObjectShapeDescriptor, dec: &CodecBuilder)
+        -> Result<Object, CodecError>
+    {
+        Ok(Object {
+            shape: d.elements.as_slice().into(),
+            codecs: d.elements.iter()
+                .map(|e| dec.build(e.type_pos))
+                .collect::<Result<_, _>>()?,
+        })
+    }
+}
+
+impl Codec for Object {
+    fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
+        ensure!(buf.remaining() >= 4, errors::Underflow);
+        let size = buf.get_u32_be() as usize;
+        ensure!(size == self.codecs.len(), errors::ObjectSizeMismatch);
+        let mut fields = Vec::with_capacity(size);
+        for codec in &self.codecs {
+            ensure!(buf.remaining() >= 8, errors::Underflow);
+            let _reserved = buf.get_i32_be();
+            let len = buf.get_u32_be() as usize;
+            ensure!(buf.remaining() >= len, errors::Underflow);
+            let off = buf.position() as usize;
+            let mut chunk = Cursor::new(buf.get_ref().slice(off, off + len));
+            buf.advance(len);
+            fields.push(codec.decode_value(&mut chunk)?);
+        }
+        return Ok(Value::Object {
+            shape: self.shape.clone(),
+            fields,
+        })
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        let (shape, fields) = match val {
+            Value::Object { shape, fields } => (shape, fields),
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        ensure!(shape == &self.shape, errors::ObjectShapeMismatch);
+        ensure!(self.codecs.len() == fields.len(),
+                errors::ObjectShapeMismatch);
+        debug_assert_eq!(self.codecs.len(), shape.0.elements.len());
+        buf.reserve(4 + 8*self.codecs.len());
+        buf.put_u32_be(self.codecs.len().try_into()
+                    .ok().context(errors::TooManyElements)?);
+        for (codec, field) in self.codecs.iter().zip(fields) {
+            buf.reserve(8);
+            buf.put_u32_be(0);
+            let pos = buf.len();
+            buf.put_u32_be(0); // temporary
+            codec.encode(buf, field)?;
+            let len = buf.len()-pos-4;
+            buf[pos..pos+4].copy_from_slice(&u32::try_from(len)
+                    .ok().context(errors::ElementTooLong)?
+                    .to_be_bytes());
+        }
+        Ok(())
+    }
+}
+
+impl<'a> From<&'a [descriptors::ShapeElement]> for ObjectShape {
+    fn from(shape: &'a [descriptors::ShapeElement]) -> ObjectShape {
+        ObjectShape(Arc::new(ObjectShapeInfo {
+                elements: shape.iter().map(|e| {
+                    let descriptors::ShapeElement {
+                        flag_implicit,
+                        flag_link_property,
+                        flag_link,
+                        name,
+                        type_pos: _,
+                    } = e;
+                    ShapeElement {
+                        flag_implicit: *flag_implicit,
+                        flag_link_property: *flag_link_property,
+                        flag_link: *flag_link,
+                        name: name.clone(),
+                    }
+                }).collect(),
+            }))
     }
 }
