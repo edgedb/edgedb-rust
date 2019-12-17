@@ -61,9 +61,14 @@ pub struct Options {
 impl Options {
     pub fn from_args_and_env() -> Options {
         let tmp = TmpOptions::from_args();
+        let admin = tmp.admin;
         let user = tmp.user
             .or_else(|| env::var("EDGEDB_USER").ok())
-            .unwrap_or_else(|| whoami::username());
+            .unwrap_or_else(|| if admin  {
+                String::from("edgeb")
+            } else {
+                whoami::username()
+            });
         let host = tmp.host
             .or_else(|| env::var("EDGEDB_HOST").ok())
             .unwrap_or_else(|| String::from("localhost"));
@@ -73,7 +78,11 @@ impl Options {
             .unwrap_or_else(|| 5656);
         let database = tmp.database
             .or_else(|| env::var("EDGEDB_DATABASE").ok())
-            .unwrap_or_else(|| user.clone());
+            .unwrap_or_else(|| if admin  {
+                String::from("edgedb")
+            } else {
+                user.clone()
+            });
 
         // TODO(pc) add option to force interactive mode not on a tty (tests)
         let interactive = atty::is(atty::Stream::Stdin);
