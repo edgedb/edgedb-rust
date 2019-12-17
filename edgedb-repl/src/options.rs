@@ -15,10 +15,17 @@ struct TmpOptions {
     pub user: Option<String>,
     #[structopt(short="d")]
     pub database: Option<String>,
+    #[structopt(long)]
+    pub debug_print_data_frames: bool,
+    #[structopt(long)]
     pub admin: bool,
+    #[structopt(long)]
     pub password: bool,
+    #[structopt(long)]
     pub no_password: bool,
+    #[structopt(long)]
     pub password_from_stdin: bool,
+
     #[structopt(subcommand)]
     pub subcommand: Option<Command>,
 }
@@ -48,6 +55,7 @@ pub struct Options {
     pub password: Password,
     pub subcommand: Option<Command>,
     pub interactive: bool,
+    pub debug_print_data_frames: bool,
 }
 
 impl Options {
@@ -81,6 +89,7 @@ impl Options {
             } else {
                 Password::FromTerminal
             },
+            debug_print_data_frames: tmp.debug_print_data_frames,
         }
     }
 }

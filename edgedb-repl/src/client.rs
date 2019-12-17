@@ -175,7 +175,9 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
             let msg = reader.message().await?;
             match msg {
                 ServerMessage::Data(data) => {
-                    println!("Data {:?}", data);
+                    if options.debug_print_data_frames {
+                        println!("Data {:?}", data);
+                    }
                     for chunk in data.data {
                         let mut cur = io::Cursor::new(chunk);
                         let value = codec.decode(&mut cur);
