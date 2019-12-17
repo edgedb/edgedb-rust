@@ -111,6 +111,12 @@ fn prepare_complete() -> Result<(), Box<dyn Error>> {
         input_typedesc_id: Uuid::from_u128(0xFF),
         output_typedesc_id: Uuid::from_u128(0x105),
     }), b"1\0\0\0'\0\0o\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05");
+    encoding_eq!(ServerMessage::PrepareComplete(PrepareComplete {
+        headers: HashMap::new(),
+        cardinality: Cardinality::Zero,
+        input_typedesc_id: Uuid::from_u128(0xFF),
+        output_typedesc_id: Uuid::from_u128(0x0),
+    }), b"1\0\0\0'\0\0n\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
     Ok(())
 }
 
@@ -132,6 +138,19 @@ fn command_data_description() -> Result<(), Box<dyn Error>> {
                  b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"
                  b"\0\0\0\x11"
                  b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"));
+    encoding_eq!(ServerMessage::CommandDataDescription(CommandDataDescription {
+        headers: HashMap::new(),
+        result_cardinality: Cardinality::Zero,
+        input_typedesc_id: Uuid::from_u128(0xFF),
+        input_typedesc: Bytes::from_static(
+            b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0"),
+        output_typedesc_id: Uuid::from_u128(0),
+        output_typedesc: Bytes::from_static(b""),
+    }), bconcat!(b"T\0\0\0B\0\0n"
+                 b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff"
+                 b"\0\0\0\x13"
+                 b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0"
+                 b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"));
     Ok(())
 }
 

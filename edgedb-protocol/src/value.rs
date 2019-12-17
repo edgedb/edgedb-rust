@@ -20,6 +20,7 @@ pub enum Value {
     NamedTuple { shape: NamedTupleShape, fields: Vec<Value> },
     Array(Vec<Value>),
     Enum(EnumValue),
+    Nothing,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -68,6 +69,7 @@ impl Value {
             NamedTuple { .. } => "named_tuple",
             Array(..) => "array",
             Enum(..) => "enum",
+            Nothing => "nothing",
         }
     }
 }

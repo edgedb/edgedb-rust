@@ -84,6 +84,9 @@ struct Str { }
 #[derive(Debug)]
 struct Duration { }
 
+#[derive(Debug)]
+struct Nothing { }
+
 struct CodecBuilder<'a> {
     descriptors: &'a [Descriptor],
 }
@@ -108,6 +111,9 @@ pub fn build_codec(root: &Uuid, descriptors: &[Descriptor])
     -> Result<Arc<dyn Codec>, CodecError>
 {
     let dec = CodecBuilder { descriptors };
+    if root == &Uuid::from_u128(0) {
+        return Ok(Arc::new(Nothing { }));
+    }
     for (idx, desc) in descriptors.iter().enumerate() {
         if desc.id() == root {
             return dec.build(TypePos(
@@ -308,5 +314,19 @@ impl Codec for UuidCodec {
         };
         buf.extend(val.as_bytes());
         Ok(())
+    }
+}
+
+impl Codec for Nothing {
+    fn decode(&self, _buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
+        Ok(Value::Nothing)
+    }
+    fn encode(&self, _buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        match val {
+            Value::Nothing => Ok(()),
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        }
     }
 }

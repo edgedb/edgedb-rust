@@ -254,3 +254,13 @@ fn duration() -> Result<(), Box<dyn Error>> {
            "invalid duration");
     Ok(())
 }
+
+#[test]
+fn null_codec() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(
+        &"00000000-0000-0000-0000-000000000000".parse()?,
+        &[]
+    )?;
+    encoding_eq!(&codec, b"", Value::Nothing);
+    Ok(())
+}
