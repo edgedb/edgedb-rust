@@ -1,7 +1,6 @@
 use std::io::{Cursor};
 use std::error::Error;
-use std::i32;
-use std::i64;
+use std::{i16, i32, i64};
 use std::sync::Arc;
 
 use bytes::{Bytes, Buf};
@@ -32,6 +31,30 @@ fn decode(codec: &Arc<dyn Codec>, data: &[u8]) -> Result<Value, Box<dyn Error>>
     assert!(cur.bytes() == b"");
     Ok(res)
 }
+
+#[test]
+fn int16() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(
+        &"00000000-0000-0000-0000-000000000103".parse()?,
+        &[
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-000000000103".parse()?,
+            })
+        ]
+    )?;
+    encoding_eq!(&codec, b"\0\0",
+               Value::Scalar(Scalar::Int16(0)));
+    encoding_eq!(&codec, b"\x01\x05",
+               Value::Scalar(Scalar::Int16(0x105)));
+    encoding_eq!(&codec, b"\x7F\xFF",
+               Value::Scalar(Scalar::Int16(i16::MAX)));
+    encoding_eq!(&codec, b"\x80\x00",
+               Value::Scalar(Scalar::Int16(i16::MIN)));
+    encoding_eq!(&codec, b"\xFF\xFF",
+               Value::Scalar(Scalar::Int16(-1)));
+    Ok(())
+}
+
 
 #[test]
 fn int32() -> Result<(), Box<dyn Error>> {
