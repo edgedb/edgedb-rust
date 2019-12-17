@@ -210,6 +210,22 @@ fn str() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn uuid() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(
+        &"00000000-0000-0000-0000-000000000100".parse()?,
+        &[
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-000000000100".parse()?,
+            })
+        ]
+    )?;
+    encoding_eq!(&codec, b"I(\xcc\x1e e\x11\xea\x88H{S\xa6\xad\xb3\x83",
+               Value::Scalar(Scalar::Uuid(
+                "4928cc1e-2065-11ea-8848-7b53a6adb383".parse()?)));
+    Ok(())
+}
+
+#[test]
 fn duration() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(
         &"00000000-0000-0000-0000-00000000010e".parse()?,

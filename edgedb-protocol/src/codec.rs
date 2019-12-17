@@ -14,6 +14,7 @@ use crate::errors::{self, CodecError, DecodeError, EncodeError};
 use crate::value::{self, Value, Scalar};
 
 
+const STD_UUID: Uuid = Uuid::from_u128(0x100);
 const STD_INT16: Uuid = Uuid::from_u128(0x103);
 const STD_INT32: Uuid = Uuid::from_u128(0x104);
 const STD_INT64: Uuid = Uuid::from_u128(0x105);
@@ -58,6 +59,9 @@ struct NamedTupleShapeInfo {
 pub struct TupleElement {
     pub name: String,
 }
+
+#[derive(Debug)]
+struct UuidCodec { }
 
 #[derive(Debug)]
 struct Int16 { }
@@ -118,6 +122,7 @@ pub fn build_codec(root: &Uuid, descriptors: &[Descriptor])
 
 pub fn scalar_codec(uuid: &Uuid) -> Result<Arc<dyn Codec>, CodecError> {
     match *uuid {
+        STD_UUID => Ok(Arc::new(UuidCodec {})),
         STD_INT16 => Ok(Arc::new(Int16 {})),
         STD_INT32 => Ok(Arc::new(Int32 {})),
         STD_INT64 => Ok(Arc::new(Int64 {})),
@@ -282,6 +287,26 @@ impl Codec for Duration {
         }
         buf.put_u32_be(0);
         buf.put_u32_be(0);
+        Ok(())
+    }
+}
+
+impl Codec for UuidCodec {
+    fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
+        ensure!(buf.remaining() >= 16, errors::Underflow);
+        let uuid = Uuid::from_slice(buf.bytes())
+            .context(errors::InvalidUuid)?;
+        buf.advance(16);
+        Ok(Value::Scalar(Scalar::Uuid(uuid)))
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        let &val = match val {
+            Value::Scalar(Scalar::Uuid(val)) => val,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        buf.extend(val.as_bytes());
         Ok(())
     }
 }
