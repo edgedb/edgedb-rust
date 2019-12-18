@@ -664,7 +664,13 @@ fn convert(py: Python, tokens: &Tokens, cache: &mut Cache,
         IntConst => {
             Ok((tokens.iconst.clone_ref(py),
                 PyString::new(py, value),
-                i64::from_str(value)
+                // We read unsigned here, because unary minus will only
+                // be identified on the parser stage. And there is a number
+                // -9223372036854775808 which can't be represented in
+                // i64 as absolute (positive) value.
+                // Python has no problem of representing such a positive
+                // value, though.
+                u64::from_str(value)
                 .map_err(|e| TokenizerError::new(py,
                     (format!("error reading int: {}", e),
                      py_pos(py, &token.start))))?

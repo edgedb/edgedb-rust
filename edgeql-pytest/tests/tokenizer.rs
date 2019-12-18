@@ -95,3 +95,18 @@ fn bigint_decimal() -> py::RunResult {
         ], tokens
     ")
 }
+
+#[test]
+fn smallest_integer() -> py::RunResult {
+    py::run("\
+        from edb._edgeql_rust import tokenize\n\
+        tokens = list(map(repr, tokenize('SELECT -9223372036854775808;')))\n\
+        assert tokens == [
+            '<Token SELECT>',
+            '<Token ->',
+            '<Token ICONST 9223372036854775808>',
+            '<Token ;>',
+            '<Token EOF>',
+        ], tokens
+    ")
+}
