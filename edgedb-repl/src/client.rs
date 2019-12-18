@@ -155,8 +155,13 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
         while cur.bytes() != b"" {
             desc.push(Descriptor::decode(&mut cur)?);
         }
+        if options.debug_print_descriptors {
+            println!("Descriptors {:#?}", desc);
+        }
         let codec = build_codec(&data_description.output_typedesc_id, &desc)?;
-        println!("Codec {:?}", codec);
+        if options.debug_print_codecs {
+            println!("Codec {:#?}", codec);
+        }
 
         let mut arguments = BytesMut::with_capacity(8);
         // empty tuple

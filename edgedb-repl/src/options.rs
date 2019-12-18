@@ -16,8 +16,6 @@ struct TmpOptions {
     #[structopt(short="d")]
     pub database: Option<String>,
     #[structopt(long)]
-    pub debug_print_data_frames: bool,
-    #[structopt(long)]
     pub admin: bool,
     #[structopt(long)]
     pub password: bool,
@@ -25,6 +23,13 @@ struct TmpOptions {
     pub no_password: bool,
     #[structopt(long)]
     pub password_from_stdin: bool,
+
+    #[structopt(long)]
+    pub debug_print_data_frames: bool,
+    #[structopt(long)]
+    pub debug_print_descriptors: bool,
+    #[structopt(long)]
+    pub debug_print_codecs: bool,
 
     #[structopt(subcommand)]
     pub subcommand: Option<Command>,
@@ -56,6 +61,8 @@ pub struct Options {
     pub subcommand: Option<Command>,
     pub interactive: bool,
     pub debug_print_data_frames: bool,
+    pub debug_print_descriptors: bool,
+    pub debug_print_codecs: bool,
 }
 
 impl Options {
@@ -99,6 +106,8 @@ impl Options {
                 Password::FromTerminal
             },
             debug_print_data_frames: tmp.debug_print_data_frames,
+            debug_print_descriptors: tmp.debug_print_descriptors,
+            debug_print_codecs: tmp.debug_print_codecs,
         }
     }
 }
