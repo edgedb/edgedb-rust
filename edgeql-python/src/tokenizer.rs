@@ -6,6 +6,7 @@ use std::str::FromStr;
 
 use cpython::{PyString, PyBytes, PyResult, Python, PyClone, PythonObject};
 use cpython::{PyTuple, PyList, PyInt, PyObject, ToPyObject, ObjectProtocol};
+use cpython::{FromPyObject};
 
 use edgeql_parser::tokenizer::{TokenStream, Kind, is_keyword, SpannedToken};
 use edgeql_parser::tokenizer::{MAX_KEYWORD_LENGTH};
@@ -186,6 +187,11 @@ fn py_pos(py: Python, pos: &Pos) -> PyTuple {
     (pos.line, pos.column, pos.offset).to_py_object(py)
 }
 
+fn rs_pos(py: Python, value: &PyObject) -> PyResult<Pos> {
+    let (line, column, offset) = FromPyObject::extract(py, value)?;
+    Ok(Pos { line, column, offset })
+}
+
 py_class!(pub class Token |py| {
     data _kind: PyString;
     data _text: PyString;
@@ -217,6 +223,18 @@ py_class!(pub class Token |py| {
                 val.repr(py)?.to_string(py)?)
         };
         Ok(PyString::new(py, &s))
+    }
+    def __reduce__(&self) -> PyResult<PyTuple> {
+        return Ok((
+            get_unpickle_fn(py),
+            (
+                self._kind(py),
+                self._text(py),
+                self._value(py),
+                py_pos(py, self._start(py)),
+                py_pos(py, self._end(py)),
+            ),
+        ).to_py_object(py))
     }
 });
 
@@ -287,6 +305,7 @@ pub struct Tokens {
     arrow_op: PyString,
 
     keywords: HashMap<String, TokenInfo>,
+    unpickle_token: PyObject,
 }
 
 struct Cache {
@@ -311,6 +330,24 @@ fn peek_keyword(iter: &mut Peekable<Iter<SpannedToken>>, kw: &str) -> bool {
        .map(|t| t.token.kind == Kind::Ident &&
                 t.token.value.eq_ignore_ascii_case(kw))
        .unwrap_or(false)
+}
+
+pub fn _unpickle_token(py: Python,
+        kind: &PyString, text: &PyString, value: &PyObject,
+        start: &PyObject, end: &PyObject)
+        -> PyResult<Token>
+{
+    // TODO(tailhook) We might some strings from Tokens structure
+    //                (i.e. internning them).
+    //                But if we're storing a collection of tokens
+    //                they will store the tokens only once, so it
+    //                doesn't seem to help that much.
+    Token::create_instance(py,
+        kind.clone_ref(py),
+        text.clone_ref(py),
+        value.clone_ref(py),
+        rs_pos(py, start)?,
+        rs_pos(py, end)?)
 }
 
 pub fn tokenize(py: Python, s: &PyString) -> PyResult<PyList> {
@@ -430,6 +467,9 @@ impl Tokens {
             arrow_op: PyString::new(py, "->"),
 
             keywords: HashMap::new(),
+            unpickle_token: py_fn!(py, _unpickle_token(
+                kind: &PyString, text: &PyString, value: &PyObject,
+                start: &PyObject, end: &PyObject)),
         };
         // 'EOF'
         for kw in UNRESERVED_KEYWORDS.iter() {
@@ -723,6 +763,12 @@ fn convert(py: Python, tokens: &Tokens, cache: &mut Cache,
         }
     }
 }
+
+pub fn get_unpickle_fn(py: Python) -> PyObject {
+    let tokens = unsafe { TOKENS.as_ref().expect("module initialized") };
+    return tokens.unpickle_token.clone_ref(py);
+}
+
 
 fn unquote_string<'a>(s: &'a str) -> Result<String, String> {
     let mut res = String::with_capacity(s.len());
