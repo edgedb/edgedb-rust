@@ -5,11 +5,12 @@ use std::sync::Arc;
 
 use bytes::{Bytes, Buf};
 
-use edgedb_protocol::codec::{build_codec, Codec};
+use edgedb_protocol::codec::{build_codec, Codec, ObjectShape};
 use edgedb_protocol::value::{Value, Scalar, Duration};
 use edgedb_protocol::descriptors::{Descriptor, TypePos};
 use edgedb_protocol::descriptors::BaseScalarTypeDescriptor;
 use edgedb_protocol::descriptors::{ObjectShapeDescriptor, ShapeElement};
+use edgedb_protocol::descriptors::{SetDescriptor};
 
 mod base;
 
@@ -332,5 +333,134 @@ fn object_codec() -> Result<(), Box<dyn Error>> {
                     "4928cc1e-2065-11ea-8848-7b53a6adb383".parse()?)),
             ]
         });
+    Ok(())
+}
+
+#[test]
+fn set_codec() -> Result<(), Box<dyn Error>> {
+    let inner_elements = vec![
+        ShapeElement {
+            flag_implicit: true,
+            flag_link_property: false,
+            flag_link: false,
+            name: "__tid__".into(),
+            type_pos: TypePos(0),
+        },
+        ShapeElement {
+            flag_implicit: true,
+            flag_link_property: false,
+            flag_link: false,
+            name: "id".into(),
+            type_pos: TypePos(0),
+        },
+        ShapeElement {
+            flag_implicit: false,
+            flag_link_property: false,
+            flag_link: false,
+            name: "first_name".into(),
+            type_pos: TypePos(1),
+        },
+    ];
+    let outer_elements = vec![
+        ShapeElement {
+            flag_implicit: true,
+            flag_link_property: false,
+            flag_link: false,
+            name: "__tid__".into(),
+            type_pos: TypePos(0),
+        },
+        ShapeElement {
+            flag_implicit: true,
+            flag_link_property: false,
+            flag_link: false,
+            name: "id".into(),
+            type_pos: TypePos(0),
+        },
+        ShapeElement {
+            flag_implicit: false,
+            flag_link_property: false,
+            flag_link: false,
+            name: "first_name".into(),
+            type_pos: TypePos(1),
+        },
+        ShapeElement {
+            flag_implicit: false,
+            flag_link_property: false,
+            flag_link: true,
+            name: "collegues".into(),
+            type_pos: TypePos(3),
+        },
+    ];
+    let inner_shape = ObjectShape::from(&inner_elements[..]);
+    let outer_shape = ObjectShape::from(&outer_elements[..]);
+    let codec = build_codec(
+        &"9740ff04-324e-08a4-4ac7-2192d72c6967".parse()?,
+        &[
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-000000000100".parse()?,
+            }),
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-000000000101".parse()?,
+            }),
+            Descriptor::ObjectShape(ObjectShapeDescriptor {
+                id: "8faa7193-48c6-4263-18d3-1a127652569b".parse()?,
+                elements: inner_elements,
+            }),
+            Descriptor::Set(SetDescriptor {
+                id: "afbb389d-aa73-2aae-9310-84a9163cb5ed".parse()?,
+                type_pos: TypePos(2),
+            }),
+            Descriptor::ObjectShape(ObjectShapeDescriptor {
+                id: "9740ff04-324e-08a4-4ac7-2192d72c6967".parse()?,
+                elements: outer_elements,
+            }),
+        ]
+    )?;
+    // TODO(tailhook) test with non-zero reserved bytes
+    encoding_eq!(&codec, bconcat!(
+        b"\0\0\0\x04\0\0\x00\x00\0\0\0\x10\x0c\xf06\xbd "
+        b"\xbd\x11\xea\xa4\xeb\xe9T\xb4(\x13\x91\0\0\x00\x00\0\0\0\x10"
+        b"[\xe3\x9c( \xbd\x11\xea\xaa\xb9g4\x82*\xf1\xc9\0\0\0\x00\0\0\0"
+        b"\x04Ryan\0\0\x00\x00\0\0\0\x9f\0\0\0\x01\0\0\0\0\0\0\x00\x00\0"
+        b"\0\0\x02\0\0\0\x01\0\0\0?\0\0\0\x03\0\0\x00\x00\0\0\0\x10\x0c\xf0"
+        b"6\xbd \xbd\x11\xea\xa4\xeb\xe9T\xb4(\x13\x91\0\0\x00\x00\0\0\0\x10"
+        b"[\xe3\x9e\x80 \xbd\x11\xea\xaa\xb9\x17]\xbf\x18G\xe5\0\0\0\x00\0\0"
+        b"\0\x03Ana\0\0\0D\0\0\0\x03\0\0\x00\x00\0\0\0\x10\x0c\xf06\xbd "
+        b"\xbd\x11\xea\xa4\xeb\xe9T\xb4(\x13\x91\0\0\x00\x00\0\0\0\x10["
+        b"\xe3\x97\x14 \xbd\x11\xea\xaa\xb9?7\xe7 \xb8T\0\0\0\x00\0\0\0"
+        b"\x08Harrison"
+    ), Value::Object {
+        shape: outer_shape, fields: vec![
+            Value::Scalar(Scalar::Uuid("0cf036bd-20bd-11ea-a4eb-e954b4281391"
+                                .parse()?)),
+            Value::Scalar(Scalar::Uuid("5be39c28-20bd-11ea-aab9-6734822af1c9"
+                                .parse()?)),
+            Value::Scalar(Scalar::Str(String::from("Ryan"))),
+            Value::Set(vec![
+                Value::Object {
+                    shape: inner_shape.clone(),
+                    fields: vec![
+                        Value::Scalar(
+                            Scalar::Uuid("0cf036bd-20bd-11ea-a4eb-e954b4281391"
+                                        .parse()?)),
+                        Value::Scalar(
+                            Scalar::Uuid("5be39e80-20bd-11ea-aab9-175dbf1847e5"
+                                         .parse()?)),
+                        Value::Scalar(Scalar::Str(String::from("Ana"))),
+                ]},
+                Value::Object {
+                    shape: inner_shape,
+                    fields: vec![
+                        Value::Scalar(
+                            Scalar::Uuid("0cf036bd-20bd-11ea-a4eb-e954b4281391"
+                                         .parse()?)),
+                        Value::Scalar(
+                            Scalar::Uuid("5be39714-20bd-11ea-aab9-3f37e720b854"
+                                         .parse()?)),
+                        Value::Scalar(Scalar::Str(String::from("Harrison"))),
+                    ]
+                }]),
+            ]
+    });
     Ok(())
 }

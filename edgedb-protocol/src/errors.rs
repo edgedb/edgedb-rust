@@ -33,6 +33,8 @@ pub enum DecodeError {
     InvalidDuration { backtrace: Backtrace },
     #[snafu(display("object data size does not match its shape"))]
     ObjectSizeMismatch { backtrace: Backtrace },
+    #[snafu(display("array shape for the Set codec is invalid"))]
+    InvalidSetShape { backtrace: Backtrace },
     #[doc(hidden)]
     __NonExhaustive1,
 }
@@ -58,6 +60,8 @@ pub enum EncodeError {
     TooManyElements { backtrace: Backtrace },
     #[snafu(display("single element larger than 4Gi"))]
     ElementTooLong { backtrace: Backtrace },
+    #[snafu(display("array or set has more than 4Gi elements"))]
+    ArrayTooLong { backtrace: Backtrace },
     #[snafu(display("unknown message types can't be encoded"))]
     UnknownMessageCantBeEncoded { backtrace: Backtrace },
     #[snafu(display("trying to encode invalid value type {} with codec {}",
