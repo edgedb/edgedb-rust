@@ -15,12 +15,13 @@ use crate::value::{self, Value, Scalar};
 
 
 const STD_UUID: Uuid = Uuid::from_u128(0x100);
+const STD_STR: Uuid = Uuid::from_u128(0x101);
+const STD_BYTES: Uuid = Uuid::from_u128(0x102);
 const STD_INT16: Uuid = Uuid::from_u128(0x103);
 const STD_INT32: Uuid = Uuid::from_u128(0x104);
 const STD_INT64: Uuid = Uuid::from_u128(0x105);
 const STD_FLOAT32: Uuid = Uuid::from_u128(0x106);
 const STD_FLOAT64: Uuid = Uuid::from_u128(0x107);
-const STD_STR: Uuid = Uuid::from_u128(0x101);
 const STD_DURATION: Uuid = Uuid::from_u128(0x10e);
 
 
@@ -80,6 +81,9 @@ struct Float64 { }
 
 #[derive(Debug)]
 struct Str { }
+
+#[derive(Debug)]
+struct BytesCodec { }
 
 #[derive(Debug)]
 struct Duration { }
@@ -154,12 +158,13 @@ pub fn build_codec(root: &Uuid, descriptors: &[Descriptor])
 pub fn scalar_codec(uuid: &Uuid) -> Result<Arc<dyn Codec>, CodecError> {
     match *uuid {
         STD_UUID => Ok(Arc::new(UuidCodec {})),
+        STD_STR => Ok(Arc::new(Str {})),
+        STD_BYTES => Ok(Arc::new(BytesCodec {})),
         STD_INT16 => Ok(Arc::new(Int16 {})),
         STD_INT32 => Ok(Arc::new(Int32 {})),
         STD_INT64 => Ok(Arc::new(Int64 {})),
         STD_FLOAT32 => Ok(Arc::new(Float32 {})),
         STD_FLOAT64 => Ok(Arc::new(Float64 {})),
-        STD_STR => Ok(Arc::new(Str {})),
         STD_DURATION => Ok(Arc::new(Duration {})),
         _ => return errors::UndefinedBaseScalar { uuid: uuid.clone() }.fail()?,
     }
@@ -276,6 +281,24 @@ impl Codec for Str {
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.extend(val.as_bytes());
+        Ok(())
+    }
+}
+
+impl Codec for BytesCodec {
+    fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
+        let val = buf.bytes().to_owned();
+        buf.advance(val.len());
+        Ok(Value::Scalar(Scalar::Bytes(val)))
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        let val = match val {
+            Value::Scalar(Scalar::Bytes(val)) => val,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        buf.extend(val);
         Ok(())
     }
 }

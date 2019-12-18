@@ -213,6 +213,25 @@ fn str() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn bytes() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(
+        &"00000000-0000-0000-0000-000000000102".parse()?,
+        &[
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-000000000102".parse()?,
+            })
+        ]
+    )?;
+    encoding_eq!(&codec, b"hello",
+               Value::Scalar(Scalar::Bytes(b"hello".to_vec())));
+    encoding_eq!(&codec, b"",
+               Value::Scalar(Scalar::Bytes(b"".to_vec())));
+    encoding_eq!(&codec, b"\x00\x01\x02\x03\x81",
+        Value::Scalar(Scalar::Bytes(b"\x00\x01\x02\x03\x81".to_vec())));
+    Ok(())
+}
+
+#[test]
 fn uuid() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(
         &"00000000-0000-0000-0000-000000000100".parse()?,
