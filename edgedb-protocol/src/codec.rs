@@ -130,12 +130,12 @@ impl<'a> CodecBuilder<'a> {
                 ObjectShape(d) => {
                     return Ok(Arc::new(Object::build(d, self)?))
                 }
-                Scalar(..) => unimplemented!(),
-                Tuple(..) => unimplemented!(),
-                NamedTuple(..) => unimplemented!(),
-                Array(..) => unimplemented!(),
-                Enumeration(..) => unimplemented!(),
-                TypeAnnotation(..) => unimplemented!(),
+                Scalar(..) => todo!(),
+                Tuple(..) => todo!(),
+                NamedTuple(..) => todo!(),
+                Array(..) => todo!(),
+                Enumeration(..) => todo!(),
+                TypeAnnotation(..) => todo!(),
             }
         } else {
             return errors::UnexpectedTypePos { position: pos.0 }.fail()?;

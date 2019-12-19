@@ -12,6 +12,7 @@ pub use crate::common::Cardinality;
 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ClientMessage {
     ClientHandshake(ClientHandshake),
     ExecuteScript(ExecuteScript),
@@ -20,8 +21,6 @@ pub enum ClientMessage {
     Execute(Execute),
     UnknownMessage(u8, Bytes),
     Sync,
-    #[doc(hidden)]
-    __NonExhaustive,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,9 +87,6 @@ impl ClientMessage {
             UnknownMessage(_, _) => {
                 errors::UnknownMessageCantBeEncoded.fail()?
             }
-
-            // TODO(tailhook) maybe return error ?
-            __NonExhaustive => panic!("Invalid Message"),
         }
     }
     /// Decode exactly one frame from the buffer

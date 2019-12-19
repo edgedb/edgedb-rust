@@ -8,6 +8,7 @@ use crate::value::Value;
 
 #[derive(Snafu, Debug)]
 #[snafu(visibility(pub(crate)))]
+#[non_exhaustive]
 pub enum DecodeError {
     #[snafu(display("unexpected end of frame"))]
     Underflow { backtrace: Backtrace },
@@ -35,12 +36,11 @@ pub enum DecodeError {
     ObjectSizeMismatch { backtrace: Backtrace },
     #[snafu(display("array shape for the Set codec is invalid"))]
     InvalidSetShape { backtrace: Backtrace },
-    #[doc(hidden)]
-    __NonExhaustive1,
 }
 
 #[derive(Snafu, Debug)]
 #[snafu(visibility(pub(crate)))]
+#[non_exhaustive]
 pub enum EncodeError {
     #[snafu(display("message doesn't fit 4GiB"))]
     MessageTooLong { backtrace: Backtrace },
@@ -70,12 +70,11 @@ pub enum EncodeError {
                    value_type: &'static str, codec: &'static str },
     #[snafu(display("shape of data does not match shape of encoder"))]
     ObjectShapeMismatch { backtrace: Backtrace },
-    #[doc(hidden)]
-    __NonExhaustive2,
 }
 
 #[derive(Snafu, Debug)]
 #[snafu(visibility(pub(crate)))]
+#[non_exhaustive]
 pub enum CodecError {
     #[snafu(display("type position {} is absent", position))]
     UnexpectedTypePos { backtrace: Backtrace, position: u16 },
@@ -85,8 +84,6 @@ pub enum CodecError {
     UndefinedBaseScalar { backtrace: Backtrace, uuid: uuid::Uuid },
     #[snafu(display("too may descriptors ({})", index))]
     TooManyDescriptors { backtrace: Backtrace, index: usize },
-    #[doc(hidden)]
-    __NonExhaustive3,
 }
 
 pub fn invalid_value(codec: &'static str, value: &Value) -> EncodeError

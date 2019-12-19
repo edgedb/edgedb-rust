@@ -15,7 +15,7 @@ fn main() -> Result<(), anyhow::Error> {
     if opt.interactive {
         interactive_main(&opt)
     } else {
-        unimplemented!("Non interactive mode is not implemented yet");
+        todo!("Non interactive mode is not implemented yet");
     }
 }
 

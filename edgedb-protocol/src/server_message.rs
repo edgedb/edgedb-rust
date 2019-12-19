@@ -14,6 +14,7 @@ pub use crate::common::Cardinality;
 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ServerMessage {
     ServerHandshake(ServerHandshake),
     UnknownMessage(u8, Bytes),
@@ -26,8 +27,6 @@ pub enum ServerMessage {
     PrepareComplete(PrepareComplete),
     CommandDataDescription(CommandDataDescription),
     Data(Data),
-    #[doc(hidden)]
-    __NonExhaustive,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -154,9 +153,6 @@ impl ServerMessage {
             UnknownMessage(_, _) => {
                 errors::UnknownMessageCantBeEncoded.fail()?
             }
-
-            // TODO(tailhook) maybe return error ?
-            __NonExhaustive => panic!("Invalid Message"),
         }
     }
     /// Decode exactly one frame from the buffer

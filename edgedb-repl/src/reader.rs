@@ -24,13 +24,12 @@ pub struct MessageFuture<'a, T> {
 }
 
 #[derive(Debug, Snafu)]
+#[non_exhaustive]
 pub enum ReadError {
     #[snafu(display("error decoding message: {}", source))]
     Decode { source: DecodeError },
     #[snafu(display("error reading data: {}", source))]
     Io { source: io::Error },
-    #[doc(hidden)]
-    __NonExhaustive,
 }
 
 
