@@ -483,7 +483,7 @@ impl Decode for PrepareComplete {
         }
         ensure!(buf.remaining() >= 33, errors::Underflow);
         let cardinality = match buf.get_u8() {
-            0x6e => Cardinality::Zero,
+            0x6e => Cardinality::NoResult,
             0x6f => Cardinality::One,
             0x6d => Cardinality::Many,
             c => errors::InvalidCardinality { cardinality: c }.fail()?,
@@ -532,7 +532,7 @@ impl Decode for CommandDataDescription {
         }
         ensure!(buf.remaining() >= 41, errors::Underflow);
         let result_cardinality = match buf.get_u8() {
-            0x6e => Cardinality::Zero,
+            0x6e => Cardinality::NoResult,
             0x6f => Cardinality::One,
             0x6d => Cardinality::Many,
             c => errors::InvalidCardinality { cardinality: c }.fail()?,
