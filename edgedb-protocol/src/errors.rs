@@ -30,12 +30,14 @@ pub enum DecodeError {
     InvalidTypeDescriptor { backtrace: Backtrace, descriptor: u8 },
     #[snafu(display("invalid uuid: {}", source))]
     InvalidUuid { backtrace: Backtrace, source: uuid::Error },
-    #[snafu(display("invalid duration"))]
-    InvalidDuration { backtrace: Backtrace },
+    #[snafu(display("non-zero reserved bytes received in data"))]
+    NonZeroReservedBytes { backtrace: Backtrace },
     #[snafu(display("object data size does not match its shape"))]
     ObjectSizeMismatch { backtrace: Backtrace },
     #[snafu(display("array shape for the Set codec is invalid"))]
     InvalidSetShape { backtrace: Backtrace },
+    #[snafu(display("decimal or bigint sign bytes have invalid value"))]
+    BadSign { backtrace: Backtrace },
 }
 
 #[derive(Snafu, Debug)]
@@ -62,6 +64,10 @@ pub enum EncodeError {
     ElementTooLong { backtrace: Backtrace },
     #[snafu(display("array or set has more than 4Gi elements"))]
     ArrayTooLong { backtrace: Backtrace },
+    #[snafu(display("bigint has more than 256Ki digits"))]
+    BigIntTooLong { backtrace: Backtrace },
+    #[snafu(display("decimal has more than 256Ki digits"))]
+    DecimalTooLong { backtrace: Backtrace },
     #[snafu(display("unknown message types can't be encoded"))]
     UnknownMessageCantBeEncoded { backtrace: Backtrace },
     #[snafu(display("trying to encode invalid value type {} with codec {}",

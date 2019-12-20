@@ -274,7 +274,7 @@ fn duration() -> Result<(), Box<dyn Error>> {
     assert_eq!(
         decode(&codec, b"\0\0\0\0\0\0\0\0\0\0\0\x01\0\0\0\0")
             .unwrap_err().to_string(),
-           "invalid duration");
+           "non-zero reserved bytes received in data");
     Ok(())
 }
 
@@ -462,5 +462,62 @@ fn set_codec() -> Result<(), Box<dyn Error>> {
                 }]),
             ]
     });
+    Ok(())
+}
+
+#[test]
+#[cfg(feature="num-bigint")]
+fn bigint() -> Result<(), Box<dyn Error>> {
+    use num_bigint::BigInt;
+    use std::convert::TryInto;
+    use std::str::FromStr;
+
+    let codec = build_codec(
+        &"00000000-0000-0000-0000-000000000110".parse()?,
+        &[
+            Descriptor::BaseScalar(
+                BaseScalarTypeDescriptor {
+                    id: "00000000-0000-0000-0000-000000000110".parse()?,
+                },
+            ),
+        ]
+    )?;
+    encoding_eq!(&codec, b"\0\x01\0\0\0\0\0\0\0*",
+        Value::Scalar(Scalar::BigInt(42.into())));
+    encoding_eq!(&codec, b"\0\x01\0\x01\0\0\0\0\0\x03",
+        Value::Scalar(Scalar::BigInt((30000).into())));
+    encoding_eq!(&codec, b"\0\x02\0\x01\0\0\0\0\0\x03\0\x01",
+        Value::Scalar(Scalar::BigInt((30001).into())));
+    encoding_eq!(&codec, b"\0\x02\0\x01@\0\0\0\0\x01\x13\x88",
+        Value::Scalar(Scalar::BigInt((-15000).into())));
+    encoding_eq!(&codec, b"\0\x01\0\x05\0\0\0\0\0\n",
+        Value::Scalar(Scalar::BigInt(
+            BigInt::from_str("1000000000000000000000")?.try_into()?)));
+    Ok(())
+}
+
+#[test]
+#[cfg(feature="bigdecimal")]
+fn decimal() -> Result<(), Box<dyn Error>> {
+    use bigdecimal::BigDecimal;
+    use std::convert::TryInto;
+    use std::str::FromStr;
+
+    let codec = build_codec(
+        &"00000000-0000-0000-0000-000000000108".parse()?,
+        &[
+            Descriptor::BaseScalar(
+                BaseScalarTypeDescriptor {
+                    id: "00000000-0000-0000-0000-000000000108".parse()?,
+                },
+            ),
+        ]
+    )?;
+    encoding_eq!(&codec, b"\0\x01\0\0\0\0\0\x02\0*",
+        Value::Scalar(Scalar::Decimal(
+            BigDecimal::from_str("42.00")?.try_into()?)));
+    encoding_eq!(&codec, b"\0\x05\0\x01\0\0\0\t\x04\xd2\x16.#4\r\x80\x1bX",
+        Value::Scalar(Scalar::Decimal(
+            BigDecimal::from_str("12345678.901234567")?.try_into()?)));
     Ok(())
 }

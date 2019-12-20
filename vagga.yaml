@@ -24,10 +24,16 @@ commands:
     container: ubuntu
     run: [cargo, test, --workspace, --exclude=edgeql-pytest]
 
+  test-rust-no-features: !Command
+    description: Run tests
+    container: ubuntu
+    work-dir: edgedb-protocol
+    run: [cargo, test, --no-default-features]
+
   test: !Command
     description: Run tests
     container: ubuntu
-    prerequisites: [test-rust, test-py]
+    prerequisites: [test-rust, test-py, test-rust-no-features]
     run: "echo OK"
 
   _bulk: !Command

@@ -26,6 +26,11 @@ jobs:
           command: build
           args: -p edgeql-python
       - uses: actions-rs/cargo@v1
+        working-directory: ./edgedb-protocol
+        with:
+          command: test
+          args: --no-default-features
+      - uses: actions-rs/cargo@v1
         env:
           LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.8.0/x64/lib
         with:

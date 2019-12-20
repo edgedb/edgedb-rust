@@ -22,7 +22,9 @@ const STD_INT32: Uuid = Uuid::from_u128(0x104);
 const STD_INT64: Uuid = Uuid::from_u128(0x105);
 const STD_FLOAT32: Uuid = Uuid::from_u128(0x106);
 const STD_FLOAT64: Uuid = Uuid::from_u128(0x107);
+const STD_DECIMAL: Uuid = Uuid::from_u128(0x108);
 const STD_DURATION: Uuid = Uuid::from_u128(0x10e);
+const STD_BIGINT: Uuid = Uuid::from_u128(0x110);
 
 
 pub trait Codec: fmt::Debug + Send + Sync + 'static {
@@ -87,6 +89,12 @@ struct BytesCodec { }
 
 #[derive(Debug)]
 struct Duration { }
+
+#[derive(Debug)]
+struct Decimal { }
+
+#[derive(Debug)]
+struct BigInt { }
 
 #[derive(Debug)]
 struct Nothing { }
@@ -172,7 +180,9 @@ pub fn scalar_codec(uuid: &Uuid) -> Result<Arc<dyn Codec>, CodecError> {
         STD_INT64 => Ok(Arc::new(Int64 {})),
         STD_FLOAT32 => Ok(Arc::new(Float32 {})),
         STD_FLOAT64 => Ok(Arc::new(Float64 {})),
+        STD_DECIMAL => Ok(Arc::new(Decimal {})),
         STD_DURATION => Ok(Arc::new(Duration {})),
+        STD_BIGINT => Ok(Arc::new(BigInt {})),
         _ => return errors::UndefinedBaseScalar { uuid: uuid.clone() }.fail()?,
     }
 }
@@ -316,9 +326,7 @@ impl Codec for Duration {
         let micros = buf.get_i64_be();
         let days = buf.get_u32_be();
         let months = buf.get_u32_be();
-        if months != 0 || days != 0 {
-            errors::InvalidDuration.fail()?;
-        }
+        ensure!(months == 0 && days == 0, errors::NonZeroReservedBytes);
         if micros < 0 {
             let dur = std::time::Duration::from_micros(-micros as u64);
             Ok(Value::Scalar(Scalar::Duration(value::Duration {
@@ -526,6 +534,87 @@ impl Codec for SetCodec {
             buf[pos..pos+4].copy_from_slice(&u32::try_from(len)
                     .ok().context(errors::ElementTooLong)?
                     .to_be_bytes());
+        }
+        Ok(())
+    }
+}
+
+impl Codec for Decimal {
+    fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
+        ensure!(buf.remaining() >= 8, errors::Underflow);
+        let ndigits = buf.get_u16_be() as usize;
+        let weight = buf.get_i16_be();
+        let negative = match buf.get_u16_be() {
+            0x0000 => false,
+            0x4000 => true,
+            _ => errors::BadSign.fail()?,
+        };
+        let decimal_digits = buf.get_u16_be();
+        ensure!(buf.remaining() >= ndigits*2, errors::Underflow);
+        let mut digits = Vec::with_capacity(ndigits);
+        for _ in 0..ndigits {
+            digits.push(buf.get_u16_be());
+        }
+        Ok(Value::Scalar(Scalar::Decimal(value::Decimal {
+            negative, weight, decimal_digits, digits,
+        })))
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        let val = match val {
+            Value::Scalar(Scalar::Decimal(val)) => val,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        buf.reserve(8 + val.digits.len()*2);
+        buf.put_u16_be(val.digits.len().try_into().ok()
+                .context(errors::BigIntTooLong)?);
+        buf.put_i16_be(val.weight);
+        buf.put_u16_be(if val.negative { 0x4000 } else { 0x0000 });
+        buf.put_u16_be(val.decimal_digits);
+        for &dig in &val.digits {
+            buf.put_u16_be(dig);
+        }
+        Ok(())
+    }
+}
+
+impl Codec for BigInt {
+    fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
+        ensure!(buf.remaining() >= 8, errors::Underflow);
+        let ndigits = buf.get_u16_be() as usize;
+        let weight = buf.get_i16_be();
+        let negative = match buf.get_u16_be() {
+            0x0000 => false,
+            0x4000 => true,
+            _ => errors::BadSign.fail()?,
+        };
+        let decimal_digits = buf.get_u16_be();
+        ensure!(decimal_digits == 0, errors::NonZeroReservedBytes);
+        let mut digits = Vec::with_capacity(ndigits);
+        ensure!(buf.remaining() >= ndigits*2, errors::Underflow);
+        for _ in 0..ndigits {
+            digits.push(buf.get_u16_be());
+        }
+        Ok(Value::Scalar(Scalar::BigInt(value::BigInt {
+            negative, weight, digits,
+        })))
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        let val = match val {
+            Value::Scalar(Scalar::BigInt(val)) => val,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        buf.reserve(8 + val.digits.len()*2);
+        buf.put_u16_be(val.digits.len().try_into().ok()
+                .context(errors::BigIntTooLong)?);
+        buf.put_i16_be(val.weight);
+        buf.put_u16_be(if val.negative { 0x4000 } else { 0x0000 });
+        buf.put_u16_be(0);
+        for &dig in &val.digits {
+            buf.put_u16_be(dig);
         }
         Ok(())
     }
