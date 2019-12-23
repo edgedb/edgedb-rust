@@ -7,7 +7,7 @@ use std::time::UNIX_EPOCH;
 use bytes::{Bytes, Buf};
 
 use edgedb_protocol::codec::{build_codec, Codec, ObjectShape};
-use edgedb_protocol::value::{Value, Scalar, Duration};
+use edgedb_protocol::value::{Value, Duration};
 use edgedb_protocol::value::{LocalDatetime, LocalDate, LocalTime};
 use edgedb_protocol::descriptors::{Descriptor, TypePos};
 use edgedb_protocol::descriptors::BaseScalarTypeDescriptor;
@@ -48,16 +48,11 @@ fn int16() -> Result<(), Box<dyn Error>> {
             })
         ]
     )?;
-    encoding_eq!(&codec, b"\0\0",
-               Value::Scalar(Scalar::Int16(0)));
-    encoding_eq!(&codec, b"\x01\x05",
-               Value::Scalar(Scalar::Int16(0x105)));
-    encoding_eq!(&codec, b"\x7F\xFF",
-               Value::Scalar(Scalar::Int16(i16::MAX)));
-    encoding_eq!(&codec, b"\x80\x00",
-               Value::Scalar(Scalar::Int16(i16::MIN)));
-    encoding_eq!(&codec, b"\xFF\xFF",
-               Value::Scalar(Scalar::Int16(-1)));
+    encoding_eq!(&codec, b"\0\0", Value::Int16(0));
+    encoding_eq!(&codec, b"\x01\x05", Value::Int16(0x105));
+    encoding_eq!(&codec, b"\x7F\xFF", Value::Int16(i16::MAX));
+    encoding_eq!(&codec, b"\x80\x00", Value::Int16(i16::MIN));
+    encoding_eq!(&codec, b"\xFF\xFF", Value::Int16(-1));
     Ok(())
 }
 
@@ -72,16 +67,11 @@ fn int32() -> Result<(), Box<dyn Error>> {
             })
         ]
     )?;
-    encoding_eq!(&codec, b"\0\0\0\0",
-               Value::Scalar(Scalar::Int32(0)));
-    encoding_eq!(&codec, b"\0\0\x01\x05",
-               Value::Scalar(Scalar::Int32(0x105)));
-    encoding_eq!(&codec, b"\x7F\xFF\xFF\xFF",
-               Value::Scalar(Scalar::Int32(i32::MAX)));
-    encoding_eq!(&codec, b"\x80\x00\x00\x00",
-               Value::Scalar(Scalar::Int32(i32::MIN)));
-    encoding_eq!(&codec, b"\xFF\xFF\xFF\xFF",
-               Value::Scalar(Scalar::Int32(-1)));
+    encoding_eq!(&codec, b"\0\0\0\0", Value::Int32(0));
+    encoding_eq!(&codec, b"\0\0\x01\x05", Value::Int32(0x105));
+    encoding_eq!(&codec, b"\x7F\xFF\xFF\xFF", Value::Int32(i32::MAX));
+    encoding_eq!(&codec, b"\x80\x00\x00\x00", Value::Int32(i32::MIN));
+    encoding_eq!(&codec, b"\xFF\xFF\xFF\xFF", Value::Int32(-1));
     Ok(())
 }
 
@@ -95,16 +85,14 @@ fn int64() -> Result<(), Box<dyn Error>> {
             })
         ]
     )?;
-    encoding_eq!(&codec, b"\0\0\0\0\0\0\0\0",
-               Value::Scalar(Scalar::Int64(0)));
-    encoding_eq!(&codec, b"\0\0\0\0\0\0\x01\x05",
-               Value::Scalar(Scalar::Int64(0x105)));
+    encoding_eq!(&codec, b"\0\0\0\0\0\0\0\0", Value::Int64(0));
+    encoding_eq!(&codec, b"\0\0\0\0\0\0\x01\x05", Value::Int64(0x105));
     encoding_eq!(&codec, b"\x7F\xFF\xFF\xFF\xFF\xFF\xFF\xFF",
-               Value::Scalar(Scalar::Int64(i64::MAX)));
+               Value::Int64(i64::MAX));
     encoding_eq!(&codec, b"\x80\x00\x00\x00\x00\x00\x00\x00",
-               Value::Scalar(Scalar::Int64(i64::MIN)));
+               Value::Int64(i64::MIN));
     encoding_eq!(&codec, b"\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF",
-               Value::Scalar(Scalar::Int64(-1)));
+               Value::Int64(-1));
     Ok(())
 }
 
@@ -119,22 +107,18 @@ fn float32() -> Result<(), Box<dyn Error>> {
         ]
     )?;
 
-    encoding_eq!(&codec, b"\0\0\0\0",
-               Value::Scalar(Scalar::Float32(0.0)));
-    encoding_eq!(&codec, b"\x80\0\0\0",
-               Value::Scalar(Scalar::Float32(-0.0)));
-    encoding_eq!(&codec, b"?\x80\0\0",
-               Value::Scalar(Scalar::Float32(1.0)));
-    encoding_eq!(&codec, b"\xbf\x8f\xbew",
-               Value::Scalar(Scalar::Float32(-1.123)));
+    encoding_eq!(&codec, b"\0\0\0\0", Value::Float32(0.0));
+    encoding_eq!(&codec, b"\x80\0\0\0", Value::Float32(-0.0));
+    encoding_eq!(&codec, b"?\x80\0\0", Value::Float32(1.0));
+    encoding_eq!(&codec, b"\xbf\x8f\xbew", Value::Float32(-1.123));
 
     match decode(&codec, b"\x7f\xc0\0\0")? {
-        Value::Scalar(Scalar::Float32(val)) => assert!(val.is_nan()),
+        Value::Float32(val) => assert!(val.is_nan()),
         _ => panic!("could not parse NaN")
     };
 
     match decode(&codec, b"\x7f\x80\0\0")? {
-        Value::Scalar(Scalar::Float32(val)) => {
+        Value::Float32(val) => {
             assert!(val.is_infinite());
             assert!(val.is_sign_positive())
         },
@@ -142,7 +126,7 @@ fn float32() -> Result<(), Box<dyn Error>> {
     };
 
     match decode(&codec, b"\xff\x80\0\0")? {
-        Value::Scalar(Scalar::Float32(val)) => {
+        Value::Float32(val) => {
             assert!(val.is_infinite());
             assert!(val.is_sign_negative())
         }
@@ -163,22 +147,18 @@ fn float64() -> Result<(), Box<dyn Error>> {
         ]
     )?;
 
-    encoding_eq!(&codec, b"\0\0\0\0\0\0\0\0",
-               Value::Scalar(Scalar::Float64(0.0)));
-    encoding_eq!(&codec, b"\x80\0\0\0\0\0\0\0",
-               Value::Scalar(Scalar::Float64(-0.0)));
-    encoding_eq!(&codec, b"?\xf0\0\0\0\0\0\0",
-               Value::Scalar(Scalar::Float64(1.0)));
-    encoding_eq!(&codec, b"T\xb2I\xad%\x94\xc3}",
-               Value::Scalar(Scalar::Float64(1e100)));
+    encoding_eq!(&codec, b"\0\0\0\0\0\0\0\0", Value::Float64(0.0));
+    encoding_eq!(&codec, b"\x80\0\0\0\0\0\0\0", Value::Float64(-0.0));
+    encoding_eq!(&codec, b"?\xf0\0\0\0\0\0\0", Value::Float64(1.0));
+    encoding_eq!(&codec, b"T\xb2I\xad%\x94\xc3}", Value::Float64(1e100));
 
     match decode(&codec, b"\x7f\xf8\0\0\0\0\0\0")? {
-        Value::Scalar(Scalar::Float64(val)) => assert!(val.is_nan()),
+        Value::Float64(val) => assert!(val.is_nan()),
         _ => panic!("could not parse NaN")
     };
 
     match decode(&codec, b"\x7f\xf0\0\0\0\0\0\0")? {
-        Value::Scalar(Scalar::Float64(val)) => {
+        Value::Float64(val) => {
             assert!(val.is_infinite());
             assert!(val.is_sign_positive())
         }
@@ -186,7 +166,7 @@ fn float64() -> Result<(), Box<dyn Error>> {
     };
 
     match decode(&codec, b"\xff\xf0\0\0\0\0\0\0")? {
-        Value::Scalar(Scalar::Float64(val)) => {
+        Value::Float64(val) => {
             assert!(val.is_infinite());
             assert!(val.is_sign_negative())
         },
@@ -206,12 +186,10 @@ fn str() -> Result<(), Box<dyn Error>> {
             })
         ]
     )?;
-    encoding_eq!(&codec, b"hello",
-               Value::Scalar(Scalar::Str(String::from("hello"))));
-    encoding_eq!(&codec, b"",
-               Value::Scalar(Scalar::Str(String::from(""))));
+    encoding_eq!(&codec, b"hello", Value::Str(String::from("hello")));
+    encoding_eq!(&codec, b"", Value::Str(String::from("")));
     encoding_eq!(&codec, b"\xd0\xbf\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82",
-        Value::Scalar(Scalar::Str(String::from("привет"))));
+        Value::Str(String::from("привет")));
     Ok(())
 }
 
@@ -225,12 +203,10 @@ fn bytes() -> Result<(), Box<dyn Error>> {
             })
         ]
     )?;
-    encoding_eq!(&codec, b"hello",
-               Value::Scalar(Scalar::Bytes(b"hello".to_vec())));
-    encoding_eq!(&codec, b"",
-               Value::Scalar(Scalar::Bytes(b"".to_vec())));
+    encoding_eq!(&codec, b"hello", Value::Bytes(b"hello".to_vec()));
+    encoding_eq!(&codec, b"", Value::Bytes(b"".to_vec()));
     encoding_eq!(&codec, b"\x00\x01\x02\x03\x81",
-        Value::Scalar(Scalar::Bytes(b"\x00\x01\x02\x03\x81".to_vec())));
+        Value::Bytes(b"\x00\x01\x02\x03\x81".to_vec()));
     Ok(())
 }
 
@@ -245,8 +221,7 @@ fn uuid() -> Result<(), Box<dyn Error>> {
         ]
     )?;
     encoding_eq!(&codec, b"I(\xcc\x1e e\x11\xea\x88H{S\xa6\xad\xb3\x83",
-               Value::Scalar(Scalar::Uuid(
-                "4928cc1e-2065-11ea-8848-7b53a6adb383".parse()?)));
+               Value::Uuid("4928cc1e-2065-11ea-8848-7b53a6adb383".parse()?));
     Ok(())
 }
 
@@ -263,15 +238,12 @@ fn duration() -> Result<(), Box<dyn Error>> {
 
     // SELECT <datetime>'2019-11-29T00:00:00Z'-<datetime>'2000-01-01T00:00:00Z'
     encoding_eq!(&codec, b"\0\x02;o\xad\xff\0\0\0\0\0\0\0\0\0\0",
-               Value::Scalar(Scalar::Duration(
-               Duration::from_micros(7272*86400*1000_000))));
+               Value::Duration(Duration::from_micros(7272*86400*1000_000)));
     // SELECT <datetime>'2019-11-29T00:00:00Z'-<datetime>'2019-11-28T01:00:00Z'
     encoding_eq!(&codec, b"\0\0\0\x13GC\xbc\0\0\0\0\0\0\0\0\0",
-               Value::Scalar(Scalar::Duration(
-               Duration::from_micros(82800*1000_000))));
+               Value::Duration(Duration::from_micros(82800*1000_000)));
     encoding_eq!(&codec, b"\xff\xff\xff\xff\xd3,\xba\xe0\0\0\0\0\0\0\0\0",
-               Value::Scalar(Scalar::Duration(
-               Duration::from_micros(-752043296))));
+               Value::Duration(Duration::from_micros(-752043296)));
 
     assert_eq!(
         decode(&codec, b"\0\0\0\0\0\0\0\0\0\0\0\x01\0\0\0\0")
@@ -329,10 +301,8 @@ fn object_codec() -> Result<(), Box<dyn Error>> {
         b"\xa6\xad\xb3\x83"), Value::Object {
             shape,
             fields: vec![
-                Value::Scalar(Scalar::Uuid(
-                    "30576400-2064-11ea-98c5-33c5cfb4725e".parse()?)),
-                Value::Scalar(Scalar::Uuid(
-                    "4928cc1e-2065-11ea-8848-7b53a6adb383".parse()?)),
+                Value::Uuid("30576400-2064-11ea-98c5-33c5cfb4725e".parse()?),
+                Value::Uuid("4928cc1e-2065-11ea-8848-7b53a6adb383".parse()?),
             ]
         });
     Ok(())
@@ -433,33 +403,27 @@ fn set_codec() -> Result<(), Box<dyn Error>> {
         b"\x08Harrison"
     ), Value::Object {
         shape: outer_shape, fields: vec![
-            Value::Scalar(Scalar::Uuid("0cf036bd-20bd-11ea-a4eb-e954b4281391"
-                                .parse()?)),
-            Value::Scalar(Scalar::Uuid("5be39c28-20bd-11ea-aab9-6734822af1c9"
-                                .parse()?)),
-            Value::Scalar(Scalar::Str(String::from("Ryan"))),
+            Value::Uuid("0cf036bd-20bd-11ea-a4eb-e954b4281391".parse()?),
+            Value::Uuid("5be39c28-20bd-11ea-aab9-6734822af1c9".parse()?),
+            Value::Str(String::from("Ryan")),
             Value::Set(vec![
                 Value::Object {
                     shape: inner_shape.clone(),
                     fields: vec![
-                        Value::Scalar(
-                            Scalar::Uuid("0cf036bd-20bd-11ea-a4eb-e954b4281391"
-                                        .parse()?)),
-                        Value::Scalar(
-                            Scalar::Uuid("5be39e80-20bd-11ea-aab9-175dbf1847e5"
-                                         .parse()?)),
-                        Value::Scalar(Scalar::Str(String::from("Ana"))),
+                        Value::Uuid("0cf036bd-20bd-11ea-a4eb-e954b4281391"
+                                    .parse()?),
+                        Value::Uuid("5be39e80-20bd-11ea-aab9-175dbf1847e5"
+                                    .parse()?),
+                        Value::Str(String::from("Ana")),
                 ]},
                 Value::Object {
                     shape: inner_shape,
                     fields: vec![
-                        Value::Scalar(
-                            Scalar::Uuid("0cf036bd-20bd-11ea-a4eb-e954b4281391"
-                                         .parse()?)),
-                        Value::Scalar(
-                            Scalar::Uuid("5be39714-20bd-11ea-aab9-3f37e720b854"
-                                         .parse()?)),
-                        Value::Scalar(Scalar::Str(String::from("Harrison"))),
+                        Value::Uuid("0cf036bd-20bd-11ea-a4eb-e954b4281391"
+                                    .parse()?),
+                        Value::Uuid("5be39714-20bd-11ea-aab9-3f37e720b854"
+                                    .parse()?),
+                        Value::Str(String::from("Harrison")),
                     ]
                 }]),
             ]
@@ -484,17 +448,16 @@ fn bigint() -> Result<(), Box<dyn Error>> {
             ),
         ]
     )?;
-    encoding_eq!(&codec, b"\0\x01\0\0\0\0\0\0\0*",
-        Value::Scalar(Scalar::BigInt(42.into())));
+    encoding_eq!(&codec, b"\0\x01\0\0\0\0\0\0\0*", Value::BigInt(42.into()));
     encoding_eq!(&codec, b"\0\x01\0\x01\0\0\0\0\0\x03",
-        Value::Scalar(Scalar::BigInt((30000).into())));
+        Value::BigInt((30000).into()));
     encoding_eq!(&codec, b"\0\x02\0\x01\0\0\0\0\0\x03\0\x01",
-        Value::Scalar(Scalar::BigInt((30001).into())));
+        Value::BigInt((30001).into()));
     encoding_eq!(&codec, b"\0\x02\0\x01@\0\0\0\0\x01\x13\x88",
-        Value::Scalar(Scalar::BigInt((-15000).into())));
+        Value::BigInt((-15000).into()));
     encoding_eq!(&codec, b"\0\x01\0\x05\0\0\0\0\0\n",
-        Value::Scalar(Scalar::BigInt(
-            BigInt::from_str("1000000000000000000000")?.try_into()?)));
+        Value::BigInt(
+            BigInt::from_str("1000000000000000000000")?.try_into()?));
     Ok(())
 }
 
@@ -516,11 +479,10 @@ fn decimal() -> Result<(), Box<dyn Error>> {
         ]
     )?;
     encoding_eq!(&codec, b"\0\x01\0\0\0\0\0\x02\0*",
-        Value::Scalar(Scalar::Decimal(
-            BigDecimal::from_str("42.00")?.try_into()?)));
+        Value::Decimal(BigDecimal::from_str("42.00")?.try_into()?));
     encoding_eq!(&codec, b"\0\x05\0\x01\0\0\0\t\x04\xd2\x16.#4\r\x80\x1bX",
-        Value::Scalar(Scalar::Decimal(
-            BigDecimal::from_str("12345678.901234567")?.try_into()?)));
+        Value::Decimal(
+            BigDecimal::from_str("12345678.901234567")?.try_into()?));
     Ok(())
 }
 
@@ -536,10 +498,8 @@ fn bool() -> Result<(), Box<dyn Error>> {
             ),
         ]
     )?;
-    encoding_eq!(&codec, b"\0\0\0\0\0\0\0\x01",
-        Value::Scalar(Scalar::Bool(true)));
-    encoding_eq!(&codec, b"\0\0\0\0\0\0\0\0",
-        Value::Scalar(Scalar::Bool(false)));
+    encoding_eq!(&codec, b"\0\0\0\0\0\0\0\x01", Value::Bool(true));
+    encoding_eq!(&codec, b"\0\0\0\0\0\0\0\0", Value::Bool(false));
     Ok(())
 }
 
@@ -556,8 +516,8 @@ fn datetime() -> Result<(), Box<dyn Error>> {
     )?;
 
     encoding_eq!(&codec, b"\0\x02=^\x1bTc\xe7",
-               Value::Scalar(Scalar::Datetime(
-               UNIX_EPOCH + Duration::new(1577109148, 156903000))));
+        Value::Datetime(
+            UNIX_EPOCH + Duration::new(1577109148, 156903000)));
     Ok(())
 }
 
@@ -573,8 +533,7 @@ fn local_datetime() -> Result<(), Box<dyn Error>> {
     )?;
 
     encoding_eq!(&codec, b"\0\x02=^@\xf9\x1f\xfd",
-        Value::Scalar(Scalar::LocalDatetime(
-        LocalDatetime::from_micros(630424979709949))));
+        Value::LocalDatetime(LocalDatetime::from_micros(630424979709949)));
     Ok(())
 }
 
@@ -590,7 +549,7 @@ fn local_date() -> Result<(), Box<dyn Error>> {
     )?;
 
     encoding_eq!(&codec, b"\0\0\x1c\x80",
-        Value::Scalar(Scalar::LocalDate(LocalDate::from_days(7296))));
+        Value::LocalDate(LocalDate::from_days(7296)));
     Ok(())
 }
 
@@ -606,7 +565,7 @@ fn local_time() -> Result<(), Box<dyn Error>> {
     )?;
 
     encoding_eq!(&codec, b"\0\0\0\x0b\xd7\x84\0\x01",
-        Value::Scalar(Scalar::LocalTime(LocalTime::from_micros(50860392449))));
+        Value::LocalTime(LocalTime::from_micros(50860392449)));
     Ok(())
 }
 
@@ -622,6 +581,6 @@ fn json() -> Result<(), Box<dyn Error>> {
     )?;
 
     encoding_eq!(&codec, b"\x01\"txt\"",
-        Value::Scalar(Scalar::Json(String::from(r#""txt""#))));
+        Value::Json(String::from(r#""txt""#)));
     Ok(())
 }

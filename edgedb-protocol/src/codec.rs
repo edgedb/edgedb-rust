@@ -12,7 +12,7 @@ use snafu::{ensure, OptionExt, ResultExt};
 
 use crate::descriptors::{self, Descriptor, TypePos};
 use crate::errors::{self, CodecError, DecodeError, EncodeError};
-use crate::value::{self, Value, Scalar};
+use crate::value::{self, Value};
 
 
 const STD_UUID: Uuid = Uuid::from_u128(0x100);
@@ -222,13 +222,13 @@ impl Codec for Int32 {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 4, errors::Underflow);
         let inner = buf.get_i32_be();
-        Ok(Value::Scalar(Scalar::Int32(inner)))
+        Ok(Value::Int32(inner))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
     {
         let &val = match val {
-            Value::Scalar(Scalar::Int32(val)) => val,
+            Value::Int32(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(4);
@@ -241,13 +241,13 @@ impl Codec for Int16 {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 2, errors::Underflow);
         let inner = buf.get_i16_be();
-        Ok(Value::Scalar(Scalar::Int16(inner)))
+        Ok(Value::Int16(inner))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
     {
         let &val = match val {
-            Value::Scalar(Scalar::Int16(val)) => val,
+            Value::Int16(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(2);
@@ -260,13 +260,13 @@ impl Codec for Int64 {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 8, errors::Underflow);
         let inner = buf.get_i64_be();
-        Ok(Value::Scalar(Scalar::Int64(inner)))
+        Ok(Value::Int64(inner))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
     {
         let &val = match val {
-            Value::Scalar(Scalar::Int64(val)) => val,
+            Value::Int64(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(8);
@@ -279,13 +279,13 @@ impl Codec for Float32 {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 4, errors::Underflow);
         let inner = buf.get_f32_be();
-        Ok(Value::Scalar(Scalar::Float32(inner)))
+        Ok(Value::Float32(inner))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
     {
         let &val = match val {
-            Value::Scalar(Scalar::Float32(val)) => val,
+            Value::Float32(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(4);
@@ -298,13 +298,13 @@ impl Codec for Float64 {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 8, errors::Underflow);
         let inner = buf.get_f64_be();
-        Ok(Value::Scalar(Scalar::Float64(inner)))
+        Ok(Value::Float64(inner))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
     {
         let &val = match val {
-            Value::Scalar(Scalar::Float64(val)) => val,
+            Value::Float64(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(8);
@@ -319,13 +319,13 @@ impl Codec for Str {
             .context(errors::InvalidUtf8)?
             .to_owned();
         buf.advance(buf.bytes().len());
-        Ok(Value::Scalar(Scalar::Str(val)))
+        Ok(Value::Str(val))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
     {
         let val = match val {
-            Value::Scalar(Scalar::Str(val)) => val,
+            Value::Str(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.extend(val.as_bytes());
@@ -337,13 +337,13 @@ impl Codec for BytesCodec {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         let val = buf.bytes().to_owned();
         buf.advance(val.len());
-        Ok(Value::Scalar(Scalar::Bytes(val)))
+        Ok(Value::Bytes(val))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
     {
         let val = match val {
-            Value::Scalar(Scalar::Bytes(val)) => val,
+            Value::Bytes(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.extend(val);
@@ -358,14 +358,14 @@ impl Codec for Duration {
         let days = buf.get_u32_be();
         let months = buf.get_u32_be();
         ensure!(months == 0 && days == 0, errors::NonZeroReservedBytes);
-        Ok(Value::Scalar(Scalar::Duration(
-            value::Duration { micros })))
+        Ok(Value::Duration(
+            value::Duration { micros }))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
     {
         let val = match val {
-            Value::Scalar(Scalar::Duration(val)) => val,
+            Value::Duration(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(16);
@@ -382,13 +382,13 @@ impl Codec for UuidCodec {
         let uuid = Uuid::from_slice(buf.bytes())
             .context(errors::InvalidUuid)?;
         buf.advance(16);
-        Ok(Value::Scalar(Scalar::Uuid(uuid)))
+        Ok(Value::Uuid(uuid))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
     {
         let &val = match val {
-            Value::Scalar(Scalar::Uuid(val)) => val,
+            Value::Uuid(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.extend(val.as_bytes());
@@ -571,15 +571,15 @@ impl Codec for Decimal {
         for _ in 0..ndigits {
             digits.push(buf.get_u16_be());
         }
-        Ok(Value::Scalar(Scalar::Decimal(value::Decimal {
+        Ok(Value::Decimal(value::Decimal {
             negative, weight, decimal_digits, digits,
-        })))
+        }))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
     {
         let val = match val {
-            Value::Scalar(Scalar::Decimal(val)) => val,
+            Value::Decimal(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(8 + val.digits.len()*2);
@@ -612,15 +612,15 @@ impl Codec for BigInt {
         for _ in 0..ndigits {
             digits.push(buf.get_u16_be());
         }
-        Ok(Value::Scalar(Scalar::BigInt(value::BigInt {
+        Ok(Value::BigInt(value::BigInt {
             negative, weight, digits,
-        })))
+        }))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
     {
         let val = match val {
-            Value::Scalar(Scalar::BigInt(val)) => val,
+            Value::BigInt(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(8 + val.digits.len()*2);
@@ -644,13 +644,13 @@ impl Codec for Bool {
             0x01 => true,
             _ => errors::InvalidBool.fail()?,
         };
-        Ok(Value::Scalar(Scalar::Bool(res)))
+        Ok(Value::Bool(res))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
     {
         let val = match val {
-            Value::Scalar(Scalar::Bool(val)) => val,
+            Value::Bool(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(1);
@@ -675,13 +675,13 @@ impl Codec for Datetime {
         } else {
             postgres_epoch - Duration::from_micros((-micros) as u64)
         };
-        Ok(Value::Scalar(Scalar::Datetime(val)))
+        Ok(Value::Datetime(val))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
     {
         let val = match val {
-            Value::Scalar(Scalar::Datetime(val)) => val,
+            Value::Datetime(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(8);
@@ -709,14 +709,14 @@ impl Codec for LocalDatetime {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 8, errors::Underflow);
         let micros = buf.get_i64_be();
-        Ok(Value::Scalar(Scalar::LocalDatetime(
-            value::LocalDatetime { micros })))
+        Ok(Value::LocalDatetime(
+            value::LocalDatetime { micros }))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
     {
         let val = match val {
-            Value::Scalar(Scalar::LocalDatetime(val)) => val,
+            Value::LocalDatetime(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(8);
@@ -729,14 +729,13 @@ impl Codec for LocalDate {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 4, errors::Underflow);
         let days = buf.get_i32_be();
-        Ok(Value::Scalar(Scalar::LocalDate(
-            value::LocalDate { days })))
+        Ok(Value::LocalDate(value::LocalDate { days }))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
     {
         let val = match val {
-            Value::Scalar(Scalar::LocalDate(val)) => val,
+            Value::LocalDate(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(4);
@@ -749,14 +748,13 @@ impl Codec for LocalTime {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 8, errors::Underflow);
         let micros = buf.get_i64_be();
-        Ok(Value::Scalar(Scalar::LocalTime(
-            value::LocalTime { micros })))
+        Ok(Value::LocalTime(value::LocalTime { micros }))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
     {
         let val = match val {
-            Value::Scalar(Scalar::LocalTime(val)) => val,
+            Value::LocalTime(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(8);
@@ -774,13 +772,13 @@ impl Codec for Json {
             .context(errors::InvalidUtf8)?
             .to_owned();
         buf.advance(val.len());
-        Ok(Value::Scalar(Scalar::Json(val)))
+        Ok(Value::Json(val))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
     {
         let val = match val {
-            Value::Scalar(Scalar::Json(val)) => val,
+            Value::Json(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(1 + val.len());

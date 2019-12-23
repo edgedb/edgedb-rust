@@ -12,18 +12,7 @@ pub struct Duration {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
-    Set(Vec<Value>),
-    Object { shape: ObjectShape, fields: Vec<Value> },
-    Scalar(Scalar),
-    Tuple(Vec<Value>),
-    NamedTuple { shape: NamedTupleShape, fields: Vec<Value> },
-    Array(Vec<Value>),
-    Enum(EnumValue),
     Nothing,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum Scalar {
     Uuid(Uuid),
     Str(String),
     Bytes(Vec<u8>),
@@ -41,6 +30,12 @@ pub enum Scalar {
     LocalTime(LocalTime),
     Duration(Duration),
     Json(String),  // or should we use serde::Json?
+    Set(Vec<Value>),
+    Object { shape: ObjectShape, fields: Vec<Value> },
+    Tuple(Vec<Value>),
+    NamedTuple { shape: NamedTupleShape, fields: Vec<Value> },
+    Array(Vec<Value>),
+    Enum(EnumValue),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -77,21 +72,7 @@ impl Value {
     pub fn kind(&self) -> &'static str {
         use Value::*;
         match self {
-            Set(..) => "set",
-            Object { .. } => "object",
-            Scalar(s) => s.kind(),
-            Tuple(..) => "tuple",
-            NamedTuple { .. } => "named_tuple",
-            Array(..) => "array",
-            Enum(..) => "enum",
             Nothing => "nothing",
-        }
-    }
-}
-impl Scalar {
-    pub fn kind(&self) -> &'static str {
-        use Scalar::*;
-        match self {
             Uuid(..) => "uuid",
             Str(..) => "string",
             Bytes(..) => "bytes",
@@ -109,6 +90,12 @@ impl Scalar {
             LocalTime(..) => "cal::local_time",
             Duration(..) => "duration",
             Json(..) => "json",
+            Set(..) => "set",
+            Object { .. } => "object",
+            Tuple(..) => "tuple",
+            NamedTuple { .. } => "named_tuple",
+            Array(..) => "array",
+            Enum(..) => "enum",
         }
     }
 }
