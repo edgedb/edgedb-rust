@@ -2,6 +2,7 @@ use std::any::type_name;
 use std::convert::{TryInto, TryFrom};
 use std::fmt;
 use std::str;
+use std::time::{UNIX_EPOCH, SystemTime};
 use std::io::Cursor;
 use std::sync::Arc;
 
@@ -25,9 +26,9 @@ const STD_FLOAT64: Uuid = Uuid::from_u128(0x107);
 const STD_DECIMAL: Uuid = Uuid::from_u128(0x108);
 const STD_BOOL: Uuid = Uuid::from_u128(0x109);
 const STD_DATETIME: Uuid = Uuid::from_u128(0x10a);
-const STD_LOCAL_DATETIME: Uuid = Uuid::from_u128(0x10b);
-const STD_LOCAL_DATE: Uuid = Uuid::from_u128(0x10c);
-const STD_LOCAL_TIME: Uuid = Uuid::from_u128(0x10d);
+const CAL_LOCAL_DATETIME: Uuid = Uuid::from_u128(0x10b);
+const CAL_LOCAL_DATE: Uuid = Uuid::from_u128(0x10c);
+const CAL_LOCAL_TIME: Uuid = Uuid::from_u128(0x10d);
 const STD_DURATION: Uuid = Uuid::from_u128(0x10e);
 const STD_JSON: Uuid = Uuid::from_u128(0x10f);
 const STD_BIGINT: Uuid = Uuid::from_u128(0x110);
@@ -95,6 +96,18 @@ struct BytesCodec { }
 
 #[derive(Debug)]
 struct Duration { }
+
+#[derive(Debug)]
+struct Datetime { }
+
+#[derive(Debug)]
+struct LocalDatetime { }
+
+#[derive(Debug)]
+struct LocalDate { }
+
+#[derive(Debug)]
+struct LocalTime { }
 
 #[derive(Debug)]
 struct Decimal { }
@@ -191,10 +204,10 @@ pub fn scalar_codec(uuid: &Uuid) -> Result<Arc<dyn Codec>, CodecError> {
         STD_FLOAT64 => Ok(Arc::new(Float64 {})),
         STD_DECIMAL => Ok(Arc::new(Decimal {})),
         STD_BOOL => Ok(Arc::new(Bool {})),
-        STD_DATETIME => todo!(),
-        STD_LOCAL_DATETIME => todo!(),
-        STD_LOCAL_DATE => todo!(),
-        STD_LOCAL_TIME => todo!(),
+        STD_DATETIME => Ok(Arc::new(Datetime {})),
+        CAL_LOCAL_DATETIME => Ok(Arc::new(LocalDatetime {})),
+        CAL_LOCAL_DATE => Ok(Arc::new(LocalDate {})),
+        CAL_LOCAL_TIME => Ok(Arc::new(LocalTime {})),
         STD_DURATION => Ok(Arc::new(Duration {})),
         STD_JSON => todo!(),
         STD_BIGINT => Ok(Arc::new(BigInt {})),
@@ -342,19 +355,8 @@ impl Codec for Duration {
         let days = buf.get_u32_be();
         let months = buf.get_u32_be();
         ensure!(months == 0 && days == 0, errors::NonZeroReservedBytes);
-        if micros < 0 {
-            let dur = std::time::Duration::from_micros(-micros as u64);
-            Ok(Value::Scalar(Scalar::Duration(value::Duration {
-                positive: false,
-                amount: dur,
-            })))
-        } else {
-            let dur = std::time::Duration::from_micros(micros as u64);
-            Ok(Value::Scalar(Scalar::Duration(value::Duration {
-                positive: true,
-                amount: dur,
-            })))
-        }
+        Ok(Value::Scalar(Scalar::Duration(
+            value::Duration { micros })))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -364,11 +366,7 @@ impl Codec for Duration {
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(16);
-        if val.positive {
-            buf.put_i64_be(val.amount.as_micros() as i64);
-        } else {
-            buf.put_i64_be(- (val.amount.as_micros() as i64));
-        }
+        buf.put_i64_be(val.micros);
         buf.put_u32_be(0);
         buf.put_u32_be(0);
         Ok(())
@@ -657,6 +655,109 @@ impl Codec for Bool {
             true => 1,
             false => 0,
         });
+        Ok(())
+    }
+}
+
+impl Codec for Datetime {
+    fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
+        use std::time::{Duration};
+
+        ensure!(buf.remaining() >= 8, errors::Underflow);
+        let micros = buf.get_i64_be();
+        let postgres_epoch: SystemTime = UNIX_EPOCH +
+            std::time::Duration::from_secs(946684800);
+        let val = if micros > 0 {
+            postgres_epoch + Duration::from_micros(micros as u64)
+        } else {
+            postgres_epoch - Duration::from_micros((-micros) as u64)
+        };
+        Ok(Value::Scalar(Scalar::Datetime(val)))
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        let val = match val {
+            Value::Scalar(Scalar::Datetime(val)) => val,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        buf.reserve(8);
+        let postgres_epoch: SystemTime = UNIX_EPOCH +
+            std::time::Duration::from_secs(946684800);
+        if *val >= postgres_epoch {
+            buf.put_i64_be(val.duration_since(postgres_epoch)
+                .ok().context(errors::DatetimeRange)?
+                .as_micros()
+                .try_into()
+                .ok().context(errors::DatetimeRange)?);
+        } else {
+            let micros: i64 = postgres_epoch.duration_since(*val)
+                .ok().context(errors::DatetimeRange)?
+                .as_micros()
+                .try_into()
+                .ok().context(errors::DatetimeRange)?;
+            buf.put_i64_be(-micros);
+        }
+        Ok(())
+    }
+}
+
+impl Codec for LocalDatetime {
+    fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
+        ensure!(buf.remaining() >= 8, errors::Underflow);
+        let micros = buf.get_i64_be();
+        Ok(Value::Scalar(Scalar::LocalDatetime(
+            value::LocalDatetime { micros })))
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        let val = match val {
+            Value::Scalar(Scalar::LocalDatetime(val)) => val,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        buf.reserve(8);
+        buf.put_i64_be(val.micros);
+        Ok(())
+    }
+}
+
+impl Codec for LocalDate {
+    fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
+        ensure!(buf.remaining() >= 4, errors::Underflow);
+        let days = buf.get_i32_be();
+        Ok(Value::Scalar(Scalar::LocalDate(
+            value::LocalDate { days })))
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        let val = match val {
+            Value::Scalar(Scalar::LocalDate(val)) => val,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        buf.reserve(4);
+        buf.put_i32_be(val.days);
+        Ok(())
+    }
+}
+
+impl Codec for LocalTime {
+    fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
+        ensure!(buf.remaining() >= 8, errors::Underflow);
+        let micros = buf.get_i64_be();
+        Ok(Value::Scalar(Scalar::LocalTime(
+            value::LocalTime { micros })))
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        let val = match val {
+            Value::Scalar(Scalar::LocalTime(val)) => val,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        buf.reserve(8);
+        buf.put_i64_be(val.micros);
         Ok(())
     }
 }

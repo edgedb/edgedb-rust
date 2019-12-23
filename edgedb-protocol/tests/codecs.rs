@@ -2,11 +2,13 @@ use std::io::{Cursor};
 use std::error::Error;
 use std::{i16, i32, i64};
 use std::sync::Arc;
+use std::time::UNIX_EPOCH;
 
 use bytes::{Bytes, Buf};
 
 use edgedb_protocol::codec::{build_codec, Codec, ObjectShape};
 use edgedb_protocol::value::{Value, Scalar, Duration};
+use edgedb_protocol::value::{LocalDatetime, LocalDate, LocalTime};
 use edgedb_protocol::descriptors::{Descriptor, TypePos};
 use edgedb_protocol::descriptors::BaseScalarTypeDescriptor;
 use edgedb_protocol::descriptors::{ObjectShapeDescriptor, ShapeElement};
@@ -262,11 +264,11 @@ fn duration() -> Result<(), Box<dyn Error>> {
     // SELECT <datetime>'2019-11-29T00:00:00Z'-<datetime>'2000-01-01T00:00:00Z'
     encoding_eq!(&codec, b"\0\x02;o\xad\xff\0\0\0\0\0\0\0\0\0\0",
                Value::Scalar(Scalar::Duration(
-               Duration::from_secs(7272*86400))));
+               Duration::from_micros(7272*86400*1000_000))));
     // SELECT <datetime>'2019-11-29T00:00:00Z'-<datetime>'2019-11-28T01:00:00Z'
     encoding_eq!(&codec, b"\0\0\0\x13GC\xbc\0\0\0\0\0\0\0\0\0",
                Value::Scalar(Scalar::Duration(
-               Duration::from_secs(82800))));
+               Duration::from_micros(82800*1000_000))));
     encoding_eq!(&codec, b"\xff\xff\xff\xff\xd3,\xba\xe0\0\0\0\0\0\0\0\0",
                Value::Scalar(Scalar::Duration(
                Duration::from_micros(-752043296))));
@@ -538,5 +540,72 @@ fn bool() -> Result<(), Box<dyn Error>> {
         Value::Scalar(Scalar::Bool(true)));
     encoding_eq!(&codec, b"\0\0\0\0\0\0\0\0",
         Value::Scalar(Scalar::Bool(false)));
+    Ok(())
+}
+
+#[test]
+fn datetime() -> Result<(), Box<dyn Error>> {
+    use std::time::Duration;
+    let codec = build_codec(
+        &"00000000-0000-0000-0000-00000000010a".parse()?,
+        &[
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-00000000010a".parse()?,
+            })
+        ]
+    )?;
+
+    encoding_eq!(&codec, b"\0\x02=^\x1bTc\xe7",
+               Value::Scalar(Scalar::Datetime(
+               UNIX_EPOCH + Duration::new(1577109148, 156903000))));
+    Ok(())
+}
+
+#[test]
+fn local_datetime() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(
+        &"00000000-0000-0000-0000-00000000010b".parse()?,
+        &[
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-00000000010b".parse()?,
+            })
+        ]
+    )?;
+
+    encoding_eq!(&codec, b"\0\x02=^@\xf9\x1f\xfd",
+        Value::Scalar(Scalar::LocalDatetime(
+        LocalDatetime::from_micros(630424979709949))));
+    Ok(())
+}
+
+#[test]
+fn local_date() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(
+        &"00000000-0000-0000-0000-00000000010c".parse()?,
+        &[
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-00000000010c".parse()?,
+            })
+        ]
+    )?;
+
+    encoding_eq!(&codec, b"\0\0\x1c\x80",
+        Value::Scalar(Scalar::LocalDate(LocalDate::from_days(7296))));
+    Ok(())
+}
+
+#[test]
+fn local_time() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(
+        &"00000000-0000-0000-0000-00000000010d".parse()?,
+        &[
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-00000000010d".parse()?,
+            })
+        ]
+    )?;
+
+    encoding_eq!(&codec, b"\0\0\0\x0b\xd7\x84\0\x01",
+        Value::Scalar(Scalar::LocalTime(LocalTime::from_micros(50860392449))));
     Ok(())
 }

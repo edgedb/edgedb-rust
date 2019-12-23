@@ -40,6 +40,8 @@ pub enum DecodeError {
     BadSign { backtrace: Backtrace },
     #[snafu(display("invalid boolean value"))]
     InvalidBool { backtrace: Backtrace },
+    #[snafu(display("datetime is out of range"))]
+    InvalidDate { backtrace: Backtrace },
 }
 
 #[derive(Snafu, Debug)]
@@ -78,6 +80,8 @@ pub enum EncodeError {
                    value_type: &'static str, codec: &'static str },
     #[snafu(display("shape of data does not match shape of encoder"))]
     ObjectShapeMismatch { backtrace: Backtrace },
+    #[snafu(display("datetime value is out of range"))]
+    DatetimeRange { backtrace: Backtrace },
 }
 
 #[derive(Snafu, Debug)]

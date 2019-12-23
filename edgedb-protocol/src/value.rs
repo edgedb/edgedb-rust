@@ -1,4 +1,4 @@
-use std::time::{SystemTime, Duration as StdDuration};
+use std::time::{SystemTime};
 use std::{u32, u64};
 
 use uuid::Uuid;
@@ -7,8 +7,7 @@ use crate::codec::{NamedTupleShape, ObjectShape, EnumValue};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Duration {
-    pub positive: bool,
-    pub amount: StdDuration,
+    pub(crate) micros: i64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -36,7 +35,7 @@ pub enum Scalar {
     BigInt(BigInt),
     Decimal(Decimal),
     Bool(bool),
-    DateTime(SystemTime),
+    Datetime(SystemTime),
     LocalDatetime(LocalDatetime),
     LocalDate(LocalDate),
     LocalTime(LocalTime),
@@ -61,17 +60,17 @@ pub struct Decimal {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LocalDatetime {
-    // TODO(tailhook)
+    pub(crate) micros: i64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LocalDate {
-    // TODO(tailhook)
+    pub(crate) days: i32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LocalTime {
-    // TODO(tailhook)
+    pub(crate) micros: i64,
 }
 
 impl Value {
@@ -104,7 +103,7 @@ impl Scalar {
             BigInt(..) => "bigint",
             Decimal(..) => "decimal",
             Bool(..) => "bool",
-            DateTime(..) => "datetime",
+            Datetime(..) => "datetime",
             LocalDatetime(..) => "cal::local_datetime",
             LocalDate(..) => "cal::local_date",
             LocalTime(..) => "cal::local_time",
@@ -115,16 +114,28 @@ impl Scalar {
 }
 
 impl Duration {
-    pub fn from_secs(val: i64) -> Duration {
-        Duration {
-            positive: val >= 0,
-            amount: StdDuration::from_secs(val.abs() as u64),
-        }
+    pub fn from_micros(micros: i64) -> Duration {
+        Duration { micros }
     }
-    pub fn from_micros(val: i64) -> Duration {
-        Duration {
-            positive: val >= 0,
-            amount: StdDuration::from_micros(val.abs() as u64),
+    // Returns true if self is positive and false if the duration
+    // is zero or negative.
+    pub fn is_positive(&self) -> bool {
+        self.micros.is_positive()
+    }
+    // Returns true if self is negative and false if the duration
+    // is zero or positive.
+    pub fn is_negative(&self) -> bool {
+        self.micros.is_positive()
+    }
+    // Returns absolute values as stdlib's duration
+    //
+    // Note: `std::time::Duration` can't be negative
+    pub fn abs_duration(&self) -> std::time::Duration {
+        if self.micros.is_negative() {
+            return std::time::Duration::from_micros(
+                u64::MAX - self.micros as u64 + 1);
+        } else {
+            return std::time::Duration::from_micros(self.micros as u64);
         }
     }
 }
@@ -294,6 +305,24 @@ impl Into<bigdecimal::BigDecimal> for &Decimal {
     }
 }
 
+impl LocalDatetime {
+    pub fn from_micros(micros: i64) -> LocalDatetime {
+        return LocalDatetime { micros }
+    }
+}
+
+impl LocalTime {
+    pub fn from_micros(micros: i64) -> LocalTime {
+        return LocalTime { micros }
+    }
+}
+
+impl LocalDate {
+    pub fn from_days(days: i32) -> LocalDate {
+        return LocalDate { days }
+    }
+}
+
 #[cfg(test)]
 #[allow(unused_imports)]  // because of optional tests
 mod test {
@@ -380,5 +409,16 @@ mod test {
         assert_eq!(x.decimal_digits, 2);
         assert_eq!(x.digits, &[700]);
         Ok(())
+    }
+
+    #[test]
+    fn big_duration_abs() {
+        use super::Duration as Src;
+        use std::time::Duration as Trg;
+        assert_eq!(Src { micros: -1 }.abs_duration(), Trg::new(0, 1000));
+        assert_eq!(Src { micros: -1000 }.abs_duration(), Trg::new(0, 1000000));
+        assert_eq!(Src { micros: -1000000 }.abs_duration(), Trg::new(1, 0));
+        assert_eq!(Src { micros: i64::min_value() }.abs_duration(),
+                   Trg::new(9223372036854, 775808000));
     }
 }
