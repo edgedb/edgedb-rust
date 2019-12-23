@@ -119,6 +119,9 @@ struct BigInt { }
 struct Bool { }
 
 #[derive(Debug)]
+struct Json { }
+
+#[derive(Debug)]
 struct Nothing { }
 
 #[derive(Debug)]
@@ -209,7 +212,7 @@ pub fn scalar_codec(uuid: &Uuid) -> Result<Arc<dyn Codec>, CodecError> {
         CAL_LOCAL_DATE => Ok(Arc::new(LocalDate {})),
         CAL_LOCAL_TIME => Ok(Arc::new(LocalTime {})),
         STD_DURATION => Ok(Arc::new(Duration {})),
-        STD_JSON => todo!(),
+        STD_JSON => Ok(Arc::new(Json {})),
         STD_BIGINT => Ok(Arc::new(BigInt {})),
         _ => return errors::UndefinedBaseScalar { uuid: uuid.clone() }.fail()?,
     }
@@ -758,6 +761,31 @@ impl Codec for LocalTime {
         };
         buf.reserve(8);
         buf.put_i64_be(val.micros);
+        Ok(())
+    }
+}
+
+impl Codec for Json {
+    fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
+        ensure!(buf.remaining() >= 1, errors::Underflow);
+        let format = buf.get_u8();
+        ensure!(format == 1, errors::InvalidJsonFormat);
+        let val = str::from_utf8(&buf.bytes())
+            .context(errors::InvalidUtf8)?
+            .to_owned();
+        buf.advance(val.len());
+        Ok(Value::Scalar(Scalar::Json(val)))
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        let val = match val {
+            Value::Scalar(Scalar::Json(val)) => val,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        buf.reserve(1 + val.len());
+        buf.put_u8(1);
+        buf.extend(val.as_bytes());
         Ok(())
     }
 }

@@ -609,3 +609,19 @@ fn local_time() -> Result<(), Box<dyn Error>> {
         Value::Scalar(Scalar::LocalTime(LocalTime::from_micros(50860392449))));
     Ok(())
 }
+
+#[test]
+fn json() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(
+        &"00000000-0000-0000-0000-00000000010f".parse()?,
+        &[
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-00000000010f".parse()?,
+            })
+        ]
+    )?;
+
+    encoding_eq!(&codec, b"\x01\"txt\"",
+        Value::Scalar(Scalar::Json(String::from(r#""txt""#))));
+    Ok(())
+}

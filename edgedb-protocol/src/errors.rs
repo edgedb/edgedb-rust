@@ -42,6 +42,8 @@ pub enum DecodeError {
     InvalidBool { backtrace: Backtrace },
     #[snafu(display("datetime is out of range"))]
     InvalidDate { backtrace: Backtrace },
+    #[snafu(display("json format is invalid"))]
+    InvalidJsonFormat { backtrace: Backtrace },
 }
 
 #[derive(Snafu, Debug)]
