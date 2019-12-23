@@ -23,7 +23,13 @@ const STD_INT64: Uuid = Uuid::from_u128(0x105);
 const STD_FLOAT32: Uuid = Uuid::from_u128(0x106);
 const STD_FLOAT64: Uuid = Uuid::from_u128(0x107);
 const STD_DECIMAL: Uuid = Uuid::from_u128(0x108);
+const STD_BOOL: Uuid = Uuid::from_u128(0x109);
+const STD_DATETIME: Uuid = Uuid::from_u128(0x10a);
+const STD_LOCAL_DATETIME: Uuid = Uuid::from_u128(0x10b);
+const STD_LOCAL_DATE: Uuid = Uuid::from_u128(0x10c);
+const STD_LOCAL_TIME: Uuid = Uuid::from_u128(0x10d);
 const STD_DURATION: Uuid = Uuid::from_u128(0x10e);
+const STD_JSON: Uuid = Uuid::from_u128(0x10f);
 const STD_BIGINT: Uuid = Uuid::from_u128(0x110);
 
 
@@ -95,6 +101,9 @@ struct Decimal { }
 
 #[derive(Debug)]
 struct BigInt { }
+
+#[derive(Debug)]
+struct Bool { }
 
 #[derive(Debug)]
 struct Nothing { }
@@ -181,7 +190,13 @@ pub fn scalar_codec(uuid: &Uuid) -> Result<Arc<dyn Codec>, CodecError> {
         STD_FLOAT32 => Ok(Arc::new(Float32 {})),
         STD_FLOAT64 => Ok(Arc::new(Float64 {})),
         STD_DECIMAL => Ok(Arc::new(Decimal {})),
+        STD_BOOL => Ok(Arc::new(Bool {})),
+        STD_DATETIME => todo!(),
+        STD_LOCAL_DATETIME => todo!(),
+        STD_LOCAL_DATE => todo!(),
+        STD_LOCAL_TIME => todo!(),
         STD_DURATION => Ok(Arc::new(Duration {})),
+        STD_JSON => todo!(),
         STD_BIGINT => Ok(Arc::new(BigInt {})),
         _ => return errors::UndefinedBaseScalar { uuid: uuid.clone() }.fail()?,
     }
@@ -616,6 +631,32 @@ impl Codec for BigInt {
         for &dig in &val.digits {
             buf.put_u16_be(dig);
         }
+        Ok(())
+    }
+}
+
+impl Codec for Bool {
+    fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
+        ensure!(buf.remaining() >= 1, errors::Underflow);
+        let res = match buf.get_u64_be() {
+            0x00 => false,
+            0x01 => true,
+            _ => errors::InvalidBool.fail()?,
+        };
+        Ok(Value::Scalar(Scalar::Bool(res)))
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        let val = match val {
+            Value::Scalar(Scalar::Bool(val)) => val,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        buf.reserve(1);
+        buf.put_u64_be(match val {
+            true => 1,
+            false => 0,
+        });
         Ok(())
     }
 }

@@ -521,3 +521,22 @@ fn decimal() -> Result<(), Box<dyn Error>> {
             BigDecimal::from_str("12345678.901234567")?.try_into()?)));
     Ok(())
 }
+
+#[test]
+fn bool() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(
+        &"00000000-0000-0000-0000-000000000109".parse()?,
+        &[
+            Descriptor::BaseScalar(
+                BaseScalarTypeDescriptor {
+                    id: "00000000-0000-0000-0000-000000000109".parse()?,
+                },
+            ),
+        ]
+    )?;
+    encoding_eq!(&codec, b"\0\0\0\0\0\0\0\x01",
+        Value::Scalar(Scalar::Bool(true)));
+    encoding_eq!(&codec, b"\0\0\0\0\0\0\0\0",
+        Value::Scalar(Scalar::Bool(false)));
+    Ok(())
+}
