@@ -17,6 +17,7 @@ use edgedb_protocol::descriptors::{ScalarTypeDescriptor};
 use edgedb_protocol::descriptors::{TupleTypeDescriptor};
 use edgedb_protocol::descriptors::{NamedTupleTypeDescriptor, TupleElement};
 use edgedb_protocol::descriptors::ArrayTypeDescriptor;
+use edgedb_protocol::descriptors::EnumerationTypeDescriptor;
 
 mod base;
 
@@ -728,3 +729,23 @@ fn array() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+#[test]
+fn enums() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(
+        &"ac5dc6a4-2656-11ea-aa6d-233f91e80ff6".parse()?,
+        &[
+            Descriptor::Enumeration(
+                EnumerationTypeDescriptor {
+                    id: "ac5dc6a4-2656-11ea-aa6d-233f91e80ff6".parse()?,
+                    members: vec![
+                        "x".into(),
+                        "y".into(),
+                    ],
+                },
+            ),
+        ]
+    )?;
+    encoding_eq!(&codec, bconcat!(b"x"),
+        Value::Enum("x".into()));
+    Ok(())
+}

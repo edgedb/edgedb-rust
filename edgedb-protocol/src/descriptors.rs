@@ -261,7 +261,7 @@ impl Decode for ArrayTypeDescriptor {
 impl Decode for EnumerationTypeDescriptor {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 19, errors::Underflow);
-        assert!(buf.get_u8() == 6);
+        assert!(buf.get_u8() == 7);
         let id = Uuid::decode(buf)?;
         let member_count = buf.get_u16_be();
         let mut members = Vec::with_capacity(member_count as usize);
@@ -284,7 +284,7 @@ impl Decode for TypeAnnotationDescriptor {
 }
 
 fn decode16str(buf: &mut Cursor<Bytes>) -> Result<String, DecodeError> {
-    ensure!(buf.remaining() >= 4, errors::Underflow);
+    ensure!(buf.remaining() >= 2, errors::Underflow);
     let len = buf.get_u16_be() as usize;
     // TODO(tailhook) ensure size < i16::MAX
     ensure!(buf.remaining() >= len, errors::Underflow);

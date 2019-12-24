@@ -5,6 +5,7 @@ use std::str;
 use std::time::{UNIX_EPOCH, SystemTime};
 use std::io::Cursor;
 use std::sync::Arc;
+use std::collections::HashSet;
 
 use bytes::{Bytes, Buf, BytesMut, BufMut};
 use uuid::Uuid;
@@ -41,7 +42,7 @@ pub trait Codec: fmt::Debug + Send + Sync + 'static {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EnumValue(Arc<String>);
+pub struct EnumValue(Arc<str>);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ObjectShape(Arc<ObjectShapeInfo>);
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -156,6 +157,11 @@ struct Array {
     element: Arc<dyn Codec>,
 }
 
+#[derive(Debug)]
+struct Enum {
+    members: HashSet<Arc<str>>,
+}
+
 struct CodecBuilder<'a> {
     descriptors: &'a [Descriptor],
 }
@@ -186,7 +192,9 @@ impl<'a> CodecBuilder<'a> {
                 D::Array(d) => Ok(Arc::new(Array {
                     element: self.build(d.type_pos)?,
                 })),
-                D::Enumeration(..) => todo!(),
+                D::Enumeration(d) => Ok(Arc::new(Enum {
+                    members: d.members.iter().map(|x| x[..].into()).collect(),
+                })),
                 D::TypeAnnotation(..) => todo!(),
             }
         } else {
@@ -552,6 +560,12 @@ impl<'a> From<&'a [descriptors::TupleElement]> for NamedTupleShape {
                     }
                 }).collect(),
             }))
+    }
+}
+
+impl From<&str> for EnumValue {
+    fn from(s: &str) -> EnumValue {
+        EnumValue(s.into())
     }
 }
 
@@ -1000,6 +1014,28 @@ impl Codec for Array {
                     .ok().context(errors::ElementTooLong)?
                     .to_be_bytes());
         }
+        Ok(())
+    }
+}
+
+impl Codec for Enum {
+    fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
+        let val = str::from_utf8(&buf.bytes())
+            .context(errors::InvalidUtf8)?;
+        let val = self.members.get(val)
+            .context(errors::ExtraEnumValue)?;
+        buf.advance(buf.bytes().len());
+        Ok(Value::Enum(EnumValue(val.clone())))
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        let val = match val {
+            Value::Enum(val) => val,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        ensure!(self.members.get(&val.0).is_some(), errors::MissingEnumValue);
+        buf.extend(val.0.as_bytes());
         Ok(())
     }
 }

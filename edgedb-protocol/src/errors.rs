@@ -48,6 +48,8 @@ pub enum DecodeError {
     InvalidDate { backtrace: Backtrace },
     #[snafu(display("json format is invalid"))]
     InvalidJsonFormat { backtrace: Backtrace },
+    #[snafu(display("enum value returned is not in type descriptor"))]
+    ExtraEnumValue { backtrace: Backtrace },
 }
 
 #[derive(Snafu, Debug)]
@@ -90,6 +92,8 @@ pub enum EncodeError {
     DatetimeRange { backtrace: Backtrace },
     #[snafu(display("tuple size doesn't match encoder"))]
     TupleShapeMismatch { backtrace: Backtrace },
+    #[snafu(display("enum value is not in type descriptor"))]
+    MissingEnumValue { backtrace: Backtrace },
 }
 
 #[derive(Snafu, Debug)]
