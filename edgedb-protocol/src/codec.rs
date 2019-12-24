@@ -135,6 +135,11 @@ struct SetCodec {
     element: Arc<dyn Codec>,
 }
 
+#[derive(Debug)]
+struct Scalar {
+    inner: Arc<dyn Codec>,
+}
+
 struct CodecBuilder<'a> {
     descriptors: &'a [Descriptor],
 }
@@ -163,7 +168,11 @@ impl<'a> CodecBuilder<'a> {
                 ObjectShape(d) => {
                     return Ok(Arc::new(Object::build(d, self)?))
                 }
-                Scalar(..) => todo!(),
+                Scalar(d) => {
+                    return Ok(Arc::new(self::Scalar {
+                        inner: self.build(d.base_type_pos)?,
+                    }));
+                }
                 Tuple(..) => todo!(),
                 NamedTuple(..) => todo!(),
                 Array(..) => todo!(),
@@ -785,5 +794,16 @@ impl Codec for Json {
         buf.put_u8(1);
         buf.extend(val.as_bytes());
         Ok(())
+    }
+}
+
+impl Codec for Scalar {
+    fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
+        self.inner.decode(buf)
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        self.inner.encode(buf, val)
     }
 }

@@ -13,6 +13,7 @@ use edgedb_protocol::descriptors::{Descriptor, TypePos};
 use edgedb_protocol::descriptors::BaseScalarTypeDescriptor;
 use edgedb_protocol::descriptors::{ObjectShapeDescriptor, ShapeElement};
 use edgedb_protocol::descriptors::{SetDescriptor};
+use edgedb_protocol::descriptors::{ScalarTypeDescriptor};
 
 mod base;
 
@@ -582,5 +583,29 @@ fn json() -> Result<(), Box<dyn Error>> {
 
     encoding_eq!(&codec, b"\x01\"txt\"",
         Value::Json(String::from(r#""txt""#)));
+    Ok(())
+}
+
+#[test]
+fn custom_scalar() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(
+        &"234dc787-2646-11ea-bebd-010d530c06ca".parse()?,
+        &[
+            Descriptor::BaseScalar(
+                BaseScalarTypeDescriptor {
+                    id: "00000000-0000-0000-0000-000000000101".parse()?,
+                },
+            ),
+            Descriptor::Scalar(
+                ScalarTypeDescriptor {
+                    id: "234dc787-2646-11ea-bebd-010d530c06ca".parse()?,
+                    base_type_pos: TypePos(0),
+                },
+            ),
+        ]
+    )?;
+
+    encoding_eq!(&codec, b"xx",
+        Value::Str(String::from("xx")));
     Ok(())
 }
