@@ -16,6 +16,7 @@ use edgedb_protocol::descriptors::{SetDescriptor};
 use edgedb_protocol::descriptors::{ScalarTypeDescriptor};
 use edgedb_protocol::descriptors::{TupleTypeDescriptor};
 use edgedb_protocol::descriptors::{NamedTupleTypeDescriptor, TupleElement};
+use edgedb_protocol::descriptors::ArrayTypeDescriptor;
 
 mod base;
 
@@ -693,3 +694,37 @@ fn named_tuple() -> Result<(), Box<dyn Error>> {
         });
     Ok(())
 }
+
+#[test]
+fn array() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(
+        &"b0105467-a177-635f-e207-0a21867f9be0".parse()?,
+        &[
+            Descriptor::BaseScalar(
+                BaseScalarTypeDescriptor {
+                    id: "00000000-0000-0000-0000-000000000105".parse()?,
+                },
+            ),
+            Descriptor::Array(
+                ArrayTypeDescriptor {
+                    id: "b0105467-a177-635f-e207-0a21867f9be0".parse()?,
+                    type_pos: TypePos(0),
+                    dimensions: vec![None],
+                },
+            ),
+        ],
+    )?;
+
+    // TODO(tailhook) test with non-zero reserved bytes
+    encoding_eq!(&codec, bconcat!(b"\0\0\0\x01\0\0\0\0\0\0\0\x00\0\0\0\x03"
+            b"\0\0\0\x01\0\0\0\x08\0\0\0\0\0\0\0\x01"
+            b"\0\0\0\x08\0\0\0\0\0\0\0\x02"
+            b"\0\0\0\x08\0\0\0\0\0\0\0\x03"),
+        Value::Array(vec![
+            Value::Int64(1),
+            Value::Int64(2),
+            Value::Int64(3),
+        ]));
+    Ok(())
+}
+

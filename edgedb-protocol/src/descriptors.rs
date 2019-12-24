@@ -80,7 +80,7 @@ pub struct TupleElement {
 pub struct ArrayTypeDescriptor {
     pub id: Uuid,
     pub type_pos: TypePos,
-    pub dimensions: Vec<u32>,
+    pub dimensions: Vec<Option<u32>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -248,7 +248,11 @@ impl Decode for ArrayTypeDescriptor {
         ensure!(buf.remaining() >= 4*dim_count as usize, errors::Underflow);
         let mut dimensions = Vec::with_capacity(dim_count as usize);
         for _ in 0..dim_count {
-            dimensions.push(buf.get_u32_be());
+            dimensions.push(match buf.get_i32_be() {
+                -1 => None,
+                n if n > 0 => Some(n as u32),
+                _ => errors::InvalidArrayShape.fail()?,
+            });
         }
         Ok(ArrayTypeDescriptor { id, type_pos, dimensions })
     }

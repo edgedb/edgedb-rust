@@ -38,6 +38,8 @@ pub enum DecodeError {
     TupleSizeMismatch { backtrace: Backtrace },
     #[snafu(display("array shape for the Set codec is invalid"))]
     InvalidSetShape { backtrace: Backtrace },
+    #[snafu(display("array shape is invalid"))]
+    InvalidArrayShape { backtrace: Backtrace },
     #[snafu(display("decimal or bigint sign bytes have invalid value"))]
     BadSign { backtrace: Backtrace },
     #[snafu(display("invalid boolean value"))]

@@ -151,6 +151,11 @@ struct NamedTuple {
     codecs: Vec<Arc<dyn Codec>>,
 }
 
+#[derive(Debug)]
+struct Array {
+    element: Arc<dyn Codec>,
+}
+
 struct CodecBuilder<'a> {
     descriptors: &'a [Descriptor],
 }
@@ -178,7 +183,9 @@ impl<'a> CodecBuilder<'a> {
                 })),
                 D::Tuple(d) => Ok(Arc::new(Tuple::build(d, self)?)),
                 D::NamedTuple(d) =>  Ok(Arc::new(NamedTuple::build(d, self)?)),
-                D::Array(..) => todo!(),
+                D::Array(d) => Ok(Arc::new(Array {
+                    element: self.build(d.type_pos)?,
+                })),
                 D::Enumeration(..) => todo!(),
                 D::TypeAnnotation(..) => todo!(),
             }
@@ -938,6 +945,56 @@ impl Codec for NamedTuple {
             let pos = buf.len();
             buf.put_u32_be(0);  // replaced after serializing a value
             codec.encode(buf, field)?;
+            let len = buf.len()-pos-4;
+            buf[pos..pos+4].copy_from_slice(&u32::try_from(len)
+                    .ok().context(errors::ElementTooLong)?
+                    .to_be_bytes());
+        }
+        Ok(())
+    }
+}
+
+impl Codec for Array {
+    fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
+        ensure!(buf.remaining() >= 20, errors::Underflow);
+        let ndims = buf.get_u32_be();
+        ensure!(ndims == 1, errors::InvalidArrayShape);
+        let _reserved0 = buf.get_u32_be();
+        let _reserved1 = buf.get_u32_be();
+        let size = buf.get_u32_be() as usize;
+        let lower = buf.get_u32_be();
+        ensure!(lower == 1, errors::InvalidArrayShape);
+        let mut items = Vec::with_capacity(size);
+        for _ in 0..size {
+            ensure!(buf.remaining() >= 4, errors::Underflow);
+            let len = buf.get_u32_be() as usize;
+            ensure!(buf.remaining() >= len, errors::Underflow);
+            let off = buf.position() as usize;
+            let mut chunk = Cursor::new(buf.get_ref().slice(off, off + len));
+            buf.advance(len);
+            items.push(self.element.decode_value(&mut chunk)?);
+        }
+        Ok(Value::Array(items))
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        let items = match val {
+            Value::Array(items) => items,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        buf.reserve(20);
+        buf.put_u32_be(1);  // ndims
+        buf.put_u32_be(0);  // reserved0
+        buf.put_u32_be(0);  // reserved1
+        buf.put_u32_be(items.len().try_into().ok()
+            .context(errors::ArrayTooLong)?);
+        buf.put_u32_be(1);  // lower
+        for item in items {
+            buf.reserve(4);
+            let pos = buf.len();
+            buf.put_u32_be(0);  // replaced after serializing a value
+            self.element.encode(buf, item)?;
             let len = buf.len()-pos-4;
             buf[pos..pos+4].copy_from_slice(&u32::try_from(len)
                     .ok().context(errors::ElementTooLong)?
