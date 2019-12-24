@@ -15,6 +15,7 @@ use edgedb_protocol::descriptors::{ObjectShapeDescriptor, ShapeElement};
 use edgedb_protocol::descriptors::{SetDescriptor};
 use edgedb_protocol::descriptors::{ScalarTypeDescriptor};
 use edgedb_protocol::descriptors::{TupleTypeDescriptor};
+use edgedb_protocol::descriptors::{NamedTupleTypeDescriptor, TupleElement};
 
 mod base;
 
@@ -642,5 +643,53 @@ fn tuple() -> Result<(), Box<dyn Error>> {
             Value::Int64(1),
             Value::Str("str".into()),
         ]));
+    Ok(())
+}
+
+#[test]
+fn named_tuple() -> Result<(), Box<dyn Error>> {
+    let elements = vec![
+        TupleElement {
+            name: "a".into(),
+            type_pos: TypePos(0),
+        },
+        TupleElement {
+            name: "b".into(),
+            type_pos: TypePos(1),
+        },
+    ];
+    let shape = elements.as_slice().into();
+    let codec = build_codec(
+        &"101385c1-d6d5-ec67-eec4-b2b88be8a197".parse()?,
+        &[
+            Descriptor::BaseScalar(
+                BaseScalarTypeDescriptor {
+                    id: "00000000-0000-0000-0000-000000000105".parse()?,
+                },
+            ),
+            Descriptor::BaseScalar(
+                BaseScalarTypeDescriptor {
+                    id: "00000000-0000-0000-0000-000000000101".parse()?,
+                },
+            ),
+            Descriptor::NamedTuple(
+                    NamedTupleTypeDescriptor {
+                        id: "101385c1-d6d5-ec67-eec4-b2b88be8a197".parse()?,
+                        elements,
+                    },
+                ),
+        ],
+    )?;
+
+    // TODO(tailhook) test with non-zero reserved bytes
+    encoding_eq!(&codec, bconcat!(b"\0\0\0\x02\0\0\0\x00\0\0\0"
+        b"\x08\0\0\0\0\0\0\0\x01\0\0\0\x00\0\0\0\x01x"),
+        Value::NamedTuple {
+            shape,
+            fields: vec![
+                Value::Int64(1),
+                Value::Str("x".into()),
+            ],
+        });
     Ok(())
 }

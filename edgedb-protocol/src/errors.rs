@@ -34,6 +34,8 @@ pub enum DecodeError {
     NonZeroReservedBytes { backtrace: Backtrace },
     #[snafu(display("object data size does not match its shape"))]
     ObjectSizeMismatch { backtrace: Backtrace },
+    #[snafu(display("tuple size does not match its shape"))]
+    TupleSizeMismatch { backtrace: Backtrace },
     #[snafu(display("array shape for the Set codec is invalid"))]
     InvalidSetShape { backtrace: Backtrace },
     #[snafu(display("decimal or bigint sign bytes have invalid value"))]
@@ -85,7 +87,7 @@ pub enum EncodeError {
     #[snafu(display("datetime value is out of range"))]
     DatetimeRange { backtrace: Backtrace },
     #[snafu(display("tuple size doesn't match encoder"))]
-    TupleSizeMismatch { backtrace: Backtrace },
+    TupleShapeMismatch { backtrace: Backtrace },
 }
 
 #[derive(Snafu, Debug)]
