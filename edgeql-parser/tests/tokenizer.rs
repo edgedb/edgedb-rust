@@ -688,3 +688,9 @@ fn test_dollar() {
         "Unexpected `backtick-quoted arguments surrounded by double \
                     underscores are forbidden`");
 }
+
+#[test]
+fn invalid_suffix() {
+    assert_eq!(tok_err("SELECT 1d;"), "Unexpected `suffix \"d\" \
+        is invalid for numbers, perhaps you wanted `1n` (bigint)?`");
+}

@@ -672,7 +672,7 @@ impl<'a> TokenStream<'a> {
                 Cow::Borrowed(suffix)
             };
             let val = if soff < 20 {
-                &self.buf[self.off..soff]
+                &self.buf[self.off..][..soff]
             } else {
                 "123"
             };
