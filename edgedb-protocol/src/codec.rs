@@ -581,11 +581,16 @@ impl SetCodec {
 
 impl Codec for SetCodec {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 20, errors::Underflow);
+        ensure!(buf.remaining() >= 12, errors::Underflow);
         let ndims = buf.get_u32_be();
-        ensure!(ndims == 1, errors::InvalidSetShape);
         let _reserved0 = buf.get_u32_be();
         let _reserved1 = buf.get_u32_be();
+        if ndims == 0 {
+            return Ok(Value::Set(Vec::new()));
+        }
+
+        ensure!(ndims == 1, errors::InvalidSetShape);
+        ensure!(buf.remaining() >= 8, errors::Underflow);
         let size = buf.get_u32_be() as usize;
         let lower = buf.get_u32_be();
         ensure!(lower == 1, errors::InvalidSetShape);
@@ -608,6 +613,13 @@ impl Codec for SetCodec {
             Value::Set(items) => items,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
+        if items.is_empty() {
+            buf.reserve(12);
+            buf.put_u32_be(0);  // ndims
+            buf.put_u32_be(0);  // reserved0
+            buf.put_u32_be(0);  // reserved1
+            return Ok(());
+        }
         buf.reserve(20);
         buf.put_u32_be(1);  // ndims
         buf.put_u32_be(0);  // reserved0
@@ -970,11 +982,15 @@ impl Codec for NamedTuple {
 
 impl Codec for Array {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 20, errors::Underflow);
+        ensure!(buf.remaining() >= 12, errors::Underflow);
         let ndims = buf.get_u32_be();
-        ensure!(ndims == 1, errors::InvalidArrayShape);
         let _reserved0 = buf.get_u32_be();
         let _reserved1 = buf.get_u32_be();
+        if ndims == 0 {
+            return Ok(Value::Array(Vec::new()));
+        }
+        ensure!(ndims == 1, errors::InvalidArrayShape);
+        ensure!(buf.remaining() >= 8, errors::Underflow);
         let size = buf.get_u32_be() as usize;
         let lower = buf.get_u32_be();
         ensure!(lower == 1, errors::InvalidArrayShape);
@@ -997,6 +1013,13 @@ impl Codec for Array {
             Value::Array(items) => items,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
+        if items.is_empty() {
+            buf.reserve(12);
+            buf.put_u32_be(0);  // ndims
+            buf.put_u32_be(0);  // reserved0
+            buf.put_u32_be(0);  // reserved1
+            return Ok(());
+        }
         buf.reserve(20);
         buf.put_u32_be(1);  // ndims
         buf.put_u32_be(0);  // reserved0

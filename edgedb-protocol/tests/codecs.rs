@@ -407,7 +407,7 @@ fn set_codec() -> Result<(), Box<dyn Error>> {
         b"\xe3\x97\x14 \xbd\x11\xea\xaa\xb9?7\xe7 \xb8T\0\0\0\x00\0\0\0"
         b"\x08Harrison"
     ), Value::Object {
-        shape: outer_shape, fields: vec![
+        shape: outer_shape.clone(), fields: vec![
             Value::Uuid("0cf036bd-20bd-11ea-a4eb-e954b4281391".parse()?),
             Value::Uuid("5be39c28-20bd-11ea-aab9-6734822af1c9".parse()?),
             Value::Str(String::from("Ryan")),
@@ -432,6 +432,18 @@ fn set_codec() -> Result<(), Box<dyn Error>> {
                     ]
                 }]),
             ]
+    });
+    encoding_eq!(&codec, bconcat!(b"\0\0\0\x04\0\0\x00\x00\0\0\0\x10\x0c\xf06"
+        b"\xbd \xbd\x11\xea\xa4\xeb\xe9T\xb4(\x13\x91\0\0\x00\x00\0\0\0\x10"
+        b"[\xe3\x9c( \xbd\x11\xea\xaa\xb9g4\x82*\xf1\xc9\0\0\0\x00"
+        b"\0\0\0\x04Ryan\0\0\x00\x00\0\0\0\x0c\0\0\0\0\0\0\0\0\0\0\x00\x00"
+    ), Value::Object {
+        shape: outer_shape, fields: vec![
+            Value::Uuid("0cf036bd-20bd-11ea-a4eb-e954b4281391".parse()?),
+            Value::Uuid("5be39c28-20bd-11ea-aab9-6734822af1c9".parse()?),
+            Value::Str(String::from("Ryan")),
+            Value::Set(vec![]),
+        ]
     });
     Ok(())
 }
@@ -726,6 +738,8 @@ fn array() -> Result<(), Box<dyn Error>> {
             Value::Int64(2),
             Value::Int64(3),
         ]));
+    encoding_eq!(&codec, bconcat!(b"\0\0\0\0\0\0\0\0\0\0\0\x00"),
+        Value::Array(vec![]));
     Ok(())
 }
 
