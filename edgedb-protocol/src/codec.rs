@@ -140,6 +140,11 @@ struct Scalar {
     inner: Arc<dyn Codec>,
 }
 
+#[derive(Debug)]
+struct Tuple {
+    elements: Vec<Arc<dyn Codec>>,
+}
+
 struct CodecBuilder<'a> {
     descriptors: &'a [Descriptor],
 }
@@ -156,28 +161,20 @@ impl dyn Codec {
 
 impl<'a> CodecBuilder<'a> {
     fn build(&self, pos: TypePos) -> Result<Arc<dyn Codec>, CodecError> {
-        use Descriptor::*;
+        use Descriptor as D;
         if let Some(item) = self.descriptors.get(pos.0 as usize) {
             match item {
-                BaseScalar(base) => {
-                    return scalar_codec(&base.id);
-                }
-                Set(d) => {
-                    return Ok(Arc::new(SetCodec::build(d, self)?))
-                }
-                ObjectShape(d) => {
-                    return Ok(Arc::new(Object::build(d, self)?))
-                }
-                Scalar(d) => {
-                    return Ok(Arc::new(self::Scalar {
-                        inner: self.build(d.base_type_pos)?,
-                    }));
-                }
-                Tuple(..) => todo!(),
-                NamedTuple(..) => todo!(),
-                Array(..) => todo!(),
-                Enumeration(..) => todo!(),
-                TypeAnnotation(..) => todo!(),
+                D::BaseScalar(base) => scalar_codec(&base.id),
+                D::Set(d) => Ok(Arc::new(SetCodec::build(d, self)?)),
+                D::ObjectShape(d) => Ok(Arc::new(Object::build(d, self)?)),
+                D::Scalar(d) => Ok(Arc::new(Scalar {
+                    inner: self.build(d.base_type_pos)?,
+                })),
+                D::Tuple(d) => Ok(Arc::new(Tuple::build(d, self)?)),
+                D::NamedTuple(..) => todo!(),
+                D::Array(..) => todo!(),
+                D::Enumeration(..) => todo!(),
+                D::TypeAnnotation(..) => todo!(),
             }
         } else {
             return errors::UnexpectedTypePos { position: pos.0 }.fail()?;
@@ -427,6 +424,18 @@ impl Object {
             shape: d.elements.as_slice().into(),
             codecs: d.elements.iter()
                 .map(|e| dec.build(e.type_pos))
+                .collect::<Result<_, _>>()?,
+        })
+    }
+}
+
+impl Tuple {
+    fn build(d: &descriptors::TupleTypeDescriptor, dec: &CodecBuilder)
+        -> Result<Tuple, CodecError>
+    {
+        return Ok(Tuple {
+            elements: d.element_types.iter()
+                .map(|&t| dec.build(t))
                 .collect::<Result<_, _>>()?,
         })
     }
@@ -807,3 +816,48 @@ impl Codec for Scalar {
         self.inner.encode(buf, val)
     }
 }
+
+impl Codec for Tuple {
+    fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
+        ensure!(buf.remaining() >= 4, errors::Underflow);
+        let size = buf.get_u32_be() as usize;
+        ensure!(size == self.elements.len(), errors::ObjectSizeMismatch);
+        let mut items = Vec::with_capacity(size);
+        for codec in &self.elements {
+            ensure!(buf.remaining() >= 8, errors::Underflow);
+            let _reserved = buf.get_i32_be();
+            let len = buf.get_u32_be() as usize;
+            ensure!(buf.remaining() >= len, errors::Underflow);
+            let off = buf.position() as usize;
+            let mut chunk = Cursor::new(buf.get_ref().slice(off, off + len));
+            buf.advance(len);
+            items.push(codec.decode_value(&mut chunk)?);
+        }
+        return Ok(Value::Tuple(items))
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        let items = match val {
+            Value::Tuple(items) => items,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        ensure!(self.elements.len() == items.len(), errors::TupleSizeMismatch);
+        buf.reserve(4 + 8*self.elements.len());
+        buf.put_u32_be(self.elements.len().try_into()
+                    .ok().context(errors::TooManyElements)?);
+        for (codec, item) in self.elements.iter().zip(items) {
+            buf.reserve(8);
+            buf.put_u32_be(0);
+            let pos = buf.len();
+            buf.put_u32_be(0);  // replaced after serializing a value
+            codec.encode(buf, item)?;
+            let len = buf.len()-pos-4;
+            buf[pos..pos+4].copy_from_slice(&u32::try_from(len)
+                    .ok().context(errors::ElementTooLong)?
+                    .to_be_bytes());
+        }
+        Ok(())
+    }
+}
+

@@ -14,6 +14,7 @@ use edgedb_protocol::descriptors::BaseScalarTypeDescriptor;
 use edgedb_protocol::descriptors::{ObjectShapeDescriptor, ShapeElement};
 use edgedb_protocol::descriptors::{SetDescriptor};
 use edgedb_protocol::descriptors::{ScalarTypeDescriptor};
+use edgedb_protocol::descriptors::{TupleTypeDescriptor};
 
 mod base;
 
@@ -607,5 +608,39 @@ fn custom_scalar() -> Result<(), Box<dyn Error>> {
 
     encoding_eq!(&codec, b"xx",
         Value::Str(String::from("xx")));
+    Ok(())
+}
+
+#[test]
+fn tuple() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(
+        &"6c87a50a-fce2-dcae-6872-8c4c9c4d1e7c".parse()?,
+        &[
+            Descriptor::BaseScalar(
+                BaseScalarTypeDescriptor {
+                    id: "00000000-0000-0000-0000-000000000105".parse()?,
+                },
+            ),
+            Descriptor::BaseScalar(
+                BaseScalarTypeDescriptor {
+                    id: "00000000-0000-0000-0000-000000000101".parse()?,
+                },
+            ),
+            Descriptor::Tuple(
+                TupleTypeDescriptor {
+                    id: "6c87a50a-fce2-dcae-6872-8c4c9c4d1e7c".parse()?,
+                    element_types: vec![TypePos(0), TypePos(1)],
+                },
+            ),
+        ],
+    )?;
+
+    // TODO(tailhook) test with non-zero reserved bytes
+    encoding_eq!(&codec, bconcat!(b"\0\0\0\x02\0\0\0\x00\0\0\0"
+        b"\x08\0\0\0\0\0\0\0\x01\0\0\0\x00\0\0\0\x03str"),
+        Value::Tuple(vec![
+            Value::Int64(1),
+            Value::Str("str".into()),
+        ]));
     Ok(())
 }

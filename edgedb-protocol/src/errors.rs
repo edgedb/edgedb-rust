@@ -84,6 +84,8 @@ pub enum EncodeError {
     ObjectShapeMismatch { backtrace: Backtrace },
     #[snafu(display("datetime value is out of range"))]
     DatetimeRange { backtrace: Backtrace },
+    #[snafu(display("tuple size doesn't match encoder"))]
+    TupleSizeMismatch { backtrace: Backtrace },
 }
 
 #[derive(Snafu, Debug)]
