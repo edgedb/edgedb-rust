@@ -112,7 +112,7 @@ impl Duration {
     // Returns true if self is negative and false if the duration
     // is zero or positive.
     pub fn is_negative(&self) -> bool {
-        self.micros.is_positive()
+        self.micros.is_negative()
     }
     // Returns absolute values as stdlib's duration
     //
@@ -302,6 +302,13 @@ impl Into<bigdecimal::BigDecimal> for Decimal {
 
 #[cfg(feature="num-bigint")]
 impl Into<num_bigint::BigInt> for BigInt {
+    fn into(self) -> num_bigint::BigInt {
+        (&self).into()
+    }
+}
+
+#[cfg(feature="num-bigint")]
+impl Into<num_bigint::BigInt> for &BigInt {
     fn into(self) -> num_bigint::BigInt {
         use num_bigint::BigInt;
         use num_traits::pow;
