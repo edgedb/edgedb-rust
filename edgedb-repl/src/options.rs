@@ -72,7 +72,7 @@ impl Options {
         let user = tmp.user
             .or_else(|| env::var("EDGEDB_USER").ok())
             .unwrap_or_else(|| if admin  {
-                String::from("edgeb")
+                String::from("edgedb")
             } else {
                 whoami::username()
             });
