@@ -3,14 +3,14 @@ use std::collections::HashMap;
 
 use anyhow;
 use async_std::io::prelude::WriteExt;
-use async_std::net::{TcpStream};
+use async_std::net::{TcpStream, ToSocketAddrs};
 use async_std::sync::{Sender, Receiver};
 use bytes::{Bytes, BytesMut, BufMut, Buf};
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
 use edgedb_protocol::client_message::{Prepare, IoFormat, Cardinality};
 use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
-use edgedb_protocol::client_message::{Execute};
+use edgedb_protocol::client_message::{Execute, ExecuteScript};
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use edgedb_protocol::descriptors::{Descriptor};
 use edgedb_protocol::codec::{build_codec};
@@ -18,66 +18,93 @@ use crate::reader::Reader;
 use crate::prompt;
 use crate::options::Options;
 
+pub struct Connection {
+    stream: TcpStream,
+}
+
+pub struct Client<'a> {
+    stream: &'a TcpStream,
+    reader: Reader<&'a TcpStream>,
+}
+
+impl Connection {
+    pub async fn new<A: ToSocketAddrs>(addrs: A)
+        -> Result<Connection, io::Error>
+    {
+        Ok(Connection {
+            stream: TcpStream::connect(addrs).await?,
+        })
+    }
+    pub async fn from_options(options: &Options)
+        -> Result<Connection, io::Error>
+    {
+        Ok(Connection::new((&options.host[..], options.port)).await?)
+    }
+
+    pub async fn authenticate<'x>(&'x mut self, options: &Options)
+        -> Result<Client<'x>, anyhow::Error>
+    {
+        let (rd, mut stream) = (&self.stream, &self.stream);
+        let mut reader = Reader::new(rd);
+        let mut bytes = BytesMut::new();
+        let mut params = HashMap::new();
+        params.insert(String::from("user"), options.user.clone());
+        params.insert(String::from("database"), options.database.clone());
+
+        ClientMessage::ClientHandshake(ClientHandshake {
+            major_ver: 1,
+            minor_ver: 0,
+            params,
+            extensions: HashMap::new(),
+        }).encode(&mut bytes)?;
+
+        stream.write_all(&bytes[..]).await?;
+        let mut msg = reader.message().await?;
+        if let ServerMessage::ServerHandshake {..} = msg {
+            eprintln!("WARNING: Connection negotiantion issue {:?}", msg);
+            // TODO(tailhook) react on this somehow
+            msg = reader.message().await?;
+        }
+        match msg {
+            ServerMessage::Authentication(Authentication::Ok) => {}
+            ServerMessage::ErrorResponse(err) => {
+                return Err(anyhow::anyhow!("Error authenticating: {}", err));
+            }
+            msg => {
+                return Err(anyhow::anyhow!(
+                    "Error authenticating, unexpected message {:?}", msg));
+            }
+        }
+
+        loop {
+            let msg = reader.message().await?;
+            match msg {
+                ServerMessage::ReadyForCommand(..) => break,
+                ServerMessage::ServerKeyData(_) => {
+                    // TODO(tailhook) store it somehow?
+                }
+                ServerMessage::ParameterStatus(_) => {
+                    // TODO(tailhook) should we read any params?
+                }
+                _ => {
+                    eprintln!("WARNING: unsolicited message {:?}", msg);
+                }
+            }
+        }
+        Ok(Client { stream, reader })
+    }
+}
 
 pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
         control: Sender<prompt::Control>)
     -> Result<(), anyhow::Error>
 {
-    let db_name = &options.database;
-
-    let stream = TcpStream::connect("127.0.0.1:5656").await?;
-    let (rd, mut stream) = (&stream, &stream);
-    let mut reader = Reader::new(rd);
-
+    let mut conn = Connection::from_options(&options).await?;
+    let mut cli = conn.authenticate(&options).await?;
     let mut bytes = BytesMut::new();
-    let mut params = HashMap::new();
-    params.insert(String::from("user"), String::from(options.user));
-    params.insert(String::from("database"), String::from(db_name));
-
-    ClientMessage::ClientHandshake(ClientHandshake {
-        major_ver: 1,
-        minor_ver: 0,
-        params,
-        extensions: HashMap::new(),
-    }).encode(&mut bytes)?;
-
-    stream.write_all(&bytes[..]).await?;
-    let mut msg = reader.message().await?;
-    if let ServerMessage::ServerHandshake {..} = msg {
-        eprintln!("WARNING: Connection negotiantion issue {:?}", msg);
-        // TODO(tailhook) react on this somehow
-        msg = reader.message().await?;
-    }
-    match msg {
-        ServerMessage::Authentication(Authentication::Ok) => {}
-        ServerMessage::ErrorResponse(err) => {
-            return Err(anyhow::anyhow!("Error authenticating: {}", err));
-        }
-        msg => {
-            return Err(anyhow::anyhow!(
-                "Error authenticating, unexpected message {:?}", msg));
-        }
-    }
-
-    loop {
-        let msg = reader.message().await?;
-        match msg {
-            ServerMessage::ReadyForCommand(..) => break,
-            ServerMessage::ServerKeyData(_) => {
-                // TODO(tailhook) store it somehow?
-            }
-            ServerMessage::ParameterStatus(_) => {
-                // TODO(tailhook) should we read any params?
-            }
-            _ => {
-                eprintln!("WARNING: unsolicited message {:?}", msg);
-            }
-        }
-    }
-
     let statement_name = Bytes::from_static(b"");
     'input_loop: loop {
-        control.send(prompt::Control::Input(db_name.into())).await;
+        control.send(prompt::Control::Input(options.database.clone())).await;
         let inp = match data.recv().await {
             None | Some(prompt::Input::Eof) => return Ok(()),
             Some(prompt::Input::Interrupt) => continue,
@@ -93,15 +120,15 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
             command_text: String::from(inp),
         }).encode(&mut bytes)?;
         ClientMessage::Sync.encode(&mut bytes)?;
-        stream.write_all(&bytes[..]).await?;
+        cli.stream.write_all(&bytes[..]).await?;
 
         loop {
-            let msg = reader.message().await?;
+            let msg = cli.reader.message().await?;
             match msg {
                 ServerMessage::PrepareComplete(..) => {}
                 ServerMessage::ErrorResponse(err) => {
                     eprintln!("{}", err);
-                    reader.wait_ready().await?;
+                    cli.reader.wait_ready().await?;
                     continue 'input_loop;
                 }
                 ServerMessage::ReadyForCommand(..) => break,
@@ -118,11 +145,11 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
             statement_name: statement_name.clone(),
         }).encode(&mut bytes)?;
         ClientMessage::Sync.encode(&mut bytes)?;
-        stream.write_all(&bytes[..]).await?;
+        cli.stream.write_all(&bytes[..]).await?;
 
         let mut tmp_desc = None;
         let data_description = loop {
-            let msg = reader.message().await?;
+            let msg = cli.reader.message().await?;
             match msg {
                 ServerMessage::CommandDataDescription(data_desc) => {
                     if tmp_desc.is_some() {
@@ -132,7 +159,7 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
                 }
                 ServerMessage::ErrorResponse(err) => {
                     eprintln!("{}", err);
-                    reader.wait_ready().await?;
+                    cli.reader.wait_ready().await?;
                     continue 'input_loop;
                 }
                 ServerMessage::ReadyForCommand(..) => {
@@ -140,7 +167,7 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
                         break desc;
                     } else {
                         eprintln!("PROTOCOL ERROR: Got no description");
-                        reader.wait_ready().await?;
+                        cli.reader.wait_ready().await?;
                         continue 'input_loop;
                     }
                 }
@@ -174,10 +201,10 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
             arguments: arguments.freeze(),
         }).encode(&mut bytes)?;
         ClientMessage::Sync.encode(&mut bytes)?;
-        stream.write_all(&bytes[..]).await?;
+        cli.stream.write_all(&bytes[..]).await?;
 
         loop {
-            let msg = reader.message().await?;
+            let msg = cli.reader.message().await?;
             match msg {
                 ServerMessage::Data(data) => {
                     if options.debug_print_data_frames {
@@ -191,7 +218,7 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
                     }
                 }
                 ServerMessage::CommandComplete(..) => {
-                    reader.wait_ready().await?;
+                    cli.reader.wait_ready().await?;
                     break;
                 }
                 ServerMessage::ReadyForCommand(..) => break,
@@ -200,5 +227,35 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
                 }
             }
         }
+    }
+}
+
+impl<'a> Client<'a> {
+    pub async fn execute<S>(&mut self, request: S)
+        -> Result<Bytes, anyhow::Error>
+        where S: ToString,
+    {
+        let mut bytes = BytesMut::new();
+        bytes.truncate(0);
+        ClientMessage::ExecuteScript(ExecuteScript {
+            headers: HashMap::new(),
+            script_text: request.to_string(),
+        }).encode(&mut bytes)?;
+        self.stream.write_all(&bytes[..]).await?;
+        let status = loop {
+            match self.reader.message().await? {
+                ServerMessage::CommandComplete(c) => {
+                    self.reader.wait_ready().await?;
+                    break c.status_data;
+                }
+                ServerMessage::ErrorResponse(err) => {
+                    return Err(anyhow::anyhow!(err));
+                }
+                msg => {
+                    eprintln!("WARNING: unsolicited message {:?}", msg);
+                }
+            }
+        };
+        Ok(status)
     }
 }

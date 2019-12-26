@@ -46,8 +46,24 @@ pub enum Password {
 pub enum Command {
     Alter,
     Configure,
-    Create,
+    Create(CreateWrapper),
     Drop,
+}
+
+#[derive(StructOpt, Clone, Debug)]
+pub struct CreateWrapper {
+    #[structopt(subcommand)]
+    pub subcommand: CreateCommand,
+}
+
+#[derive(StructOpt, Clone, Debug)]
+pub enum CreateCommand {
+    Database(CreateDatabase),
+}
+
+#[derive(StructOpt, Clone, Debug)]
+pub struct CreateDatabase {
+    pub database_name: String,
 }
 
 #[derive(Debug, Clone)]
