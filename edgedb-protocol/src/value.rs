@@ -207,6 +207,14 @@ impl std::convert::TryFrom<num_bigint::BigInt> for BigInt {
         use num_traits::{ToPrimitive, Zero};
         use std::convert::TryInto;
 
+        if v.is_zero() {
+            return Ok(BigInt {
+                negative: false,
+                weight: 0,
+                digits: Vec::new(),
+            });
+        }
+
         let mut digits = Vec::new();
         let (negative, mut val) = match v.sign() {
             num_bigint::Sign::Minus => (true, -v),
@@ -286,9 +294,31 @@ impl std::convert::TryFrom<bigdecimal::BigDecimal> for Decimal {
 }
 
 #[cfg(feature="bigdecimal")]
-impl Into<bigdecimal::BigDecimal> for &Decimal {
+impl Into<bigdecimal::BigDecimal> for Decimal {
     fn into(self) -> bigdecimal::BigDecimal {
         todo!("bigdecimal don't work now");
+    }
+}
+
+#[cfg(feature="num-bigint")]
+impl Into<num_bigint::BigInt> for BigInt {
+    fn into(self) -> num_bigint::BigInt {
+        use num_bigint::BigInt;
+        use num_traits::pow;
+
+        let mut r = BigInt::from(0);
+        for &digit in &self.digits {
+            r *= 10000;
+            r += digit;
+        }
+        if (self.weight+1) as usize > self.digits.len() {
+            r *= pow(BigInt::from(10000),
+                     (self.weight+1) as usize - self.digits.len());
+        }
+        if self.negative {
+            return -r;
+        }
+        return r;
     }
 }
 
@@ -407,5 +437,26 @@ mod test {
         assert_eq!(Src { micros: -1000000 }.abs_duration(), Trg::new(1, 0));
         assert_eq!(Src { micros: i64::min_value() }.abs_duration(),
                    Trg::new(9223372036854, 775808000));
+    }
+
+    #[test]
+    #[cfg(feature="num-bigint")]
+    fn big_int_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+        use num_bigint::BigInt as N;
+        use crate::value::BigInt as C;
+
+        fn roundtrip(s: &str)-> Result<N, Box<dyn std::error::Error>> {
+            Ok(N::try_from(C::try_from(N::from_str(s)?)?)?)
+        }
+
+        assert_eq!(roundtrip("1")?, N::from_str("1")?);
+        assert_eq!(roundtrip("1000")?, N::from_str("1000")?);
+        assert_eq!(roundtrip("0")?, N::from_str("0")?);
+        assert_eq!(roundtrip("-1000")?, N::from_str("-1000")?);
+        assert_eq!(roundtrip("10000000000000000000000000000000000000000000")?,
+                 N::from_str("10000000000000000000000000000000000000000000")?);
+        assert_eq!(roundtrip("12345678901234567890012345678901234567890123")?,
+                 N::from_str("12345678901234567890012345678901234567890123")?);
+        Ok(())
     }
 }
