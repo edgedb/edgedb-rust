@@ -296,7 +296,42 @@ impl std::convert::TryFrom<bigdecimal::BigDecimal> for Decimal {
 #[cfg(feature="bigdecimal")]
 impl Into<bigdecimal::BigDecimal> for Decimal {
     fn into(self) -> bigdecimal::BigDecimal {
-        todo!("bigdecimal don't work now");
+        (&self).into()
+    }
+}
+
+#[cfg(feature="bigdecimal")]
+impl Into<bigdecimal::BigDecimal> for &Decimal {
+    fn into(self) -> bigdecimal::BigDecimal {
+        use bigdecimal::BigDecimal;
+        use num_bigint::BigInt;
+        use num_traits::pow;
+        use std::cmp::max;
+
+        let mut r = BigInt::from(0);
+        for &digit in &self.digits {
+            r *= 10000;
+            r += digit;
+        }
+        let digits_stored = max(0,
+            (self.digits.len() as i64 - self.weight as i64 - 1)*4,
+        ) as usize;
+        if digits_stored < self.decimal_digits as usize {
+            r *= pow(10, self.decimal_digits as usize - digits_stored);
+            if (self.weight+1) as usize > self.digits.len() {
+                r *= pow(BigInt::from(10000),
+                         (self.weight+1) as usize - self.digits.len());
+            }
+        } else {
+            let rem = self.decimal_digits % 4;
+            if rem > 0 {
+                r /= pow(10, (4 - rem) as usize);
+            }
+        }
+        if self.negative {
+            r = -r;
+        }
+        return BigDecimal::new(r, self.decimal_digits as i64)
     }
 }
 
@@ -401,6 +436,16 @@ mod test {
 
     #[test]
     #[cfg(feature="bigdecimal_types")]
+    fn big_big_int_conversion() -> Result<(), Box<dyn std::error::Error>> {
+        let x = BigInt::try_from(num_bigint::BigInt::from_str(
+            "10000000000000000000000000000000000000")?)?;
+        assert_eq!(x.weight, 9);
+        assert_eq!(&x.digits, &[10]);
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature="bigdecimal_types")]
     fn decimal_conversion() -> Result<(), Box<dyn std::error::Error>> {
         use bigdecimal::BigDecimal;
         let x = Decimal::try_from(BigDecimal::from_str("42.00")?)?;
@@ -432,6 +477,11 @@ mod test {
         assert_eq!(x.weight, -1);
         assert_eq!(x.decimal_digits, 2);
         assert_eq!(x.digits, &[700]);
+        let x = Decimal::try_from(BigDecimal::from_str(
+            "10000000000000000000000000000000000000.00000")?)?;
+        assert_eq!(x.weight, 9);
+        assert_eq!(x.decimal_digits, 5);
+        assert_eq!(x.digits, &[10]);
         Ok(())
     }
 
@@ -464,6 +514,41 @@ mod test {
                  N::from_str("10000000000000000000000000000000000000000000")?);
         assert_eq!(roundtrip("12345678901234567890012345678901234567890123")?,
                  N::from_str("12345678901234567890012345678901234567890123")?);
+        assert_eq!(roundtrip("10000000000000000000000000000000000000")?,
+                 N::from_str("10000000000000000000000000000000000000")?);
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature="bigdecimal")]
+    fn decimal_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+        use bigdecimal::BigDecimal as B;
+        use crate::value::Decimal as D;
+
+        fn roundtrip(s: &str)-> Result<B, Box<dyn std::error::Error>> {
+            Ok(B::try_from(D::try_from(B::from_str(s)?)?)?)
+        }
+
+        assert_eq!(roundtrip("1")?, B::from_str("1")?);
+        assert_eq!(roundtrip("1000")?, B::from_str("1000")?);
+        assert_eq!(roundtrip("0")?, B::from_str("0")?);
+        assert_eq!(roundtrip("-1000")?, B::from_str("-1000")?);
+        assert_eq!(roundtrip("1.01")?, B::from_str("1.01")?);
+        assert_eq!(roundtrip("1000.0070")?, B::from_str("1000.0070")?);
+        assert_eq!(roundtrip("0.00008")?, B::from_str("0.00008")?);
+        assert_eq!(roundtrip("-1000.1")?, B::from_str("-1000.1")?);
+        assert_eq!(roundtrip("10000000000000000000000000000000000000.00001")?,
+                 B::from_str("10000000000000000000000000000000000000.00001")?);
+        assert_eq!(roundtrip("12345678901234567890012345678901234567890123")?,
+                 B::from_str("12345678901234567890012345678901234567890123")?);
+        assert_eq!(roundtrip("1234567890123456789.012345678901234567890123")?,
+                 B::from_str("1234567890123456789.012345678901234567890123")?);
+        assert_eq!(roundtrip("0.000000000000000000000000000000000000017238")?,
+                 B::from_str("0.000000000000000000000000000000000000017238")?);
+        assert_eq!(roundtrip("1234.00000")?,
+                 B::from_str("1234.00000")?);
+        assert_eq!(roundtrip("10000000000000000000000000000000000000.00000")?,
+                 B::from_str("10000000000000000000000000000000000000.00000")?);
         Ok(())
     }
 }
