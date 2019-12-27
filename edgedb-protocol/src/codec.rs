@@ -163,7 +163,7 @@ struct Enum {
 }
 
 struct CodecBuilder<'a> {
-    descriptors: &'a [Descriptor],
+    descriptors: Vec<&'a Descriptor>,
 }
 
 impl dyn Codec {
@@ -195,7 +195,9 @@ impl<'a> CodecBuilder<'a> {
                 D::Enumeration(d) => Ok(Arc::new(Enum {
                     members: d.members.iter().map(|x| x[..].into()).collect(),
                 })),
-                D::TypeAnnotation(..) => todo!(),
+                // type annotations are stripped from codecs array before
+                // bilding a codec
+                D::TypeAnnotation(..) => unreachable!(),
             }
         } else {
             return errors::UnexpectedTypePos { position: pos.0 }.fail()?;
@@ -206,7 +208,12 @@ impl<'a> CodecBuilder<'a> {
 pub fn build_codec(root: &Uuid, descriptors: &[Descriptor])
     -> Result<Arc<dyn Codec>, CodecError>
 {
-    let dec = CodecBuilder { descriptors };
+    let dec = CodecBuilder {
+        descriptors: descriptors.iter().filter(|x| match x {
+            Descriptor::TypeAnnotation(..) => false,
+            _ => true,
+        }).collect(),
+    };
     if root == &Uuid::from_u128(0) {
         return Ok(Arc::new(Nothing { }));
     }
