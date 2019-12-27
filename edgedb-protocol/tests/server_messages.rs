@@ -166,21 +166,21 @@ fn data() -> Result<(), Box<dyn Error>> {
 fn authentication() -> Result<(), Box<dyn Error>> {
     encoding_eq!(
         ServerMessage::Authentication(Authentication::Ok),
-        b"\x52\0\0\0\x05\x00");
+        b"\x52\0\0\0\x08\x00\x00\x00\x00");
     encoding_eq!(
         ServerMessage::Authentication(Authentication::Sasl {
-            methods: vec![String::from("test")],
+            methods: vec![String::from("SCRAM-SHA-256")],
         }),
-        b"R\0\0\0\x11\n\0\0\0\x01\0\0\0\x04test");
+        b"R\0\0\0\x1d\0\0\0\n\0\0\0\x01\0\0\0\rSCRAM-SHA-256");
     encoding_eq!(
         ServerMessage::Authentication(Authentication::SaslContinue {
             data: Bytes::from_static(b"sasl_interim_data"),
         }),
-        b"R\0\0\0\x1a\x0b\0\0\0\x11sasl_interim_data");
+        b"R\0\0\0\x1d\x00\x00\x00\x0b\0\0\0\x11sasl_interim_data");
     encoding_eq!(
         ServerMessage::Authentication(Authentication::SaslFinal {
             data: Bytes::from_static(b"sasl_final_data"),
         }),
-        b"R\0\0\0\x18\x0c\0\0\0\x0fsasl_final_data");
+        b"R\0\0\0\x1b\x00\x00\x00\x0c\0\0\0\x0fsasl_final_data");
     Ok(())
 }

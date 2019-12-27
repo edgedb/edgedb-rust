@@ -273,9 +273,9 @@ impl Encode for Authentication {
         use Authentication as A;
         buf.reserve(1);
         match self {
-            A::Ok => buf.put_u8(0),
+            A::Ok => buf.put_u32_be(0),
             A::Sasl { methods } => {
-                buf.put_u8(0x0A);
+                buf.put_u32_be(0x0A);
                 buf.reserve(4);
                 buf.put_u32_be(methods.len().try_into()
                     .ok().context(errors::TooManyMethods)?);
@@ -284,11 +284,11 @@ impl Encode for Authentication {
                 }
             }
             A::SaslContinue { data } => {
-                buf.put_u8(0x0B);
+                buf.put_u32_be(0x0B);
                 data.encode(buf)?;
             }
             A::SaslFinal { data } => {
-                buf.put_u8(0x0C);
+                buf.put_u32_be(0x0C);
                 data.encode(buf)?;
             }
         }
@@ -298,8 +298,8 @@ impl Encode for Authentication {
 
 impl Decode for Authentication {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<Authentication, DecodeError> {
-        ensure!(buf.remaining() >= 1, errors::Underflow);
-        match buf.get_u8() {
+        ensure!(buf.remaining() >= 4, errors::Underflow);
+        match buf.get_u32_be() {
             0x00 => Ok(Authentication::Ok),
             0x0A => {
                 ensure!(buf.remaining() >= 4, errors::Underflow);

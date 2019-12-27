@@ -17,7 +17,7 @@ pub enum DecodeError {
     #[snafu(display("invalid utf8 when decoding string: {}", source))]
     InvalidUtf8 { backtrace: Backtrace, source: str::Utf8Error },
     #[snafu(display("invalid auth status: {:x}", auth_status))]
-    AuthStatusInvalid { backtrace: Backtrace, auth_status: u8 },
+    AuthStatusInvalid { backtrace: Backtrace, auth_status: u32 },
     #[snafu(display("unsupported transaction state: {:x}", transaction_state))]
     InvalidTransactionState { backtrace: Backtrace, transaction_state: u8 },
     #[snafu(display("unsupported io format: {:x}", io_format))]
