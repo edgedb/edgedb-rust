@@ -841,6 +841,7 @@ impl Codec for LocalTime {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 8, errors::Underflow);
         let micros = buf.get_i64_be();
+        ensure!(micros >= 0 && micros < 86400_000_000, errors::InvalidDate);
         Ok(Value::LocalTime(value::LocalTime { micros }))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
