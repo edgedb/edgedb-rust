@@ -15,7 +15,7 @@ async-std = {version="1", features=[
     "unstable",
 ]}
 bytes = "0.4.12"
-rustyline = { git="https://github.com/gwenn/rustyline", rev="86cb6f5" }
+rustyline = { git="https://github.com/tailhook/rustyline", branch="edgedb" }
 clap = "2.33.0"
 structopt = "0.3.5"
 whoami = "0.6.0"

@@ -2,6 +2,14 @@ use anyhow;
 use async_std::sync::{Sender, Receiver};
 use async_std::task;
 use rustyline::{self, error::ReadlineError};
+use rustyline::{Helper, Context};
+use rustyline::hint::Hinter;
+use rustyline::line_buffer::LineBuffer;
+use rustyline::highlight::Highlighter;
+use rustyline::validate::{Validator, ValidationResult};
+use rustyline::completion::Completer;
+
+use edgeql_parser::preparser::full_statement;
 
 
 pub enum Control {
@@ -14,10 +22,36 @@ pub enum Input {
     Interrupt,
 }
 
+pub struct EdgeqlHelper {
+}
+
+impl Helper for EdgeqlHelper {}
+impl Hinter for EdgeqlHelper {}
+impl Highlighter for EdgeqlHelper {}
+impl Validator for EdgeqlHelper {
+    fn is_valid(&self, line: &mut LineBuffer) -> ValidationResult {
+        if full_statement(line.as_str().as_bytes()).is_ok() {
+            return ValidationResult::Valid(None)
+        } else {
+            return ValidationResult::Invalid(None)
+        }
+    }
+}
+impl Completer for EdgeqlHelper {
+    type Candidate = String;
+    fn complete(&self, _line: &str, pos: usize, _ctx: &Context)
+        -> Result<(usize, Vec<Self::Candidate>), ReadlineError>
+    {
+        Ok((pos, Vec::new()))
+    }
+}
+
+
 pub fn main(data: Sender<Input>, control: Receiver<Control>)
     -> Result<(), anyhow::Error>
 {
-    let mut editor = rustyline::Editor::<()>::new();
+    let mut editor = rustyline::Editor::<EdgeqlHelper>::new();
+    editor.set_helper(Some(EdgeqlHelper {}));
     let mut prompt = String::from("> ");
     loop {
         loop {
