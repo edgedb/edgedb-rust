@@ -78,10 +78,11 @@ fn duration() -> Result<(), Box<dyn Error>> {
 #[test]
 fn object() -> Result<(), Box<dyn Error>> {
     assert_eq!(decode(bconcat!(
-        b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\0"
-        b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x01"
-        b"\x01\x0c\tT\xc9\x8c_\x12}%\xec\xceM\x1e\xd0\xc1\x1e"
-        b"\0\x03\x01\0\x07__tid__\0\0\0\0\x02id\0\0\0\0\x05title\0\x01"))?,
+         b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\0\x02"
+         b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x01\x01n"
+         b"\xbb\xbe\xda\0P\x14\xfe\x84\xbc\x82\x15@\xb1"
+         b"R\xcd\0\x03\x01\0\0\0\x07__tid__\0\0\x01"
+         b"\0\0\0\x02id\0\0\0\0\0\0\x05title\0\x01"))?,
         vec![
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
                 id: "00000000-0000-0000-0000-000000000100".parse()?,
@@ -90,7 +91,7 @@ fn object() -> Result<(), Box<dyn Error>> {
                 id: "00000000-0000-0000-0000-000000000101".parse()?,
             }),
             Descriptor::ObjectShape(ObjectShapeDescriptor {
-                id: "0c0954c9-8c5f-127d-25ec-ce4d1ed0c11e".parse()?,
+                id: "6ebbbeda-0050-14fe-84bc-821540b152cd".parse()?,
                 elements: vec![
                     ShapeElement {
                         flag_implicit: true,
@@ -100,7 +101,7 @@ fn object() -> Result<(), Box<dyn Error>> {
                         type_pos: TypePos(0),
                     },
                     ShapeElement {
-                        flag_implicit: false,
+                        flag_implicit: true,
                         flag_link_property: false,
                         flag_link: false,
                         name: String::from("id"),
