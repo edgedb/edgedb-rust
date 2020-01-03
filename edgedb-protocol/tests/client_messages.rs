@@ -7,6 +7,10 @@ use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
 use edgedb_protocol::client_message::{ExecuteScript, Execute};
 use edgedb_protocol::client_message::{Prepare, IoFormat, Cardinality};
 use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
+use edgedb_protocol::client_message::{SaslInitialResponse};
+use edgedb_protocol::client_message::{SaslResponse};
+
+mod base;
 
 macro_rules! encoding_eq {
     ($message: expr, $bytes: expr) => {
@@ -75,5 +79,33 @@ fn execute() -> Result<(), Box<dyn Error>> {
 #[test]
 fn sync() -> Result<(), Box<dyn Error>> {
     encoding_eq!(ClientMessage::Sync, b"S\0\0\0\x04");
+    Ok(())
+}
+
+#[test]
+fn authentication() -> Result<(), Box<dyn Error>> {
+    encoding_eq!(ClientMessage::AuthenticationSaslInitialResponse(
+        SaslInitialResponse {
+            method: "SCRAM-SHA-256".into(),
+            data: "n,,n=tutorial,r=%NR65>7bQ2S3jzl^k$G&b1^A".into(),
+        }),
+        bconcat!(b"p\0\0\0A\0\0\0\rSCRAM-SHA-256"
+                 b"\0\0\0(n,,n=tutorial,"
+                 b"r=%NR65>7bQ2S3jzl^k$G&b1^A"));
+    encoding_eq!(ClientMessage::AuthenticationSaslResponse(
+        SaslResponse {
+            data: bconcat!(b"c=biws,"
+                           b"r=%NR65>7bQ2S3jzl^k$G&b1^A"
+                           b"YsykYKRbp/Gli53UEElsGb4I,"
+                           b"p=UNQQkuQ0m5RRy24Ovzj/"
+                           b"sCevUB36WTDbGXIWbCIsJmo=")
+                           .clone().freeze(),
+        }),
+        bconcat!(b"r\0\0\0p"
+                 b"\0\0\0hc=biws,"
+                 b"r=%NR65>7bQ2S3jzl^k$G&b1^A"
+                 b"YsykYKRbp/Gli53UEElsGb4I,"
+                 b"p=UNQQkuQ0m5RRy24Ovzj/"
+                 b"sCevUB36WTDbGXIWbCIsJmo="));
     Ok(())
 }

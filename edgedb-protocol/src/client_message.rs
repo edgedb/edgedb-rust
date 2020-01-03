@@ -1,7 +1,7 @@
 use std::collections::HashMap;
-use std::u16;
 use std::convert::TryFrom;
 use std::io::Cursor;
+use std::u16;
 
 use bytes::{Bytes, BytesMut, BufMut, Buf};
 use snafu::{OptionExt, ensure};
@@ -20,7 +20,20 @@ pub enum ClientMessage {
     DescribeStatement(DescribeStatement),
     Execute(Execute),
     UnknownMessage(u8, Bytes),
+    AuthenticationSaslInitialResponse(SaslInitialResponse),
+    AuthenticationSaslResponse(SaslResponse),
     Sync,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaslInitialResponse {
+    pub method: String,
+    pub data: Bytes,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaslResponse {
+    pub data: Bytes
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,6 +91,8 @@ impl ClientMessage {
         use ClientMessage::*;
         match self {
             ClientHandshake(h) => encode(buf, 0x56, h),
+            AuthenticationSaslInitialResponse(h) => encode(buf, 0x70, h),
+            AuthenticationSaslResponse(h) => encode(buf, 0x72, h),
             ExecuteScript(h) => encode(buf, 0x51, h),
             Prepare(h) => encode(buf, 0x50, h),
             DescribeStatement(h) => encode(buf, 0x44, h),
@@ -99,6 +114,10 @@ impl ClientMessage {
         let mut data = Cursor::new(buf.slice_from(5));
         match buf[0] {
             0x56 => ClientHandshake::decode(&mut data).map(M::ClientHandshake),
+            0x70 => SaslInitialResponse::decode(&mut data)
+                .map(M::AuthenticationSaslInitialResponse),
+            0x72 => SaslResponse::decode(&mut data)
+                .map(M::AuthenticationSaslResponse),
             0x51 => ExecuteScript::decode(&mut data).map(M::ExecuteScript),
             0x50 => Prepare::decode(&mut data).map(M::Prepare),
             0x45 => Execute::decode(&mut data).map(M::Execute),
@@ -178,6 +197,38 @@ impl Decode for ClientHandshake {
         Ok(ClientHandshake {
             major_ver, minor_ver, params, extensions,
         })
+    }
+}
+
+impl Encode for SaslInitialResponse {
+    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+        self.method.encode(buf)?;
+        self.data.encode(buf)?;
+        Ok(())
+    }
+}
+
+impl Decode for SaslInitialResponse {
+    fn decode(buf: &mut Cursor<Bytes>)
+        -> Result<SaslInitialResponse, DecodeError>
+    {
+        let method = String::decode(buf)?;
+        let data = Bytes::decode(buf)?;
+        Ok(SaslInitialResponse { method, data })
+    }
+}
+
+impl Encode for SaslResponse {
+    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+        self.data.encode(buf)?;
+        Ok(())
+    }
+}
+
+impl Decode for SaslResponse {
+    fn decode(buf: &mut Cursor<Bytes>) -> Result<SaslResponse, DecodeError> {
+        let data = Bytes::decode(buf)?;
+        Ok(SaslResponse { data })
     }
 }
 

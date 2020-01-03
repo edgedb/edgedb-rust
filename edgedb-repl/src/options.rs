@@ -35,11 +35,11 @@ struct TmpOptions {
     pub subcommand: Option<Command>,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Password {
     NoPassword,
     FromTerminal,
-    FromStdin,
+    Password(String),
 }
 
 #[derive(StructOpt, Clone, Debug)]
@@ -109,18 +109,21 @@ impl Options {
 
         // TODO(pc) add option to force interactive mode not on a tty (tests)
         let interactive = atty::is(atty::Stream::Stdin);
+        let password = if tmp.password_from_stdin {
+            let password = rpassword::read_password()
+                .expect("password can be read");
+            Password::Password(password)
+        } else if tmp.no_password {
+            Password::NoPassword
+        } else {
+            Password::FromTerminal
+        };
 
         return Options {
             host, port, user, database, interactive,
             admin: tmp.admin,
             subcommand: tmp.subcommand,
-            password: if tmp.password_from_stdin {
-                Password::FromStdin
-            } else if tmp.no_password {
-                Password::NoPassword
-            } else {
-                Password::FromTerminal
-            },
+            password,
             debug_print_data_frames: tmp.debug_print_data_frames,
             debug_print_descriptors: tmp.debug_print_descriptors,
             debug_print_codecs: tmp.debug_print_codecs,
