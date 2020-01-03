@@ -29,11 +29,11 @@ impl Helper for EdgeqlHelper {}
 impl Hinter for EdgeqlHelper {}
 impl Highlighter for EdgeqlHelper {}
 impl Validator for EdgeqlHelper {
-    fn is_valid(&self, line: &mut LineBuffer) -> ValidationResult {
+    fn validate(&self, line: &mut LineBuffer) -> ValidationResult {
         if full_statement(line.as_str().as_bytes()).is_ok() {
             return ValidationResult::Valid(None)
         } else {
-            return ValidationResult::Invalid(None)
+            return ValidationResult::Incomplete
         }
     }
 }
