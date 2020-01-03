@@ -55,8 +55,8 @@ impl Connection {
         params.insert(String::from("database"), options.database.clone());
 
         ClientMessage::ClientHandshake(ClientHandshake {
-            major_ver: 1,
-            minor_ver: 0,
+            major_ver: 0,
+            minor_ver: 7,
             params,
             extensions: HashMap::new(),
         }).encode(&mut bytes)?;
