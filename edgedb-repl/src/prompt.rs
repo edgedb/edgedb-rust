@@ -4,9 +4,8 @@ use async_std::task;
 use rustyline::{self, error::ReadlineError};
 use rustyline::{Helper, Context};
 use rustyline::hint::Hinter;
-use rustyline::line_buffer::LineBuffer;
 use rustyline::highlight::Highlighter;
-use rustyline::validate::{Validator, ValidationResult};
+use rustyline::validate::{Validator, ValidationResult, ValidationContext};
 use rustyline::completion::Completer;
 
 use edgeql_parser::preparser::full_statement;
@@ -29,11 +28,13 @@ impl Helper for EdgeqlHelper {}
 impl Hinter for EdgeqlHelper {}
 impl Highlighter for EdgeqlHelper {}
 impl Validator for EdgeqlHelper {
-    fn validate(&self, line: &mut LineBuffer) -> ValidationResult {
-        if full_statement(line.as_str().as_bytes()).is_ok() {
-            return ValidationResult::Valid(None)
+    fn validate(&self, ctx: &mut ValidationContext)
+        -> Result<ValidationResult, ReadlineError>
+    {
+        if full_statement(ctx.input().as_bytes()).is_ok() {
+            Ok(ValidationResult::Valid(None))
         } else {
-            return ValidationResult::Incomplete
+            Ok(ValidationResult::Incomplete)
         }
     }
 }
