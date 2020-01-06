@@ -131,19 +131,18 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
             statement_name: statement_name.clone(),
             command_text: String::from(inp),
         }).encode(&mut bytes)?;
-        ClientMessage::Sync.encode(&mut bytes)?;
+        ClientMessage::Flush.encode(&mut bytes)?;
         cli.stream.write_all(&bytes[..]).await?;
 
         loop {
             let msg = cli.reader.message().await?;
             match msg {
-                ServerMessage::PrepareComplete(..) => {}
+                ServerMessage::PrepareComplete(..) => break,
                 ServerMessage::ErrorResponse(err) => {
                     eprintln!("{}", err);
                     cli.reader.wait_ready().await?;
                     continue 'input_loop;
                 }
-                ServerMessage::ReadyForCommand(..) => break,
                 _ => {
                     eprintln!("WARNING: unsolicited message {:?}", msg);
                 }
@@ -156,32 +155,19 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
             aspect: DescribeAspect::DataDescription,
             statement_name: statement_name.clone(),
         }).encode(&mut bytes)?;
-        ClientMessage::Sync.encode(&mut bytes)?;
+        ClientMessage::Flush.encode(&mut bytes)?;
         cli.stream.write_all(&bytes[..]).await?;
 
-        let mut tmp_desc = None;
         let data_description = loop {
             let msg = cli.reader.message().await?;
             match msg {
                 ServerMessage::CommandDataDescription(data_desc) => {
-                    if tmp_desc.is_some() {
-                        eprintln!("WARNING: two data descriptions?");
-                    }
-                    tmp_desc = Some(data_desc);
+                    break data_desc;
                 }
                 ServerMessage::ErrorResponse(err) => {
                     eprintln!("{}", err);
                     cli.reader.wait_ready().await?;
                     continue 'input_loop;
-                }
-                ServerMessage::ReadyForCommand(..) => {
-                    if let Some(desc) = tmp_desc {
-                        break desc;
-                    } else {
-                        eprintln!("PROTOCOL ERROR: Got no description");
-                        cli.reader.wait_ready().await?;
-                        continue 'input_loop;
-                    }
                 }
                 _ => {
                     eprintln!("WARNING: unsolicited message {:?}", msg);
