@@ -1,0 +1,25 @@
+[package]
+name = "edgedb-server"
+license = "MIT/Apache-2.0"
+version = "0.1.0"
+authors = ["MagicStack Inc. <hello@magic.io>"]
+edition = "2018"
+
+[dependencies]
+edgedb-protocol = {path = "../edgedb-protocol"}
+edgeql-parser = {path = "../edgeql-parser"}
+snafu = {version="0.6.0", features=["backtraces"]}
+anyhow = "1.0.23"
+async-std = "1.4"
+bytes = "0.4.12"
+clap = "2.33.0"
+structopt = "0.3.5"
+scram = "0.4.0"
+
+[dev-dependencies]
+assert_cmd = "0.10"
+predicates = "1"
+
+[[bin]]
+name = "edgedb-server"
+path = "src/main.rs"
