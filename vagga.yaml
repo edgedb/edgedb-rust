@@ -56,6 +56,11 @@ commands:
     container: ubuntu
     run: [cargo, run, --bin, edgedb, '--']
 
+  server: !Command
+    description: Run edgedb server
+    container: ubuntu
+    run: [cargo, run, --bin, edgedb-server, '--']
+
   py: !Command
     description: Build the python library and run python interpreter
     container: ubuntu
