@@ -83,6 +83,12 @@ fn sync() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn flush() -> Result<(), Box<dyn Error>> {
+    encoding_eq!(ClientMessage::Flush, b"H\0\0\0\x04");
+    Ok(())
+}
+
+#[test]
 fn authentication() -> Result<(), Box<dyn Error>> {
     encoding_eq!(ClientMessage::AuthenticationSaslInitialResponse(
         SaslInitialResponse {
