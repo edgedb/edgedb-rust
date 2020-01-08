@@ -7,13 +7,13 @@ use atty;
 
 #[derive(StructOpt, Debug)]
 struct TmpOptions {
-    #[structopt(short="h")]
+    #[structopt(short="H", long)]
     pub host: Option<String>,
-    #[structopt(short="p")]
+    #[structopt(short="P", long)]
     pub port: Option<u16>,
-    #[structopt(short="u")]
+    #[structopt(short="u", long)]
     pub user: Option<String>,
-    #[structopt(short="d")]
+    #[structopt(short="d", long)]
     pub database: Option<String>,
     #[structopt(long)]
     pub admin: bool,
@@ -44,21 +44,7 @@ pub enum Password {
 
 #[derive(StructOpt, Clone, Debug)]
 pub enum Command {
-    Alter,
-    Configure,
-    Create(CreateWrapper),
-    Drop,
-}
-
-#[derive(StructOpt, Clone, Debug)]
-pub struct CreateWrapper {
-    #[structopt(subcommand)]
-    pub subcommand: CreateCommand,
-}
-
-#[derive(StructOpt, Clone, Debug)]
-pub enum CreateCommand {
-    Database(CreateDatabase),
+    CreateDatabase(CreateDatabase),
 }
 
 #[derive(StructOpt, Clone, Debug)]
