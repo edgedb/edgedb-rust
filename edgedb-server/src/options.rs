@@ -52,8 +52,9 @@ pub struct Options {
     pub _no_testmode: bool,
 
     /// IP address to listen on
-    #[structopt(short="I", long, value_name="host-or-ip")]
-    pub bind_address: Option<String>,
+    #[structopt(short="I", long, value_name="host-or-ip",
+                default_value="127.0.0.1")]
+    pub bind_address: String,
 
     /// Port to listen on
     #[structopt(short="p", long, value_name="integer", default_value="5656")]
