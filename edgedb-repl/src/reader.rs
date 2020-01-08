@@ -30,6 +30,8 @@ pub enum ReadError {
     Decode { source: DecodeError },
     #[snafu(display("error reading data: {}", source))]
     Io { source: io::Error },
+    #[snafu(display("end of stream"))]
+    Eos,
 }
 
 
@@ -82,6 +84,9 @@ impl<'a, T> Future for MessageFuture<'a, T>
             buf.reserve(next_read);
             unsafe {
                 match Pin::new(&mut *stream).poll_read(cx, buf.bytes_mut()) {
+                    Poll::Ready(Ok(0)) => {
+                        return Poll::Ready(Err(ReadError::Eos));
+                    }
                     Poll::Ready(Ok(bytes)) => {
                         buf.advance_mut(bytes);
                         continue;

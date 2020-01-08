@@ -89,6 +89,12 @@ fn flush() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn terminate() -> Result<(), Box<dyn Error>> {
+    encoding_eq!(ClientMessage::Terminate, b"X\0\0\0\x04");
+    Ok(())
+}
+
+#[test]
 fn authentication() -> Result<(), Box<dyn Error>> {
     encoding_eq!(ClientMessage::AuthenticationSaslInitialResponse(
         SaslInitialResponse {

@@ -16,7 +16,7 @@ use edgedb_protocol::client_message::{Execute, ExecuteScript};
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use edgedb_protocol::descriptors::{Descriptor};
 use edgedb_protocol::codec::{build_codec};
-use crate::reader::Reader;
+use crate::reader::{Reader, ReadError};
 use crate::prompt;
 use crate::options::Options;
 
@@ -118,7 +118,21 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
     'input_loop: loop {
         control.send(prompt::Control::Input(options.database.clone())).await;
         let inp = match data.recv().await {
-            None | Some(prompt::Input::Eof) => return Ok(()),
+            None | Some(prompt::Input::Eof) => {
+                bytes.truncate(0);
+                ClientMessage::Terminate.encode(&mut bytes)?;
+                cli.stream.write_all(&bytes[..]).await?;
+                match cli.reader.message().await {
+                    Err(ReadError::Eos) => {}
+                    Err(e) => {
+                        eprintln!("WARNING: error on terminate: {}", e);
+                    }
+                    Ok(msg) => {
+                        eprintln!("WARNING: unsolicited message {:?}", msg);
+                    }
+                }
+                return Ok(())
+            }
             Some(prompt::Input::Interrupt) => continue,
             Some(prompt::Input::Text(inp)) => inp,
         };

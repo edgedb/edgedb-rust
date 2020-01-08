@@ -24,6 +24,7 @@ pub enum ClientMessage {
     AuthenticationSaslResponse(SaslResponse),
     Sync,
     Flush,
+    Terminate,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,6 +101,7 @@ impl ClientMessage {
             Execute(h) => encode(buf, 0x45, h),
             Sync => encode(buf, 0x53, &Empty),
             Flush => encode(buf, 0x48, &Empty),
+            Terminate => encode(buf, 0x58, &Empty),
 
             UnknownMessage(_, _) => {
                 errors::UnknownMessageCantBeEncoded.fail()?
@@ -125,6 +127,7 @@ impl ClientMessage {
             0x45 => Execute::decode(&mut data).map(M::Execute),
             0x53 => Ok(M::Sync),
             0x48 => Ok(M::Flush),
+            0x58 => Ok(M::Terminate),
             0x44 => {
                 DescribeStatement::decode(&mut data).map(M::DescribeStatement)
             }
