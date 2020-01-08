@@ -18,6 +18,7 @@ pub use crate::common::Cardinality;
 pub enum ServerMessage {
     ServerHandshake(ServerHandshake),
     UnknownMessage(u8, Bytes),
+    LogMessage(LogMessage),
     ErrorResponse(ErrorResponse),
     Authentication(Authentication),
     ReadyForCommand(ReadyForCommand),
@@ -52,6 +53,15 @@ pub enum ErrorSeverity {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MessageSeverity {
+    Debug,
+    Info,
+    Notice,
+    Warning,
+    Unknown(u8),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransactionState {
     // Not in a transaction block.
     NotInTransaction = 0x49,
@@ -69,7 +79,15 @@ pub struct ErrorResponse {
     pub severity: ErrorSeverity,
     pub code: u32,
     pub message: String,
-    pub headers: Headers,
+    pub attributes: Headers,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LogMessage {
+    pub severity: MessageSeverity,
+    pub code: u32,
+    pub text: String,
+    pub attributes: Headers,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -141,6 +159,7 @@ impl ServerMessage {
         match self {
             ServerHandshake(h) => encode(buf, 0x76, h),
             ErrorResponse(h) => encode(buf, 0x45, h),
+            LogMessage(h) => encode(buf, 0x4c, h),
             Authentication(h) => encode(buf, 0x52, h),
             ReadyForCommand(h) => encode(buf, 0x5a, h),
             ServerKeyData(h) => encode(buf, 0x4b, h),
@@ -166,6 +185,7 @@ impl ServerMessage {
         match buf[0] {
             0x76 => ServerHandshake::decode(&mut data).map(M::ServerHandshake),
             0x45 => ErrorResponse::decode(&mut data).map(M::ErrorResponse),
+            0x4c => LogMessage::decode(&mut data).map(M::LogMessage),
             0x52 => Authentication::decode(&mut data).map(M::Authentication),
             0x5a => ReadyForCommand::decode(&mut data).map(M::ReadyForCommand),
             0x4b => ServerKeyData::decode(&mut data).map(M::ServerKeyData),
@@ -238,9 +258,9 @@ impl Encode for ErrorResponse {
         buf.put_u32_be(self.code);
         self.message.encode(buf)?;
         buf.reserve(2);
-        buf.put_u16_be(u16::try_from(self.headers.len()).ok()
+        buf.put_u16_be(u16::try_from(self.attributes.len()).ok()
             .context(errors::TooManyHeaders)?);
-        for (&name, value) in &self.headers {
+        for (&name, value) in &self.attributes {
             buf.reserve(2);
             buf.put_u16_be(name);
             value.encode(buf)?;
@@ -256,14 +276,53 @@ impl Decode for ErrorResponse {
         let code = buf.get_u32_be();
         let message = String::decode(buf)?;
         ensure!(buf.remaining() >= 2, errors::Underflow);
-        let num_headers = buf.get_u16_be();
-        let mut headers = HashMap::new();
-        for _ in 0..num_headers {
+        let num_attributes = buf.get_u16_be();
+        let mut attributes = HashMap::new();
+        for _ in 0..num_attributes {
             ensure!(buf.remaining() >= 4, errors::Underflow);
-            headers.insert(buf.get_u16_be(), Bytes::decode(buf)?);
+            attributes.insert(buf.get_u16_be(), Bytes::decode(buf)?);
         }
         return Ok(ErrorResponse {
-            severity, code, message, headers,
+            severity, code, message, attributes,
+        })
+    }
+}
+
+impl Encode for LogMessage {
+    fn encode(&self, buf: &mut BytesMut)
+        -> Result<(), EncodeError>
+    {
+        buf.reserve(11);
+        buf.put_u8(self.severity.to_u8());
+        buf.put_u32_be(self.code);
+        self.text.encode(buf)?;
+        buf.reserve(2);
+        buf.put_u16_be(u16::try_from(self.attributes.len()).ok()
+            .context(errors::TooManyHeaders)?);
+        for (&name, value) in &self.attributes {
+            buf.reserve(2);
+            buf.put_u16_be(name);
+            value.encode(buf)?;
+        }
+        Ok(())
+    }
+}
+
+impl Decode for LogMessage {
+    fn decode(buf: &mut Cursor<Bytes>) -> Result<LogMessage, DecodeError> {
+        ensure!(buf.remaining() >= 11, errors::Underflow);
+        let severity = MessageSeverity::from_u8(buf.get_u8());
+        let code = buf.get_u32_be();
+        let text = String::decode(buf)?;
+        ensure!(buf.remaining() >= 2, errors::Underflow);
+        let num_attributes = buf.get_u16_be();
+        let mut attributes = HashMap::new();
+        for _ in 0..num_attributes {
+            ensure!(buf.remaining() >= 4, errors::Underflow);
+            attributes.insert(buf.get_u16_be(), Bytes::decode(buf)?);
+        }
+        return Ok(LogMessage {
+            severity, code, text, attributes,
         })
     }
 }
@@ -381,6 +440,29 @@ impl ErrorSeverity {
             Error => 120,
             Fatal => 200,
             Panic => 255,
+            Unknown(code) => code,
+        }
+    }
+}
+
+impl MessageSeverity {
+    fn from_u8(code: u8) -> MessageSeverity {
+        use MessageSeverity::*;
+        match code {
+            20 => Debug,
+            40 => Info,
+            60 => Notice,
+            80 => Warning,
+            _ => Unknown(code),
+        }
+    }
+    fn to_u8(&self) -> u8 {
+        use MessageSeverity::*;
+        match *self {
+            Debug => 20,
+            Info => 40,
+            Notice => 60,
+            Warning => 80,
             Unknown(code) => code,
         }
     }

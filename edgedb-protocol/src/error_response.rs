@@ -111,17 +111,17 @@ impl fmt::Display for ErrorResponse {
             severity_marker(self.severity),
             error_name(self.code),
             self.message)?;
-        if let Some(hint) = self.headers.get(&FIELD_HINT) {
+        if let Some(hint) = self.attributes.get(&FIELD_HINT) {
             if let Ok(hint) = str::from_utf8(hint) {
                 write!(f, "\n  Hint: {}", hint)?;
             }
         }
-        if let Some(detail) = self.headers.get(&FIELD_DETAILS) {
+        if let Some(detail) = self.attributes.get(&FIELD_DETAILS) {
             if let Ok(detail) = str::from_utf8(detail) {
                 write!(f, "\n  Detail: {}", detail)?;
             }
         }
-        if let Some(traceback) = self.headers.get(&FIELD_SERVER_TRACEBACK) {
+        if let Some(traceback) = self.attributes.get(&FIELD_SERVER_TRACEBACK) {
             if let Ok(traceback) = str::from_utf8(traceback) {
                 write!(f, "\n  Server traceback:")?;
                 for line in traceback.lines() {

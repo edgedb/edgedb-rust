@@ -14,6 +14,7 @@ use edgedb_protocol::server_message::{CommandComplete};
 use edgedb_protocol::server_message::{PrepareComplete, Cardinality};
 use edgedb_protocol::server_message::{CommandDataDescription, Data};
 use edgedb_protocol::server_message::{Authentication};
+use edgedb_protocol::server_message::{LogMessage, MessageSeverity};
 
 mod base;
 
@@ -70,7 +71,7 @@ fn error_response() -> Result<(), Box<dyn Error>> {
         code: 50397184,
         message: String::from("missing required connection parameter \
                                in ClientHandshake message: \"user\""),
-        headers: map!{
+        attributes: map!{
             257 => Bytes::from_static("Traceback (most recent call last):\n  File \"edb/server/mng_port/edgecon.pyx\", line 1077, in edb.server.mng_port.edgecon.EdgeConnection.main\n    await self.auth()\n  File \"edb/server/mng_port/edgecon.pyx\", line 178, in auth\n    raise errors.BinaryProtocolError(\nedb.errors.BinaryProtocolError: missing required connection parameter in ClientHandshake message: \"user\"\n".as_bytes())
         },
     }), &fs::read("tests/error_response.bin")?[..]);
@@ -182,5 +183,18 @@ fn authentication() -> Result<(), Box<dyn Error>> {
             data: Bytes::from_static(b"sasl_final_data"),
         }),
         b"R\0\0\0\x1b\x00\x00\x00\x0c\0\0\0\x0fsasl_final_data");
+    Ok(())
+}
+
+#[test]
+fn log_message() -> Result<(), Box<dyn Error>> {
+    encoding_eq!(
+        ServerMessage::LogMessage(LogMessage {
+            severity: MessageSeverity::Notice,
+            code: 0xF0_00_00_00,
+            text: "changing system config".into(),
+            attributes: map!{},
+        }),
+        b"L\0\0\0%<\xf0\0\0\0\0\0\0\x16changing system config\0\0");
     Ok(())
 }
