@@ -12,7 +12,7 @@ pub struct Options {
     pub data_dir: Option<PathBuf>,
 
     /// DSN of a remote Postgres cluster, if using one")]
-    #[structopt(short="P", long, value_name="dsn")]
+    #[structopt(long, value_name="dsn")]
     pub postgres_dsn: Option<String>,
 
     /// Logging level. Possible values:
@@ -57,7 +57,7 @@ pub struct Options {
     pub bind_address: String,
 
     /// Port to listen on
-    #[structopt(short="p", long, value_name="integer", default_value="5656")]
+    #[structopt(short="P", long, value_name="integer", default_value="5656")]
     pub port: u16,
 
     /// Daemonize
