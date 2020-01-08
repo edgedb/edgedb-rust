@@ -16,9 +16,9 @@ chrono = {version="0.4.10", optional=true}
 
 [features]
 default = []
-num_bigint_types = ["num-bigint", "num-traits"]
-bigdecimal_types = ["bigdecimal", "num-bigint", "num-traits"]
-chrono_types = ["chrono"]
-all-types = ["num_bigint_types", "bigdecimal_types", "chrono_types"]
+with-num-bigint = ["num-bigint", "num-traits"]
+with-bigdecimal = ["bigdecimal", "num-bigint", "num-traits"]
+with-chrono = ["chrono"]
+all-types = ["with-num-bigint", "with-bigdecimal", "with-chrono"]
 
 [lib]
