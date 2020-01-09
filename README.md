@@ -8,11 +8,12 @@ Running Tests
 =============
 
 Due to cargo's limitation on propagation of "features", tests can only be
-run as two separate invocations:
+run as few separate command-lines:
 ```
 cargo test --workspace --exclude edgeql-pytest
 cargo build -p edgeql-python
 cargo test -p edgeql-pytest
+cd edgedb-protocol; cargo test --no-default-features
 ```
 The `cargo build` is required to build the library used by `edgeql-pytest`.
 
