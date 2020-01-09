@@ -2,7 +2,6 @@ use bigdecimal::BigDecimal;
 use chrono::format::{Item, Numeric, Pad, Fixed};
 use chrono::{NaiveDateTime, NaiveDate, NaiveTime};
 use humantime::format_rfc3339;
-use lazy_static::lazy_static;
 use num_bigint::BigInt;
 use std::convert::TryInto;
 
@@ -85,11 +84,55 @@ impl FormatExt for Value {
                     if d.is_negative() { "-" } else { "" }, d.abs_duration()))
             }
             V::Json(d) => prn.const_scalar(format!("{:?}", d)),
-            V::Set(..) => todo!(),
-            V::Object { .. } => todo!(),
-            V::Tuple(..) => todo!(),
-            V::NamedTuple { .. } => todo!(),
-            V::Array(..) => todo!(),
+            V::Set(items) => {
+                prn.set(|prn| {
+                    for item in items {
+                        item.format(prn)?;
+                        prn.comma()?;
+                    }
+                    Ok(())
+                })
+            },
+            V::Object { shape, fields } => {
+                prn.object(|prn| {
+                    for (fld, value) in shape.elements.iter().zip(fields) {
+                        if !fld.flag_implicit {
+                            prn.object_field(&fld.name)?;
+                            value.format(prn)?;
+                            prn.comma()?;
+                        }
+                    }
+                    Ok(())
+                })
+            }
+            V::Tuple(items) => {
+                prn.tuple(|prn| {
+                    for item in items {
+                        item.format(prn)?;
+                        prn.comma()?;
+                    }
+                    Ok(())
+                })
+            }
+            V::NamedTuple { shape, fields } => {
+                prn.named_tuple(|prn| {
+                    for (fld, value) in shape.elements.iter().zip(fields) {
+                        prn.tuple_field(&fld.name)?;
+                        value.format(prn)?;
+                        prn.comma()?;
+                    }
+                    Ok(())
+                })
+            }
+            V::Array(items) => {
+                prn.array(|prn| {
+                    for item in items {
+                        item.format(prn)?;
+                        prn.comma()?;
+                    }
+                    Ok(())
+                })
+            }
             V::Enum(v) => prn.const_scalar(&**v),
         }
     }

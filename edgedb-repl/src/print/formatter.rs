@@ -11,6 +11,24 @@ pub(in crate::print) trait Formatter {
         -> Result<(), Self::Error>;
     fn error<S: ToString>(&mut self, typ: &str, s: S)
         -> Result<(), Self::Error>;
+    fn set<F>(&mut self, f: F)
+        -> Result<(), Self::Error>
+        where F: FnMut(&mut Self) -> Result<(), Self::Error>;
+    fn tuple<F>(&mut self, f: F)
+        -> Result<(), Self::Error>
+        where F: FnMut(&mut Self) -> Result<(), Self::Error>;
+    fn array<F>(&mut self, f: F)
+        -> Result<(), Self::Error>
+        where F: FnMut(&mut Self) -> Result<(), Self::Error>;
+    fn object<F>(&mut self, f: F)
+        -> Result<(), Self::Error>
+        where F: FnMut(&mut Self) -> Result<(), Self::Error>;
+    fn named_tuple<F>(&mut self, f: F)
+        -> Result<(), Self::Error>
+        where F: FnMut(&mut Self) -> Result<(), Self::Error>;
+    fn comma(&mut self) -> Result<(), Self::Error>;
+    fn object_field(&mut self, f: &str) -> Result<(), Self::Error>;
+    fn tuple_field(&mut self, f: &str) -> Result<(), Self::Error>;
 }
 
 impl<T: Stream<Error=E>, E> Formatter for Printer<T, E> {
@@ -30,6 +48,64 @@ impl<T: Stream<Error=E>, E> Formatter for Printer<T, E> {
     {
         self.write(format!("<err-{}>", typ).red())?;
         self.write(format!("'{}'", s.to_string().escape_default()).red())?;
+        Ok(())
+    }
+    fn set<F>(&mut self, mut f: F)
+        -> Result<(), Self::Error>
+        where F: FnMut(&mut Self) -> Result<(), Self::Error>
+    {
+        self.write("{".clear())?;
+        f(self)?;
+        self.write("}".clear())?;
+        Ok(())
+    }
+    fn comma(&mut self) -> Result<(), Self::Error> {
+        self.write(", ".clear())
+    }
+    fn object<F>(&mut self, mut f: F)
+        -> Result<(), Self::Error>
+        where F: FnMut(&mut Self) -> Result<(), Self::Error>
+    {
+        self.write("Object {".blue())?;
+        f(self)?;
+        self.write("}".blue())?;
+        Ok(())
+    }
+    fn object_field(&mut self, f: &str) -> Result<(), Self::Error> {
+        self.write(f.green())?;
+        self.write(": ".clear())?;
+        Ok(())
+    }
+    fn tuple<F>(&mut self, mut f: F)
+        -> Result<(), Self::Error>
+        where F: FnMut(&mut Self) -> Result<(), Self::Error>
+    {
+        self.write("(".clear())?;
+        f(self)?;
+        self.write(")".clear())?;
+        Ok(())
+    }
+    fn named_tuple<F>(&mut self, mut f: F)
+        -> Result<(), Self::Error>
+        where F: FnMut(&mut Self) -> Result<(), Self::Error>
+    {
+        self.write("(".blue())?;
+        f(self)?;
+        self.write(")".blue())?;
+        Ok(())
+    }
+    fn tuple_field(&mut self, f: &str) -> Result<(), Self::Error> {
+        self.write(f.clear())?;
+        self.write(" := ".clear())?;
+        Ok(())
+    }
+    fn array<F>(&mut self, mut f: F)
+        -> Result<(), Self::Error>
+        where F: FnMut(&mut Self) -> Result<(), Self::Error>
+    {
+        self.write("[".clear())?;
+        f(self)?;
+        self.write("]".clear())?;
         Ok(())
     }
 }

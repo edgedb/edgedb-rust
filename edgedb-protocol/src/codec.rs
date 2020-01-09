@@ -6,6 +6,7 @@ use std::time::{UNIX_EPOCH, SystemTime};
 use std::io::Cursor;
 use std::sync::Arc;
 use std::collections::HashSet;
+use std::ops::Deref;
 
 use bytes::{Bytes, Buf, BytesMut, BufMut};
 use uuid::Uuid;
@@ -49,8 +50,8 @@ pub struct ObjectShape(Arc<ObjectShapeInfo>);
 pub struct NamedTupleShape(Arc<NamedTupleShapeInfo>);
 
 #[derive(Debug, PartialEq, Eq)]
-struct ObjectShapeInfo {
-    elements: Vec<ShapeElement>,
+pub struct ObjectShapeInfo {
+    pub elements: Vec<ShapeElement>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -62,8 +63,8 @@ pub struct ShapeElement {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct NamedTupleShapeInfo {
-    elements: Vec<TupleElement>,
+pub struct NamedTupleShapeInfo {
+    pub elements: Vec<TupleElement>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -164,6 +165,20 @@ struct Enum {
 
 struct CodecBuilder<'a> {
     descriptors: Vec<&'a Descriptor>,
+}
+
+impl Deref for ObjectShape {
+    type Target = ObjectShapeInfo;
+    fn deref(&self) -> &ObjectShapeInfo {
+        &*self.0
+    }
+}
+
+impl Deref for NamedTupleShape {
+    type Target = NamedTupleShapeInfo;
+    fn deref(&self) -> &NamedTupleShapeInfo {
+        &*self.0
+    }
 }
 
 impl dyn Codec {
