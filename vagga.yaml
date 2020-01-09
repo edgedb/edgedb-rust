@@ -7,6 +7,11 @@ commands:
       cargo build --workspace --exclude=edgeql-pytest
       cargo build -p edgeql-pytest
 
+  make-static: !Command
+    description: Build executable
+    container: ubuntu
+    run: [cargo, build, --target=x86_64-unknown-linux-musl, -p, edgedb-repl]
+
   cargo: !Command
     description: Run arbitrary cargo command
     symlink-name: cargo
@@ -72,6 +77,7 @@ containers:
       - git
       - build-essential
       - vim
+      - musl-tools
       # for edgeql-python
       - python3.8
       - python3.8-dev
@@ -80,6 +86,11 @@ containers:
       url: "https://static.rust-lang.org/dist/rust-1.40.0-x86_64-unknown-linux-gnu.tar.gz"
       script: "./install.sh --prefix=/usr \
                 --components=rustc,rust-std-x86_64-unknown-linux-gnu,cargo"
+    - !TarInstall
+      url: "https://static.rust-lang.org/dist/rust-std-1.40.0-x86_64-unknown-linux-musl.tar.gz"
+      script: "./install.sh --prefix=/musl \
+               --components=rust-std-x86_64-unknown-linux-musl"
+    - !Sh 'ln -s /musl/lib/rustlib/x86_64-unknown-linux-musl /usr/lib/rustlib/x86_64-unknown-linux-musl'
     - &bulk !Tar
       url: "https://github.com/tailhook/bulk/releases/download/v0.4.10/bulk-v0.4.10.tar.gz"
       sha256: 481513f8a0306a9857d045497fb5b50b50a51e9ff748909ecf7d2bda1de275ab
@@ -89,3 +100,6 @@ containers:
       HOME: /work/target
       RUST_BACKTRACE: 1
       PYTHON_SYS_EXECUTABLE: /usr/bin/python3.8
+      # needed for musl build
+      PATH: /musl/bin:/usr/local/bin:/usr/bin:/bin
+      LD_LIBRARY_PATH: /musl/lib/rustlib/x86_64-unknown-linux-musl/lib
