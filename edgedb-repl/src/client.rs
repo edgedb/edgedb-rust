@@ -17,8 +17,9 @@ use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use edgedb_protocol::descriptors::{Descriptor};
 use edgedb_protocol::codec::{build_codec};
 use crate::reader::{Reader, ReadError};
-use crate::prompt;
 use crate::options::Options;
+use crate::print::print_to_stdout;
+use crate::prompt;
 
 pub struct Connection {
     stream: TcpStream,
@@ -224,9 +225,8 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
                     }
                     for chunk in data.data {
                         let mut cur = io::Cursor::new(chunk);
-                        let value = codec.decode_value(&mut cur);
-                        debug_assert_eq!(cur.bytes(), b"");
-                        println!("Row {:?}", value);
+                        let value = codec.decode_value(&mut cur)?;
+                        print_to_stdout(&value)?;
                     }
                 }
                 ServerMessage::CommandComplete(..) => {

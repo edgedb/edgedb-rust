@@ -9,6 +9,7 @@ mod prompt;
 mod client;
 mod options;
 mod commands;
+mod print;
 
 
 fn main() -> Result<(), anyhow::Error> {

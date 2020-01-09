@@ -576,6 +576,13 @@ impl From<&str> for EnumValue {
     }
 }
 
+impl std::ops::Deref for EnumValue {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &*self.0
+    }
+}
+
 impl SetCodec {
     fn build(d: &descriptors::SetDescriptor, dec: &CodecBuilder)
         -> Result<SetCodec, CodecError>
