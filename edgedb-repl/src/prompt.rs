@@ -9,10 +9,13 @@ use rustyline::validate::{Validator, ValidationResult, ValidationContext};
 use rustyline::completion::Completer;
 
 use edgeql_parser::preparser::full_statement;
+use crate::commands::backslash;
+
+use colorful::Colorful;
 
 
 pub enum Control {
-    Input(String),
+    Input(String, String),
 }
 
 pub enum Input {
@@ -26,15 +29,30 @@ pub struct EdgeqlHelper {
 
 impl Helper for EdgeqlHelper {}
 impl Hinter for EdgeqlHelper {}
-impl Highlighter for EdgeqlHelper {}
+impl Highlighter for EdgeqlHelper {
+    fn highlight_hint<'h>(&self, hint: &'h str) -> std::borrow::Cow<'h, str> {
+        return hint.light_gray().to_string().into()
+    }
+}
 impl Validator for EdgeqlHelper {
     fn validate(&self, ctx: &mut ValidationContext)
         -> Result<ValidationResult, ReadlineError>
     {
-        if full_statement(ctx.input().as_bytes()).is_ok() {
-            Ok(ValidationResult::Valid(None))
+        let line = ctx.input().trim();
+        if line.starts_with("\\") {
+            match backslash::parse(line) {
+                Ok(_) => Ok(ValidationResult::Valid(None)),
+                Err(e) => {
+                    Ok(ValidationResult::Invalid(Some(
+                        format!("  ← {}", e.hint))))
+                }
+            }
         } else {
-            Ok(ValidationResult::Incomplete)
+            if full_statement(ctx.input().as_bytes()).is_ok() {
+                Ok(ValidationResult::Valid(None))
+            } else {
+                Ok(ValidationResult::Incomplete)
+            }
         }
     }
 }
@@ -54,19 +72,22 @@ pub fn main(data: Sender<Input>, control: Receiver<Control>)
     let mut editor = rustyline::Editor::<EdgeqlHelper>::new();
     editor.set_helper(Some(EdgeqlHelper {}));
     let mut prompt = String::from("> ");
+    let mut initial;
     loop {
         loop {
             match task::block_on(control.recv()) {
                 None => return Ok(()),
-                Some(Control::Input(name)) => {
+                Some(Control::Input(name, prefix)) => {
                     prompt.clear();
                     prompt.push_str(&name);
                     prompt.push_str("> ");
+                    initial = prefix;
                     break;
                 }
             }
         }
-        let text = match editor.readline(&prompt) {
+        let text = match editor.readline_with_initial(&prompt, (&initial, ""))
+        {
             Ok(text) => text,
             Err(ReadlineError::Eof) => {
                 task::block_on(data.send(Input::Eof));

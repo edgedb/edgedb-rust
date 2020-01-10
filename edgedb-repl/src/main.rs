@@ -15,7 +15,7 @@ mod print;
 fn main() -> Result<(), anyhow::Error> {
     let opt = Options::from_args_and_env();
     if opt.subcommand.is_some() {
-        commands::main(opt)
+        commands::cli::main(opt)
     } else {
         if opt.interactive {
             interactive_main(opt)

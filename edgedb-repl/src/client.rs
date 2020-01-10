@@ -1,6 +1,7 @@
 use std::io;
 use std::collections::HashMap;
 use std::str;
+use std::mem::replace;
 
 use anyhow;
 use async_std::io::prelude::WriteExt;
@@ -20,6 +21,7 @@ use crate::reader::{Reader, ReadError};
 use crate::options::Options;
 use crate::print::print_to_stdout;
 use crate::prompt;
+use crate::commands::backslash;
 
 pub struct Connection {
     stream: TcpStream,
@@ -115,9 +117,14 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
     let mut conn = Connection::from_options(&options).await?;
     let mut cli = conn.authenticate(&options).await?;
     let mut bytes = BytesMut::new();
+    let mut initial = String::new();
     let statement_name = Bytes::from_static(b"");
+
     'input_loop: loop {
-        control.send(prompt::Control::Input(options.database.clone())).await;
+        control.send(prompt::Control::Input(
+            options.database.clone(),
+            replace(&mut initial, String::new()),
+        )).await;
         let inp = match data.recv().await {
             None | Some(prompt::Input::Eof) => {
                 bytes.truncate(0);
@@ -137,6 +144,20 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
             Some(prompt::Input::Interrupt) => continue,
             Some(prompt::Input::Text(inp)) => inp,
         };
+        if inp.trim_start().starts_with("\\") {
+            match backslash::parse(&inp) {
+                Ok(_) => {
+                    eprintln!("Unimplemented");
+                    continue;
+                }
+                Err(e) => {
+                    initial = inp.trim_start().into();
+                    eprintln!("Error parsing backslash command: {}",
+                              e.message);
+                    continue;
+                }
+            }
+        }
 
         bytes.truncate(0);
         ClientMessage::Prepare(Prepare {
