@@ -145,18 +145,22 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
             Some(prompt::Input::Text(inp)) => inp,
         };
         if inp.trim_start().starts_with("\\") {
-            match backslash::parse(&inp) {
-                Ok(_) => {
-                    eprintln!("Unimplemented");
-                    continue;
-                }
+            let cmd = match backslash::parse(&inp) {
+                Ok(cmd) => cmd,
                 Err(e) => {
-                    initial = inp.trim_start().into();
                     eprintln!("Error parsing backslash command: {}",
                               e.message);
+                    // Quick-edit command on error
+                    initial = inp.trim_start().into();
                     continue;
                 }
+            };
+            if let Err(e) = backslash::execute(&mut cli, cmd).await {
+                eprintln!("Error executing command: {}", e);
+                // Quick-edit command on error
+                initial = inp.trim_start().into();
             }
+            continue;
         }
 
         bytes.truncate(0);

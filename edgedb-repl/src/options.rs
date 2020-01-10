@@ -45,6 +45,7 @@ pub enum Password {
 #[derive(StructOpt, Clone, Debug)]
 pub enum Command {
     CreateDatabase(CreateDatabase),
+    ListDatabases,
 }
 
 #[derive(StructOpt, Clone, Debug)]
