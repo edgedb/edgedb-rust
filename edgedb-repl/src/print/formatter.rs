@@ -1,7 +1,17 @@
 use crate::print::stream::Stream;
 use crate::print::Printer;
 
-use colored::Colorize;
+use colorful::{Colorful, core::color_string::CString};
+
+trait ColorfulExt {
+    fn clear(&self) -> CString;
+}
+
+impl<'a> ColorfulExt for &'a str {
+    fn clear(&self) -> CString {
+        CString::new(*self)
+    }
+}
 
 
 pub(in crate::print) trait Formatter {

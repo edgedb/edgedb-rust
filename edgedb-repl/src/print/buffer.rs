@@ -1,6 +1,7 @@
 use std::fmt::Write;
 
-use colored::ColoredString;
+use colorful::core::color_string::CString;
+use colorful::core::StrMarker;
 
 use crate::print::Printer;
 use crate::print::stream::Stream;
@@ -12,14 +13,14 @@ impl<T: Stream<Error=E>, E> Printer<T, E> {
         self.buffer.clear();
         Ok(())
     }
-    pub(in crate::print) fn write(&mut self, s: ColoredString)
+    pub(in crate::print) fn write(&mut self, s: CString)
         -> Result<(), E>
     {
         if self.colors {
             write!(&mut self.buffer, "{}", s)
-                .expect("formatting ColoredString always succeeds");
+                .expect("formatting CString always succeeds");
         } else {
-            self.buffer.push_str(&*s);
+            self.buffer.push_str(&s.to_str());
         }
         self.flush_buf()?;  // TODO: add a waterline
         Ok(())

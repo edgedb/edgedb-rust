@@ -238,14 +238,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "colored"
-version = "1.9.1"
+name = "colorful"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-dependencies = [
- "atty 0.2.14 (registry+https://github.com/rust-lang/crates.io-index)",
- "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "winapi 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
-]
 
 [[package]]
 name = "combine"
@@ -382,7 +377,7 @@ dependencies = [
  "bytes 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "colored 1.9.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "colorful 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "edgedb-protocol 0.1.0",
  "edgeql-parser 0.1.0",
  "humantime 1.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1425,7 +1420,7 @@ dependencies = [
 "checksum chrono 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)" = "31850b4a4d6bae316f7a09e691c944c28299298837edc0a03f755618c23cbc01"
 "checksum clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)" = "5067f5bb2d80ef5d68b4c87db81601f0b75bca627bc2ef76b141d7b846a3c6d9"
 "checksum cloudabi 0.0.3 (registry+https://github.com/rust-lang/crates.io-index)" = "ddfc5b9aa5d4507acaf872de71051dfd0e309860e88966e1051e462a077aac4f"
-"checksum colored 1.9.1 (registry+https://github.com/rust-lang/crates.io-index)" = "f930f8b286023ed451756fe2527d73484d667adf9e905e9932e81d52996a343a"
+"checksum colorful 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "0bca1619ff57dd7a56b58a8e25ef4199f123e78e503fe1653410350a1b98ae65"
 "checksum combine 4.0.0-beta.2 (registry+https://github.com/rust-lang/crates.io-index)" = "525d72c69cb2dc9cc71efac5f04d4815ab307c27ba0125d8cc2d2bb22ca14aea"
 "checksum constant_time_eq 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)" = "995a44c877f9212528ccc74b21a232f66ad69001e40ede5bcee2ac9ef2657120"
 "checksum cpython 0.3.0 (git+git://github.com/dgrunwald/rust-cpython?rev=dabc06c)" = "<none>"
