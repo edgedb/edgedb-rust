@@ -1,7 +1,6 @@
 use std::io;
 use std::cmp::min;
 use std::marker::PhantomData;
-use std::convert::Infallible;
 
 use atty;
 use term_size;
@@ -52,7 +51,8 @@ pub fn print_to_stdout(v: &Value) -> Result<(), io::Error> {
     Ok(())
 }
 
-pub fn print_to_string(v: &Value) -> Result<String, Infallible> {
+#[cfg(test)]
+pub fn print_to_string(v: &Value) -> Result<String, std::convert::Infallible> {
     let mut out = String::new();
     let mut prn = Printer {
         colors: false,
@@ -64,7 +64,7 @@ pub fn print_to_string(v: &Value) -> Result<String, Infallible> {
         buffer: String::with_capacity(8192),
         stream: &mut out,
 
-        error: PhantomData::<*const Infallible>,
+        error: PhantomData::<*const std::convert::Infallible>,
     };
     v.format(&mut prn)?;
     Ok(out)
