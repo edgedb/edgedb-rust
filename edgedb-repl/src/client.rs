@@ -189,7 +189,9 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
                 }
             }
         };
-        println!("Descriptor: {:?}", data_description);
+        if options.debug_print_descriptors {
+            println!("Descriptor: {:?}", data_description);
+        }
         let mut cur = io::Cursor::new(data_description.output_typedesc);
         let mut desc = Vec::new();
         while cur.bytes() != b"" {
