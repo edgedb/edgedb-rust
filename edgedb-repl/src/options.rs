@@ -46,11 +46,22 @@ pub enum Password {
 pub enum Command {
     CreateDatabase(CreateDatabase),
     ListDatabases,
+    ListScalarTypes(ListTypes),
 }
 
 #[derive(StructOpt, Clone, Debug)]
 pub struct CreateDatabase {
     pub database_name: String,
+}
+
+
+#[derive(StructOpt, Clone, Debug)]
+pub struct ListTypes {
+    pub pattern: Option<String>,
+    #[structopt(long, short="I")]
+    pub insensitive: bool,
+    #[structopt(long, short="S")]
+    pub system: bool,
 }
 
 #[derive(Debug, Clone)]

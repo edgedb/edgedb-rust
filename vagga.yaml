@@ -18,6 +18,11 @@ commands:
     container: ubuntu
     run: [cargo]
 
+  cargo-expand: !Command
+    description: Print macro-expanded form for the crate
+    container: nightly
+    run: [cargo, rustc, "--", -Zunstable-options, --pretty=expanded]
+
   test-py: !Command
     description: Run tests
     container: ubuntu
@@ -103,3 +108,19 @@ containers:
       # needed for musl build
       PATH: /musl/bin:/usr/local/bin:/usr/bin:/bin
       LD_LIBRARY_PATH: /musl/lib/rustlib/x86_64-unknown-linux-musl/lib
+
+  nightly:
+    setup:
+    - !Ubuntu xenial
+    - !Install
+      - ca-certificates
+      - build-essential
+
+    - !TarInstall
+      url: "https://static.rust-lang.org/dist/rust-nightly-x86_64-unknown-linux-gnu.tar.gz"
+      script: "./install.sh --prefix=/usr \
+                --components=rustc,rust-std-x86_64-unknown-linux-gnu,cargo"
+
+    environ:
+      HOME: /work/target
+      RUST_BACKTRACE: 1

@@ -7,7 +7,7 @@ use crate::value::Value;
 
 
 #[derive(Snafu, Debug)]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub))]
 #[non_exhaustive]
 pub enum DecodeError {
     #[snafu(display("unexpected end of frame"))]

@@ -30,5 +30,14 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
                 Ok(())
             }).into()
         },
+        Command::ListScalarTypes(t) => {
+            task::block_on(async {
+                let mut conn = Connection::from_options(&options).await?;
+                let mut cli = conn.authenticate(&options).await?;
+                commands::list_scalar_types(&mut cli, &cmdopt,
+                    &t.pattern, t.system, t.insensitive).await?;
+                Ok(())
+            }).into()
+        },
     }
 }

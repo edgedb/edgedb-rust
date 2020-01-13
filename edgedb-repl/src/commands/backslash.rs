@@ -6,6 +6,7 @@ use crate::commands::{self, Options};
 const HELP: &str = r###"
 Introspection
   \l, \list-databases      list databases
+  \lT, \list-scalar-types  list scalar types
 
 Help
   \?                       Show help on backslash commands
@@ -15,17 +16,26 @@ pub const HINTS: &'static [&'static str] = &[
     r"\?",
     r"\l",
     r"\list-databases",
+    r"\lT [PATTERN]",
+    r"\list-scalar-types [PATTERN]",
 ];
 
 pub const COMMAND_NAMES: &'static [&'static str] = &[
     r"\?",
     r"\l",
     r"\list-databases",
+    r"\lT",
+    r"\list-scalar-types",
 ];
 
 pub enum Command {
     Help,
     ListDatabases,
+    ListScalarTypes {
+        pattern: Option<String>,
+        system: bool,
+        insensitive: bool,
+    },
 }
 
 pub struct ParseError {
@@ -60,6 +70,13 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
             error("Help command `\\list-databses` doesn't support arguments",
                   "no argument expected")
         }
+        | ("list-scalar-types", pattern)
+        | ("lT", pattern)
+        => Ok(Command::ListScalarTypes {
+            pattern: pattern.map(|x| x.to_owned()),
+            system: false, // TODO(tailhook)
+            insensitive: false, // TODO(tailhook)
+        }),
         (_, _) => {
             error(format_args!("Unkown command `\\{}'", cmd.escape_default()),
                   "unknown command")
@@ -80,5 +97,9 @@ pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command)
             Ok(())
         }
         ListDatabases => commands::list_databases(cli, &options).await,
+        ListScalarTypes { pattern, insensitive, system } => {
+            commands::list_scalar_types(cli, &options,
+                &pattern, insensitive, system).await
+        }
     }
 }
