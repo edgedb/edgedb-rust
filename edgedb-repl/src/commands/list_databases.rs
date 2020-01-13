@@ -1,8 +1,26 @@
 use crate::commands::Options;
 use crate::client::Client;
 
+use edgedb_derive::Queryable;
+
+#[derive(Queryable)]
+struct DatabaseRow {
+
+}
+
 pub async fn list_databases<'x>(cli: &mut Client<'x>, options: &Options)
     -> Result<(), anyhow::Error>
 {
-    todo!();
+    let list = cli.query::<String>("SELECT name := sys::Database.name").await?;
+    if !options.command_line {
+        println!("List of databases:");
+    }
+    for name in list {
+        if options.command_line {
+            println!("{}", name);
+        } else {
+            println!("  {}", name);
+        }
+    }
+    Ok(())
 }

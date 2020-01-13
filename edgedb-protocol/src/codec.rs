@@ -16,6 +16,7 @@ use crate::descriptors::{self, Descriptor, TypePos};
 use crate::errors::{self, CodecError, DecodeError, EncodeError};
 use crate::value::{self, Value};
 
+pub mod raw;
 
 const STD_UUID: Uuid = Uuid::from_u128(0x100);
 const STD_STR: Uuid = Uuid::from_u128(0x101);
@@ -364,11 +365,7 @@ impl Codec for Float64 {
 
 impl Codec for Str {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
-        let val = str::from_utf8(&buf.bytes())
-            .context(errors::InvalidUtf8)?
-            .to_owned();
-        buf.advance(buf.bytes().len());
-        Ok(Value::Str(val))
+        raw::RawCodec::decode_raw(buf).map(Value::Str)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>

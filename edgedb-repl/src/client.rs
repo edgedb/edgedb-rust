@@ -17,6 +17,7 @@ use edgedb_protocol::client_message::{Execute, ExecuteScript};
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use edgedb_protocol::descriptors::{Descriptor};
 use edgedb_protocol::codec::{build_codec};
+use edgedb_protocol::queryable::Queryable;
 use crate::reader::{Reader, ReadError};
 use crate::options::Options;
 use crate::print::print_to_stdout;
@@ -375,5 +376,102 @@ impl<'a> Client<'a> {
             }
         };
         Ok(status)
+    }
+
+    pub async fn query<R>(&mut self, request: &str)
+        -> Result<Vec<R>, anyhow::Error>
+        where R: Queryable,
+    {
+        let mut bytes = BytesMut::new();
+        let statement_name = Bytes::from_static(b"");
+
+        ClientMessage::Prepare(Prepare {
+            headers: HashMap::new(),
+            io_format: IoFormat::Binary,
+            expected_cardinality: Cardinality::Many,
+            statement_name: statement_name.clone(),
+            command_text: String::from(request),
+        }).encode(&mut bytes)?;
+        ClientMessage::Flush.encode(&mut bytes)?;
+        self.stream.write_all(&bytes[..]).await?;
+
+        loop {
+            let msg = self.reader.message().await?;
+            match msg {
+                ServerMessage::PrepareComplete(..) => break,
+                ServerMessage::ErrorResponse(err) => {
+                    self.reader.wait_ready().await?;
+                    return Err(anyhow::anyhow!(err));
+                }
+                _ => {
+                    return Err(anyhow::anyhow!(
+                        "Unsolicited message {:?}", msg));
+                }
+            }
+        }
+
+        bytes.truncate(0);
+        ClientMessage::DescribeStatement(DescribeStatement {
+            headers: HashMap::new(),
+            aspect: DescribeAspect::DataDescription,
+            statement_name: statement_name.clone(),
+        }).encode(&mut bytes)?;
+        ClientMessage::Flush.encode(&mut bytes)?;
+        self.stream.write_all(&bytes[..]).await?;
+
+        let data_description = loop {
+            let msg = self.reader.message().await?;
+            match msg {
+                ServerMessage::CommandDataDescription(data_desc) => {
+                    break data_desc;
+                }
+                ServerMessage::ErrorResponse(err) => {
+                    self.reader.wait_ready().await?;
+                    return Err(anyhow::anyhow!(err));
+                }
+                _ => {
+                    return Err(anyhow::anyhow!(
+                        "Unsolicited message {:?}", msg));
+                }
+            }
+        };
+
+        // TODO(tailhook) check descriptors
+
+        let mut arguments = BytesMut::with_capacity(8);
+        // empty tuple
+        arguments.put_u32_be(0);
+
+        bytes.truncate(0);
+        ClientMessage::Execute(Execute {
+            headers: HashMap::new(),
+            statement_name: statement_name.clone(),
+            arguments: arguments.freeze(),
+        }).encode(&mut bytes)?;
+        ClientMessage::Sync.encode(&mut bytes)?;
+        self.stream.write_all(&bytes[..]).await?;
+
+        let mut result = Vec::new();
+        loop {
+            let msg = self.reader.message().await?;
+            match msg {
+                ServerMessage::Data(data) => {
+                    for chunk in data.data {
+                        let mut cur = io::Cursor::new(chunk);
+                        result.push(Queryable::decode(&mut cur)?);
+                    }
+                }
+                ServerMessage::CommandComplete(..) => {
+                    self.reader.wait_ready().await?;
+                    break;
+                }
+                ServerMessage::ReadyForCommand(..) => {
+                    return Err(anyhow::anyhow!("Unexpected Ready message"));
+                }
+                _ => return Err(anyhow::anyhow!(
+                    "Unsolicited message {:?}", msg)),
+            }
+        }
+        return Ok(result);
     }
 }

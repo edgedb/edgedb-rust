@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "edgedb-derive",
     "edgeql-parser",
     "edgeql-python",
     "edgeql-pytest",

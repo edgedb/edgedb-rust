@@ -8,6 +8,7 @@ edition = "2018"
 [dependencies]
 edgedb-protocol = {path = "../edgedb-protocol", features=["all-types"]}
 edgeql-parser = {path = "../edgeql-parser"}
+edgedb-derive = {path = "../edgedb-derive"}
 snafu = {version="0.6.0", features=["backtraces"]}
 anyhow = "1.0.23"
 async-std = {version="1", features=[

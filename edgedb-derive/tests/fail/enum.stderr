@@ -1,0 +1,5 @@
+error: expected `struct`
+ --> $DIR/enum.rs:4:1
+  |
+4 | enum MyEnum {
+  | ^^^^
