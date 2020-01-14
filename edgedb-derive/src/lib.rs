@@ -21,8 +21,13 @@ pub fn edgedb_queryable(input: TokenStream) -> TokenStream {
         }
     };
     let fieldname = fields.named.iter()
-        .map( | f | f.ident.clone().unwrap()).collect::<Vec<_>>();
+        .map(|f| f.ident.clone().unwrap()).collect::<Vec<_>>();
+    let fieldtype = fields.named.iter()
+        .map(|f| f.ty.clone()).collect::<Vec<_>>();
+    let fieldstr = fieldname.iter()
+        .map(|s| syn::LitStr::new(&s.to_string(), s.span()));
     let nfields = fields.named.len();
+    let fieldno = 2..nfields+2;
     let expanded = quote! {
         impl #impl_generics ::edgedb_protocol::queryable::Queryable
             for #name #ty_generics {
@@ -82,6 +87,42 @@ pub fn edgedb_queryable(input: TokenStream) -> TokenStream {
                         #fieldname,
                     )*
                 })
+            }
+            fn check_descriptor(
+                ctx: &::edgedb_protocol::queryable::DescriptorContext,
+                type_pos: ::edgedb_protocol::descriptors::TypePos)
+                -> Result<(), ::edgedb_protocol::queryable::DescriptorMismatch>
+            {
+                use ::edgedb_protocol::descriptors::Descriptor::ObjectShape;
+                let desc = ctx.get(type_pos)?;
+                let shape = match desc {
+                    ObjectShape(shape) => shape,
+                    _ => {
+                        return Err(ctx.wrong_type(desc, "str"))
+                    }
+                };
+
+                // TODO(tailhook) cache shape.id somewhere
+
+                if(shape.elements.len() != #nfields + 2) {
+                    return Err(ctx.field_number(
+                        shape.elements.len(), #nfields + 2));
+                }
+                if(!shape.elements[0].flag_implicit) {
+                    return Err(ctx.expected("implicit __tid__"));
+                }
+                if(!shape.elements[1].flag_implicit) {
+                    return Err(ctx.expected("implicit id"));
+                }
+                #(
+                    let el = &shape.elements[#fieldno];
+                    if(el.name != #fieldstr) {
+                        return Err(ctx.wrong_field(&el.name, #fieldstr));
+                    }
+                    <#fieldtype as ::edgedb_protocol::queryable::Queryable>
+                        ::check_descriptor(ctx, el.type_pos)?;
+                )*
+                Ok(())
             }
         }
     };
