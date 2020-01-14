@@ -16,7 +16,7 @@ use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
 use edgedb_protocol::client_message::{Execute, ExecuteScript};
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use edgedb_protocol::queryable::{Queryable};
-use crate::reader::{Reader, ReadError};
+use crate::reader::{Reader, ReadError, QueryableDecoder, QueryResponse};
 use crate::options::Options;
 use crate::print::print_to_stdout;
 use crate::prompt;
@@ -373,7 +373,10 @@ impl<'a> Client<'a> {
     }
 
     pub async fn query<R>(&mut self, request: &str)
-        -> Result<Vec<R>, anyhow::Error>
+        -> Result<
+            QueryResponse<'_, &'a TcpStream, QueryableDecoder<R>>,
+            anyhow::Error
+        >
         where R: Queryable,
     {
         let mut bytes = BytesMut::new();
@@ -447,27 +450,6 @@ impl<'a> Client<'a> {
         ClientMessage::Sync.encode(&mut bytes)?;
         self.stream.write_all(&bytes[..]).await?;
 
-        let mut result = Vec::new();
-        loop {
-            let msg = self.reader.message().await?;
-            match msg {
-                ServerMessage::Data(data) => {
-                    for chunk in data.data {
-                        let mut cur = io::Cursor::new(chunk);
-                        result.push(Queryable::decode(&mut cur)?);
-                    }
-                }
-                ServerMessage::CommandComplete(..) => {
-                    self.reader.wait_ready().await?;
-                    break;
-                }
-                ServerMessage::ReadyForCommand(..) => {
-                    return Err(anyhow::anyhow!("Unexpected Ready message"));
-                }
-                _ => return Err(anyhow::anyhow!(
-                    "Unsolicited message {:?}", msg)),
-            }
-        }
-        return Ok(result);
+        return Ok(self.reader.response(QueryableDecoder::new()));
     }
 }
