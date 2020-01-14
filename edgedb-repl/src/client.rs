@@ -7,7 +7,7 @@ use anyhow;
 use async_std::io::prelude::WriteExt;
 use async_std::net::{TcpStream, ToSocketAddrs};
 use async_std::sync::{Sender, Receiver};
-use bytes::{Bytes, BytesMut, BufMut, Buf};
+use bytes::{Bytes, BytesMut, BufMut};
 use scram::ScramClient;
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
@@ -15,9 +15,7 @@ use edgedb_protocol::client_message::{Prepare, IoFormat, Cardinality};
 use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
 use edgedb_protocol::client_message::{Execute, ExecuteScript};
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
-use edgedb_protocol::descriptors::{Descriptor};
-use edgedb_protocol::codec::{build_codec};
-use edgedb_protocol::queryable::Queryable;
+use edgedb_protocol::queryable::{Queryable};
 use crate::reader::{Reader, ReadError};
 use crate::options::Options;
 use crate::print::print_to_stdout;
@@ -218,15 +216,11 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
         if options.debug_print_descriptors {
             println!("Descriptor: {:?}", data_description);
         }
-        let mut cur = io::Cursor::new(data_description.output_typedesc);
-        let mut desc = Vec::new();
-        while cur.bytes() != b"" {
-            desc.push(Descriptor::decode(&mut cur)?);
-        }
+        let desc = data_description.output()?;
         if options.debug_print_descriptors {
-            println!("Descriptors {:#?}", desc);
+            println!("Descriptors {:#?}", desc.descriptors());
         }
-        let codec = build_codec(&data_description.output_typedesc_id, &desc)?;
+        let codec = desc.build_codec()?;
         if options.debug_print_codecs {
             println!("Codec {:#?}", codec);
         }
@@ -435,8 +429,10 @@ impl<'a> Client<'a> {
                 }
             }
         };
-
-        // TODO(tailhook) check descriptors
+        let desc = data_description.output()?;
+        let root_pos = desc.root_pos()
+            .ok_or_else(|| anyhow::anyhow!("no result expected"))?;
+        R::check_descriptor(&desc.as_queryable_context(), root_pos)?;
 
         let mut arguments = BytesMut::with_capacity(8);
         // empty tuple

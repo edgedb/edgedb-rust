@@ -165,7 +165,7 @@ struct Enum {
 }
 
 struct CodecBuilder<'a> {
-    descriptors: Vec<&'a Descriptor>,
+    descriptors: &'a [Descriptor],
 }
 
 impl Deref for ObjectShape {
@@ -221,27 +221,15 @@ impl<'a> CodecBuilder<'a> {
     }
 }
 
-pub fn build_codec(root: &Uuid, descriptors: &[Descriptor])
+pub fn build_codec(root_pos: Option<TypePos>,
+    descriptors: &[Descriptor])
     -> Result<Arc<dyn Codec>, CodecError>
 {
-    let dec = CodecBuilder {
-        descriptors: descriptors.iter().filter(|x| match x {
-            Descriptor::TypeAnnotation(..) => false,
-            _ => true,
-        }).collect(),
-    };
-    if root == &Uuid::from_u128(0) {
-        return Ok(Arc::new(Nothing { }));
+    let dec = CodecBuilder { descriptors };
+    match root_pos {
+        Some(pos) => dec.build(pos),
+        None => Ok(Arc::new(Nothing {})),
     }
-    for (idx, desc) in descriptors.iter().enumerate() {
-        if desc.id() == root {
-            return dec.build(TypePos(
-                idx.try_into().ok()
-                .context(errors::TooManyDescriptors { index: idx })?
-            ));
-        }
-    }
-    errors::UuidNotFound { uuid: root.clone() }.fail()?
 }
 
 

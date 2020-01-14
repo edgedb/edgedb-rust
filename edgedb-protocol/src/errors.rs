@@ -50,6 +50,10 @@ pub enum DecodeError {
     InvalidJsonFormat { backtrace: Backtrace },
     #[snafu(display("enum value returned is not in type descriptor"))]
     ExtraEnumValue { backtrace: Backtrace },
+    #[snafu(display("too may descriptors ({})", index))]
+    TooManyDescriptors { backtrace: Backtrace, index: usize },
+    #[snafu(display("uuid {} not found", uuid))]
+    UuidNotFound { backtrace: Backtrace, uuid: uuid::Uuid },
 }
 
 #[derive(Snafu, Debug)]
@@ -102,12 +106,8 @@ pub enum EncodeError {
 pub enum CodecError {
     #[snafu(display("type position {} is absent", position))]
     UnexpectedTypePos { backtrace: Backtrace, position: u16 },
-    #[snafu(display("uuid {} not found", uuid))]
-    UuidNotFound { backtrace: Backtrace, uuid: uuid::Uuid },
     #[snafu(display("base scalar with uuid {} not found", uuid))]
     UndefinedBaseScalar { backtrace: Backtrace, uuid: uuid::Uuid },
-    #[snafu(display("too may descriptors ({})", index))]
-    TooManyDescriptors { backtrace: Backtrace, index: usize },
 }
 
 pub fn invalid_value(codec: &'static str, value: &Value) -> EncodeError

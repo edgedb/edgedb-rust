@@ -40,6 +40,9 @@ pub trait Queryable: Sized {
 }
 
 impl DescriptorContext<'_> {
+    pub(crate) fn new(descriptors: &[Descriptor]) -> DescriptorContext {
+        DescriptorContext { descriptors }
+    }
     pub fn get(&self, type_pos: TypePos)
         -> Result<&Descriptor, DescriptorMismatch>
     {

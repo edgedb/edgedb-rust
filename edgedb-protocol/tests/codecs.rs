@@ -45,8 +45,7 @@ fn decode(codec: &Arc<dyn Codec>, data: &[u8]) -> Result<Value, Box<dyn Error>>
 
 #[test]
 fn int16() -> Result<(), Box<dyn Error>> {
-    let codec = build_codec(
-        &"00000000-0000-0000-0000-000000000103".parse()?,
+    let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
                 id: "00000000-0000-0000-0000-000000000103".parse()?,
@@ -64,8 +63,7 @@ fn int16() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn int32() -> Result<(), Box<dyn Error>> {
-    let codec = build_codec(
-        &"00000000-0000-0000-0000-000000000104".parse()?,
+    let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
                 id: "00000000-0000-0000-0000-000000000104".parse()?,
@@ -82,8 +80,7 @@ fn int32() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn int64() -> Result<(), Box<dyn Error>> {
-    let codec = build_codec(
-        &"00000000-0000-0000-0000-000000000105".parse()?,
+    let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
                 id: "00000000-0000-0000-0000-000000000105".parse()?,
@@ -103,8 +100,7 @@ fn int64() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn float32() -> Result<(), Box<dyn Error>> {
-    let codec = build_codec(
-        &"00000000-0000-0000-0000-000000000106".parse()?,
+    let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
                 id: "00000000-0000-0000-0000-000000000106".parse()?,
@@ -143,8 +139,7 @@ fn float32() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn float64() -> Result<(), Box<dyn Error>> {
-    let codec = build_codec(
-        &"00000000-0000-0000-0000-000000000107".parse()?,
+    let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
                 id: "00000000-0000-0000-0000-000000000107".parse()?,
@@ -183,8 +178,7 @@ fn float64() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn str() -> Result<(), Box<dyn Error>> {
-    let codec = build_codec(
-        &"00000000-0000-0000-0000-000000000101".parse()?,
+    let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
                 id: "00000000-0000-0000-0000-000000000101".parse()?,
@@ -200,8 +194,7 @@ fn str() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn bytes() -> Result<(), Box<dyn Error>> {
-    let codec = build_codec(
-        &"00000000-0000-0000-0000-000000000102".parse()?,
+    let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
                 id: "00000000-0000-0000-0000-000000000102".parse()?,
@@ -217,8 +210,7 @@ fn bytes() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn uuid() -> Result<(), Box<dyn Error>> {
-    let codec = build_codec(
-        &"00000000-0000-0000-0000-000000000100".parse()?,
+    let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
                 id: "00000000-0000-0000-0000-000000000100".parse()?,
@@ -232,8 +224,7 @@ fn uuid() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn duration() -> Result<(), Box<dyn Error>> {
-    let codec = build_codec(
-        &"00000000-0000-0000-0000-00000000010e".parse()?,
+    let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
                 id: "00000000-0000-0000-0000-00000000010e".parse()?,
@@ -259,10 +250,7 @@ fn duration() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn null_codec() -> Result<(), Box<dyn Error>> {
-    let codec = build_codec(
-        &"00000000-0000-0000-0000-000000000000".parse()?,
-        &[]
-    )?;
+    let codec = build_codec(None, &[])?;
     encoding_eq!(&codec, b"", Value::Nothing);
     Ok(())
 }
@@ -286,8 +274,7 @@ fn object_codec() -> Result<(), Box<dyn Error>> {
         },
     ];
     let shape = elements.as_slice().into();
-    let codec = build_codec(
-        &"5d5ebe41-eac8-eab7-a24e-cc3a8cd2766c".parse()?,
+    let codec = build_codec(Some(TypePos(1)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
                 id: "00000000-0000-0000-0000-000000000100".parse()?,
@@ -370,8 +357,7 @@ fn set_codec() -> Result<(), Box<dyn Error>> {
     ];
     let inner_shape = ObjectShape::from(&inner_elements[..]);
     let outer_shape = ObjectShape::from(&outer_elements[..]);
-    let codec = build_codec(
-        &"9740ff04-324e-08a4-4ac7-2192d72c6967".parse()?,
+    let codec = build_codec(Some(TypePos(4)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
                 id: "00000000-0000-0000-0000-000000000100".parse()?,
@@ -455,8 +441,7 @@ fn bigint() -> Result<(), Box<dyn Error>> {
     use std::convert::TryInto;
     use std::str::FromStr;
 
-    let codec = build_codec(
-        &"00000000-0000-0000-0000-000000000110".parse()?,
+    let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(
                 BaseScalarTypeDescriptor {
@@ -485,8 +470,7 @@ fn decimal() -> Result<(), Box<dyn Error>> {
     use std::convert::TryInto;
     use std::str::FromStr;
 
-    let codec = build_codec(
-        &"00000000-0000-0000-0000-000000000108".parse()?,
+    let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(
                 BaseScalarTypeDescriptor {
@@ -505,8 +489,7 @@ fn decimal() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn bool() -> Result<(), Box<dyn Error>> {
-    let codec = build_codec(
-        &"00000000-0000-0000-0000-000000000109".parse()?,
+    let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(
                 BaseScalarTypeDescriptor {
@@ -523,8 +506,7 @@ fn bool() -> Result<(), Box<dyn Error>> {
 #[test]
 fn datetime() -> Result<(), Box<dyn Error>> {
     use std::time::Duration;
-    let codec = build_codec(
-        &"00000000-0000-0000-0000-00000000010a".parse()?,
+    let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
                 id: "00000000-0000-0000-0000-00000000010a".parse()?,
@@ -540,8 +522,7 @@ fn datetime() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn local_datetime() -> Result<(), Box<dyn Error>> {
-    let codec = build_codec(
-        &"00000000-0000-0000-0000-00000000010b".parse()?,
+    let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
                 id: "00000000-0000-0000-0000-00000000010b".parse()?,
@@ -556,8 +537,7 @@ fn local_datetime() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn local_date() -> Result<(), Box<dyn Error>> {
-    let codec = build_codec(
-        &"00000000-0000-0000-0000-00000000010c".parse()?,
+    let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
                 id: "00000000-0000-0000-0000-00000000010c".parse()?,
@@ -572,8 +552,7 @@ fn local_date() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn local_time() -> Result<(), Box<dyn Error>> {
-    let codec = build_codec(
-        &"00000000-0000-0000-0000-00000000010d".parse()?,
+    let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
                 id: "00000000-0000-0000-0000-00000000010d".parse()?,
@@ -588,8 +567,7 @@ fn local_time() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn json() -> Result<(), Box<dyn Error>> {
-    let codec = build_codec(
-        &"00000000-0000-0000-0000-00000000010f".parse()?,
+    let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
                 id: "00000000-0000-0000-0000-00000000010f".parse()?,
@@ -604,8 +582,7 @@ fn json() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn custom_scalar() -> Result<(), Box<dyn Error>> {
-    let codec = build_codec(
-        &"234dc787-2646-11ea-bebd-010d530c06ca".parse()?,
+    let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(
                 BaseScalarTypeDescriptor {
@@ -628,8 +605,7 @@ fn custom_scalar() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn tuple() -> Result<(), Box<dyn Error>> {
-    let codec = build_codec(
-        &"6c87a50a-fce2-dcae-6872-8c4c9c4d1e7c".parse()?,
+    let codec = build_codec(Some(TypePos(2)),
         &[
             Descriptor::BaseScalar(
                 BaseScalarTypeDescriptor {
@@ -673,8 +649,7 @@ fn named_tuple() -> Result<(), Box<dyn Error>> {
         },
     ];
     let shape = elements.as_slice().into();
-    let codec = build_codec(
-        &"101385c1-d6d5-ec67-eec4-b2b88be8a197".parse()?,
+    let codec = build_codec(Some(TypePos(2)),
         &[
             Descriptor::BaseScalar(
                 BaseScalarTypeDescriptor {
@@ -710,8 +685,7 @@ fn named_tuple() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn array() -> Result<(), Box<dyn Error>> {
-    let codec = build_codec(
-        &"b0105467-a177-635f-e207-0a21867f9be0".parse()?,
+    let codec = build_codec(Some(TypePos(1)),
         &[
             Descriptor::BaseScalar(
                 BaseScalarTypeDescriptor {
@@ -745,8 +719,7 @@ fn array() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn enums() -> Result<(), Box<dyn Error>> {
-    let codec = build_codec(
-        &"ac5dc6a4-2656-11ea-aa6d-233f91e80ff6".parse()?,
+    let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::Enumeration(
                 EnumerationTypeDescriptor {

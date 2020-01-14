@@ -1,12 +1,15 @@
 use std::io::Cursor;
+use std::sync::Arc;
 
 use bytes::{Bytes, Buf};
 use uuid::Uuid;
 use snafu::ensure;
 
 use crate::encoding::{Decode};
-use crate::errors::{self, DecodeError};
+use crate::errors::{self, DecodeError, CodecError};
 use crate::errors::{InvalidTypeDescriptor};
+use crate::codec::{Codec, build_codec};
+use crate::queryable;
 
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -23,6 +26,13 @@ pub enum Descriptor {
     Array(ArrayTypeDescriptor),
     Enumeration(EnumerationTypeDescriptor),
     TypeAnnotation(TypeAnnotationDescriptor),
+}
+
+pub struct OutputTypedesc {
+    pub(crate) array: Vec<Descriptor>,
+    #[allow(dead_code)] // TODO
+    pub(crate) root_id: Uuid,
+    pub(crate) root_pos: Option<TypePos>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,6 +103,21 @@ pub struct TypeAnnotationDescriptor {
     pub annotated_type: u8,
     pub id: Uuid,
     pub annotation: String,
+}
+
+impl OutputTypedesc {
+    pub fn as_queryable_context(&self) -> queryable::DescriptorContext {
+        queryable::DescriptorContext::new(self.descriptors())
+    }
+    pub fn descriptors(&self) -> &[Descriptor] {
+        &self.array
+    }
+    pub fn build_codec(&self) -> Result<Arc<dyn Codec>, CodecError> {
+        build_codec(self.root_pos(), self.descriptors())
+    }
+    pub fn root_pos(&self) -> Option<TypePos> {
+        self.root_pos
+    }
 }
 
 impl Descriptor {

@@ -10,6 +10,7 @@ use snafu::{OptionExt, ensure};
 
 use crate::errors::{self, EncodeError, DecodeError};
 use crate::encoding::{Headers, Decode, Encode};
+use crate::descriptors::{OutputTypedesc, Descriptor, TypePos};
 pub use crate::common::Cardinality;
 
 
@@ -151,6 +152,30 @@ fn encode<T: Encode>(buf: &mut BytesMut, code: u8, msg: &T)
         .context(errors::MessageTooLong)?;
     buf[base..base+4].copy_from_slice(&size.to_be_bytes()[..]);
     Ok(())
+}
+
+impl CommandDataDescription {
+    pub fn output(&self) -> Result<OutputTypedesc, DecodeError> {
+        let mut cur = Cursor::new(self.output_typedesc.clone());
+        let mut descriptors = Vec::new();
+        while cur.bytes() != b"" {
+            match Descriptor::decode(&mut cur)? {
+                Descriptor::TypeAnnotation(_) => {}
+                item => descriptors.push(item),
+            }
+        }
+        let root_id = self.output_typedesc_id.clone();
+        let root_pos = if root_id == Uuid::from_u128(0) {
+            None
+        } else {
+            let idx = descriptors.iter().position(|x| *x.id() == root_id)
+                .context(errors::UuidNotFound { uuid: root_id })?;
+            let pos = idx.try_into().ok()
+                .context(errors::TooManyDescriptors { index: idx })?;
+            Some(TypePos(pos))
+        };
+        Ok(OutputTypedesc { array: descriptors, root_id, root_pos })
+    }
 }
 
 impl ServerMessage {
