@@ -4,6 +4,9 @@ use env_logger;
 
 mod options;
 mod listen;
+mod reader;
+mod writer;
+mod connection;
 
 use options::Options;
 

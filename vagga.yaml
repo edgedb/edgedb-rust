@@ -59,7 +59,7 @@ commands:
   server: !Command
     description: Run edgedb server
     container: ubuntu
-    run: [cargo, run, --bin, edgedb-server, '--']
+    run: [cargo, run, --bin, edgedb-server, '--', '--data-dir', './tmp/db']
 
   py: !Command
     description: Build the python library and run python interpreter

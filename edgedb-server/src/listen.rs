@@ -10,6 +10,7 @@ use anyhow;
 use async_listen::{ListenExt, ByteStream, backpressure, error_hint};
 
 use crate::options::Options;
+use crate::connection::connection_loop;
 
 fn spawn<F>(f: F)
     where F: Future<Output=Result<(), ()>> + Send + 'static,
@@ -91,11 +92,6 @@ pub async fn accept_loop(options: Options) -> Result<(), anyhow::Error> {
     while let Some(stream) = incoming.next().await {
         spawn(connection_loop(stream));
     }
-    Ok(())
-}
-
-async fn connection_loop(stream: ByteStream) -> Result<(), ()> {
-    task::sleep(Duration::from_secs(10)).await;
     Ok(())
 }
 

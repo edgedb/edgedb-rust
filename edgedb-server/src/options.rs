@@ -136,7 +136,7 @@ impl Options {
             daemon_user: t.daemon_user,
             daemon_group: t.daemon_group,
             runstate_dir: t.runstate_dir.unwrap_or_else(|| {
-                data_dir.expect("data_dir or runstate")
+                data_dir.unwrap_or("/run/edgedb".into())
             }),
             max_backend_connections: t.max_backend_connections,
             mode: if let Some(dsn) = t.postgres_dsn {
