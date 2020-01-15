@@ -170,13 +170,16 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
             statement_name: statement_name.clone(),
             command_text: String::from(inp),
         }).encode(&mut bytes)?;
-        ClientMessage::Flush.encode(&mut bytes)?;
+        ClientMessage::Sync.encode(&mut bytes)?;
         cli.stream.write_all(&bytes[..]).await?;
 
         loop {
             let msg = cli.reader.message().await?;
             match msg {
-                ServerMessage::PrepareComplete(..) => break,
+                ServerMessage::PrepareComplete(..) => {
+                    cli.reader.wait_ready().await?;
+                    break;
+                }
                 ServerMessage::ErrorResponse(err) => {
                     eprintln!("{}", err);
                     cli.reader.wait_ready().await?;
