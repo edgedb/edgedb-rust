@@ -119,3 +119,15 @@ impl<T: Stream<Error=E>, E> Formatter for Printer<T, E> {
         Ok(())
     }
 }
+
+impl<T: Stream<Error=E>, E> Printer<T, E> {
+    pub(in crate::print) fn open_brace(&mut self) -> Result<(), E> {
+        self.write("{".clear())
+    }
+    pub(in crate::print) fn comma(&mut self) -> Result<(), E> {
+        self.write(", ".clear())
+    }
+    pub(in crate::print) fn close_brace(&mut self) -> Result<(), E> {
+        self.write("}".clear())
+    }
+}

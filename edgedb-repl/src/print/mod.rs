@@ -65,14 +65,19 @@ pub async fn print_to_stdout<S, I, E>(mut rows: S)
 
         error: PhantomData::<*const io::Error>,
     };
+    prn.open_brace().context(PrintErr)?;
     while let Some(v) = rows.next().await.transpose().context(StreamErr)? {
         v.format(&mut prn).context(PrintErr)?;
+        prn.comma().context(PrintErr)?;
     }
+    prn.close_brace().context(PrintErr)?;
     Ok(())
 }
 
 #[cfg(test)]
-pub fn print_to_string(v: &Value) -> Result<String, std::convert::Infallible> {
+pub fn print_to_string<I: FormatExt>(items: &[I])
+    -> Result<String, std::convert::Infallible>
+{
     let mut out = String::new();
     let mut prn = Printer {
         colors: false,
@@ -86,6 +91,11 @@ pub fn print_to_string(v: &Value) -> Result<String, std::convert::Infallible> {
 
         error: PhantomData::<*const std::convert::Infallible>,
     };
-    v.format(&mut prn)?;
+    prn.open_brace()?;
+    for v in items {
+        v.format(&mut prn)?;
+        prn.comma()?;
+    }
+    prn.close_brace()?;
     Ok(out)
 }
