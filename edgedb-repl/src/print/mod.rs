@@ -38,6 +38,7 @@ pub(in crate::print) struct Printer<T, E> {
     // state
     buffer: String,
     stream: T,
+    comma: bool,
 
     error: PhantomData<*const E>,
 }
@@ -62,6 +63,7 @@ pub async fn print_to_stdout<S, I, E>(mut rows: S)
 
         buffer: String::with_capacity(8192),
         stream: Stdout {},
+        comma: false,
 
         error: PhantomData::<*const io::Error>,
     };
@@ -88,6 +90,7 @@ pub fn print_to_string<I: FormatExt>(items: &[I])
 
         buffer: String::with_capacity(8192),
         stream: &mut out,
+        comma: false,
 
         error: PhantomData::<*const std::convert::Infallible>,
     };
