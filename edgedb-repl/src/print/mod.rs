@@ -1,11 +1,13 @@
-use std::io;
 use std::cmp::min;
+use std::error::Error;
+use std::fmt;
+use std::io;
 use std::marker::PhantomData;
 
+use async_std::stream::{Stream, StreamExt};
 use atty;
 use term_size;
-
-use edgedb_protocol::value::Value;
+use snafu::{Snafu, ResultExt, AsErrorSource};
 
 mod format;
 mod buffer;
@@ -14,6 +16,14 @@ mod formatter;
 #[cfg(test)] mod tests;
 
 use format::FormatExt;
+
+#[derive(Snafu, Debug)]
+pub enum PrintError<S: AsErrorSource + Error, P: AsErrorSource + Error> {
+    #[snafu(display("error fetching element"))]
+    StreamErr { source: S },
+    #[snafu(display("error printing element"))]
+    PrintErr { source: P },
+}
 
 
 pub(in crate::print) struct Printer<T, E> {
@@ -32,9 +42,17 @@ pub(in crate::print) struct Printer<T, E> {
     error: PhantomData<*const E>,
 }
 
-pub fn print_to_stdout(v: &Value) -> Result<(), io::Error> {
+struct Stdout {}
+
+unsafe impl<T: Send, E> Send for Printer<T, E> {}
+
+pub async fn print_to_stdout<S, I, E>(mut rows: S)
+    -> Result<(), PrintError<E, io::Error>>
+    where S: Stream<Item=Result<I, E>> + Send + Unpin,
+          I: FormatExt,
+          E: fmt::Debug + Error + 'static,
+{
     let w = term_size::dimensions_stdout().map(|(w, _h)| w).unwrap_or(80);
-    let stdout = io::stdout();
     let mut prn = Printer {
         colors: atty::is(atty::Stream::Stdout),
         indent: 2,
@@ -43,11 +61,13 @@ pub fn print_to_stdout(v: &Value) -> Result<(), io::Error> {
         max_column_width: min(w, 80),
 
         buffer: String::with_capacity(8192),
-        stream: stdout.lock(),
+        stream: Stdout {},
 
         error: PhantomData::<*const io::Error>,
     };
-    v.format(&mut prn)?;
+    while let Some(v) = rows.next().await.transpose().context(StreamErr)? {
+        v.format(&mut prn).context(PrintErr)?;
+    }
     Ok(())
 }
 

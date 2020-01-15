@@ -1,6 +1,7 @@
 use std::io::{self, Write};
 use std::convert::Infallible;
 
+use super::Stdout;
 
 pub(in crate::print) trait Stream {
     type Error;
@@ -16,10 +17,10 @@ impl<'a> Stream for &'a mut String {
     }
 }
 
-impl<'a> Stream for io::StdoutLock<'a> {
+impl Stream for Stdout {
     type Error = io::Error;
     fn write(&mut self, data: &str) -> Result<(), io::Error> {
-        self.write_all(data.as_bytes())?;
+        io::stdout().lock().write_all(data.as_bytes())?;
         Ok(())
     }
 }

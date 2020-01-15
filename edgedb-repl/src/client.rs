@@ -238,29 +238,7 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
         ClientMessage::Sync.encode(&mut bytes)?;
         cli.stream.write_all(&bytes[..]).await?;
 
-        loop {
-            let msg = cli.reader.message().await?;
-            match msg {
-                ServerMessage::Data(data) => {
-                    if options.debug_print_data_frames {
-                        println!("Data {:?}", data);
-                    }
-                    for chunk in data.data {
-                        let mut cur = io::Cursor::new(chunk);
-                        let value = codec.decode_value(&mut cur)?;
-                        print_to_stdout(&value)?;
-                    }
-                }
-                ServerMessage::CommandComplete(..) => {
-                    cli.reader.wait_ready().await?;
-                    break;
-                }
-                ServerMessage::ReadyForCommand(..) => break,
-                _ => {
-                    eprintln!("WARNING: unsolicited message {:?}", msg);
-                }
-            }
-        }
+        print_to_stdout(cli.reader.response(codec)).await?;
     }
 }
 

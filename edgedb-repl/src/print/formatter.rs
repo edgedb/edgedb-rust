@@ -14,7 +14,7 @@ impl<'a> ColorfulExt for &'a str {
 }
 
 
-pub(in crate::print) trait Formatter {
+pub trait Formatter {
     type Error;
     fn const_scalar<T: ToString>(&mut self, s: T) -> Result<(), Self::Error>;
     fn typed<S: ToString>(&mut self, typ: &str, s: S)

@@ -38,7 +38,7 @@ static TIME_FORMAT: &[Item<'static>] = &[
     Item::Fixed(Fixed::Nanosecond),
 ];
 
-pub(in crate::print) trait FormatExt {
+pub trait FormatExt {
     fn format<F: Formatter>(&self, prn: &mut F) -> Result<(), F::Error>;
 }
 
