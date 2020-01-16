@@ -168,6 +168,12 @@ struct CodecBuilder<'a> {
     descriptors: &'a [Descriptor],
 }
 
+impl ObjectShape {
+    pub fn new(elements: Vec<ShapeElement>) -> ObjectShape {
+        ObjectShape(Arc::new(ObjectShapeInfo { elements }))
+    }
+}
+
 impl Deref for ObjectShape {
     type Target = ObjectShapeInfo;
     fn deref(&self) -> &ObjectShapeInfo {

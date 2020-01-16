@@ -7,6 +7,8 @@ use std::convert::TryInto;
 
 use edgedb_protocol::value::Value;
 use crate::print::formatter::Formatter;
+use crate::print::buffer::Result;
+
 
 static DATETIME_FORMAT: &[Item<'static>] = &[
     Item::Numeric(Numeric::Year, Pad::Zero),
@@ -39,11 +41,11 @@ static TIME_FORMAT: &[Item<'static>] = &[
 ];
 
 pub trait FormatExt {
-    fn format<F: Formatter>(&self, prn: &mut F) -> Result<(), F::Error>;
+    fn format<F: Formatter>(&self, prn: &mut F) -> Result<F::Error>;
 }
 
 impl FormatExt for Value {
-    fn format<F: Formatter>(&self, prn: &mut F) -> Result<(), F::Error> {
+    fn format<F: Formatter>(&self, prn: &mut F) -> Result<F::Error> {
         use Value as V;
         match self {
             V::Nothing => prn.const_scalar("Nothing"),

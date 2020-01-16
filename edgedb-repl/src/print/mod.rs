@@ -1,8 +1,8 @@
 use std::cmp::min;
+use std::convert::Infallible;
 use std::error::Error;
 use std::fmt;
 use std::io;
-use std::marker::PhantomData;
 
 use async_std::stream::{Stream, StreamExt};
 use atty;
@@ -16,6 +16,10 @@ mod formatter;
 #[cfg(test)] mod tests;
 
 use format::FormatExt;
+use formatter::ColorfulExt;
+use buffer::{Exception, WrapErr, UnwrapExc, Delim};
+use stream::Output;
+
 
 #[derive(Snafu, Debug)]
 pub enum PrintError<S: AsErrorSource + Error, P: AsErrorSource + Error> {
@@ -26,7 +30,7 @@ pub enum PrintError<S: AsErrorSource + Error, P: AsErrorSource + Error> {
 }
 
 
-pub(in crate::print) struct Printer<T, E> {
+pub(in crate::print) struct Printer<T> {
 
     // config
     colors: bool,
@@ -38,14 +42,60 @@ pub(in crate::print) struct Printer<T, E> {
     // state
     buffer: String,
     stream: T,
-    comma: bool,
-
-    error: PhantomData<*const E>,
+    delim: Delim,
+    flow: bool,
+    committed: usize,
+    committed_indent: usize,
+    committed_column: usize,
+    column: usize,
+    cur_indent: usize,
 }
 
 struct Stdout {}
 
-unsafe impl<T: Send, E> Send for Printer<T, E> {}
+async fn format_rows_buf<S, I, E, O>(prn: &mut Printer<O>, rows: &mut S,
+    row_buf: &mut Vec<I>)
+    -> Result<(), Exception<PrintError<E, O::Error>>>
+    where S: Stream<Item=Result<I, E>> + Send + Unpin,
+          I: FormatExt,
+          E: fmt::Debug + Error + 'static,
+          O: Output,
+          O::Error: fmt::Debug + Error + 'static,
+{
+    let branch = prn.open_block("{".clear()).wrap_err(PrintErr)?;
+    debug_assert!(branch);
+    while let Some(v) = rows.next().await.transpose().wrap_err(StreamErr)? {
+        v.format(prn).wrap_err(PrintErr)?;
+        prn.comma().wrap_err(PrintErr)?;
+        // Buffer rows up to one visual line.
+        // After line is reached we get Exception::DisableFlow
+        row_buf.push(v);
+    }
+    prn.close_block("}".clear(), true).wrap_err(PrintErr)?;
+    Ok(())
+}
+
+async fn format_rows<S, I, E, O>(prn: &mut Printer<O>,
+    buffered_rows: Vec<I>, rows: &mut S)
+    -> Result<(), Exception<PrintError<E, O::Error>>>
+    where S: Stream<Item=Result<I, E>> + Send + Unpin,
+          I: FormatExt,
+          E: fmt::Debug + Error + 'static,
+          O: Output,
+          O::Error: fmt::Debug + Error + 'static,
+{
+    prn.reopen_block().wrap_err(PrintErr)?;
+    for v in buffered_rows {
+        v.format(prn).wrap_err(PrintErr)?;
+        prn.comma().wrap_err(PrintErr)?;
+    }
+    while let Some(v) = rows.next().await.transpose().wrap_err(StreamErr)? {
+        v.format(prn).wrap_err(PrintErr)?;
+        prn.comma().wrap_err(PrintErr)?;
+    }
+    prn.close_block("}".clear(), true).wrap_err(PrintErr)?;
+    Ok(())
+}
 
 pub async fn print_to_stdout<S, I, E>(mut rows: S)
     -> Result<(), PrintError<E, io::Error>>
@@ -63,42 +113,75 @@ pub async fn print_to_stdout<S, I, E>(mut rows: S)
 
         buffer: String::with_capacity(8192),
         stream: Stdout {},
-        comma: false,
-
-        error: PhantomData::<*const io::Error>,
+        delim: Delim::None,
+        flow: false,
+        committed: 0,
+        committed_indent: 0,
+        committed_column: 0,
+        column: 0,
+        cur_indent: 0,
     };
-    prn.open_brace().context(PrintErr)?;
-    while let Some(v) = rows.next().await.transpose().context(StreamErr)? {
-        v.format(&mut prn).context(PrintErr)?;
-        prn.comma().context(PrintErr)?;
-    }
-    prn.close_brace().context(PrintErr)?;
+    let mut row_buf = Vec::new();
+    match format_rows_buf(&mut prn, &mut rows, &mut row_buf).await {
+        Ok(()) => {},
+        Err(Exception::DisableFlow) => {
+            // debug_assert!(t.0 == 0);
+            format_rows(&mut prn, row_buf, &mut rows).await.unwrap_exc()?;
+        }
+        Err(Exception::Error(e)) => return Err(e),
+    };
+    prn.end().unwrap_exc().context(PrintErr)?;
     Ok(())
 }
 
 #[cfg(test)]
-pub fn print_to_string<I: FormatExt>(items: &[I])
-    -> Result<String, std::convert::Infallible>
+fn test_format_rows<I: FormatExt>(prn: &mut Printer<&mut String>, items: &[I],
+    reopen: bool)
+    -> buffer::Result<Infallible>
+{
+    if reopen {
+        prn.reopen_block()?;
+    } else {
+        let cp = prn.open_block("{".clear())?;
+        debug_assert!(cp);
+    }
+    for v in items {
+        v.format(prn)?;
+        prn.comma()?;
+    }
+    prn.close_block("}".clear(), true)?;
+    Ok(())
+}
+
+#[cfg(test)]
+pub fn test_format<I: FormatExt>(items: &[I], max_width: usize)
+    -> Result<String, Infallible>
 {
     let mut out = String::new();
     let mut prn = Printer {
         colors: false,
         indent: 2,
-        max_width: 60,
+        max_width: max_width,
         min_width: 40,
         max_column_width: 60,
 
         buffer: String::with_capacity(8192),
         stream: &mut out,
-        comma: false,
-
-        error: PhantomData::<*const std::convert::Infallible>,
+        delim: Delim::None,
+        flow: false,
+        committed: 0,
+        committed_indent: 0,
+        committed_column: 0,
+        column: 0,
+        cur_indent: 0,
     };
-    prn.open_brace()?;
-    for v in items {
-        v.format(&mut prn)?;
-        prn.comma()?;
-    }
-    prn.close_brace()?;
+    match test_format_rows(&mut prn, &items, false) {
+        Ok(()) => {},
+        Err(Exception::DisableFlow) => {
+            test_format_rows(&mut prn, &items, true).unwrap_exc()?;
+        }
+        Err(Exception::Error(e)) => return Err(e),
+    };
+    prn.end().unwrap_exc()?;
     Ok(out)
 }
