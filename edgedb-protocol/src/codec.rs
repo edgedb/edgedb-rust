@@ -265,7 +265,7 @@ pub fn scalar_codec(uuid: &Uuid) -> Result<Arc<dyn Codec>, CodecError> {
 impl Codec for Int32 {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 4, errors::Underflow);
-        let inner = buf.get_i32_be();
+        let inner = buf.get_i32();
         Ok(Value::Int32(inner))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
@@ -276,7 +276,7 @@ impl Codec for Int32 {
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(4);
-        buf.put_i32_be(val);
+        buf.put_i32(val);
         Ok(())
     }
 }
@@ -284,7 +284,7 @@ impl Codec for Int32 {
 impl Codec for Int16 {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 2, errors::Underflow);
-        let inner = buf.get_i16_be();
+        let inner = buf.get_i16();
         Ok(Value::Int16(inner))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
@@ -295,7 +295,7 @@ impl Codec for Int16 {
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(2);
-        buf.put_i16_be(val);
+        buf.put_i16(val);
         Ok(())
     }
 }
@@ -303,7 +303,7 @@ impl Codec for Int16 {
 impl Codec for Int64 {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 8, errors::Underflow);
-        let inner = buf.get_i64_be();
+        let inner = buf.get_i64();
         Ok(Value::Int64(inner))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
@@ -314,7 +314,7 @@ impl Codec for Int64 {
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(8);
-        buf.put_i64_be(val);
+        buf.put_i64(val);
         Ok(())
     }
 }
@@ -322,7 +322,7 @@ impl Codec for Int64 {
 impl Codec for Float32 {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 4, errors::Underflow);
-        let inner = buf.get_f32_be();
+        let inner = buf.get_f32();
         Ok(Value::Float32(inner))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
@@ -333,7 +333,7 @@ impl Codec for Float32 {
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(4);
-        buf.put_f32_be(val);
+        buf.put_f32(val);
         Ok(())
     }
 }
@@ -341,7 +341,7 @@ impl Codec for Float32 {
 impl Codec for Float64 {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 8, errors::Underflow);
-        let inner = buf.get_f64_be();
+        let inner = buf.get_f64();
         Ok(Value::Float64(inner))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
@@ -352,7 +352,7 @@ impl Codec for Float64 {
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(8);
-        buf.put_f64_be(val);
+        buf.put_f64(val);
         Ok(())
     }
 }
@@ -394,9 +394,9 @@ impl Codec for BytesCodec {
 impl Codec for Duration {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 16, errors::Underflow);
-        let micros = buf.get_i64_be();
-        let days = buf.get_u32_be();
-        let months = buf.get_u32_be();
+        let micros = buf.get_i64();
+        let days = buf.get_u32();
+        let months = buf.get_u32();
         ensure!(months == 0 && days == 0, errors::NonZeroReservedBytes);
         Ok(Value::Duration(
             value::Duration { micros }))
@@ -409,9 +409,9 @@ impl Codec for Duration {
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(16);
-        buf.put_i64_be(val.micros);
-        buf.put_u32_be(0);
-        buf.put_u32_be(0);
+        buf.put_i64(val.micros);
+        buf.put_u32(0);
+        buf.put_u32(0);
         Ok(())
     }
 }
@@ -491,16 +491,16 @@ impl NamedTuple {
 impl Codec for Object {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 4, errors::Underflow);
-        let size = buf.get_u32_be() as usize;
+        let size = buf.get_u32() as usize;
         ensure!(size == self.codecs.len(), errors::ObjectSizeMismatch);
         let mut fields = Vec::with_capacity(size);
         for codec in &self.codecs {
             ensure!(buf.remaining() >= 8, errors::Underflow);
-            let _reserved = buf.get_i32_be();
-            let len = buf.get_u32_be() as usize;
+            let _reserved = buf.get_i32();
+            let len = buf.get_u32() as usize;
             ensure!(buf.remaining() >= len, errors::Underflow);
             let off = buf.position() as usize;
-            let mut chunk = Cursor::new(buf.get_ref().slice(off, off + len));
+            let mut chunk = Cursor::new(buf.get_ref().slice(off..off + len));
             buf.advance(len);
             fields.push(codec.decode_value(&mut chunk)?);
         }
@@ -521,13 +521,13 @@ impl Codec for Object {
                 errors::ObjectShapeMismatch);
         debug_assert_eq!(self.codecs.len(), shape.0.elements.len());
         buf.reserve(4 + 8*self.codecs.len());
-        buf.put_u32_be(self.codecs.len().try_into()
+        buf.put_u32(self.codecs.len().try_into()
                     .ok().context(errors::TooManyElements)?);
         for (codec, field) in self.codecs.iter().zip(fields) {
             buf.reserve(8);
-            buf.put_u32_be(0);
+            buf.put_u32(0);
             let pos = buf.len();
-            buf.put_u32_be(0);  // replaced after serializing a value
+            buf.put_u32(0);  // replaced after serializing a value
             codec.encode(buf, field)?;
             let len = buf.len()-pos-4;
             buf[pos..pos+4].copy_from_slice(&u32::try_from(len)
@@ -602,25 +602,25 @@ impl SetCodec {
 impl Codec for SetCodec {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 12, errors::Underflow);
-        let ndims = buf.get_u32_be();
-        let _reserved0 = buf.get_u32_be();
-        let _reserved1 = buf.get_u32_be();
+        let ndims = buf.get_u32();
+        let _reserved0 = buf.get_u32();
+        let _reserved1 = buf.get_u32();
         if ndims == 0 {
             return Ok(Value::Set(Vec::new()));
         }
 
         ensure!(ndims == 1, errors::InvalidSetShape);
         ensure!(buf.remaining() >= 8, errors::Underflow);
-        let size = buf.get_u32_be() as usize;
-        let lower = buf.get_u32_be();
+        let size = buf.get_u32() as usize;
+        let lower = buf.get_u32();
         ensure!(lower == 1, errors::InvalidSetShape);
         let mut items = Vec::with_capacity(size);
         for _ in 0..size {
             ensure!(buf.remaining() >= 4, errors::Underflow);
-            let len = buf.get_u32_be() as usize;
+            let len = buf.get_u32() as usize;
             ensure!(buf.remaining() >= len, errors::Underflow);
             let off = buf.position() as usize;
-            let mut chunk = Cursor::new(buf.get_ref().slice(off, off + len));
+            let mut chunk = Cursor::new(buf.get_ref().slice(off..off + len));
             buf.advance(len);
             items.push(self.element.decode_value(&mut chunk)?);
         }
@@ -635,22 +635,22 @@ impl Codec for SetCodec {
         };
         if items.is_empty() {
             buf.reserve(12);
-            buf.put_u32_be(0);  // ndims
-            buf.put_u32_be(0);  // reserved0
-            buf.put_u32_be(0);  // reserved1
+            buf.put_u32(0);  // ndims
+            buf.put_u32(0);  // reserved0
+            buf.put_u32(0);  // reserved1
             return Ok(());
         }
         buf.reserve(20);
-        buf.put_u32_be(1);  // ndims
-        buf.put_u32_be(0);  // reserved0
-        buf.put_u32_be(0);  // reserved1
-        buf.put_u32_be(items.len().try_into().ok()
+        buf.put_u32(1);  // ndims
+        buf.put_u32(0);  // reserved0
+        buf.put_u32(0);  // reserved1
+        buf.put_u32(items.len().try_into().ok()
             .context(errors::ArrayTooLong)?);
-        buf.put_u32_be(1);  // lower
+        buf.put_u32(1);  // lower
         for item in items {
             buf.reserve(4);
             let pos = buf.len();
-            buf.put_u32_be(0);  // replaced after serializing a value
+            buf.put_u32(0);  // replaced after serializing a value
             self.element.encode(buf, item)?;
             let len = buf.len()-pos-4;
             buf[pos..pos+4].copy_from_slice(&u32::try_from(len)
@@ -664,18 +664,18 @@ impl Codec for SetCodec {
 impl Codec for Decimal {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 8, errors::Underflow);
-        let ndigits = buf.get_u16_be() as usize;
-        let weight = buf.get_i16_be();
-        let negative = match buf.get_u16_be() {
+        let ndigits = buf.get_u16() as usize;
+        let weight = buf.get_i16();
+        let negative = match buf.get_u16() {
             0x0000 => false,
             0x4000 => true,
             _ => errors::BadSign.fail()?,
         };
-        let decimal_digits = buf.get_u16_be();
+        let decimal_digits = buf.get_u16();
         ensure!(buf.remaining() >= ndigits*2, errors::Underflow);
         let mut digits = Vec::with_capacity(ndigits);
         for _ in 0..ndigits {
-            digits.push(buf.get_u16_be());
+            digits.push(buf.get_u16());
         }
         Ok(Value::Decimal(value::Decimal {
             negative, weight, decimal_digits, digits,
@@ -689,13 +689,13 @@ impl Codec for Decimal {
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(8 + val.digits.len()*2);
-        buf.put_u16_be(val.digits.len().try_into().ok()
+        buf.put_u16(val.digits.len().try_into().ok()
                 .context(errors::BigIntTooLong)?);
-        buf.put_i16_be(val.weight);
-        buf.put_u16_be(if val.negative { 0x4000 } else { 0x0000 });
-        buf.put_u16_be(val.decimal_digits);
+        buf.put_i16(val.weight);
+        buf.put_u16(if val.negative { 0x4000 } else { 0x0000 });
+        buf.put_u16(val.decimal_digits);
         for &dig in &val.digits {
-            buf.put_u16_be(dig);
+            buf.put_u16(dig);
         }
         Ok(())
     }
@@ -704,19 +704,19 @@ impl Codec for Decimal {
 impl Codec for BigInt {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 8, errors::Underflow);
-        let ndigits = buf.get_u16_be() as usize;
-        let weight = buf.get_i16_be();
-        let negative = match buf.get_u16_be() {
+        let ndigits = buf.get_u16() as usize;
+        let weight = buf.get_i16();
+        let negative = match buf.get_u16() {
             0x0000 => false,
             0x4000 => true,
             _ => errors::BadSign.fail()?,
         };
-        let decimal_digits = buf.get_u16_be();
+        let decimal_digits = buf.get_u16();
         ensure!(decimal_digits == 0, errors::NonZeroReservedBytes);
         let mut digits = Vec::with_capacity(ndigits);
         ensure!(buf.remaining() >= ndigits*2, errors::Underflow);
         for _ in 0..ndigits {
-            digits.push(buf.get_u16_be());
+            digits.push(buf.get_u16());
         }
         Ok(Value::BigInt(value::BigInt {
             negative, weight, digits,
@@ -730,13 +730,13 @@ impl Codec for BigInt {
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(8 + val.digits.len()*2);
-        buf.put_u16_be(val.digits.len().try_into().ok()
+        buf.put_u16(val.digits.len().try_into().ok()
                 .context(errors::BigIntTooLong)?);
-        buf.put_i16_be(val.weight);
-        buf.put_u16_be(if val.negative { 0x4000 } else { 0x0000 });
-        buf.put_u16_be(0);
+        buf.put_i16(val.weight);
+        buf.put_u16(if val.negative { 0x4000 } else { 0x0000 });
+        buf.put_u16(0);
         for &dig in &val.digits {
-            buf.put_u16_be(dig);
+            buf.put_u16(dig);
         }
         Ok(())
     }
@@ -745,7 +745,7 @@ impl Codec for BigInt {
 impl Codec for Bool {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 1, errors::Underflow);
-        let res = match buf.get_u64_be() {
+        let res = match buf.get_u64() {
             0x00 => false,
             0x01 => true,
             _ => errors::InvalidBool.fail()?,
@@ -760,7 +760,7 @@ impl Codec for Bool {
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(1);
-        buf.put_u64_be(match val {
+        buf.put_u64(match val {
             true => 1,
             false => 0,
         });
@@ -773,7 +773,7 @@ impl Codec for Datetime {
         use std::time::{Duration};
 
         ensure!(buf.remaining() >= 8, errors::Underflow);
-        let micros = buf.get_i64_be();
+        let micros = buf.get_i64();
         let postgres_epoch: SystemTime = UNIX_EPOCH +
             std::time::Duration::from_secs(946684800);
         let val = if micros > 0 {
@@ -794,7 +794,7 @@ impl Codec for Datetime {
         let postgres_epoch: SystemTime = UNIX_EPOCH +
             std::time::Duration::from_secs(946684800);
         if *val >= postgres_epoch {
-            buf.put_i64_be(val.duration_since(postgres_epoch)
+            buf.put_i64(val.duration_since(postgres_epoch)
                 .ok().context(errors::DatetimeRange)?
                 .as_micros()
                 .try_into()
@@ -805,7 +805,7 @@ impl Codec for Datetime {
                 .as_micros()
                 .try_into()
                 .ok().context(errors::DatetimeRange)?;
-            buf.put_i64_be(-micros);
+            buf.put_i64(-micros);
         }
         Ok(())
     }
@@ -814,7 +814,7 @@ impl Codec for Datetime {
 impl Codec for LocalDatetime {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 8, errors::Underflow);
-        let micros = buf.get_i64_be();
+        let micros = buf.get_i64();
         Ok(Value::LocalDatetime(
             value::LocalDatetime { micros }))
     }
@@ -826,7 +826,7 @@ impl Codec for LocalDatetime {
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(8);
-        buf.put_i64_be(val.micros);
+        buf.put_i64(val.micros);
         Ok(())
     }
 }
@@ -834,7 +834,7 @@ impl Codec for LocalDatetime {
 impl Codec for LocalDate {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 4, errors::Underflow);
-        let days = buf.get_i32_be();
+        let days = buf.get_i32();
         Ok(Value::LocalDate(value::LocalDate { days }))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
@@ -845,7 +845,7 @@ impl Codec for LocalDate {
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(4);
-        buf.put_i32_be(val.days);
+        buf.put_i32(val.days);
         Ok(())
     }
 }
@@ -853,7 +853,7 @@ impl Codec for LocalDate {
 impl Codec for LocalTime {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 8, errors::Underflow);
-        let micros = buf.get_i64_be();
+        let micros = buf.get_i64();
         ensure!(micros >= 0 && micros < 86400_000_000, errors::InvalidDate);
         Ok(Value::LocalTime(value::LocalTime { micros }))
     }
@@ -865,7 +865,7 @@ impl Codec for LocalTime {
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(8);
-        buf.put_i64_be(val.micros);
+        buf.put_i64(val.micros);
         Ok(())
     }
 }
@@ -909,16 +909,16 @@ impl Codec for Scalar {
 impl Codec for Tuple {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 4, errors::Underflow);
-        let size = buf.get_u32_be() as usize;
+        let size = buf.get_u32() as usize;
         ensure!(size == self.elements.len(), errors::TupleSizeMismatch);
         let mut items = Vec::with_capacity(size);
         for codec in &self.elements {
             ensure!(buf.remaining() >= 8, errors::Underflow);
-            let _reserved = buf.get_i32_be();
-            let len = buf.get_u32_be() as usize;
+            let _reserved = buf.get_i32();
+            let len = buf.get_u32() as usize;
             ensure!(buf.remaining() >= len, errors::Underflow);
             let off = buf.position() as usize;
-            let mut chunk = Cursor::new(buf.get_ref().slice(off, off + len));
+            let mut chunk = Cursor::new(buf.get_ref().slice(off..off + len));
             buf.advance(len);
             items.push(codec.decode_value(&mut chunk)?);
         }
@@ -934,13 +934,13 @@ impl Codec for Tuple {
         ensure!(self.elements.len() == items.len(),
             errors::TupleShapeMismatch);
         buf.reserve(4 + 8*self.elements.len());
-        buf.put_u32_be(self.elements.len().try_into()
+        buf.put_u32(self.elements.len().try_into()
                     .ok().context(errors::TooManyElements)?);
         for (codec, item) in self.elements.iter().zip(items) {
             buf.reserve(8);
-            buf.put_u32_be(0);
+            buf.put_u32(0);
             let pos = buf.len();
-            buf.put_u32_be(0);  // replaced after serializing a value
+            buf.put_u32(0);  // replaced after serializing a value
             codec.encode(buf, item)?;
             let len = buf.len()-pos-4;
             buf[pos..pos+4].copy_from_slice(&u32::try_from(len)
@@ -954,16 +954,16 @@ impl Codec for Tuple {
 impl Codec for NamedTuple {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 4, errors::Underflow);
-        let size = buf.get_u32_be() as usize;
+        let size = buf.get_u32() as usize;
         ensure!(size == self.codecs.len(), errors::TupleSizeMismatch);
         let mut fields = Vec::with_capacity(size);
         for codec in &self.codecs {
             ensure!(buf.remaining() >= 8, errors::Underflow);
-            let _reserved = buf.get_i32_be();
-            let len = buf.get_u32_be() as usize;
+            let _reserved = buf.get_i32();
+            let len = buf.get_u32() as usize;
             ensure!(buf.remaining() >= len, errors::Underflow);
             let off = buf.position() as usize;
-            let mut chunk = Cursor::new(buf.get_ref().slice(off, off + len));
+            let mut chunk = Cursor::new(buf.get_ref().slice(off..off + len));
             buf.advance(len);
             fields.push(codec.decode_value(&mut chunk)?);
         }
@@ -984,13 +984,13 @@ impl Codec for NamedTuple {
                 errors::ObjectShapeMismatch);
         debug_assert_eq!(self.codecs.len(), shape.0.elements.len());
         buf.reserve(4 + 8*self.codecs.len());
-        buf.put_u32_be(self.codecs.len().try_into()
+        buf.put_u32(self.codecs.len().try_into()
                     .ok().context(errors::TooManyElements)?);
         for (codec, field) in self.codecs.iter().zip(fields) {
             buf.reserve(8);
-            buf.put_u32_be(0);
+            buf.put_u32(0);
             let pos = buf.len();
-            buf.put_u32_be(0);  // replaced after serializing a value
+            buf.put_u32(0);  // replaced after serializing a value
             codec.encode(buf, field)?;
             let len = buf.len()-pos-4;
             buf[pos..pos+4].copy_from_slice(&u32::try_from(len)
@@ -1004,24 +1004,24 @@ impl Codec for NamedTuple {
 impl Codec for Array {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 12, errors::Underflow);
-        let ndims = buf.get_u32_be();
-        let _reserved0 = buf.get_u32_be();
-        let _reserved1 = buf.get_u32_be();
+        let ndims = buf.get_u32();
+        let _reserved0 = buf.get_u32();
+        let _reserved1 = buf.get_u32();
         if ndims == 0 {
             return Ok(Value::Array(Vec::new()));
         }
         ensure!(ndims == 1, errors::InvalidArrayShape);
         ensure!(buf.remaining() >= 8, errors::Underflow);
-        let size = buf.get_u32_be() as usize;
-        let lower = buf.get_u32_be();
+        let size = buf.get_u32() as usize;
+        let lower = buf.get_u32();
         ensure!(lower == 1, errors::InvalidArrayShape);
         let mut items = Vec::with_capacity(size);
         for _ in 0..size {
             ensure!(buf.remaining() >= 4, errors::Underflow);
-            let len = buf.get_u32_be() as usize;
+            let len = buf.get_u32() as usize;
             ensure!(buf.remaining() >= len, errors::Underflow);
             let off = buf.position() as usize;
-            let mut chunk = Cursor::new(buf.get_ref().slice(off, off + len));
+            let mut chunk = Cursor::new(buf.get_ref().slice(off..off + len));
             buf.advance(len);
             items.push(self.element.decode_value(&mut chunk)?);
         }
@@ -1036,22 +1036,22 @@ impl Codec for Array {
         };
         if items.is_empty() {
             buf.reserve(12);
-            buf.put_u32_be(0);  // ndims
-            buf.put_u32_be(0);  // reserved0
-            buf.put_u32_be(0);  // reserved1
+            buf.put_u32(0);  // ndims
+            buf.put_u32(0);  // reserved0
+            buf.put_u32(0);  // reserved1
             return Ok(());
         }
         buf.reserve(20);
-        buf.put_u32_be(1);  // ndims
-        buf.put_u32_be(0);  // reserved0
-        buf.put_u32_be(0);  // reserved1
-        buf.put_u32_be(items.len().try_into().ok()
+        buf.put_u32(1);  // ndims
+        buf.put_u32(0);  // reserved0
+        buf.put_u32(0);  // reserved1
+        buf.put_u32(items.len().try_into().ok()
             .context(errors::ArrayTooLong)?);
-        buf.put_u32_be(1);  // lower
+        buf.put_u32(1);  // lower
         for item in items {
             buf.reserve(4);
             let pos = buf.len();
-            buf.put_u32_be(0);  // replaced after serializing a value
+            buf.put_u32(0);  // replaced after serializing a value
             self.element.encode(buf, item)?;
             let len = buf.len()-pos-4;
             buf[pos..pos+4].copy_from_slice(&u32::try_from(len)

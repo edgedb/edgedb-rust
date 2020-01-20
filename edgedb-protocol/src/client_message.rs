@@ -115,7 +115,7 @@ impl ClientMessage {
     /// in the buffer or if extra data present.
     pub fn decode(buf: &Bytes) -> Result<ClientMessage, DecodeError> {
         use self::ClientMessage as M;
-        let mut data = Cursor::new(buf.slice_from(5));
+        let mut data = Cursor::new(buf.slice(5..));
         match buf[0] {
             0x56 => ClientHandshake::decode(&mut data).map(M::ClientHandshake),
             0x70 => SaslInitialResponse::decode(&mut data)
@@ -149,25 +149,25 @@ impl Encode for ClientHandshake {
         -> Result<(), EncodeError>
     {
         buf.reserve(8);
-        buf.put_u16_be(self.major_ver);
-        buf.put_u16_be(self.minor_ver);
-        buf.put_u16_be(u16::try_from(self.params.len()).ok()
+        buf.put_u16(self.major_ver);
+        buf.put_u16(self.minor_ver);
+        buf.put_u16(u16::try_from(self.params.len()).ok()
             .context(errors::TooManyParams)?);
         for (k, v) in &self.params {
             k.encode(buf)?;
             v.encode(buf)?;
         }
         buf.reserve(2);
-        buf.put_u16_be(u16::try_from(self.extensions.len()).ok()
+        buf.put_u16(u16::try_from(self.extensions.len()).ok()
             .context(errors::TooManyExtensions)?);
         for (name, headers) in &self.extensions {
             name.encode(buf)?;
             buf.reserve(2);
-            buf.put_u16_be(u16::try_from(headers.len()).ok()
+            buf.put_u16(u16::try_from(headers.len()).ok()
                 .context(errors::TooManyHeaders)?);
             for (&name, value) in headers {
                 buf.reserve(2);
-                buf.put_u16_be(name);
+                buf.put_u16(name);
                 value.encode(buf)?;
             }
         }
@@ -178,25 +178,25 @@ impl Encode for ClientHandshake {
 impl Decode for ClientHandshake {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 8, errors::Underflow);
-        let major_ver = buf.get_u16_be();
-        let minor_ver = buf.get_u16_be();
-        let num_params = buf.get_u16_be();
+        let major_ver = buf.get_u16();
+        let minor_ver = buf.get_u16();
+        let num_params = buf.get_u16();
         let mut params = HashMap::new();
         for _ in 0..num_params {
             params.insert(String::decode(buf)?, String::decode(buf)?);
         }
 
         ensure!(buf.remaining() >= 2, errors::Underflow);
-        let num_ext = buf.get_u16_be();
+        let num_ext = buf.get_u16();
         let mut extensions = HashMap::new();
         for _ in 0..num_ext {
             let name = String::decode(buf)?;
             ensure!(buf.remaining() >= 2, errors::Underflow);
-            let num_headers = buf.get_u16_be();
+            let num_headers = buf.get_u16();
             let mut headers = HashMap::new();
             for _ in 0..num_headers {
                 ensure!(buf.remaining() >= 4, errors::Underflow);
-                headers.insert(buf.get_u16_be(), Bytes::decode(buf)?);
+                headers.insert(buf.get_u16(), Bytes::decode(buf)?);
             }
             extensions.insert(name, headers);
         }
@@ -243,11 +243,11 @@ impl Encode for ExecuteScript {
         -> Result<(), EncodeError>
     {
         buf.reserve(6);
-        buf.put_u16_be(u16::try_from(self.headers.len()).ok()
+        buf.put_u16(u16::try_from(self.headers.len()).ok()
             .context(errors::TooManyHeaders)?);
         for (&name, value) in &self.headers {
             buf.reserve(2);
-            buf.put_u16_be(name);
+            buf.put_u16(name);
             value.encode(buf)?;
         }
         self.script_text.encode(buf)?;
@@ -258,11 +258,11 @@ impl Encode for ExecuteScript {
 impl Decode for ExecuteScript {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 6, errors::Underflow);
-        let num_headers = buf.get_u16_be();
+        let num_headers = buf.get_u16();
         let mut headers = HashMap::new();
         for _ in 0..num_headers {
             ensure!(buf.remaining() >= 4, errors::Underflow);
-            headers.insert(buf.get_u16_be(), Bytes::decode(buf)?);
+            headers.insert(buf.get_u16(), Bytes::decode(buf)?);
         }
         let script_text = String::decode(buf)?;
         Ok(ExecuteScript { script_text, headers })
@@ -274,11 +274,11 @@ impl Encode for Prepare {
         -> Result<(), EncodeError>
     {
         buf.reserve(12);
-        buf.put_u16_be(u16::try_from(self.headers.len()).ok()
+        buf.put_u16(u16::try_from(self.headers.len()).ok()
             .context(errors::TooManyHeaders)?);
         for (&name, value) in &self.headers {
             buf.reserve(2);
-            buf.put_u16_be(name);
+            buf.put_u16(name);
             value.encode(buf)?;
         }
         buf.reserve(10);
@@ -293,11 +293,11 @@ impl Encode for Prepare {
 impl Decode for Prepare {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 12, errors::Underflow);
-        let num_headers = buf.get_u16_be();
+        let num_headers = buf.get_u16();
         let mut headers = HashMap::new();
         for _ in 0..num_headers {
             ensure!(buf.remaining() >= 4, errors::Underflow);
-            headers.insert(buf.get_u16_be(), Bytes::decode(buf)?);
+            headers.insert(buf.get_u16(), Bytes::decode(buf)?);
         }
         ensure!(buf.remaining() >= 8, errors::Underflow);
         let io_format = match buf.get_u8() {
@@ -327,7 +327,7 @@ impl Encode for DescribeStatement {
         -> Result<(), EncodeError>
     {
         buf.reserve(7);
-        buf.put_u16_be(u16::try_from(self.headers.len()).ok()
+        buf.put_u16(u16::try_from(self.headers.len()).ok()
             .context(errors::TooManyHeaders)?);
         buf.reserve(5);
         buf.put_u8(self.aspect as u8);
@@ -339,11 +339,11 @@ impl Encode for DescribeStatement {
 impl Decode for DescribeStatement {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 12, errors::Underflow);
-        let num_headers = buf.get_u16_be();
+        let num_headers = buf.get_u16();
         let mut headers = HashMap::new();
         for _ in 0..num_headers {
             ensure!(buf.remaining() >= 4, errors::Underflow);
-            headers.insert(buf.get_u16_be(), Bytes::decode(buf)?);
+            headers.insert(buf.get_u16(), Bytes::decode(buf)?);
         }
         ensure!(buf.remaining() >= 8, errors::Underflow);
         let aspect = match buf.get_u8() {
@@ -364,7 +364,7 @@ impl Encode for Execute {
         -> Result<(), EncodeError>
     {
         buf.reserve(10);
-        buf.put_u16_be(u16::try_from(self.headers.len()).ok()
+        buf.put_u16(u16::try_from(self.headers.len()).ok()
             .context(errors::TooManyHeaders)?);
         self.statement_name.encode(buf)?;
         self.arguments.encode(buf)?;
@@ -375,11 +375,11 @@ impl Encode for Execute {
 impl Decode for Execute {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 12, errors::Underflow);
-        let num_headers = buf.get_u16_be();
+        let num_headers = buf.get_u16();
         let mut headers = HashMap::new();
         for _ in 0..num_headers {
             ensure!(buf.remaining() >= 4, errors::Underflow);
-            headers.insert(buf.get_u16_be(), Bytes::decode(buf)?);
+            headers.insert(buf.get_u16(), Bytes::decode(buf)?);
         }
         let statement_name = Bytes::decode(buf)?;
         let arguments = Bytes::decode(buf)?;

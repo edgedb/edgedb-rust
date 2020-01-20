@@ -20,7 +20,8 @@ macro_rules! encoding_eq {
         println!("Serialized bytes {:?}", bytes);
         let bytes = bytes.freeze();
         assert_eq!(&bytes[..], data);
-        assert_eq!(ClientMessage::decode(&data.into())?, $message);
+        assert_eq!(ClientMessage::decode(&Bytes::copy_from_slice(data))?,
+                   $message);
     }
 }
 

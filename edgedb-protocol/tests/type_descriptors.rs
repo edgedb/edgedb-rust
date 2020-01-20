@@ -12,7 +12,7 @@ mod base;
 
 
 fn decode(bytes: &[u8]) -> Result<Vec<Descriptor>, DecodeError> {
-    let bytes = Bytes::from(bytes);
+    let bytes = Bytes::copy_from_slice(bytes);
     let mut cur = Cursor::new(bytes);
     let mut result = Vec::new();
     while cur.bytes() != b"" {

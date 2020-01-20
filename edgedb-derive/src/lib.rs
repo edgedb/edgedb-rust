@@ -37,7 +37,7 @@ pub fn edgedb_queryable(input: TokenStream) -> TokenStream {
                 ::snafu::ensure!(
                     ::bytes::buf::Buf::remaining(buf) >= 4,
                     ::edgedb_protocol::errors::Underflow);
-                let size = ::bytes::buf::Buf::get_u32_be(buf) as usize;
+                let size = ::bytes::buf::Buf::get_u32(buf) as usize;
                 ::snafu::ensure!(size == #nfields + 2,
                     ::edgedb_protocol::errors::ObjectSizeMismatch);
 
@@ -46,8 +46,8 @@ pub fn edgedb_queryable(input: TokenStream) -> TokenStream {
                 ::snafu::ensure!(
                     ::bytes::buf::Buf::remaining(buf) >= 8,
                     ::edgedb_protocol::errors::Underflow);
-                let _reserved = ::bytes::buf::Buf::get_i32_be(buf);
-                let len = ::bytes::buf::Buf::get_u32_be(buf) as usize;
+                let _reserved = ::bytes::buf::Buf::get_i32(buf);
+                let len = ::bytes::buf::Buf::get_u32(buf) as usize;
                 ::snafu::ensure!(
                     ::bytes::buf::Buf::remaining(buf) >= len,
                     ::edgedb_protocol::errors::Underflow);
@@ -58,8 +58,8 @@ pub fn edgedb_queryable(input: TokenStream) -> TokenStream {
                 ::snafu::ensure!(
                     ::bytes::buf::Buf::remaining(buf) >= 8,
                     ::edgedb_protocol::errors::Underflow);
-                let _reserved = ::bytes::buf::Buf::get_i32_be(buf);
-                let len = ::bytes::buf::Buf::get_u32_be(buf) as usize;
+                let _reserved = ::bytes::buf::Buf::get_i32(buf);
+                let len = ::bytes::buf::Buf::get_u32(buf) as usize;
                 ::snafu::ensure!(
                     ::bytes::buf::Buf::remaining(buf) >= len,
                     ::edgedb_protocol::errors::Underflow);
@@ -69,14 +69,14 @@ pub fn edgedb_queryable(input: TokenStream) -> TokenStream {
                     ::snafu::ensure!(
                         ::bytes::buf::Buf::remaining(buf) >= 8,
                         ::edgedb_protocol::errors::Underflow);
-                    let _reserved = ::bytes::buf::Buf::get_i32_be(buf);
-                    let len = ::bytes::buf::Buf::get_u32_be(buf) as usize;
+                    let _reserved = ::bytes::buf::Buf::get_i32(buf);
+                    let len = ::bytes::buf::Buf::get_u32(buf) as usize;
                     ::snafu::ensure!(
                         ::bytes::buf::Buf::remaining(buf) >= len,
                         ::edgedb_protocol::errors::Underflow);
                     let off = ::std::io::Cursor::position(buf) as usize;
                     let mut chunk = ::std::io::Cursor::new(
-                        buf.get_ref().slice(off, off + len));
+                        buf.get_ref().slice(off..off + len));
                     ::bytes::buf::Buf::advance(buf, len);
                     let #fieldname =
                         ::edgedb_protocol::queryable::Queryable::decode(

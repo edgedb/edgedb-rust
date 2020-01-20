@@ -15,7 +15,7 @@ async-std = {version="1", features=[
     # we need stdin/stdout and channel
     "unstable",
 ]}
-bytes = "0.4.12"
+bytes = "0.5.3"
 rustyline = "6.0.0"
 clap = "2.33.0"
 structopt = "0.3.5"

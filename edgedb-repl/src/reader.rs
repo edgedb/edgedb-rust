@@ -3,6 +3,7 @@ use std::cmp::{min, max};
 use std::convert::TryInto;
 use std::future::{Future};
 use std::marker::PhantomData;
+use std::mem::transmute;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Poll, Context};
@@ -134,7 +135,10 @@ impl<T: AsyncRead + Unpin> Reader<T> {
 
             buf.reserve(next_read);
             unsafe {
-                match Pin::new(&mut *stream).poll_read(cx, buf.bytes_mut()) {
+                // this is save because the underlying ByteStream always
+                // initializes read bytes
+                let dest: &mut [u8] = transmute(buf.bytes_mut());
+                match Pin::new(&mut *stream).poll_read(cx, dest) {
                     Poll::Ready(Ok(0)) => {
                         return Poll::Ready(Err(ReadError::Eos));
                     }

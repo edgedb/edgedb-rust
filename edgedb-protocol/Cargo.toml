@@ -6,7 +6,7 @@ authors = ["MagicStack Inc. <hello@magic.io>"]
 edition = "2018"
 
 [dependencies]
-bytes = "0.4.12"
+bytes = "0.5.3"
 snafu = {version="0.6.0"}
 uuid = "0.8.1"
 num-bigint = {version="0.2.3", optional=true}

@@ -206,7 +206,7 @@ impl ServerMessage {
     /// in the buffer or if extra data present.
     pub fn decode(buf: &Bytes) -> Result<ServerMessage, DecodeError> {
         use self::ServerMessage as M;
-        let mut data = Cursor::new(buf.slice_from(5));
+        let mut data = Cursor::new(buf.slice(5..));
         match buf[0] {
             0x76 => ServerHandshake::decode(&mut data).map(M::ServerHandshake),
             0x45 => ErrorResponse::decode(&mut data).map(M::ErrorResponse),
@@ -232,18 +232,18 @@ impl Encode for ServerHandshake {
         -> Result<(), EncodeError>
     {
         buf.reserve(6);
-        buf.put_u16_be(self.major_ver);
-        buf.put_u16_be(self.minor_ver);
-        buf.put_u16_be(u16::try_from(self.extensions.len()).ok()
+        buf.put_u16(self.major_ver);
+        buf.put_u16(self.minor_ver);
+        buf.put_u16(u16::try_from(self.extensions.len()).ok()
             .context(errors::TooManyExtensions)?);
         for (name, headers) in &self.extensions {
             name.encode(buf)?;
             buf.reserve(2);
-            buf.put_u16_be(u16::try_from(headers.len()).ok()
+            buf.put_u16(u16::try_from(headers.len()).ok()
                 .context(errors::TooManyHeaders)?);
             for (&name, value) in headers {
                 buf.reserve(2);
-                buf.put_u16_be(name);
+                buf.put_u16(name);
                 value.encode(buf)?;
             }
         }
@@ -254,17 +254,17 @@ impl Encode for ServerHandshake {
 impl Decode for ServerHandshake {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 6, errors::Underflow);
-        let major_ver = buf.get_u16_be();
-        let minor_ver = buf.get_u16_be();
-        let num_ext = buf.get_u16_be();
+        let major_ver = buf.get_u16();
+        let minor_ver = buf.get_u16();
+        let num_ext = buf.get_u16();
         let mut extensions = HashMap::new();
         for _ in 0..num_ext {
             let name = String::decode(buf)?;
             ensure!(buf.remaining() >= 2, errors::Underflow);
-            let num_headers = buf.get_u16_be();
+            let num_headers = buf.get_u16();
             let mut headers = HashMap::new();
             for _ in 0..num_headers {
-                headers.insert(buf.get_u16_be(), Bytes::decode(buf)?);
+                headers.insert(buf.get_u16(), Bytes::decode(buf)?);
             }
             extensions.insert(name, headers);
         }
@@ -280,14 +280,14 @@ impl Encode for ErrorResponse {
     {
         buf.reserve(11);
         buf.put_u8(self.severity.to_u8());
-        buf.put_u32_be(self.code);
+        buf.put_u32(self.code);
         self.message.encode(buf)?;
         buf.reserve(2);
-        buf.put_u16_be(u16::try_from(self.attributes.len()).ok()
+        buf.put_u16(u16::try_from(self.attributes.len()).ok()
             .context(errors::TooManyHeaders)?);
         for (&name, value) in &self.attributes {
             buf.reserve(2);
-            buf.put_u16_be(name);
+            buf.put_u16(name);
             value.encode(buf)?;
         }
         Ok(())
@@ -298,14 +298,14 @@ impl Decode for ErrorResponse {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<ErrorResponse, DecodeError> {
         ensure!(buf.remaining() >= 11, errors::Underflow);
         let severity = ErrorSeverity::from_u8(buf.get_u8());
-        let code = buf.get_u32_be();
+        let code = buf.get_u32();
         let message = String::decode(buf)?;
         ensure!(buf.remaining() >= 2, errors::Underflow);
-        let num_attributes = buf.get_u16_be();
+        let num_attributes = buf.get_u16();
         let mut attributes = HashMap::new();
         for _ in 0..num_attributes {
             ensure!(buf.remaining() >= 4, errors::Underflow);
-            attributes.insert(buf.get_u16_be(), Bytes::decode(buf)?);
+            attributes.insert(buf.get_u16(), Bytes::decode(buf)?);
         }
         return Ok(ErrorResponse {
             severity, code, message, attributes,
@@ -319,14 +319,14 @@ impl Encode for LogMessage {
     {
         buf.reserve(11);
         buf.put_u8(self.severity.to_u8());
-        buf.put_u32_be(self.code);
+        buf.put_u32(self.code);
         self.text.encode(buf)?;
         buf.reserve(2);
-        buf.put_u16_be(u16::try_from(self.attributes.len()).ok()
+        buf.put_u16(u16::try_from(self.attributes.len()).ok()
             .context(errors::TooManyHeaders)?);
         for (&name, value) in &self.attributes {
             buf.reserve(2);
-            buf.put_u16_be(name);
+            buf.put_u16(name);
             value.encode(buf)?;
         }
         Ok(())
@@ -337,14 +337,14 @@ impl Decode for LogMessage {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<LogMessage, DecodeError> {
         ensure!(buf.remaining() >= 11, errors::Underflow);
         let severity = MessageSeverity::from_u8(buf.get_u8());
-        let code = buf.get_u32_be();
+        let code = buf.get_u32();
         let text = String::decode(buf)?;
         ensure!(buf.remaining() >= 2, errors::Underflow);
-        let num_attributes = buf.get_u16_be();
+        let num_attributes = buf.get_u16();
         let mut attributes = HashMap::new();
         for _ in 0..num_attributes {
             ensure!(buf.remaining() >= 4, errors::Underflow);
-            attributes.insert(buf.get_u16_be(), Bytes::decode(buf)?);
+            attributes.insert(buf.get_u16(), Bytes::decode(buf)?);
         }
         return Ok(LogMessage {
             severity, code, text, attributes,
@@ -357,22 +357,22 @@ impl Encode for Authentication {
         use Authentication as A;
         buf.reserve(1);
         match self {
-            A::Ok => buf.put_u32_be(0),
+            A::Ok => buf.put_u32(0),
             A::Sasl { methods } => {
-                buf.put_u32_be(0x0A);
+                buf.put_u32(0x0A);
                 buf.reserve(4);
-                buf.put_u32_be(methods.len().try_into()
+                buf.put_u32(methods.len().try_into()
                     .ok().context(errors::TooManyMethods)?);
                 for meth in methods {
                     meth.encode(buf)?;
                 }
             }
             A::SaslContinue { data } => {
-                buf.put_u32_be(0x0B);
+                buf.put_u32(0x0B);
                 data.encode(buf)?;
             }
             A::SaslFinal { data } => {
-                buf.put_u32_be(0x0C);
+                buf.put_u32(0x0C);
                 data.encode(buf)?;
             }
         }
@@ -383,11 +383,11 @@ impl Encode for Authentication {
 impl Decode for Authentication {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<Authentication, DecodeError> {
         ensure!(buf.remaining() >= 4, errors::Underflow);
-        match buf.get_u32_be() {
+        match buf.get_u32() {
             0x00 => Ok(Authentication::Ok),
             0x0A => {
                 ensure!(buf.remaining() >= 4, errors::Underflow);
-                let num_methods = buf.get_u32_be() as usize;
+                let num_methods = buf.get_u32() as usize;
                 let mut methods = Vec::with_capacity(num_methods);
                 for _ in 0..num_methods {
                     methods.push(String::decode(buf)?);
@@ -410,11 +410,11 @@ impl Decode for Authentication {
 impl Encode for ReadyForCommand {
     fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
         buf.reserve(3);
-        buf.put_u16_be(u16::try_from(self.headers.len()).ok()
+        buf.put_u16(u16::try_from(self.headers.len()).ok()
             .context(errors::TooManyHeaders)?);
         for (&name, value) in &self.headers {
             buf.reserve(2);
-            buf.put_u16_be(name);
+            buf.put_u16(name);
             value.encode(buf)?;
         }
         buf.reserve(1);
@@ -429,10 +429,10 @@ impl Decode for ReadyForCommand {
         use TransactionState::*;
         ensure!(buf.remaining() >= 3, errors::Underflow);
         let mut headers = HashMap::new();
-        let num_headers = buf.get_u16_be();
+        let num_headers = buf.get_u16();
         for _ in 0..num_headers {
             ensure!(buf.remaining() >= 4, errors::Underflow);
-            headers.insert(buf.get_u16_be(), Bytes::decode(buf)?);
+            headers.insert(buf.get_u16(), Bytes::decode(buf)?);
         }
         ensure!(buf.remaining() >= 1, errors::Underflow);
         let transaction_state = match buf.get_u8() {
@@ -533,11 +533,11 @@ impl Encode for CommandComplete {
         -> Result<(), EncodeError>
     {
         buf.reserve(6);
-        buf.put_u16_be(u16::try_from(self.headers.len()).ok()
+        buf.put_u16(u16::try_from(self.headers.len()).ok()
             .context(errors::TooManyHeaders)?);
         for (&name, value) in &self.headers {
             buf.reserve(2);
-            buf.put_u16_be(name);
+            buf.put_u16(name);
             value.encode(buf)?;
         }
         self.status_data.encode(buf)?;
@@ -548,11 +548,11 @@ impl Encode for CommandComplete {
 impl Decode for CommandComplete {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 6, errors::Underflow);
-        let num_headers = buf.get_u16_be();
+        let num_headers = buf.get_u16();
         let mut headers = HashMap::new();
         for _ in 0..num_headers {
             ensure!(buf.remaining() >= 4, errors::Underflow);
-            headers.insert(buf.get_u16_be(), Bytes::decode(buf)?);
+            headers.insert(buf.get_u16(), Bytes::decode(buf)?);
         }
         let status_data = Bytes::decode(buf)?;
         Ok(CommandComplete { status_data, headers })
@@ -564,11 +564,11 @@ impl Encode for PrepareComplete {
         -> Result<(), EncodeError>
     {
         buf.reserve(35);
-        buf.put_u16_be(u16::try_from(self.headers.len()).ok()
+        buf.put_u16(u16::try_from(self.headers.len()).ok()
             .context(errors::TooManyHeaders)?);
         for (&name, value) in &self.headers {
             buf.reserve(2);
-            buf.put_u16_be(name);
+            buf.put_u16(name);
             value.encode(buf)?;
         }
         buf.reserve(33);
@@ -582,11 +582,11 @@ impl Encode for PrepareComplete {
 impl Decode for PrepareComplete {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 35, errors::Underflow);
-        let num_headers = buf.get_u16_be();
+        let num_headers = buf.get_u16();
         let mut headers = HashMap::new();
         for _ in 0..num_headers {
             ensure!(buf.remaining() >= 4, errors::Underflow);
-            headers.insert(buf.get_u16_be(), Bytes::decode(buf)?);
+            headers.insert(buf.get_u16(), Bytes::decode(buf)?);
         }
         ensure!(buf.remaining() >= 33, errors::Underflow);
         let cardinality = match buf.get_u8() {
@@ -611,11 +611,11 @@ impl Encode for CommandDataDescription {
         -> Result<(), EncodeError>
     {
         buf.reserve(43);
-        buf.put_u16_be(u16::try_from(self.headers.len()).ok()
+        buf.put_u16(u16::try_from(self.headers.len()).ok()
             .context(errors::TooManyHeaders)?);
         for (&name, value) in &self.headers {
             buf.reserve(2);
-            buf.put_u16_be(name);
+            buf.put_u16(name);
             value.encode(buf)?;
         }
         buf.reserve(41);
@@ -631,11 +631,11 @@ impl Encode for CommandDataDescription {
 impl Decode for CommandDataDescription {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 43, errors::Underflow);
-        let num_headers = buf.get_u16_be();
+        let num_headers = buf.get_u16();
         let mut headers = HashMap::new();
         for _ in 0..num_headers {
             ensure!(buf.remaining() >= 4, errors::Underflow);
-            headers.insert(buf.get_u16_be(), Bytes::decode(buf)?);
+            headers.insert(buf.get_u16(), Bytes::decode(buf)?);
         }
         ensure!(buf.remaining() >= 41, errors::Underflow);
         let result_cardinality = match buf.get_u8() {
@@ -666,7 +666,7 @@ impl Encode for Data {
         -> Result<(), EncodeError>
     {
         buf.reserve(2);
-        buf.put_u16_be(u16::try_from(self.data.len()).ok()
+        buf.put_u16(u16::try_from(self.data.len()).ok()
             .context(errors::TooManyHeaders)?);
         for chunk in &self.data {
             chunk.encode(buf)?;
@@ -678,7 +678,7 @@ impl Encode for Data {
 impl Decode for Data {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 2, errors::Underflow);
-        let num_chunks = buf.get_u16_be() as usize;
+        let num_chunks = buf.get_u16() as usize;
         let mut data = Vec::with_capacity(num_chunks);
         for _ in 0..num_chunks {
             data.push(Bytes::decode(buf)?);

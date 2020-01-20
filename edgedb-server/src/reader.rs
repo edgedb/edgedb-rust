@@ -3,6 +3,7 @@ use std::convert::TryInto;
 use std::future::{Future};
 use std::task::{Poll, Context};
 use std::pin::Pin;
+use std::mem::transmute;
 
 use async_std::io::Read;
 use bytes::{BytesMut, BufMut};
@@ -63,7 +64,10 @@ impl<'a, 'b> Future for MessageFuture<'a, 'b> {
 
             buf.reserve(next_read);
             unsafe {
-                match Pin::new(&mut &**stream).poll_read(cx, buf.bytes_mut()) {
+                // this is save because the underlying ByteStream always
+                // initializes read bytes
+                let dest: &mut [u8] = transmute(buf.bytes_mut());
+                match Pin::new(&mut &**stream).poll_read(cx, dest) {
                     Poll::Ready(Ok(0)) => {
                         log::debug!("{}: connection closed by peer", name);
                         return Poll::Ready(Err(()));

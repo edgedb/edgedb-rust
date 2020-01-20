@@ -166,7 +166,7 @@ impl Decode for SetDescriptor {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 0);
         let id = Uuid::decode(buf)?;
-        let type_pos = TypePos(buf.get_u16_be());
+        let type_pos = TypePos(buf.get_u16());
         Ok(SetDescriptor { id, type_pos })
     }
 }
@@ -176,7 +176,7 @@ impl Decode for ObjectShapeDescriptor {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 1);
         let id = Uuid::decode(buf)?;
-        let element_count = buf.get_u16_be();
+        let element_count = buf.get_u16();
         let mut elements = Vec::with_capacity(element_count as usize);
         for _ in 0..element_count {
             elements.push(ShapeElement::decode(buf)?);
@@ -191,7 +191,7 @@ impl Decode for ShapeElement {
         let flags = buf.get_u8();
         let name = String::decode(buf)?;
         ensure!(buf.remaining() >= 2, errors::Underflow);
-        let type_pos = TypePos(buf.get_u16_be());
+        let type_pos = TypePos(buf.get_u16());
         Ok(ShapeElement {
             flag_implicit: flags & 0b001 != 0,
             flag_link_property: flags & 0b010 != 0,
@@ -216,7 +216,7 @@ impl Decode for ScalarTypeDescriptor {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 3);
         let id = Uuid::decode(buf)?;
-        let base_type_pos = TypePos(buf.get_u16_be());
+        let base_type_pos = TypePos(buf.get_u16());
         Ok(ScalarTypeDescriptor { id, base_type_pos })
     }
 }
@@ -226,11 +226,11 @@ impl Decode for TupleTypeDescriptor {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 4);
         let id = Uuid::decode(buf)?;
-        let el_count = buf.get_u16_be();
+        let el_count = buf.get_u16();
         ensure!(buf.remaining() >= 2*el_count as usize, errors::Underflow);
         let mut element_types = Vec::with_capacity(el_count as usize);
         for _ in 0..el_count {
-            element_types.push(TypePos(buf.get_u16_be()));
+            element_types.push(TypePos(buf.get_u16()));
         }
         Ok(TupleTypeDescriptor { id, element_types })
     }
@@ -241,7 +241,7 @@ impl Decode for NamedTupleTypeDescriptor {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 5);
         let id = Uuid::decode(buf)?;
-        let element_count = buf.get_u16_be();
+        let element_count = buf.get_u16();
         let mut elements = Vec::with_capacity(element_count as usize);
         for _ in 0..element_count {
             elements.push(TupleElement::decode(buf)?);
@@ -254,7 +254,7 @@ impl Decode for TupleElement {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
         let name = String::decode(buf)?;
         ensure!(buf.remaining() >= 2, errors::Underflow);
-        let type_pos = TypePos(buf.get_u16_be());
+        let type_pos = TypePos(buf.get_u16());
         Ok(TupleElement {
             name,
             type_pos,
@@ -267,12 +267,12 @@ impl Decode for ArrayTypeDescriptor {
         ensure!(buf.remaining() >= 21, errors::Underflow);
         assert!(buf.get_u8() == 6);
         let id = Uuid::decode(buf)?;
-        let type_pos = TypePos(buf.get_u16_be());
-        let dim_count = buf.get_u16_be();
+        let type_pos = TypePos(buf.get_u16());
+        let dim_count = buf.get_u16();
         ensure!(buf.remaining() >= 4*dim_count as usize, errors::Underflow);
         let mut dimensions = Vec::with_capacity(dim_count as usize);
         for _ in 0..dim_count {
-            dimensions.push(match buf.get_i32_be() {
+            dimensions.push(match buf.get_i32() {
                 -1 => None,
                 n if n > 0 => Some(n as u32),
                 _ => errors::InvalidArrayShape.fail()?,
@@ -287,7 +287,7 @@ impl Decode for EnumerationTypeDescriptor {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 7);
         let id = Uuid::decode(buf)?;
-        let member_count = buf.get_u16_be();
+        let member_count = buf.get_u16();
         let mut members = Vec::with_capacity(member_count as usize);
         for _ in 0..member_count {
             members.push(String::decode(buf)?);

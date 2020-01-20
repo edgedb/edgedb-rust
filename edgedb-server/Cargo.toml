@@ -11,7 +11,7 @@ edgeql-parser = {path = "../edgeql-parser"}
 snafu = {version="0.6.0", features=["backtraces"]}
 anyhow = "1.0.23"
 async-std = "1.4"
-bytes = "0.4.12"
+bytes = "0.5.3"
 clap = "2.33.0"
 structopt = "0.3.5"
 scram = "0.4.0"

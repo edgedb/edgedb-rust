@@ -36,7 +36,7 @@ macro_rules! encoding_eq {
 
 fn decode(codec: &Arc<dyn Codec>, data: &[u8]) -> Result<Value, Box<dyn Error>>
 {
-    let bytes = Bytes::from(data);
+    let bytes = Bytes::copy_from_slice(data);
     let mut cur = Cursor::new(bytes);
     let res = codec.decode(&mut cur)?;
     assert!(cur.bytes() == b"");

@@ -44,7 +44,7 @@ impl Encode for String {
         -> Result<(), EncodeError>
     {
         buf.reserve(2 + self.len());
-        buf.put_u32_be(u32::try_from(self.len()).ok()
+        buf.put_u32(u32::try_from(self.len()).ok()
             .context(errors::StringTooLong)?);
         buf.extend(self.as_bytes());
         Ok(())
@@ -56,7 +56,7 @@ impl Encode for Bytes {
         -> Result<(), EncodeError>
     {
         buf.reserve(2 + self.len());
-        buf.put_u32_be(u32::try_from(self.len()).ok()
+        buf.put_u32(u32::try_from(self.len()).ok()
             .context(errors::StringTooLong)?);
         buf.extend(&self[..]);
         Ok(())
@@ -66,7 +66,7 @@ impl Encode for Bytes {
 impl Decode for String {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 4, errors::Underflow);
-        let len = buf.get_u32_be() as usize;
+        let len = buf.get_u32() as usize;
         // TODO(tailhook) ensure size < i32::MAX
         ensure!(buf.remaining() >= len, errors::Underflow);
         let result = str::from_utf8(&buf.bytes()[..len])
@@ -80,11 +80,11 @@ impl Decode for String {
 impl Decode for Bytes {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 4, errors::Underflow);
-        let len = buf.get_u32_be() as usize;
+        let len = buf.get_u32() as usize;
         // TODO(tailhook) ensure size < i32::MAX
         ensure!(buf.remaining() >= len, errors::Underflow);
         let buf_pos = buf.position() as usize;
-        let result = buf.get_ref().slice(buf_pos, buf_pos + len);
+        let result = buf.get_ref().slice(buf_pos..buf_pos + len);
         buf.advance(len);
         Ok(result)
     }

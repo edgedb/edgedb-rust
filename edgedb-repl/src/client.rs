@@ -230,7 +230,7 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
 
         let mut arguments = BytesMut::with_capacity(8);
         // empty tuple
-        arguments.put_u32_be(0);
+        arguments.put_u32(0);
 
         bytes.truncate(0);
         ClientMessage::Execute(Execute {
@@ -271,7 +271,7 @@ impl<'a> Client<'a> {
         let (scram, first) = scram.client_first();
         ClientMessage::AuthenticationSaslInitialResponse(SaslInitialResponse {
             method: "SCRAM-SHA-256".into(),
-            data: Bytes::from(first.as_bytes()),
+            data: Bytes::copy_from_slice(first.as_bytes()),
         }).encode(&mut bytes)?;
         self.stream.write_all(&bytes[..]).await?;
         let msg = self.reader.message().await?;
@@ -294,7 +294,7 @@ impl<'a> Client<'a> {
         let (scram, data) = scram.client_final();
         bytes.clear();
         ClientMessage::AuthenticationSaslResponse(SaslResponse {
-            data: data.as_bytes().into(),
+            data: Bytes::copy_from_slice(data.as_bytes()),
         }).encode(&mut bytes)?;
         self.stream.write_all(&bytes[..]).await?;
         let msg = self.reader.message().await?;
@@ -420,7 +420,7 @@ impl<'a> Client<'a> {
 
         let mut arguments = BytesMut::with_capacity(8);
         // empty tuple
-        arguments.put_u32_be(0);
+        arguments.put_u32(0);
 
         bytes.truncate(0);
         ClientMessage::Execute(Execute {
