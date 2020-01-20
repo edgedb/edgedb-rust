@@ -4,6 +4,8 @@ use log::LevelFilter;
 use structopt::StructOpt;
 use structopt::clap::AppSettings;
 
+use crate::postgres;
+
 
 #[derive(StructOpt, Debug)]
 #[structopt(setting=AppSettings::UnifiedHelpMessage)]
@@ -13,9 +15,8 @@ pub struct TmpOptions {
     pub data_dir: Option<PathBuf>,
 
     /// DSN of a remote Postgres cluster, if using one")]
-    #[structopt(long, value_name="dsn",
-        conflicts_with="data_dir", requires="runstate_dir")]
-    pub postgres_dsn: Option<String>,
+    #[structopt(long, value_name="dsn")]
+    pub postgres_dsn: Option<postgres::Dsn>,
 
     /// Logging level. Possible values:
     /// (d)ebug, (i)nfo, (w)arn, (e)rror, (s)ilent
@@ -84,11 +85,13 @@ pub struct TmpOptions {
     max_backend_connections: usize,
 }
 
+#[derive(Debug)]
 pub enum Mode {
     DataDir(PathBuf),
-    External(String),
+    External(postgres::Dsn),
 }
 
+#[derive(Debug)]
 pub struct Options {
     pub log_level: LevelFilter,
     pub log_to: Option<PathBuf>,
