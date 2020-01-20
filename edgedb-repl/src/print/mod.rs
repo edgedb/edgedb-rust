@@ -1,8 +1,7 @@
-use std::cmp::min;
-use std::convert::Infallible;
 use std::error::Error;
 use std::fmt;
 use std::io;
+#[cfg(test)] use std::convert::Infallible;
 
 use async_std::stream::{Stream, StreamExt};
 use atty;
@@ -36,8 +35,6 @@ pub(in crate::print) struct Printer<T> {
     colors: bool,
     indent: usize,
     max_width: usize,
-    min_width: usize,
-    max_column_width: usize,
 
     // state
     buffer: String,
@@ -108,8 +105,6 @@ pub async fn print_to_stdout<S, I, E>(mut rows: S)
         colors: atty::is(atty::Stream::Stdout),
         indent: 2,
         max_width: w,
-        min_width: min(w/2, 40),
-        max_column_width: min(w, 80),
 
         buffer: String::with_capacity(8192),
         stream: Stdout {},
@@ -162,8 +157,6 @@ pub fn test_format<I: FormatExt>(items: &[I], max_width: usize)
         colors: false,
         indent: 2,
         max_width: max_width,
-        min_width: 40,
-        max_column_width: 60,
 
         buffer: String::with_capacity(8192),
         stream: &mut out,
