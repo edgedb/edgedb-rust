@@ -4,6 +4,7 @@ use twoway::find_bytes;
 /// data
 pub fn full_statement(data: &[u8]) -> Result<usize, usize> {
     let mut iter = data.iter().enumerate().peekable();
+    let mut braces_buf = Vec::with_capacity(8);
     'outer: while let Some((idx, b)) = iter.next() {
         match b {
             b'"' => {
@@ -85,7 +86,13 @@ pub fn full_statement(data: &[u8]) -> Result<usize, usize> {
                     }
                 }
             }
-            b';' => return Ok(idx),
+            b'{' => braces_buf.push(b'}'),
+            b'(' => braces_buf.push(b'('),
+            b'[' => braces_buf.push(b'['),
+            b'}' | b')' | b']'
+            if braces_buf.last() == Some(b)
+            => { braces_buf.pop(); }
+            b';' if braces_buf.len() == 0 => return Ok(idx),
             _ => continue,
         }
     }

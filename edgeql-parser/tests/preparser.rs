@@ -124,3 +124,25 @@ fn test_dollar_var() {
         full_statement(b"select $a b; $ test; $a b; $ ;"),
         Ok("select $a b".len()));
 }
+
+#[test]
+fn test_schema() {
+    assert_eq!(full_statement(br###"
+        CREATE MIGRATION movies TO {
+            module default {
+                type Movie {
+                    required property title -> str;
+                    # the year of release
+                    property year -> int64;
+                    required link director -> Person;
+                    multi link actors -> Person;
+                }
+                type Person {
+                    required property first_name -> str;
+                    required property last_name -> str;
+                }
+            }
+        };
+        "###),
+        Ok(539));
+}
