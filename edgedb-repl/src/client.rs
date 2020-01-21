@@ -4,6 +4,7 @@ use std::str;
 use std::mem::replace;
 
 use anyhow;
+use async_std::io::stdin;
 use async_std::io::prelude::WriteExt;
 use async_std::net::{TcpStream, ToSocketAddrs};
 use async_std::sync::{Sender, Receiver};
@@ -28,6 +29,7 @@ pub struct Connection {
 
 pub struct Client<'a> {
     stream: &'a TcpStream,
+    outbuf: BytesMut,
     reader: Reader<&'a TcpStream>,
 }
 
@@ -50,20 +52,21 @@ impl Connection {
     {
         let (rd, stream) = (&self.stream, &self.stream);
         let reader = Reader::new(rd);
-        let mut cli = Client { stream, reader };
-        let mut bytes = BytesMut::new();
+        let mut cli = Client {
+            stream, reader,
+            outbuf: BytesMut::with_capacity(8912),
+        };
         let mut params = HashMap::new();
         params.insert(String::from("user"), options.user.clone());
         params.insert(String::from("database"), options.database.clone());
 
-        ClientMessage::ClientHandshake(ClientHandshake {
+        cli.send_message(&ClientMessage::ClientHandshake(ClientHandshake {
             major_ver: 0,
             minor_ver: 7,
             params,
             extensions: HashMap::new(),
-        }).encode(&mut bytes)?;
+        })).await?;
 
-        cli.stream.write_all(&bytes[..]).await?;
         let mut msg = cli.reader.message().await?;
         if let ServerMessage::ServerHandshake {..} = msg {
             eprintln!("WARNING: Connection negotiantion issue {:?}", msg);
@@ -115,7 +118,6 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
 {
     let mut conn = Connection::from_options(&options).await?;
     let mut cli = conn.authenticate(&options).await?;
-    let mut bytes = BytesMut::new();
     let mut initial = String::new();
     let statement_name = Bytes::from_static(b"");
 
@@ -126,9 +128,7 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
         )).await;
         let inp = match data.recv().await {
             None | Some(prompt::Input::Eof) => {
-                bytes.truncate(0);
-                ClientMessage::Terminate.encode(&mut bytes)?;
-                cli.stream.write_all(&bytes[..]).await?;
+                cli.send_message(&ClientMessage::Terminate).await?;
                 match cli.reader.message().await {
                     Err(ReadError::Eos) => {}
                     Err(e) => {
@@ -162,16 +162,15 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
             continue;
         }
 
-        bytes.truncate(0);
-        ClientMessage::Prepare(Prepare {
+        cli.send_message(&ClientMessage::Prepare(Prepare {
             headers: HashMap::new(),
             io_format: IoFormat::Binary,
             expected_cardinality: Cardinality::Many,
             statement_name: statement_name.clone(),
             command_text: String::from(inp),
-        }).encode(&mut bytes)?;
-        ClientMessage::Sync.encode(&mut bytes)?;
-        cli.stream.write_all(&bytes[..]).await?;
+        })).await?;
+        // TODO(tailhook) optimize
+        cli.send_message(&ClientMessage::Sync).await?;
 
         loop {
             let msg = cli.reader.message().await?;
@@ -191,14 +190,12 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
             }
         }
 
-        bytes.truncate(0);
-        ClientMessage::DescribeStatement(DescribeStatement {
+        cli.send_message(&ClientMessage::DescribeStatement(DescribeStatement {
             headers: HashMap::new(),
             aspect: DescribeAspect::DataDescription,
             statement_name: statement_name.clone(),
-        }).encode(&mut bytes)?;
-        ClientMessage::Flush.encode(&mut bytes)?;
-        cli.stream.write_all(&bytes[..]).await?;
+        })).await?;
+        cli.send_message(&ClientMessage::Flush).await?;
 
         let data_description = loop {
             let msg = cli.reader.message().await?;
@@ -232,14 +229,11 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
         // empty tuple
         arguments.put_u32(0);
 
-        bytes.truncate(0);
-        ClientMessage::Execute(Execute {
+        cli.send_message(&ClientMessage::Execute(Execute {
             headers: HashMap::new(),
             statement_name: statement_name.clone(),
             arguments: arguments.freeze(),
-        }).encode(&mut bytes)?;
-        ClientMessage::Sync.encode(&mut bytes)?;
-        cli.stream.write_all(&bytes[..]).await?;
+        })).await?;
 
         print_to_stdout(cli.reader.response(codec)).await?;
     }
@@ -267,13 +261,12 @@ impl<'a> Client<'a> {
 
         let scram = ScramClient::new(&options.user, &password, None)?;
 
-        let mut bytes = BytesMut::new();
         let (scram, first) = scram.client_first();
-        ClientMessage::AuthenticationSaslInitialResponse(SaslInitialResponse {
-            method: "SCRAM-SHA-256".into(),
-            data: Bytes::copy_from_slice(first.as_bytes()),
-        }).encode(&mut bytes)?;
-        self.stream.write_all(&bytes[..]).await?;
+        self.send_message(&ClientMessage::AuthenticationSaslInitialResponse(
+                SaslInitialResponse {
+                method: "SCRAM-SHA-256".into(),
+                data: Bytes::copy_from_slice(first.as_bytes()),
+            })).await?;
         let msg = self.reader.message().await?;
         let data = match msg {
             ServerMessage::Authentication(
@@ -292,11 +285,10 @@ impl<'a> Client<'a> {
         let scram = scram.handle_server_first(&data)
             .map_err(|e| anyhow::anyhow!("Authentication error: {}", e))?;
         let (scram, data) = scram.client_final();
-        bytes.clear();
-        ClientMessage::AuthenticationSaslResponse(SaslResponse {
-            data: Bytes::copy_from_slice(data.as_bytes()),
-        }).encode(&mut bytes)?;
-        self.stream.write_all(&bytes[..]).await?;
+        self.send_message(&ClientMessage::AuthenticationSaslResponse(
+            SaslResponse {
+                data: Bytes::copy_from_slice(data.as_bytes()),
+            })).await?;
         let msg = self.reader.message().await?;
         let data = match msg {
             ServerMessage::Authentication(Authentication::SaslFinal { data })
@@ -325,17 +317,23 @@ impl<'a> Client<'a> {
         Ok(())
     }
 
+    async fn send_message(&mut self, msg: &ClientMessage)
+        -> Result<(), anyhow::Error>
+    {
+        self.outbuf.truncate(0);
+        msg.encode(&mut self.outbuf)?;
+        self.stream.write_all(&self.outbuf[..]).await?;
+        Ok(())
+    }
+
     pub async fn execute<S>(&mut self, request: S)
         -> Result<Bytes, anyhow::Error>
         where S: ToString,
     {
-        let mut bytes = BytesMut::new();
-        bytes.truncate(0);
-        ClientMessage::ExecuteScript(ExecuteScript {
+        self.send_message(&ClientMessage::ExecuteScript(ExecuteScript {
             headers: HashMap::new(),
             script_text: request.to_string(),
-        }).encode(&mut bytes)?;
-        self.stream.write_all(&bytes[..]).await?;
+        })).await?;
         let status = loop {
             match self.reader.message().await? {
                 ServerMessage::CommandComplete(c) => {
@@ -360,18 +358,17 @@ impl<'a> Client<'a> {
         >
         where R: Queryable,
     {
-        let mut bytes = BytesMut::new();
         let statement_name = Bytes::from_static(b"");
 
-        ClientMessage::Prepare(Prepare {
+        self.send_message(&ClientMessage::Prepare(Prepare {
             headers: HashMap::new(),
             io_format: IoFormat::Binary,
             expected_cardinality: Cardinality::Many,
             statement_name: statement_name.clone(),
             command_text: String::from(request),
-        }).encode(&mut bytes)?;
-        ClientMessage::Flush.encode(&mut bytes)?;
-        self.stream.write_all(&bytes[..]).await?;
+        })).await?;
+        // TODO(tailhook) optimize
+        self.send_message(&ClientMessage::Flush).await?;
 
         loop {
             let msg = self.reader.message().await?;
@@ -388,14 +385,13 @@ impl<'a> Client<'a> {
             }
         }
 
-        bytes.truncate(0);
-        ClientMessage::DescribeStatement(DescribeStatement {
+        self.send_message(&ClientMessage::DescribeStatement(DescribeStatement {
             headers: HashMap::new(),
             aspect: DescribeAspect::DataDescription,
             statement_name: statement_name.clone(),
-        }).encode(&mut bytes)?;
-        ClientMessage::Flush.encode(&mut bytes)?;
-        self.stream.write_all(&bytes[..]).await?;
+        })).await?;
+        // TODO(tailhook)
+        self.send_message(&ClientMessage::Flush).await?;
 
         let data_description = loop {
             let msg = self.reader.message().await?;
@@ -422,15 +418,23 @@ impl<'a> Client<'a> {
         // empty tuple
         arguments.put_u32(0);
 
-        bytes.truncate(0);
-        ClientMessage::Execute(Execute {
+        self.send_message(&ClientMessage::Execute(Execute {
             headers: HashMap::new(),
             statement_name: statement_name.clone(),
             arguments: arguments.freeze(),
-        }).encode(&mut bytes)?;
-        ClientMessage::Sync.encode(&mut bytes)?;
-        self.stream.write_all(&bytes[..]).await?;
+        })).await?;
+        self.send_message(&ClientMessage::Sync).await?;
 
         return Ok(self.reader.response(QueryableDecoder::new()));
     }
+}
+
+pub async fn non_interactive_main(options: Options)
+    -> Result<(), anyhow::Error>
+{
+    let mut conn = Connection::from_options(&options).await?;
+    let _cli = conn.authenticate(&options).await?;
+    let stdin_obj = stdin();
+    let _stdin = stdin_obj.lock(); // only lock *after* authentication
+    todo!();
 }

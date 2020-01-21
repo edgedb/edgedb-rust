@@ -1,4 +1,5 @@
 use anyhow;
+
 use async_std::task;
 use async_std::sync::{channel};
 
@@ -20,7 +21,7 @@ fn main() -> Result<(), anyhow::Error> {
         if opt.interactive {
             interactive_main(opt)
         } else {
-            todo!("Non interactive mode is not implemented yet");
+            non_interactive_main(opt)
         }
     }
 }
@@ -33,5 +34,9 @@ fn interactive_main(options: Options) -> Result<(), anyhow::Error> {
     prompt::main(repl_wr, control_rd)?;
     task::block_on(handle)?;
     Ok(())
+}
+
+fn non_interactive_main(options: Options) -> Result<(), anyhow::Error> {
+    task::block_on(client::non_interactive_main(options))
 }
 
