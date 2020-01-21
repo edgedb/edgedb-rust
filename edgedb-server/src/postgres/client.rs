@@ -9,9 +9,10 @@ use async_std::io::prelude::WriteExt;
 use async_std::net::TcpStream;
 use async_listen::ByteStream;
 use bytes::{BytesMut, BufMut};
+use fallible_iterator::FallibleIterator;
 use postgres_protocol::message::frontend as out;
 use postgres_protocol::message::backend as inp;
-use snafu::{Snafu, ResultExt};
+use snafu::{Snafu, OptionExt, ResultExt, Backtrace};
 
 use crate::postgres::Dsn;
 
@@ -25,30 +26,56 @@ pub enum ReadError {
     EncodeErr { source: io::Error },
     #[snafu(display("error reading data: {}", source))]
     Io { source: io::Error },
+    #[snafu(display("server message out of order"))]
+    OutOfOrder { backtrace: Backtrace },
+    #[snafu(display("postgres error: {}", message))]
+    PostgresErr {
+        message: String,
+        backtrace: Backtrace
+    },
     #[snafu(display("end of stream"))]
     Eos,
 }
 
+#[allow(dead_code)] // TODO(tailhook)
+struct BackendKey {
+    pid: i32,
+    secret: i32,
+}
+
+#[allow(dead_code)] // TODO(tailhook)
 pub struct Client {
     name: String,
     stream: ByteStream,
     inbuf: BytesMut,
+    backend_key: BackendKey,
 }
 
 pub struct MessageFuture<'a> {
-    client: &'a mut Client,
+    buf: &'a mut BytesMut,
+    stream: &'a mut ByteStream,
+}
+
+fn convert_err(e: &inp::ErrorResponseBody) -> Result<(), ReadError> {
+    let mut iter = e.fields();
+    let mut message = None;
+    while let Some(item) = iter.next().context(DecodeErr)? {
+        if item.type_() == 77 {
+            message = Some(item.value().to_string());
+        }
+    }
+    PostgresErr {
+        message: message.unwrap_or_else(|| "unknown error".into()),
+    }.fail()?
 }
 
 impl Client {
     pub async fn connect(dsn: &Dsn) -> Result<Client, ReadError> {
         // TODO(tailhook) insert a timeout
         let tcp = TcpStream::connect(dsn.addr()).await.context(Io)?;
-        let mut cli = Client {
-            name: tcp.peer_addr().map(|x| x.to_string())
-                     .unwrap_or_else(|_| "<addr-error>".into()),
-            stream: ByteStream::new_tcp_detached(tcp),
-            inbuf: BytesMut::with_capacity(8192),
-        };
+        let mut stream = ByteStream::new_tcp_detached(tcp);
+        let name = stream.peer_addr().map(|x| x.to_string())
+                         .unwrap_or_else(|_| "<addr-error>".into());
         let mut buf = BytesMut::new();
         out::startup_message(vec![
             ("client_encoding", "utf-8"),
@@ -58,21 +85,74 @@ impl Client {
             ("user", dsn.username()),
             ("database", dsn.database()),
         ].into_iter(), &mut buf).context(EncodeErr)?;
-        cli.stream.write_all(&buf).await.context(Io)?;
-        let msg = cli.message().await?;
-        println!("GOT MESSAGE");
-        todo!();
+        stream.write_all(&buf).await.context(Io)?;
+        let mut backend_key = None;
+        let msg = message(&mut buf, &mut stream).await?;
+        match msg {
+            inp::Message::ErrorResponse(e) => {
+                convert_err(&e)?;
+                unreachable!();
+            }
+            inp::Message::ReadyForQuery(_) => {
+                todo!("READY");
+            }
+            inp::Message::AuthenticationOk => {}
+            _ => return OutOfOrder.fail()?,
+        }
+        loop {
+            let msg = message(&mut buf, &mut stream).await?;
+            match msg {
+                inp::Message::ErrorResponse(e) => {
+                    convert_err(&e)?;
+                    unreachable!();
+                }
+                inp::Message::ParameterStatus(param) => {
+                    log::debug!("Param {:?} = {:?}",
+                        param.name(), param.value());
+                }
+                inp::Message::BackendKeyData(keydata) => {
+                    log::info!("{}: Backend pid {}",
+                        name, keydata.process_id());
+                    backend_key = Some(BackendKey {
+                        pid: keydata.process_id(),
+                        secret: keydata.secret_key(),
+                    });
+                }
+                inp::Message::ReadyForQuery(_) => {
+                    break;
+                }
+                _ => return OutOfOrder.fail()?,
+            }
+        }
+
+        let _cli = Client {
+            name,
+            stream,
+            inbuf: BytesMut::with_capacity(8192),
+            backend_key: backend_key.context(OutOfOrder)?,
+        };
+        todo!("READY");
     }
+    #[allow(dead_code)] // TODO(tailhook)
     fn message<'x>(&'x mut self) -> MessageFuture<'x> {
         MessageFuture {
-            client: self,
+            buf: &mut self.inbuf,
+            stream: &mut self.stream,
         }
     }
+}
 
-    fn poll_message(&mut self, cx: &mut Context)
-        -> Poll<Result<inp::Message, ReadError>>
-    {
-        let Client { inbuf: ref mut buf, ref mut stream, .. } = self;
+fn message<'x>(buf: &'x mut BytesMut, stream: &'x mut ByteStream)
+    -> MessageFuture<'x>
+{
+    MessageFuture { buf, stream }
+}
+
+
+impl<'a> Future for MessageFuture<'a> {
+    type Output = Result<inp::Message, ReadError>;
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let MessageFuture { buf, stream } = &mut *self;
         let msg = loop {
             match inp::Message::parse(buf).context(DecodeErr)? {
                 Some(msg) => break msg,
@@ -98,13 +178,5 @@ impl Client {
             }
         };
         return Poll::Ready(Ok(msg));
-    }
-}
-
-
-impl<'a> Future for MessageFuture<'a> {
-    type Output = Result<inp::Message, ReadError>;
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        self.client.poll_message(cx)
     }
 }

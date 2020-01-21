@@ -81,5 +81,4 @@ pub async fn connection_loop(stream: ByteStream) -> Result<(), ()> {
         log::error!("Unimplemented: {:?}", msg);
         return Err(());
     }
-    Ok(())
 }

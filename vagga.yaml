@@ -59,7 +59,9 @@ commands:
   server: !Command
     description: Run edgedb server
     container: ubuntu
-    run: [cargo, run, --bin, edgedb-server, '--', '--data-dir', './tmp/db']
+    run: [cargo, run, --bin, edgedb-server, '--',
+          '--data-dir', './tmp/db', '--log-level=debug',
+          '--postgres-dsn=postgres://edgedb@localhost:5432/template1?opt=val']
 
   py: !Command
     description: Build the python library and run python interpreter
