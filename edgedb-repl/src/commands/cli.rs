@@ -4,6 +4,7 @@ use edgeql_parser::helpers::quote_name;
 use crate::options::{Options, Command};
 use crate::client::Connection;
 use crate::commands;
+use crate::server_params::PostgresAddress;
 
 
 pub fn main(options: Options) -> Result<(), anyhow::Error> {
@@ -36,6 +37,21 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
                 let mut cli = conn.authenticate(&options).await?;
                 commands::list_scalar_types(&mut cli, &cmdopt,
                     &t.pattern, t.system, t.insensitive).await?;
+                Ok(())
+            }).into()
+        },
+        Command::Pgaddr => {
+            task::block_on(async {
+                let mut conn = Connection::from_options(&options).await?;
+                let cli = conn.authenticate(&options).await?;
+                match cli.params.get::<PostgresAddress>() {
+                    Some(addr) => {
+                        println!("{}", serde_json::to_string_pretty(addr)?);
+                    }
+                    None => {
+                        eprintln!("Server did not supply postgres address.");
+                    }
+                }
                 Ok(())
             }).into()
         },

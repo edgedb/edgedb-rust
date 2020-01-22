@@ -34,7 +34,7 @@ pub struct Client<'a> {
     stream: &'a TcpStream,
     outbuf: BytesMut,
     reader: Reader<&'a TcpStream>,
-    params: TypeMap<dyn typemap::DebugAny + Send>,
+    pub params: TypeMap<dyn typemap::DebugAny + Send>,
 }
 
 impl Connection {

@@ -46,6 +46,7 @@ pub enum Password {
 pub enum Command {
     CreateDatabase(CreateDatabase),
     ListDatabases,
+    Pgaddr,
     ListScalarTypes(ListTypes),
 }
 

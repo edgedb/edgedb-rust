@@ -2,11 +2,15 @@ use anyhow;
 
 use crate::client::Client;
 use crate::commands::{self, Options};
+use crate::server_params::PostgresAddress;
 
 const HELP: &str = r###"
 Introspection
   \l, \list-databases      list databases
   \lT, \list-scalar-types  list scalar types
+
+Development
+  \pgaddr                  show the network addr of the postgres server
 
 Help
   \?                       Show help on backslash commands
@@ -15,17 +19,19 @@ Help
 pub const HINTS: &'static [&'static str] = &[
     r"\?",
     r"\l",
-    r"\list-databases",
     r"\lT [PATTERN]",
+    r"\list-databases",
     r"\list-scalar-types [PATTERN]",
+    r"\pgaddr",
 ];
 
 pub const COMMAND_NAMES: &'static [&'static str] = &[
     r"\?",
     r"\l",
-    r"\list-databases",
     r"\lT",
+    r"\list-databases",
     r"\list-scalar-types",
+    r"\pgaddr",
 ];
 
 pub enum Command {
@@ -36,6 +42,7 @@ pub enum Command {
         system: bool,
         insensitive: bool,
     },
+    PostgresAddr,
 }
 
 pub struct ParseError {
@@ -77,6 +84,13 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
             system: false, // TODO(tailhook)
             insensitive: false, // TODO(tailhook)
         }),
+        ("pgaddr", None) => {
+            Ok(Command::PostgresAddr)
+        }
+        ("pgaddr", Some(_)) => {
+            error("Help command `\\pgaddr` doesn't support arguments",
+                  "no argument expected")
+        }
         (_, _) => {
             error(format_args!("Unkown command `\\{}'", cmd.escape_default()),
                   "unknown command")
@@ -100,6 +114,17 @@ pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command)
         ListScalarTypes { pattern, insensitive, system } => {
             commands::list_scalar_types(cli, &options,
                 &pattern, insensitive, system).await
+        }
+        PostgresAddr => {
+            match cli.params.get::<PostgresAddress>() {
+                Some(addr) => {
+                    println!("{}", serde_json::to_string_pretty(addr)?);
+                }
+                None => {
+                    eprintln!("Server did not supply postgres address.");
+                }
+            }
+            Ok(())
         }
     }
 }
