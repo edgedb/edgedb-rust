@@ -49,7 +49,7 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
                         println!("{}", serde_json::to_string_pretty(addr)?);
                     }
                     None => {
-                        eprintln!("Server did not supply postgres address.");
+                        eprintln!("pgaddr requires EdgeDB to run in DEV mode");
                     }
                 }
                 Ok(())

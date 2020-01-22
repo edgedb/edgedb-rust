@@ -11,6 +11,7 @@ pub struct PostgresAddress {
     #[serde(deserialize_with="str_to_u16")]
     pub port: u16,
     pub user: String,
+    pub password: Option<String>,
     pub database: String,
     pub server_settings: HashMap<String, String>,
 }

@@ -121,7 +121,7 @@ pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command)
                     println!("{}", serde_json::to_string_pretty(addr)?);
                 }
                 None => {
-                    eprintln!("Server did not supply postgres address.");
+                    eprintln!("\\pgaddr requires EdgeDB to run in DEV mode");
                 }
             }
             Ok(())
