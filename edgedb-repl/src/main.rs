@@ -5,12 +5,13 @@ use async_std::sync::{channel};
 
 use crate::options::Options;
 
-mod reader;
-mod prompt;
 mod client;
-mod options;
 mod commands;
+mod options;
 mod print;
+mod prompt;
+mod reader;
+mod server_params;
 
 
 fn main() -> Result<(), anyhow::Error> {

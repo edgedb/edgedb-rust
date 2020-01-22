@@ -10,6 +10,8 @@ use async_std::net::{TcpStream, ToSocketAddrs};
 use async_std::sync::{Sender, Receiver};
 use bytes::{Bytes, BytesMut, BufMut};
 use scram::ScramClient;
+use serde_json::from_slice;
+use typemap::TypeMap;
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
 use edgedb_protocol::client_message::{Prepare, IoFormat, Cardinality};
@@ -22,6 +24,7 @@ use crate::options::Options;
 use crate::print::print_to_stdout;
 use crate::prompt;
 use crate::commands::backslash;
+use crate::server_params::PostgresAddress;
 
 pub struct Connection {
     stream: TcpStream,
@@ -31,6 +34,7 @@ pub struct Client<'a> {
     stream: &'a TcpStream,
     outbuf: BytesMut,
     reader: Reader<&'a TcpStream>,
+    params: TypeMap<dyn typemap::DebugAny + Send>,
 }
 
 impl Connection {
@@ -55,6 +59,7 @@ impl Connection {
         let mut cli = Client {
             stream, reader,
             outbuf: BytesMut::with_capacity(8912),
+            params: TypeMap::custom(),
         };
         let mut params = HashMap::new();
         params.insert(String::from("user"), options.user.clone());
@@ -100,8 +105,22 @@ impl Connection {
                 ServerMessage::ServerKeyData(_) => {
                     // TODO(tailhook) store it somehow?
                 }
-                ServerMessage::ParameterStatus(_) => {
-                    // TODO(tailhook) should we read any params?
+                ServerMessage::ParameterStatus(par) => {
+                    match &par.name[..] {
+                        b"pgaddr" => {
+                            let pgaddr: PostgresAddress;
+                            pgaddr = match from_slice(&par.value[..]) {
+                                Ok(a) => a,
+                                Err(e) => {
+                                    eprintln!("Can't decode param {:?}: {}",
+                                        par.name, e);
+                                    continue;
+                                }
+                            };
+                            cli.params.insert::<PostgresAddress>(pgaddr);
+                        }
+                        _ => {},
+                    }
                 }
                 _ => {
                     eprintln!("WARNING: unsolicited message {:?}", msg);
