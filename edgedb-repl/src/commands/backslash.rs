@@ -1,13 +1,21 @@
 use anyhow;
 
+use async_std::sync::{Sender};
+
 use crate::client::Client;
 use crate::commands::{self, Options};
 use crate::server_params::PostgresAddress;
+use crate::prompt;
+
 
 const HELP: &str = r###"
 Introspection
   \l, \list-databases      list databases
   \lT, \list-scalar-types  list scalar types
+
+Settings
+  \vi                      switch to vi-mode editing
+  \emacs                   switch to emacs (normal) mode editing, disables vi-mode
 
 Development
   \pgaddr                  show the network addr of the postgres server
@@ -18,20 +26,24 @@ Help
 
 pub const HINTS: &'static [&'static str] = &[
     r"\?",
+    r"\emacs",
     r"\l",
     r"\lT [PATTERN]",
     r"\list-databases",
     r"\list-scalar-types [PATTERN]",
     r"\pgaddr",
+    r"\vi",
 ];
 
 pub const COMMAND_NAMES: &'static [&'static str] = &[
     r"\?",
+    r"\emacs",
     r"\l",
     r"\lT",
     r"\list-databases",
     r"\list-scalar-types",
     r"\pgaddr",
+    r"\vi",
 ];
 
 pub enum Command {
@@ -43,6 +55,8 @@ pub enum Command {
         insensitive: bool,
     },
     PostgresAddr,
+    ViMode,
+    EmacsMode,
 }
 
 pub struct ParseError {
@@ -67,16 +81,9 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
     let arg = if arg.len() > 0 { Some(arg) } else { None };
     match (cmd, arg) {
         ("?", None) => Ok(Command::Help),
-        ("?", Some(_)) => error("Help command `\\?` doesn't support arguments",
-                                "no argument expected"),
         | ("list-databases", None)
         | ("l", None)
         => Ok(Command::ListDatabases),
-        | ("list-databases", Some(_))
-        | ("l", Some(_)) => {
-            error("Help command `\\list-databses` doesn't support arguments",
-                  "no argument expected")
-        }
         | ("list-scalar-types", pattern)
         | ("lT", pattern)
         => Ok(Command::ListScalarTypes {
@@ -84,21 +91,23 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
             system: false, // TODO(tailhook)
             insensitive: false, // TODO(tailhook)
         }),
-        ("pgaddr", None) => {
-            Ok(Command::PostgresAddr)
-        }
-        ("pgaddr", Some(_)) => {
-            error("Help command `\\pgaddr` doesn't support arguments",
+        ("pgaddr", None) => Ok(Command::PostgresAddr),
+        ("vi", None) => Ok(Command::ViMode),
+        ("emacs", None) => Ok(Command::EmacsMode),
+        (_, Some(_)) if COMMAND_NAMES.contains(&&s[..cmd.len()+1]) => {
+            error(format_args!("Command `\\{}` doesn't support arguments",
+                               cmd.escape_default()),
                   "no argument expected")
         }
         (_, _) => {
-            error(format_args!("Unkown command `\\{}'", cmd.escape_default()),
+            error(format_args!("Unknown command `\\{}'", cmd.escape_default()),
                   "unknown command")
         }
     }
 }
 
-pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command)
+pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command,
+    prompt: &Sender<prompt::Control>)
     -> Result<(), anyhow::Error>
 {
     use Command::*;
@@ -124,6 +133,14 @@ pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command)
                     eprintln!("\\pgaddr requires EdgeDB to run in DEV mode");
                 }
             }
+            Ok(())
+        }
+        ViMode => {
+            prompt.send(prompt::Control::ViMode).await;
+            Ok(())
+        }
+        EmacsMode => {
+            prompt.send(prompt::Control::EmacsMode).await;
             Ok(())
         }
     }

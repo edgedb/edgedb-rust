@@ -173,7 +173,7 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
                     continue;
                 }
             };
-            if let Err(e) = backslash::execute(&mut cli, cmd).await {
+            if let Err(e) = backslash::execute(&mut cli, cmd, &control).await {
                 eprintln!("Error executing command: {}", e);
                 // Quick-edit command on error
                 initial = inp.trim_start().into();

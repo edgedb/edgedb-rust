@@ -2,7 +2,8 @@ use anyhow;
 use async_std::sync::{Sender, Receiver};
 use async_std::task;
 use rustyline::{self, error::ReadlineError};
-use rustyline::{Helper, Context};
+use rustyline::{Editor, Config, Helper, Context};
+use rustyline::config::EditMode;
 use rustyline::hint::Hinter;
 use rustyline::highlight::Highlighter;
 use rustyline::validate::{Validator, ValidationResult, ValidationContext};
@@ -16,6 +17,8 @@ use colorful::Colorful;
 
 pub enum Control {
     Input(String, String),
+    ViMode,
+    EmacsMode,
 }
 
 pub enum Input {
@@ -99,18 +102,31 @@ impl Completer for EdgeqlHelper {
     }
 }
 
+pub fn create_editor(mode: EditMode) -> Editor<EdgeqlHelper> {
+    let config = Config::builder();
+    let config = config.edit_mode(mode);
+    let mut editor = Editor::<EdgeqlHelper>::with_config(config.build());
+    editor.set_helper(Some(EdgeqlHelper {}));
+    return editor;
+}
+
 
 pub fn main(data: Sender<Input>, control: Receiver<Control>)
     -> Result<(), anyhow::Error>
 {
-    let mut editor = rustyline::Editor::<EdgeqlHelper>::new();
-    editor.set_helper(Some(EdgeqlHelper {}));
+    let mut editor = create_editor(EditMode::Emacs);
     let mut prompt = String::from("> ");
     let mut initial;
     loop {
         loop {
             match task::block_on(control.recv()) {
                 None => return Ok(()),
+                Some(Control::ViMode) => {
+                    editor = create_editor(EditMode::Vi);
+                }
+                Some(Control::EmacsMode) => {
+                    editor = create_editor(EditMode::Emacs);
+                }
                 Some(Control::Input(name, prefix)) => {
                     prompt.clear();
                     prompt.push_str(&name);
