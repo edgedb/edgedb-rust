@@ -253,6 +253,7 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
             statement_name: statement_name.clone(),
             arguments: arguments.freeze(),
         })).await?;
+        cli.send_message(&ClientMessage::Sync).await?;
 
         print_to_stdout(cli.reader.response(codec)).await?;
     }
