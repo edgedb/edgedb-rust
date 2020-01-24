@@ -87,8 +87,8 @@ pub fn full_statement(data: &[u8]) -> Result<usize, usize> {
                 }
             }
             b'{' => braces_buf.push(b'}'),
-            b'(' => braces_buf.push(b'('),
-            b'[' => braces_buf.push(b'['),
+            b'(' => braces_buf.push(b')'),
+            b'[' => braces_buf.push(b']'),
             b'}' | b')' | b']'
             if braces_buf.last() == Some(b)
             => { braces_buf.pop(); }
