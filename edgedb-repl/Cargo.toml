@@ -34,6 +34,7 @@ unicode-segmentation = "1.6.0"
 typemap = "0.3.3"
 serde = "1.0"
 serde_json = "1.0"
+dirs = "2.0.2"
 
 [dev-dependencies]
 assert_cmd = "0.10"

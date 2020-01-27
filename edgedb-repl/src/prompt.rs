@@ -1,6 +1,10 @@
-use anyhow;
+use std::fs;
+use std::io::ErrorKind;
+
+use anyhow::{self, Context as _Context};
 use async_std::sync::{Sender, Receiver};
 use async_std::task;
+use dirs::data_local_dir;
 use rustyline::{self, error::ReadlineError};
 use rustyline::{Editor, Config, Helper, Context};
 use rustyline::config::EditMode;
@@ -102,10 +106,45 @@ impl Completer for EdgeqlHelper {
     }
 }
 
+fn load_history(ed: &mut Editor<EdgeqlHelper>)
+    -> Result<(), anyhow::Error>
+{
+    let dir = data_local_dir().context("can't find local data dir")?;
+    let app_dir = dir.join("edgedb");
+    match ed.load_history(&app_dir.join(".history")) {
+        Err(ReadlineError::Io(e)) if e.kind() == ErrorKind::NotFound => {}
+        Err(e) => return Err(e).context("error loading history")?,
+        Ok(()) => {}
+    }
+    Ok(())
+}
+
+fn _save_history(ed: &mut Editor<EdgeqlHelper>)
+    -> Result<(), anyhow::Error>
+{
+    let dir = data_local_dir().context("can't find local data dir")?;
+    let app_dir = dir.join("edgedb");
+    if !app_dir.exists() {
+        fs::create_dir_all(&app_dir).context("can't create application dir")?;
+    }
+    ed.save_history(&app_dir.join(".history"))
+        .context("error writing history file")?;
+    Ok(())
+}
+
+fn save_history(ed: &mut Editor<EdgeqlHelper>) {
+    _save_history(ed).map_err(|e| {
+        eprintln!("Can't save history: {:#}", e);
+    }).ok();
+}
+
 pub fn create_editor(mode: EditMode) -> Editor<EdgeqlHelper> {
     let config = Config::builder();
     let config = config.edit_mode(mode);
     let mut editor = Editor::<EdgeqlHelper>::with_config(config.build());
+    load_history(&mut editor).map_err(|e| {
+        eprintln!("Can't load history: {:#}", e);
+    }).ok();
     editor.set_helper(Some(EdgeqlHelper {}));
     return editor;
 }
@@ -117,14 +156,16 @@ pub fn main(data: Sender<Input>, control: Receiver<Control>)
     let mut editor = create_editor(EditMode::Emacs);
     let mut prompt = String::from("> ");
     let mut initial;
-    loop {
+    'outer: loop {
         loop {
             match task::block_on(control.recv()) {
-                None => return Ok(()),
+                None => break 'outer,
                 Some(Control::ViMode) => {
+                    save_history(&mut editor);
                     editor = create_editor(EditMode::Vi);
                 }
                 Some(Control::EmacsMode) => {
+                    save_history(&mut editor);
                     editor = create_editor(EditMode::Emacs);
                 }
                 Some(Control::Input(name, prefix)) => {
@@ -152,4 +193,6 @@ pub fn main(data: Sender<Input>, control: Receiver<Control>)
         editor.add_history_entry(&text);
         task::block_on(data.send(Input::Text(text)))
     }
+    save_history(&mut editor);
+    Ok(())
 }
