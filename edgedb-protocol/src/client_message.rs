@@ -84,6 +84,7 @@ pub enum DescribeAspect {
 pub enum IoFormat {
     Binary = 0x62,
     Json = 0x6a,
+    JsonElements = 0x4a,
 }
 
 
@@ -303,6 +304,7 @@ impl Decode for Prepare {
         let io_format = match buf.get_u8() {
             0x62 => IoFormat::Binary,
             0x6a => IoFormat::Json,
+            0x4a => IoFormat::JsonElements,
             c => errors::InvalidIoFormat { io_format: c }.fail()?,
         };
         let expected_cardinality = match buf.get_u8() {

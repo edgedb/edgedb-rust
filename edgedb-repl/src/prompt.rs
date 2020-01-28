@@ -154,7 +154,7 @@ impl Validator for EdgeqlHelper {
                 }
             }
         } else {
-            if full_statement(ctx.input().as_bytes()).is_ok() {
+            if full_statement(ctx.input().as_bytes(), None).is_ok() {
                 Ok(ValidationResult::Valid(None))
             } else {
                 Ok(ValidationResult::Incomplete)

@@ -1,10 +1,12 @@
 use std::io;
+use std::fmt;
 use std::collections::HashMap;
 use std::str;
 use std::mem::replace;
 
-use anyhow;
-use async_std::io::stdin;
+use anyhow::{self, Context};
+use async_std::prelude::StreamExt;
+use async_std::io::{stdin, stdout};
 use async_std::io::prelude::WriteExt;
 use async_std::net::{TcpStream, ToSocketAddrs};
 use bytes::{Bytes, BytesMut};
@@ -27,6 +29,7 @@ use crate::prompt;
 use crate::reader::{Reader, ReadError, QueryableDecoder, QueryResponse};
 use crate::repl;
 use crate::server_params::PostgresAddress;
+use crate::statement::{ReadStatement, EndOfFile};
 use crate::variables::input_variables;
 
 pub struct Connection {
@@ -39,6 +42,12 @@ pub struct Client<'a> {
     reader: Reader<&'a TcpStream>,
     pub params: TypeMap<dyn typemap::DebugAny + Send>,
 }
+
+#[derive(Debug)]
+pub struct NoResultExpected {
+    completion_message: Bytes,
+}
+
 
 impl Connection {
     pub async fn new<A: ToSocketAddrs>(addrs: A)
@@ -388,25 +397,29 @@ impl<'a> Client<'a> {
         Ok(status)
     }
 
-    async fn _query(&mut self, request: &str, arguments: &Value)
+    async fn _query(&mut self, request: &str, arguments: &Value,
+        io_format: IoFormat)
         -> Result<OutputTypedesc, anyhow::Error >
     {
         let statement_name = Bytes::from_static(b"");
 
         self.send_message(&ClientMessage::Prepare(Prepare {
             headers: HashMap::new(),
-            io_format: IoFormat::Binary,
+            io_format,
             expected_cardinality: Cardinality::Many,
             statement_name: statement_name.clone(),
             command_text: String::from(request),
         })).await?;
         // TODO(tailhook) optimize
-        self.send_message(&ClientMessage::Flush).await?;
+        self.send_message(&ClientMessage::Sync).await?;
 
         loop {
             let msg = self.reader.message().await?;
             match msg {
-                ServerMessage::PrepareComplete(..) => break,
+                ServerMessage::PrepareComplete(..) => {
+                    self.reader.wait_ready().await?;
+                    break;
+                }
                 ServerMessage::ErrorResponse(err) => {
                     self.reader.wait_ready().await?;
                     return Err(anyhow::anyhow!(err));
@@ -464,17 +477,44 @@ impl<'a> Client<'a> {
         >
         where R: Queryable,
     {
-        let desc = self._query(request, arguments).await?;
-        let root_pos = desc.root_pos()
-            .ok_or_else(|| anyhow::anyhow!("no result expected"))?;
-        R::check_descriptor(&desc.as_queryable_context(), root_pos)?;
-        return Ok(self.reader.response(QueryableDecoder::new()));
+        let desc = self._query(request, arguments, IoFormat::Binary).await?;
+        match desc.root_pos() {
+            Some(root_pos) => {
+                R::check_descriptor(
+                    &desc.as_queryable_context(), root_pos)?;
+                Ok(self.reader.response(QueryableDecoder::new()))
+            }
+            None => {
+                Err(NoResultExpected {
+                    completion_message: self._process_exec().await?
+                })?
+            }
+        }
     }
-    #[allow(dead_code)]
-    pub async fn execute_args(&mut self, request: &str, arguments: &Value)
-        -> Result<Bytes, anyhow::Error>
+
+    pub async fn query_json(&mut self, request: &str, arguments: &Value)
+        -> Result<
+            QueryResponse<'_, &'a TcpStream, QueryableDecoder<String>>,
+            anyhow::Error
+        >
     {
-        self._query(request, arguments).await?;
+        let desc = self._query(request, arguments,
+            IoFormat::JsonElements).await?;
+        match desc.root_pos() {
+            Some(root_pos) => {
+                String::check_descriptor(
+                    &desc.as_queryable_context(), root_pos)?;
+                Ok(self.reader.response(QueryableDecoder::new()))
+            }
+            None => {
+                Err(NoResultExpected {
+                    completion_message: self._process_exec().await?
+                })?
+            }
+        }
+    }
+
+    async fn _process_exec(&mut self) -> Result<Bytes, anyhow::Error> {
         let status = loop {
             match self.reader.message().await? {
                 ServerMessage::CommandComplete(c) => {
@@ -492,14 +532,60 @@ impl<'a> Client<'a> {
         };
         Ok(status)
     }
+
+    #[allow(dead_code)]
+    pub async fn execute_args(&mut self, request: &str, arguments: &Value)
+        -> Result<Bytes, anyhow::Error>
+    {
+        self._query(request, arguments, IoFormat::Binary).await?;
+        return self._process_exec().await;
+    }
 }
 
 pub async fn non_interactive_main(options: Options)
     -> Result<(), anyhow::Error>
 {
     let mut conn = Connection::from_options(&options).await?;
-    let _cli = conn.authenticate(&options).await?;
+    let mut cli = conn.authenticate(&options).await?;
     let stdin_obj = stdin();
-    let _stdin = stdin_obj.lock(); // only lock *after* authentication
-    todo!();
+    let mut stdin = stdin_obj.lock().await; // only lock *after* authentication
+    let mut inbuf = BytesMut::with_capacity(8192);
+    loop {
+        let stmt = match ReadStatement::new(&mut inbuf, &mut stdin).await {
+            Ok(chunk) => chunk,
+            Err(e) if e.is::<EndOfFile>() => break,
+            Err(e) => return Err(e),
+        };
+        let stmt = str::from_utf8(&stmt[..])
+            .context("can't decode statement")?;
+        let mut items = match cli.query_json(stmt, &Value::empty_tuple()).await
+        {
+            Ok(items) => items,
+            Err(e) => match e.downcast::<NoResultExpected>() {
+                Ok(e) => {
+                    eprintln!("  -> {}: Ok",
+                        String::from_utf8_lossy(&e.completion_message[..]));
+                    continue;
+                }
+                Err(e) => Err(e)?,
+            },
+        };
+        let out = stdout();
+        let mut out = out.lock().await;
+        while let Some(mut row) = items.next().await.transpose()? {
+            // trying to make writes atomic if possible
+            row += "\n";
+            out.write_all(row.as_bytes()).await?;
+        }
+    }
+    Ok(())
+}
+
+impl std::error::Error for NoResultExpected {}
+
+impl fmt::Display for NoResultExpected {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "no result expected: {}",
+            String::from_utf8_lossy(&self.completion_message[..]))
+    }
 }

@@ -13,6 +13,7 @@ mod prompt;
 mod reader;
 mod repl;
 mod server_params;
+mod statement;
 mod variables;
 
 
