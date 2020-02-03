@@ -15,7 +15,7 @@ use crate::errors::TokenizerError;
 
 static mut TOKENS: Option<Tokens> = None;
 
-const UNRESERVED_KEYWORDS: [&str; 75] = [
+const UNRESERVED_KEYWORDS: [&str; 76] = [
     "abstract",
     "after",
     "alias",
