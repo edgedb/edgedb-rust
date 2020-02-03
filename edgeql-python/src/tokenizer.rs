@@ -79,6 +79,7 @@ const UNRESERVED_KEYWORDS: [&str; 75] = [
     "session",
     "single",
     "source",
+    "superuser",
     "system",
     "target",
     "ternary",
