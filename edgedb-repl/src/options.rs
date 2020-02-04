@@ -47,6 +47,7 @@ pub enum Command {
     CreateDatabase(CreateDatabase),
     ListDatabases,
     Pgaddr,
+    Psql,
     ListScalarTypes(ListTypes),
 }
 

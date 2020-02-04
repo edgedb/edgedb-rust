@@ -19,6 +19,7 @@ Settings
 
 Development
   \pgaddr                  show the network addr of the postgres server
+  \psql                    open psql to the current postgres process
 
 Help
   \?                       Show help on backslash commands
@@ -32,6 +33,7 @@ pub const HINTS: &'static [&'static str] = &[
     r"\list-databases",
     r"\list-scalar-types [PATTERN]",
     r"\pgaddr",
+    r"\psql",
     r"\vi",
 ];
 
@@ -43,6 +45,7 @@ pub const COMMAND_NAMES: &'static [&'static str] = &[
     r"\list-databases",
     r"\list-scalar-types",
     r"\pgaddr",
+    r"\psql",
     r"\vi",
 ];
 
@@ -55,6 +58,7 @@ pub enum Command {
         insensitive: bool,
     },
     PostgresAddr,
+    Psql,
     ViMode,
     EmacsMode,
 }
@@ -92,6 +96,7 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
             insensitive: false, // TODO(tailhook)
         }),
         ("pgaddr", None) => Ok(Command::PostgresAddr),
+        ("psql", None) => Ok(Command::Psql),
         ("vi", None) => Ok(Command::ViMode),
         ("emacs", None) => Ok(Command::EmacsMode),
         (_, Some(_)) if COMMAND_NAMES.contains(&&s[..cmd.len()+1]) => {
@@ -133,6 +138,10 @@ pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command,
                     eprintln!("\\pgaddr requires EdgeDB to run in DEV mode");
                 }
             }
+            Ok(())
+        }
+        Psql => {
+            commands::psql(cli, &options).await?;
             Ok(())
         }
         ViMode => {
