@@ -84,7 +84,7 @@ pub enum EncodeError {
     BigIntTooLong { backtrace: Backtrace },
     #[snafu(display("decimal has more than 256Ki digits"))]
     DecimalTooLong { backtrace: Backtrace },
-    #[snafu(display("unknown message types can't be encoded"))]
+    #[snafu(display("unknown message types cannot be encoded"))]
     UnknownMessageCantBeEncoded { backtrace: Backtrace },
     #[snafu(display("trying to encode invalid value type {} with codec {}",
                     value_type, codec))]

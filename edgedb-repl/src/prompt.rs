@@ -109,7 +109,7 @@ impl Completer for EdgeqlHelper {
 fn load_history(ed: &mut Editor<EdgeqlHelper>)
     -> Result<(), anyhow::Error>
 {
-    let dir = data_local_dir().context("can't find local data dir")?;
+    let dir = data_local_dir().context("cannot find local data dir")?;
     let app_dir = dir.join("edgedb");
     match ed.load_history(&app_dir.join(".history")) {
         Err(ReadlineError::Io(e)) if e.kind() == ErrorKind::NotFound => {}
@@ -122,10 +122,10 @@ fn load_history(ed: &mut Editor<EdgeqlHelper>)
 fn _save_history(ed: &mut Editor<EdgeqlHelper>)
     -> Result<(), anyhow::Error>
 {
-    let dir = data_local_dir().context("can't find local data dir")?;
+    let dir = data_local_dir().context("cannot find local data dir")?;
     let app_dir = dir.join("edgedb");
     if !app_dir.exists() {
-        fs::create_dir_all(&app_dir).context("can't create application dir")?;
+        fs::create_dir_all(&app_dir).context("cannot create application dir")?;
     }
     ed.save_history(&app_dir.join(".history"))
         .context("error writing history file")?;

@@ -290,12 +290,12 @@ impl<'a> TokenStream<'a> {
                         let val = &tail[..idx+1];
                         if val.starts_with("`@") {
                             return Err(Error::unexpected_static_message(
-                                "backtick-quoted name can't \
+                                "backtick-quoted name cannot \
                                     start with char `@`"));
                         }
                         if val.contains("::") {
                             return Err(Error::unexpected_static_message(
-                                "backtick-quoted name can't \
+                                "backtick-quoted name cannot \
                                     contain `::`"));
                         }
                         if val.starts_with("`__") && val.ends_with("__`") {
@@ -305,7 +305,7 @@ impl<'a> TokenStream<'a> {
                         }
                         if idx == 1 {
                             return Err(Error::unexpected_static_message(
-                                "backtick quotes can't be empty"));
+                                "backtick quotes cannot be empty"));
                         }
                         return Ok((BacktickName, idx+1));
                     }
@@ -419,14 +419,14 @@ impl<'a> TokenStream<'a> {
                                         return Err(
                                             Error::unexpected_static_message(
                                                 "backtick-quoted argument \
-                                                can't start with char `@`",
+                                                cannot start with char `@`",
                                             ));
                                     }
                                     if var.contains("::") {
                                         return Err(
                                             Error::unexpected_static_message(
                                                 "backtick-quoted argument \
-                                                can't contain `::`"));
+                                                cannot contain `::`"));
                                     }
                                     if var.starts_with("$`__") &&
                                         var.ends_with("__`")
@@ -441,7 +441,7 @@ impl<'a> TokenStream<'a> {
                                         return Err(
                                             Error::unexpected_static_message(
                                                 "backtick-quoted argument \
-                                                can't be empty"));
+                                                cannot be empty"));
                                     }
                                     return Ok((Argument, idx+1));
                                 }

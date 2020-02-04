@@ -505,7 +505,7 @@ fn strings() {
     assert_eq!(tok_str(r#" b''  "#), [r#"b''"#]);
     assert_eq!(tok_typ(r#" b''  "#), [BinStr]);
     assert_eq!(tok_err(r#" ``  "#),
-        "Unexpected `backtick quotes can't be empty`");
+        "Unexpected `backtick quotes cannot be empty`");
 
     assert_eq!(tok_str(r#" "hello"  "#), [r#""hello""#]);
     assert_eq!(tok_typ(r#" "hello"  "#), [Str]);
@@ -618,9 +618,9 @@ fn strings() {
         "Unexpected `prefix \"test\" is not allowed for strings, \
         allowed: `b`, `r``");
     assert_eq!(tok_err(r#"`@x`"#),
-        "Unexpected `backtick-quoted name can't start with char `@``");
+        "Unexpected `backtick-quoted name cannot start with char `@``");
     assert_eq!(tok_err(r#"`a::b`"#),
-        "Unexpected `backtick-quoted name can't contain `::``");
+        "Unexpected `backtick-quoted name cannot contain `::``");
     assert_eq!(tok_err(r#"`__x__`"#),
         "Unexpected `backtick-quoted names surrounded by double \
                     underscores are forbidden`");
@@ -678,12 +678,12 @@ fn test_dollar() {
     assert_eq!(tok_err(r#"-$"#),
         "Unexpected `bare $ is not allowed`");
     assert_eq!(tok_err(r#" $``  "#),
-        "Unexpected `backtick-quoted argument can't be empty`");
+        "Unexpected `backtick-quoted argument cannot be empty`");
     assert_eq!(tok_err(r#"$`@x`"#),
-        "Unexpected `backtick-quoted argument can't \
+        "Unexpected `backtick-quoted argument cannot \
         start with char `@``");
     assert_eq!(tok_err(r#"$`a::b`"#),
-        "Unexpected `backtick-quoted argument can't contain `::``");
+        "Unexpected `backtick-quoted argument cannot contain `::``");
     assert_eq!(tok_err(r#"$`__x__`"#),
         "Unexpected `backtick-quoted arguments surrounded by double \
                     underscores are forbidden`");
