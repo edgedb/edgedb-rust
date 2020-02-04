@@ -62,11 +62,12 @@ async fn format_rows_buf<S, I, E, O>(prn: &mut Printer<O>, rows: &mut S,
     let branch = prn.open_block("{".clear()).wrap_err(PrintErr)?;
     debug_assert!(branch);
     while let Some(v) = rows.next().await.transpose().wrap_err(StreamErr)? {
+        row_buf.push(v);
+        let v = row_buf.last().unwrap();
         v.format(prn).wrap_err(PrintErr)?;
         prn.comma().wrap_err(PrintErr)?;
         // Buffer rows up to one visual line.
         // After line is reached we get Exception::DisableFlow
-        row_buf.push(v);
     }
     prn.close_block("}".clear(), true).wrap_err(PrintErr)?;
     Ok(())
