@@ -12,6 +12,7 @@ mod format;
 mod buffer;
 mod stream;
 mod formatter;
+pub mod style;
 #[cfg(test)] mod tests;
 
 use format::FormatExt;

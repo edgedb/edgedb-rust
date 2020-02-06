@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fs;
 use std::io::ErrorKind;
 
@@ -14,7 +15,9 @@ use rustyline::validate::{Validator, ValidationResult, ValidationContext};
 use rustyline::completion::Completer;
 
 use edgeql_parser::preparser::full_statement;
+use edgeql_parser::tokenizer::{TokenStream, Kind};
 use crate::commands::backslash;
+use crate::print::style::{Styler, Style};
 
 use colorful::Colorful;
 
@@ -32,6 +35,7 @@ pub enum Input {
 }
 
 pub struct EdgeqlHelper {
+    styler: Styler,
 }
 
 impl Helper for EdgeqlHelper {}
@@ -59,7 +63,35 @@ impl Hinter for EdgeqlHelper {
         return None;
     }
 }
+
 impl Highlighter for EdgeqlHelper {
+    fn highlight<'l>(&self, line: &'l str, pos: usize) -> Cow<'l, str> {
+
+        let mut outbuf = String::with_capacity(line.len());
+        let mut pos = 0;
+        let mut token_stream = TokenStream::new(line);
+        for res in &mut token_stream {
+            let tok = match res {
+                Ok(tok) => tok,
+                Err(_) => {
+                    outbuf.push_str(&line[pos..]);
+                    break;
+                }
+            };
+            if tok.start.offset as usize > pos {
+                // whitespace and comments
+                // TODO(tailhook) colorize comments
+                outbuf.push_str(&line[pos..tok.start.offset as usize]);
+            }
+            if let Some(st) = token_style(tok.token.kind) {
+                self.styler.apply(st, tok.token.value, &mut outbuf);
+            } else {
+                outbuf.push_str(tok.token.value);
+            }
+            pos = tok.end.offset as usize;
+        }
+        return outbuf.into();
+    }
     fn highlight_hint<'h>(&self, hint: &'h str) -> std::borrow::Cow<'h, str> {
         return hint.light_gray().to_string().into()
     }
@@ -145,7 +177,9 @@ pub fn create_editor(mode: EditMode) -> Editor<EdgeqlHelper> {
     load_history(&mut editor).map_err(|e| {
         eprintln!("Can't load history: {:#}", e);
     }).ok();
-    editor.set_helper(Some(EdgeqlHelper {}));
+    editor.set_helper(Some(EdgeqlHelper {
+        styler: Styler::dark_256(),
+    }));
     return editor;
 }
 
@@ -195,4 +229,61 @@ pub fn main(data: Sender<Input>, control: Receiver<Control>)
     }
     save_history(&mut editor);
     Ok(())
+}
+
+fn token_style(kind: Kind) -> Option<Style> {
+    use edgeql_parser::tokenizer::Kind as T;
+    use crate::print::style::Style as S;
+
+    match kind {
+        T::Keyword => Some(S::Keyword),
+
+        T::At => Some(S::Punctuation),  // TODO(tailhook) but also decorators
+        T::Dot => Some(S::Punctuation),
+        T::ForwardLink => Some(S::Punctuation),
+        T::BackwardLink => Some(S::Punctuation),
+
+        T::Assign => None,
+        T::SubAssign => None,
+        T::AddAssign => None,
+        T::Arrow => None,
+        T::Coalesce => None,
+        T::Namespace => None,
+        T::FloorDiv => None,
+        T::Concat => None,
+        T::GreaterEq => None,
+        T::LessEq => None,
+        T::NotEq => None,
+        T::NotDistinctFrom => None,
+        T::DistinctFrom => None,
+        T::Comma => None,
+        T::OpenParen => None,
+        T::CloseParen => None,
+        T::OpenBracket => None,
+        T::CloseBracket => None,
+        T::OpenBrace => None,
+        T::CloseBrace => None,
+        T::Semicolon => None,
+        T::Colon => None,
+        T::Add => None,
+        T::Sub => None,
+        T::Mul => None,
+        T::Div => None,
+        T::Modulo => None,
+        T::Pow => None,
+        T::Less => None,
+        T::Greater => None,
+        T::Eq => None,
+        T::Ampersand => None,
+        T::Pipe => None,
+        T::Argument => None, // TODO (tailhook)
+        T::DecimalConst => Some(S::Constant),
+        T::FloatConst => Some(S::Constant),
+        T::IntConst => Some(S::Constant),
+        T::BigIntConst => Some(S::Constant),
+        T::BinStr => Some(S::String),
+        T::Str => Some(S::String),
+        T::BacktickName => None,
+        T::Ident => None,
+    }
 }
