@@ -64,8 +64,25 @@ impl Hinter for EdgeqlHelper {
     }
 }
 
+fn emit_insignificant(buf: &mut String, styler: &Styler, mut chunk: &str) {
+    while let Some(pos) = chunk.find('#') {
+        if let Some(end) = chunk[pos..].find('\n') {
+            buf.push_str(&chunk[..pos]);
+            styler.apply(Style::Comment, &chunk[pos..pos+end], buf);
+
+            // must be unstyled to work well at the end of input
+            buf.push('\n');
+
+            chunk = &chunk[pos+end+1..];
+        } else {
+            break;
+        }
+    }
+    buf.push_str(chunk);
+}
+
 impl Highlighter for EdgeqlHelper {
-    fn highlight<'l>(&self, line: &'l str, pos: usize) -> Cow<'l, str> {
+    fn highlight<'l>(&self, line: &'l str, _pos: usize) -> Cow<'l, str> {
 
         let mut outbuf = String::with_capacity(line.len());
         let mut pos = 0;
@@ -79,9 +96,8 @@ impl Highlighter for EdgeqlHelper {
                 }
             };
             if tok.start.offset as usize > pos {
-                // whitespace and comments
-                // TODO(tailhook) colorize comments
-                outbuf.push_str(&line[pos..tok.start.offset as usize]);
+                emit_insignificant(&mut outbuf, &self.styler,
+                    &line[pos..tok.start.offset as usize]);
             }
             if let Some(st) = token_style(tok.token.kind) {
                 self.styler.apply(st, tok.token.value, &mut outbuf);
@@ -90,6 +106,7 @@ impl Highlighter for EdgeqlHelper {
             }
             pos = tok.end.offset as usize;
         }
+        emit_insignificant(&mut outbuf, &self.styler, &line[pos..]);
         return outbuf.into();
     }
     fn highlight_hint<'h>(&self, hint: &'h str) -> std::borrow::Cow<'h, str> {
