@@ -35,6 +35,8 @@ pub trait Formatter {
     fn comma(&mut self) -> Result<Self::Error>;
     fn object_field(&mut self, f: &str) -> Result<Self::Error>;
     fn tuple_field(&mut self, f: &str) -> Result<Self::Error>;
+
+    fn implicit_properties(&self) -> bool;
 }
 
 impl<T: Output> Formatter for Printer<T> {
@@ -104,5 +106,9 @@ impl<T: Output> Formatter for Printer<T> {
         self.delimit()?;
         self.block("[".clear(), f, "]".clear())?;
         Ok(())
+    }
+
+    fn implicit_properties(&self) -> bool {
+        self.implicit_properties
     }
 }

@@ -98,7 +98,7 @@ impl FormatExt for Value {
             V::Object { shape, fields } => {
                 prn.object(|prn| {
                     for (fld, value) in shape.elements.iter().zip(fields) {
-                        if !fld.flag_implicit {
+                        if !fld.flag_implicit || prn.implicit_properties() {
                             prn.object_field(&fld.name)?;
                             value.format(prn)?;
                             prn.comma()?;

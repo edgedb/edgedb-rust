@@ -29,13 +29,21 @@ pub enum PrintError<S: AsErrorSource + Error, P: AsErrorSource + Error> {
     PrintErr { source: P },
 }
 
+#[derive(Debug, Clone)]
+pub struct Config {
+    pub colors: Option<bool>,
+    pub indent: usize,
+    pub max_width: Option<usize>,
+    pub implicit_properties: bool,
+}
+
 
 pub(in crate::print) struct Printer<T> {
-
     // config
     colors: bool,
     indent: usize,
     max_width: usize,
+    implicit_properties: bool,
 
     // state
     buffer: String,
@@ -96,17 +104,21 @@ async fn format_rows<S, I, E, O>(prn: &mut Printer<O>,
     Ok(())
 }
 
-pub async fn print_to_stdout<S, I, E>(mut rows: S)
+pub async fn print_to_stdout<S, I, E>(mut rows: S, config: &Config)
     -> Result<(), PrintError<E, io::Error>>
     where S: Stream<Item=Result<I, E>> + Send + Unpin,
           I: FormatExt,
           E: fmt::Debug + Error + 'static,
 {
-    let w = term_size::dimensions_stdout().map(|(w, _h)| w).unwrap_or(80);
+    let w = config.max_width.unwrap_or_else(|| {
+        term_size::dimensions_stdout().map(|(w, _h)| w).unwrap_or(80)
+    });
     let mut prn = Printer {
-        colors: atty::is(atty::Stream::Stdout),
-        indent: 2,
+        colors: config.colors
+            .unwrap_or_else(|| atty::is(atty::Stream::Stdout)),
+        indent: config.indent,
         max_width: w,
+        implicit_properties: config.implicit_properties,
 
         buffer: String::with_capacity(8192),
         stream: Stdout {},
@@ -159,6 +171,7 @@ pub fn test_format<I: FormatExt>(items: &[I], max_width: usize)
         colors: false,
         indent: 2,
         max_width: max_width,
+        implicit_properties: false,
 
         buffer: String::with_capacity(8192),
         stream: &mut out,

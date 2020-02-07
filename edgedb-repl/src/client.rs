@@ -7,7 +7,7 @@ use anyhow;
 use async_std::io::stdin;
 use async_std::io::prelude::WriteExt;
 use async_std::net::{TcpStream, ToSocketAddrs};
-use async_std::sync::{Sender, Receiver};
+use async_std::sync::{Receiver};
 use bytes::{Bytes, BytesMut, BufMut};
 use scram::ScramClient;
 use serde_json::from_slice;
@@ -19,11 +19,12 @@ use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
 use edgedb_protocol::client_message::{Execute, ExecuteScript};
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use edgedb_protocol::queryable::{Queryable};
-use crate::reader::{Reader, ReadError, QueryableDecoder, QueryResponse};
+use crate::commands::backslash;
 use crate::options::Options;
 use crate::print::print_to_stdout;
 use crate::prompt;
-use crate::commands::backslash;
+use crate::reader::{Reader, ReadError, QueryableDecoder, QueryResponse};
+use crate::repl;
 use crate::server_params::PostgresAddress;
 
 pub struct Connection {
@@ -132,7 +133,7 @@ impl Connection {
 }
 
 pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
-        control: Sender<prompt::Control>)
+        mut state: repl::State)
     -> Result<(), anyhow::Error>
 {
     let mut conn = Connection::from_options(&options).await?;
@@ -141,7 +142,7 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
     let statement_name = Bytes::from_static(b"");
 
     'input_loop: loop {
-        control.send(prompt::Control::Input(
+        state.control.send(prompt::Control::Input(
             options.database.clone(),
             replace(&mut initial, String::new()),
         )).await;
@@ -173,7 +174,8 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
                     continue;
                 }
             };
-            if let Err(e) = backslash::execute(&mut cli, cmd, &control).await {
+            let exec_res = backslash::execute(&mut cli, cmd, &mut state).await;
+            if let Err(e) = exec_res {
                 eprintln!("Error executing command: {}", e);
                 // Quick-edit command on error
                 initial = inp.trim_start().into();
@@ -255,7 +257,7 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
         })).await?;
         cli.send_message(&ClientMessage::Sync).await?;
 
-        print_to_stdout(cli.reader.response(codec)).await?;
+        print_to_stdout(cli.reader.response(codec), &state.print).await?;
     }
 }
 

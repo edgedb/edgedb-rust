@@ -1,11 +1,10 @@
 use anyhow;
 
-use async_std::sync::{Sender};
-
 use crate::client::Client;
 use crate::commands::{self, Options};
-use crate::server_params::PostgresAddress;
 use crate::prompt;
+use crate::repl;
+use crate::server_params::PostgresAddress;
 
 
 const HELP: &str = r###"
@@ -28,10 +27,12 @@ Help
 pub const HINTS: &'static [&'static str] = &[
     r"\?",
     r"\emacs",
+    r"\implicit-properties",
     r"\l",
     r"\lT [PATTERN]",
     r"\list-databases",
     r"\list-scalar-types [PATTERN]",
+    r"\no-implicit-properties",
     r"\pgaddr",
     r"\psql",
     r"\vi",
@@ -40,10 +41,12 @@ pub const HINTS: &'static [&'static str] = &[
 pub const COMMAND_NAMES: &'static [&'static str] = &[
     r"\?",
     r"\emacs",
+    r"\implicit-properties",
     r"\l",
     r"\lT",
     r"\list-databases",
     r"\list-scalar-types",
+    r"\no-implicit-properties",
     r"\pgaddr",
     r"\psql",
     r"\vi",
@@ -61,6 +64,8 @@ pub enum Command {
     Psql,
     ViMode,
     EmacsMode,
+    ImplicitProperties,
+    NoImplicitProperties,
 }
 
 pub struct ParseError {
@@ -99,6 +104,8 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
         ("psql", None) => Ok(Command::Psql),
         ("vi", None) => Ok(Command::ViMode),
         ("emacs", None) => Ok(Command::EmacsMode),
+        ("implicit-properties", None) => Ok(Command::ImplicitProperties),
+        ("no-implicit-properties", None) => Ok(Command::NoImplicitProperties),
         (_, Some(_)) if COMMAND_NAMES.contains(&&s[..cmd.len()+1]) => {
             error(format_args!("Command `\\{}` doesn't support arguments",
                                cmd.escape_default()),
@@ -112,7 +119,7 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
 }
 
 pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command,
-    prompt: &Sender<prompt::Control>)
+    prompt: &mut repl::State)
     -> Result<(), anyhow::Error>
 {
     use Command::*;
@@ -145,11 +152,19 @@ pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command,
             Ok(())
         }
         ViMode => {
-            prompt.send(prompt::Control::ViMode).await;
+            prompt.control.send(prompt::Control::ViMode).await;
             Ok(())
         }
         EmacsMode => {
-            prompt.send(prompt::Control::EmacsMode).await;
+            prompt.control.send(prompt::Control::EmacsMode).await;
+            Ok(())
+        }
+        ImplicitProperties => {
+            prompt.print.implicit_properties = true;
+            Ok(())
+        }
+        NoImplicitProperties => {
+            prompt.print.implicit_properties = true;
             Ok(())
         }
     }
