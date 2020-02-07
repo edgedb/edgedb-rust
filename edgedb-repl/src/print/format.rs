@@ -97,8 +97,20 @@ impl FormatExt for Value {
             },
             V::Object { shape, fields } => {
                 prn.object(|prn| {
+                    let mut n = 0;
                     for (fld, value) in shape.elements.iter().zip(fields) {
                         if !fld.flag_implicit || prn.implicit_properties() {
+                            prn.object_field(&fld.name)?;
+                            value.format(prn)?;
+                            prn.comma()?;
+                            n += 1;
+                        }
+                    }
+                    if n == 0 {
+                        if let Some((fld, value)) = shape.elements
+                            .iter().zip(fields)
+                            .find(|(f, _) | f.name == "id")
+                        {
                             prn.object_field(&fld.name)?;
                             value.format(prn)?;
                             prn.comma()?;
