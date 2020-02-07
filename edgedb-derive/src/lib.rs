@@ -26,8 +26,62 @@ pub fn edgedb_queryable(input: TokenStream) -> TokenStream {
         .map(|f| f.ty.clone()).collect::<Vec<_>>();
     let fieldstr = fieldname.iter()
         .map(|s| syn::LitStr::new(&s.to_string(), s.span()));
-    let nfields = fields.named.len();
-    let fieldno = 2..nfields+2;
+    let has_id = fieldname.iter().find(|x| x.to_string() == "id").is_some();
+    let has_type_id = fieldname.iter().find(|x| x.to_string() == "__tid__").is_some();
+    let implicit_fields =
+        if has_id { 0 } else { 1 } +
+        if has_type_id { 0 } else { 1 };
+    let nfields = fields.named.len()+implicit_fields;
+    let fieldno = implicit_fields..nfields;
+    let typeid_block = if has_type_id {
+        None
+    } else {
+        Some(quote! {
+            ::snafu::ensure!(
+                ::bytes::buf::Buf::remaining(buf) >= 8,
+                ::edgedb_protocol::errors::Underflow);
+            let _reserved = ::bytes::buf::Buf::get_i32(buf);
+            let len = ::bytes::buf::Buf::get_u32(buf) as usize;
+            ::snafu::ensure!(
+                ::bytes::buf::Buf::remaining(buf) >= len,
+                ::edgedb_protocol::errors::Underflow);
+            ::bytes::buf::Buf::advance(buf, len);
+        })
+    };
+    let id_block = if has_id {
+        None
+    } else {
+        Some(quote! {
+            ::snafu::ensure!(
+                ::bytes::buf::Buf::remaining(buf) >= 8,
+                ::edgedb_protocol::errors::Underflow);
+            let _reserved = ::bytes::buf::Buf::get_i32(buf);
+            let len = ::bytes::buf::Buf::get_u32(buf) as usize;
+            ::snafu::ensure!(
+                ::bytes::buf::Buf::remaining(buf) >= len,
+                ::edgedb_protocol::errors::Underflow);
+            ::bytes::buf::Buf::advance(buf, len);
+        })
+    };
+    let type_id_check = if has_type_id {
+        None
+    } else {
+        Some(quote! {
+            if(!shape.elements[0].flag_implicit) {
+                return Err(ctx.expected("implicit __tid__"));
+            }
+        })
+    };
+    let id_check = if has_id {
+        None
+    } else {
+        let n: usize = if has_type_id { 1 } else { 0 };
+        Some(quote! {
+            if(!shape.elements[#n].flag_implicit) {
+                return Err(ctx.expected("implicit id"));
+            }
+        })
+    };
     let expanded = quote! {
         impl #impl_generics ::edgedb_protocol::queryable::Queryable
             for #name #ty_generics {
@@ -38,32 +92,11 @@ pub fn edgedb_queryable(input: TokenStream) -> TokenStream {
                     ::bytes::buf::Buf::remaining(buf) >= 4,
                     ::edgedb_protocol::errors::Underflow);
                 let size = ::bytes::buf::Buf::get_u32(buf) as usize;
-                ::snafu::ensure!(size == #nfields + 2,
+                ::snafu::ensure!(size == #nfields,
                     ::edgedb_protocol::errors::ObjectSizeMismatch);
 
-                // Skip typeid
-                // TODO(tailhook) don't skip if it's in the structure
-                ::snafu::ensure!(
-                    ::bytes::buf::Buf::remaining(buf) >= 8,
-                    ::edgedb_protocol::errors::Underflow);
-                let _reserved = ::bytes::buf::Buf::get_i32(buf);
-                let len = ::bytes::buf::Buf::get_u32(buf) as usize;
-                ::snafu::ensure!(
-                    ::bytes::buf::Buf::remaining(buf) >= len,
-                    ::edgedb_protocol::errors::Underflow);
-                ::bytes::buf::Buf::advance(buf, len);
-
-                // Skip id
-                // TODO(tailhook) don't skip if it's in the structure
-                ::snafu::ensure!(
-                    ::bytes::buf::Buf::remaining(buf) >= 8,
-                    ::edgedb_protocol::errors::Underflow);
-                let _reserved = ::bytes::buf::Buf::get_i32(buf);
-                let len = ::bytes::buf::Buf::get_u32(buf) as usize;
-                ::snafu::ensure!(
-                    ::bytes::buf::Buf::remaining(buf) >= len,
-                    ::edgedb_protocol::errors::Underflow);
-                ::bytes::buf::Buf::advance(buf, len);
+                #typeid_block
+                #id_block
 
                 #(
                     ::snafu::ensure!(
@@ -104,16 +137,12 @@ pub fn edgedb_queryable(input: TokenStream) -> TokenStream {
 
                 // TODO(tailhook) cache shape.id somewhere
 
-                if(shape.elements.len() != #nfields + 2) {
+                if(shape.elements.len() != #nfields) {
                     return Err(ctx.field_number(
-                        shape.elements.len(), #nfields + 2));
+                        shape.elements.len(), #nfields));
                 }
-                if(!shape.elements[0].flag_implicit) {
-                    return Err(ctx.expected("implicit __tid__"));
-                }
-                if(!shape.elements[1].flag_implicit) {
-                    return Err(ctx.expected("implicit id"));
-                }
+                #type_id_check
+                #id_check
                 #(
                     let el = &shape.elements[#fieldno];
                     if(el.name != #fieldstr) {

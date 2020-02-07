@@ -38,6 +38,7 @@ fn interactive_main(options: Options) -> Result<(), anyhow::Error> {
             colors: None,
             max_width: None,
             implicit_properties: false,
+            type_names: None,
         },
     };
     let handle = task::spawn(client::interactive_main(

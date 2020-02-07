@@ -96,7 +96,17 @@ impl FormatExt for Value {
                 })
             },
             V::Object { shape, fields } => {
-                prn.object(|prn| {
+                // TODO(tailhook) optimize it on no-implicit-types
+                //                or just cache typeid index on shape
+                let type_id = shape.elements
+                    .iter().zip(fields)
+                    .find(|(f, _) | f.name == "__tid__")
+                    .and_then(|(_, v)| if let Value::Uuid(type_id) = v {
+                        Some(type_id)
+                    } else {
+                        None
+                    });
+                prn.object(type_id, |prn| {
                     let mut n = 0;
                     for (fld, value) in shape.elements.iter().zip(fields) {
                         if !fld.flag_implicit || prn.implicit_properties() {

@@ -2,6 +2,7 @@ use crate::print::stream::Output;
 use crate::print::Printer;
 
 use colorful::{Colorful, core::color_string::CString};
+use uuid::Uuid;
 
 use crate::print::buffer::Result;
 
@@ -28,7 +29,8 @@ pub trait Formatter {
         where F: FnMut(&mut Self) -> Result<Self::Error>;
     fn array<F>(&mut self, f: F) -> Result<Self::Error>
         where F: FnMut(&mut Self) -> Result<Self::Error>;
-    fn object<F>(&mut self, f: F) -> Result<Self::Error>
+    fn object<F>(&mut self, type_id: Option<&Uuid>, f: F)
+        -> Result<Self::Error>
         where F: FnMut(&mut Self) -> Result<Self::Error>;
     fn named_tuple<F>(&mut self, f: F) -> Result<Self::Error>
         where F: FnMut(&mut Self) -> Result<Self::Error>;
@@ -39,7 +41,7 @@ pub trait Formatter {
     fn implicit_properties(&self) -> bool;
 }
 
-impl<T: Output> Formatter for Printer<T> {
+impl<'a, T: Output> Formatter for Printer<'a, T> {
     type Error = T::Error;
     fn const_scalar<S: ToString>(&mut self, s: S) -> Result<Self::Error> {
         self.delimit()?;
@@ -67,11 +69,24 @@ impl<T: Output> Formatter for Printer<T> {
     fn comma(&mut self) -> Result<Self::Error> {
         Printer::comma(self)
     }
-    fn object<F>(&mut self, f: F) -> Result<Self::Error>
+    fn object<F>(&mut self, type_id: Option<&Uuid>, f: F)
+        -> Result<Self::Error>
         where F: FnMut(&mut Self) -> Result<Self::Error>
     {
         self.delimit()?;
-        self.block("Object {".blue(), f, "}".blue())?;
+        match (type_id, self.type_names) {
+            (Some(tid), Some(names)) => {
+                if let Some(name) = names.get(tid) {
+                    self.block((String::from(name) + " {").blue(),
+                               f, "}".blue())?;
+                } else {
+                    self.block("Object {".blue(), f, "}".blue())?;
+                }
+            }
+            _ => {
+                self.block("Object {".blue(), f, "}".blue())?;
+            }
+        }
         Ok(())
     }
     fn object_field(&mut self, f: &str) -> Result<Self::Error> {

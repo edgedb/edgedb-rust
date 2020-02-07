@@ -418,11 +418,7 @@ impl Codec for Duration {
 
 impl Codec for UuidCodec {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 16, errors::Underflow);
-        let uuid = Uuid::from_slice(buf.bytes())
-            .context(errors::InvalidUuid)?;
-        buf.advance(16);
-        Ok(Value::Uuid(uuid))
+        raw::RawCodec::decode_raw(buf).map(Value::Uuid)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::io;
@@ -5,8 +6,9 @@ use std::io;
 
 use async_std::stream::{Stream, StreamExt};
 use atty;
-use term_size;
 use snafu::{Snafu, ResultExt, AsErrorSource};
+use term_size;
+use uuid::Uuid;
 
 mod format;
 mod buffer;
@@ -35,15 +37,17 @@ pub struct Config {
     pub indent: usize,
     pub max_width: Option<usize>,
     pub implicit_properties: bool,
+    pub type_names: Option<HashMap<Uuid, String>>,
 }
 
 
-pub(in crate::print) struct Printer<T> {
+pub(in crate::print) struct Printer<'a, T> {
     // config
     colors: bool,
     indent: usize,
     max_width: usize,
     implicit_properties: bool,
+    type_names: &'a Option<HashMap<Uuid, String>>,
 
     // state
     buffer: String,
@@ -59,7 +63,7 @@ pub(in crate::print) struct Printer<T> {
 
 struct Stdout {}
 
-async fn format_rows_buf<S, I, E, O>(prn: &mut Printer<O>, rows: &mut S,
+async fn format_rows_buf<S, I, E, O>(prn: &mut Printer<'_, O>, rows: &mut S,
     row_buf: &mut Vec<I>)
     -> Result<(), Exception<PrintError<E, O::Error>>>
     where S: Stream<Item=Result<I, E>> + Send + Unpin,
@@ -82,7 +86,7 @@ async fn format_rows_buf<S, I, E, O>(prn: &mut Printer<O>, rows: &mut S,
     Ok(())
 }
 
-async fn format_rows<S, I, E, O>(prn: &mut Printer<O>,
+async fn format_rows<S, I, E, O>(prn: &mut Printer<'_, O>,
     buffered_rows: Vec<I>, rows: &mut S)
     -> Result<(), Exception<PrintError<E, O::Error>>>
     where S: Stream<Item=Result<I, E>> + Send + Unpin,
@@ -119,6 +123,7 @@ pub async fn print_to_stdout<S, I, E>(mut rows: S, config: &Config)
         indent: config.indent,
         max_width: w,
         implicit_properties: config.implicit_properties,
+        type_names: &config.type_names,
 
         buffer: String::with_capacity(8192),
         stream: Stdout {},
@@ -172,6 +177,7 @@ pub fn test_format<I: FormatExt>(items: &[I], max_width: usize)
         indent: 2,
         max_width: max_width,
         implicit_properties: false,
+        type_names: &None,
 
         buffer: String::with_capacity(8192),
         stream: &mut out,

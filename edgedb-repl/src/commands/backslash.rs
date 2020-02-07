@@ -5,6 +5,7 @@ use crate::commands::{self, Options};
 use crate::prompt;
 use crate::repl;
 use crate::server_params::PostgresAddress;
+use crate::commands::type_names::get_type_names;
 
 
 const HELP: &str = r###"
@@ -17,6 +18,9 @@ Settings
   \emacs                   switch to emacs (normal) mode editing, disables vi-mode
   \implicit-properties     print implicit properties of objects (id, type id)
   \no-implicit-properties  disable printing implicit properties
+  \introspect-types        print typenames instead of `Object` (may fail if
+                           schema is updated after enabling option)
+  \no-introspect-types     disable type introspection
 
 Development
   \pgaddr                  show the network addr of the postgres server
@@ -30,11 +34,13 @@ pub const HINTS: &'static [&'static str] = &[
     r"\?",
     r"\emacs",
     r"\implicit-properties",
+    r"\introspect-types",
     r"\l",
     r"\lT [PATTERN]",
     r"\list-databases",
     r"\list-scalar-types [PATTERN]",
     r"\no-implicit-properties",
+    r"\no-introspect-types",
     r"\pgaddr",
     r"\psql",
     r"\vi",
@@ -44,11 +50,13 @@ pub const COMMAND_NAMES: &'static [&'static str] = &[
     r"\?",
     r"\emacs",
     r"\implicit-properties",
+    r"\introspect-types",
     r"\l",
     r"\lT",
     r"\list-databases",
     r"\list-scalar-types",
     r"\no-implicit-properties",
+    r"\no-introspect-types",
     r"\pgaddr",
     r"\psql",
     r"\vi",
@@ -68,6 +76,8 @@ pub enum Command {
     EmacsMode,
     ImplicitProperties,
     NoImplicitProperties,
+    IntrospectTypes,
+    NoIntrospectTypes,
 }
 
 pub struct ParseError {
@@ -108,6 +118,8 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
         ("emacs", None) => Ok(Command::EmacsMode),
         ("implicit-properties", None) => Ok(Command::ImplicitProperties),
         ("no-implicit-properties", None) => Ok(Command::NoImplicitProperties),
+        ("introspect-types", None) => Ok(Command::IntrospectTypes),
+        ("no-introspect-types", None) => Ok(Command::NoIntrospectTypes),
         (_, Some(_)) if COMMAND_NAMES.contains(&&s[..cmd.len()+1]) => {
             error(format_args!("Command `\\{}` doesn't support arguments",
                                cmd.escape_default()),
@@ -167,6 +179,14 @@ pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command,
         }
         NoImplicitProperties => {
             prompt.print.implicit_properties = true;
+            Ok(())
+        }
+        IntrospectTypes => {
+            prompt.print.type_names = Some(get_type_names(cli).await?);
+            Ok(())
+        }
+        NoIntrospectTypes => {
+            prompt.print.type_names = None;
             Ok(())
         }
     }

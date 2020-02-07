@@ -2,6 +2,7 @@ use std::io::Cursor;
 
 use bytes::{Bytes, Buf};
 use snafu::{Snafu, ensure};
+use uuid::Uuid;
 
 use crate::errors::{self, DecodeError};
 use crate::codec::raw::RawCodec;
@@ -97,5 +98,27 @@ impl Queryable for String {
             _ => {}
         }
         Err(ctx.wrong_type(desc, "str"))
+    }
+}
+
+impl Queryable for Uuid {
+    fn decode_raw(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+        RawCodec::decode_raw(buf)
+    }
+    fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
+        -> Result<(), DescriptorMismatch>
+    {
+        use crate::descriptors::Descriptor::{Scalar, BaseScalar};
+        let desc = ctx.get(type_pos)?;
+        match desc {
+            Scalar(scalar) => {
+                return Self::check_descriptor(ctx, scalar.base_type_pos);
+            }
+            BaseScalar(base) if base.id == codec::STD_UUID => {
+                return Ok(());
+            }
+            _ => {}
+        }
+        Err(ctx.wrong_type(desc, "uuid"))
     }
 }

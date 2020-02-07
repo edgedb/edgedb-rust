@@ -4,6 +4,7 @@ pub mod options;
 mod list_databases;
 mod list_scalar_types;
 mod psql;
+mod type_names;
 
 pub use self::options::Options;
 pub use self::list_databases::list_databases;
