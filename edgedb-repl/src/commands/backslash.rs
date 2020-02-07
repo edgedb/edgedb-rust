@@ -15,6 +15,8 @@ Introspection
 Settings
   \vi                      switch to vi-mode editing
   \emacs                   switch to emacs (normal) mode editing, disables vi-mode
+  \implicit-properties     print implicit properties of objects (id, type id)
+  \no-implicit-properties  disable printing implicit properties
 
 Development
   \pgaddr                  show the network addr of the postgres server
