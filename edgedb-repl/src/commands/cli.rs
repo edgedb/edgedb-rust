@@ -63,5 +63,14 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
                 Ok(())
             }).into()
         },
+        Command::Describe(d) => {
+            task::block_on(async {
+                let mut conn = Connection::from_options(&options).await?;
+                let mut cli = conn.authenticate(&options).await?;
+                commands::describe(&mut cli, &cmdopt,
+                    &d.name, d.verbose).await?;
+                Ok(())
+            }).into()
+        },
     }
 }

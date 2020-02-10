@@ -49,6 +49,7 @@ pub enum Command {
     Pgaddr,
     Psql,
     ListScalarTypes(ListTypes),
+    Describe(Describe),
 }
 
 #[derive(StructOpt, Clone, Debug)]
@@ -64,6 +65,13 @@ pub struct ListTypes {
     pub insensitive: bool,
     #[structopt(long, short="S")]
     pub system: bool,
+}
+
+#[derive(StructOpt, Clone, Debug)]
+pub struct Describe {
+    pub name: String,
+    #[structopt(long, short="v")]
+    pub verbose: bool,
 }
 
 #[derive(Debug, Clone)]

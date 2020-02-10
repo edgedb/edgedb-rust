@@ -10,6 +10,8 @@ use crate::commands::type_names::get_type_names;
 
 const HELP: &str = r###"
 Introspection
+  (options: + = verbose)
+  \d[+] NAME               describe schema object
   \l, \list-databases      list databases
   \lT, \list-scalar-types  list scalar types
 
@@ -32,6 +34,10 @@ Help
 
 pub const HINTS: &'static [&'static str] = &[
     r"\?",
+    r"\d NAME",
+    r"\d+ NAME",
+    r"\describe NAME",
+    r"\describe+ NAME",
     r"\emacs",
     r"\implicit-properties",
     r"\introspect-types",
@@ -49,6 +55,10 @@ pub const HINTS: &'static [&'static str] = &[
 pub const COMMAND_NAMES: &'static [&'static str] = &[
     r"\?",
     r"\emacs",
+    r"\d",
+    r"\d+",
+    r"\describe",
+    r"\describe+",
     r"\implicit-properties",
     r"\introspect-types",
     r"\l",
@@ -69,6 +79,10 @@ pub enum Command {
         pattern: Option<String>,
         system: bool,
         insensitive: bool,
+    },
+    Describe {
+        name: String,
+        verbose: bool,
     },
     PostgresAddr,
     Psql,
@@ -112,6 +126,12 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
             system: false, // TODO(tailhook)
             insensitive: false, // TODO(tailhook)
         }),
+        | ("describe", Some(name))
+        | ("d", Some(name))
+        => Ok(Command::Describe { name: name.to_owned(), verbose: false}),
+        | ("describe+", Some(name))
+        | ("d+", Some(name))
+        => Ok(Command::Describe { name: name.to_owned(), verbose: true}),
         ("pgaddr", None) => Ok(Command::PostgresAddr),
         ("psql", None) => Ok(Command::Psql),
         ("vi", None) => Ok(Command::ViMode),
@@ -124,6 +144,11 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
             error(format_args!("Command `\\{}` doesn't support arguments",
                                cmd.escape_default()),
                   "no argument expected")
+        }
+        (_, None) if COMMAND_NAMES.contains(&&s[..cmd.len()+1]) => {
+            error(format_args!("Command `\\{}` requires an argument",
+                               cmd.escape_default()),
+                  "add an argument")
         }
         (_, _) => {
             error(format_args!("Unknown command `\\{}'", cmd.escape_default()),
@@ -187,6 +212,10 @@ pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command,
         }
         NoIntrospectTypes => {
             prompt.print.type_names = None;
+            Ok(())
+        }
+        Describe { name, verbose } => {
+            commands::describe(cli, &options, &name, verbose).await?;
             Ok(())
         }
     }
