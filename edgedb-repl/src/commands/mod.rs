@@ -1,6 +1,7 @@
 pub mod cli;
 pub mod backslash;
 pub mod options;
+mod list;
 mod list_databases;
 mod list_scalar_types;
 mod psql;
