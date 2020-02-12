@@ -23,7 +23,8 @@ use colorful::Colorful;
 
 
 pub enum Control {
-    Input(String, String),
+    EdgeqlInput { database: String, initial: String },
+    VariableInput { name: String, type_name: String, initial: String },
     ViMode,
     EmacsMode,
 }
@@ -155,12 +156,12 @@ impl Completer for EdgeqlHelper {
     }
 }
 
-fn load_history(ed: &mut Editor<EdgeqlHelper>)
+fn load_history<H: rustyline::Helper>(ed: &mut Editor<H>, name: &str)
     -> Result<(), anyhow::Error>
 {
     let dir = data_local_dir().context("cannot find local data dir")?;
     let app_dir = dir.join("edgedb");
-    match ed.load_history(&app_dir.join(".history")) {
+    match ed.load_history(&app_dir.join(format!("{}.history", name))) {
         Err(ReadlineError::Io(e)) if e.kind() == ErrorKind::NotFound => {}
         Err(e) => return Err(e).context("error loading history")?,
         Ok(()) => {}
@@ -168,7 +169,7 @@ fn load_history(ed: &mut Editor<EdgeqlHelper>)
     Ok(())
 }
 
-fn _save_history(ed: &mut Editor<EdgeqlHelper>)
+fn _save_history<H: Helper>(ed: &mut Editor<H>, name: &str)
     -> Result<(), anyhow::Error>
 {
     let dir = data_local_dir().context("cannot find local data dir")?;
@@ -176,13 +177,13 @@ fn _save_history(ed: &mut Editor<EdgeqlHelper>)
     if !app_dir.exists() {
         fs::create_dir_all(&app_dir).context("cannot create application dir")?;
     }
-    ed.save_history(&app_dir.join(".history"))
+    ed.save_history(&app_dir.join(format!("{}.history", name)))
         .context("error writing history file")?;
     Ok(())
 }
 
-fn save_history(ed: &mut Editor<EdgeqlHelper>) {
-    _save_history(ed).map_err(|e| {
+fn save_history<H: Helper>(ed: &mut Editor<H>, name: &str) {
+    _save_history(ed, name).map_err(|e| {
         eprintln!("Can't save history: {:#}", e);
     }).ok();
 }
@@ -191,7 +192,7 @@ pub fn create_editor(mode: EditMode) -> Editor<EdgeqlHelper> {
     let config = Config::builder();
     let config = config.edit_mode(mode);
     let mut editor = Editor::<EdgeqlHelper>::with_config(config.build());
-    load_history(&mut editor).map_err(|e| {
+    load_history(&mut editor, "edgeql").map_err(|e| {
         eprintln!("Can't load history: {:#}", e);
     }).ok();
     editor.set_helper(Some(EdgeqlHelper {
@@ -200,51 +201,87 @@ pub fn create_editor(mode: EditMode) -> Editor<EdgeqlHelper> {
     return editor;
 }
 
+pub fn var_editor(mode: EditMode, type_name: &str) -> Editor<()> {
+    let config = Config::builder();
+    let config = config.edit_mode(mode);
+    let mut editor = Editor::<()>::with_config(config.build());
+    load_history(&mut editor, &format!("var_{}", type_name)).map_err(|e| {
+        eprintln!("Can't load history: {:#}", e);
+    }).ok();
+    return editor;
+}
+
 
 pub fn main(data: Sender<Input>, control: Receiver<Control>)
     -> Result<(), anyhow::Error>
 {
-    let mut editor = create_editor(EditMode::Emacs);
+    let mut mode = EditMode::Emacs;
+    let mut editor = create_editor(mode);
     let mut prompt = String::from("> ");
-    let mut initial;
     'outer: loop {
-        loop {
-            match task::block_on(control.recv()) {
-                None => break 'outer,
-                Some(Control::ViMode) => {
-                    save_history(&mut editor);
-                    editor = create_editor(EditMode::Vi);
-                }
-                Some(Control::EmacsMode) => {
-                    save_history(&mut editor);
-                    editor = create_editor(EditMode::Emacs);
-                }
-                Some(Control::Input(name, prefix)) => {
-                    prompt.clear();
-                    prompt.push_str(&name);
-                    prompt.push_str("> ");
-                    initial = prefix;
-                    break;
-                }
+        match task::block_on(control.recv()) {
+            None => break 'outer,
+            Some(Control::ViMode) => {
+                save_history(&mut editor, "edgeql");
+                mode = EditMode::Vi;
+                editor = create_editor(mode);
+            }
+            Some(Control::EmacsMode) => {
+                save_history(&mut editor, "edgeql");
+                mode = EditMode::Emacs;
+                editor = create_editor(mode);
+            }
+            Some(Control::EdgeqlInput { database, initial }) => {
+                prompt.clear();
+                prompt.push_str(&database);
+                prompt.push_str("> ");
+                let text = match
+                    editor.readline_with_initial(&prompt, (&initial, ""))
+                {
+                    Ok(text) => text,
+                    Err(ReadlineError::Eof) => {
+                        task::block_on(data.send(Input::Eof));
+                        continue;
+                    }
+                    Err(ReadlineError::Interrupted) => {
+                        task::block_on(data.send(Input::Interrupt));
+                        continue;
+                    }
+                    Err(e) => Err(e)?,
+                };
+                editor.add_history_entry(&text);
+                task::block_on(data.send(Input::Text(text)))
+            }
+            Some(Control::VariableInput { name, type_name, initial })
+            => {
+                prompt.clear();
+                prompt.push_str("Variable <");
+                prompt.push_str(&type_name);
+                prompt.push_str(">$");
+                prompt.push_str(&name);
+                prompt.push_str(": ");
+                let mut editor = var_editor(mode, &type_name);
+                let text = match
+                    editor.readline_with_initial(&prompt, (&initial, ""))
+                {
+                    Ok(text) => text,
+                    Err(ReadlineError::Eof) => {
+                        task::block_on(data.send(Input::Eof));
+                        continue;
+                    }
+                    Err(ReadlineError::Interrupted) => {
+                        task::block_on(data.send(Input::Interrupt));
+                        continue;
+                    }
+                    Err(e) => Err(e)?,
+                };
+                editor.add_history_entry(&text);
+                save_history(&mut editor, &format!("var_{}", &type_name));
+                task::block_on(data.send(Input::Text(text)))
             }
         }
-        let text = match editor.readline_with_initial(&prompt, (&initial, ""))
-        {
-            Ok(text) => text,
-            Err(ReadlineError::Eof) => {
-                task::block_on(data.send(Input::Eof));
-                continue;
-            }
-            Err(ReadlineError::Interrupted) => {
-                task::block_on(data.send(Input::Interrupt));
-                continue;
-            }
-            Err(e) => Err(e)?,
-        };
-        editor.add_history_entry(&text);
-        task::block_on(data.send(Input::Text(text)))
     }
-    save_history(&mut editor);
+    save_history(&mut editor, "edgeql");
     Ok(())
 }
 

@@ -3,12 +3,12 @@ use std::sync::Arc;
 
 use bytes::{Bytes, Buf};
 use uuid::Uuid;
-use snafu::ensure;
+use snafu::{ensure, OptionExt};
 
 use crate::encoding::{Decode};
 use crate::errors::{self, DecodeError, CodecError};
-use crate::errors::{InvalidTypeDescriptor};
-use crate::codec::{Codec, build_codec};
+use crate::errors::{InvalidTypeDescriptor, UnexpectedTypePos};
+use crate::codec::{Codec, build_codec, build_input_codec};
 use crate::queryable;
 
 
@@ -33,6 +33,13 @@ pub struct OutputTypedesc {
     #[allow(dead_code)] // TODO
     pub(crate) root_id: Uuid,
     pub(crate) root_pos: Option<TypePos>,
+}
+
+pub struct InputTypedesc {
+    pub(crate) array: Vec<Descriptor>,
+    #[allow(dead_code)] // TODO
+    pub(crate) root_id: Uuid,
+    pub(crate) root_pos: TypePos,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -117,6 +124,32 @@ impl OutputTypedesc {
     }
     pub fn root_pos(&self) -> Option<TypePos> {
         self.root_pos
+    }
+}
+
+impl InputTypedesc {
+    pub fn descriptors(&self) -> &[Descriptor] {
+        &self.array
+    }
+    pub fn build_codec(&self) -> Result<Arc<dyn Codec>, CodecError> {
+        build_input_codec(Some(self.root_pos()), self.descriptors())
+    }
+    pub fn root_pos(&self) -> TypePos {
+        self.root_pos
+    }
+    pub fn root(&self) -> &Descriptor {
+        &self.array[self.root_pos.0 as usize]
+    }
+    pub fn get(&self, type_pos: TypePos) -> Result<&Descriptor, CodecError> {
+        self.array.get(type_pos.0 as usize)
+            .context(UnexpectedTypePos { position: type_pos.0 })
+    }
+    pub fn is_empty_tuple(&self) -> bool {
+        match self.root() {
+            Descriptor::Tuple(t)
+              => t.id == Uuid::from_u128(0xFF) && t.element_types.is_empty(),
+            _ => false,
+        }
     }
 }
 

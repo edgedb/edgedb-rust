@@ -6,7 +6,8 @@ use std::time::UNIX_EPOCH;
 
 use bytes::{Bytes, Buf};
 
-use edgedb_protocol::codec::{build_codec, Codec, ObjectShape};
+use edgedb_protocol::codec::{build_codec, build_input_codec};
+use edgedb_protocol::codec::{Codec, ObjectShape};
 use edgedb_protocol::value::{Value, Duration};
 use edgedb_protocol::value::{LocalDatetime, LocalDate, LocalTime};
 use edgedb_protocol::descriptors::{Descriptor, TypePos};
@@ -632,6 +633,32 @@ fn tuple() -> Result<(), Box<dyn Error>> {
         Value::Tuple(vec![
             Value::Int64(1),
             Value::Str("str".into()),
+        ]));
+    Ok(())
+}
+
+#[test]
+fn input_tuple() -> Result<(), Box<dyn Error>> {
+    let codec = build_input_codec(Some(TypePos(1)),
+        &[
+            Descriptor::BaseScalar(
+                BaseScalarTypeDescriptor {
+                    id: "00000000-0000-0000-0000-000000000101".parse()?,
+                },
+            ),
+            Descriptor::Tuple(
+                TupleTypeDescriptor {
+                    id: "6c87a50a-fce2-dcae-6872-8c4c9c4d1e7c".parse()?,
+                    element_types: vec![TypePos(0)],
+                },
+            ),
+        ],
+    )?;
+
+    // TODO(tailhook) test with non-zero reserved bytes
+    encoding_eq!(&codec, bconcat!(b"\0\0\0\x01\0\0\0\x04test"),
+        Value::Tuple(vec![
+            Value::Str("test".into()),
         ]));
     Ok(())
 }

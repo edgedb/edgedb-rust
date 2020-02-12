@@ -7,7 +7,6 @@ use anyhow;
 use async_std::io::stdin;
 use async_std::io::prelude::WriteExt;
 use async_std::net::{TcpStream, ToSocketAddrs};
-use async_std::sync::{Receiver};
 use bytes::{Bytes, BytesMut, BufMut};
 use scram::ScramClient;
 use serde_json::from_slice;
@@ -26,6 +25,7 @@ use crate::prompt;
 use crate::reader::{Reader, ReadError, QueryableDecoder, QueryResponse};
 use crate::repl;
 use crate::server_params::PostgresAddress;
+use crate::variables::input_variables;
 
 pub struct Connection {
     stream: TcpStream,
@@ -132,8 +132,7 @@ impl Connection {
     }
 }
 
-pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
-        mut state: repl::State)
+pub async fn interactive_main(options: Options, mut state: repl::State)
     -> Result<(), anyhow::Error>
 {
     let mut conn = Connection::from_options(&options).await?;
@@ -142,12 +141,13 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
     let statement_name = Bytes::from_static(b"");
 
     'input_loop: loop {
-        state.control.send(prompt::Control::Input(
-            options.database.clone(),
-            replace(&mut initial, String::new()),
-        )).await;
-        let inp = match data.recv().await {
-            None | Some(prompt::Input::Eof) => {
+        let inp = match
+            state.edgeql_input(
+                &options.database,
+                &replace(&mut initial, String::new()),
+            ).await
+        {
+            prompt::Input::Eof => {
                 cli.send_message(&ClientMessage::Terminate).await?;
                 match cli.reader.message().await {
                     Err(ReadError::Eos) => {}
@@ -160,8 +160,8 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
                 }
                 return Ok(())
             }
-            Some(prompt::Input::Interrupt) => continue,
-            Some(prompt::Input::Text(inp)) => inp,
+            prompt::Input::Interrupt => continue,
+            prompt::Input::Text(inp) => inp,
         };
         if inp.trim_start().starts_with("\\") {
             let cmd = match backslash::parse(&inp) {
@@ -238,17 +238,30 @@ pub async fn interactive_main(options: Options, data: Receiver<prompt::Input>,
             println!("Descriptor: {:?}", data_description);
         }
         let desc = data_description.output()?;
+        let indesc = data_description.input()?;
         if options.debug_print_descriptors {
-            println!("Descriptors {:#?}", desc.descriptors());
+            println!("InputDescr {:#?}", indesc.descriptors());
+            println!("Output Descr {:#?}", desc.descriptors());
         }
         let codec = desc.build_codec()?;
         if options.debug_print_codecs {
             println!("Codec {:#?}", codec);
         }
+        let incodec = indesc.build_codec()?;
+        if options.debug_print_codecs {
+            println!("Input Codec {:#?}", codec);
+        }
+
+        let input = match input_variables(&indesc, &mut state).await {
+            Ok(input) => input,
+            Err(e) => {
+                eprintln!("{:#?}", e);
+                continue 'input_loop;
+            }
+        };
 
         let mut arguments = BytesMut::with_capacity(8);
-        // empty tuple
-        arguments.put_u32(0);
+        incodec.encode(&mut arguments, &input)?;
 
         cli.send_message(&ClientMessage::Execute(Execute {
             headers: HashMap::new(),

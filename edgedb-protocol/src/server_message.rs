@@ -10,7 +10,7 @@ use snafu::{OptionExt, ensure};
 
 use crate::errors::{self, EncodeError, DecodeError};
 use crate::encoding::{Headers, Decode, Encode};
-use crate::descriptors::{OutputTypedesc, Descriptor, TypePos};
+use crate::descriptors::{OutputTypedesc, InputTypedesc, Descriptor, TypePos};
 pub use crate::common::Cardinality;
 
 
@@ -175,6 +175,23 @@ impl CommandDataDescription {
             Some(TypePos(pos))
         };
         Ok(OutputTypedesc { array: descriptors, root_id, root_pos })
+    }
+    pub fn input(&self) -> Result<InputTypedesc, DecodeError> {
+        let mut cur = Cursor::new(self.input_typedesc.clone());
+        let mut descriptors = Vec::new();
+        while cur.bytes() != b"" {
+            match Descriptor::decode(&mut cur)? {
+                Descriptor::TypeAnnotation(_) => {}
+                item => descriptors.push(item),
+            }
+        }
+        let root_id = self.input_typedesc_id.clone();
+        let idx = descriptors.iter().position(|x| *x.id() == root_id)
+            .context(errors::UuidNotFound { uuid: root_id })?;
+        let pos = idx.try_into().ok()
+            .context(errors::TooManyDescriptors { index: idx })?;
+        let root_pos = TypePos(pos);
+        Ok(InputTypedesc { array: descriptors, root_id, root_pos })
     }
 }
 

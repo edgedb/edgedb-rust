@@ -13,6 +13,7 @@ mod prompt;
 mod reader;
 mod repl;
 mod server_params;
+mod variables;
 
 
 fn main() -> Result<(), anyhow::Error> {
@@ -33,6 +34,7 @@ fn interactive_main(options: Options) -> Result<(), anyhow::Error> {
     let (repl_wr, repl_rd) = channel(1);
     let state = repl::State {
         control: control_wr,
+        data: repl_rd,
         print: print::Config {
             indent: 2,
             colors: None,
@@ -41,8 +43,7 @@ fn interactive_main(options: Options) -> Result<(), anyhow::Error> {
             type_names: None,
         },
     };
-    let handle = task::spawn(client::interactive_main(
-        options, repl_rd, state));
+    let handle = task::spawn(client::interactive_main(options, state));
     prompt::main(repl_wr, control_rd)?;
     task::block_on(handle)?;
     Ok(())

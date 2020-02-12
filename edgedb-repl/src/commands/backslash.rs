@@ -191,11 +191,11 @@ pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command,
             Ok(())
         }
         ViMode => {
-            prompt.control.send(prompt::Control::ViMode).await;
+            prompt.vi_mode().await;
             Ok(())
         }
         EmacsMode => {
-            prompt.control.send(prompt::Control::EmacsMode).await;
+            prompt.emacs_mode().await;
             Ok(())
         }
         ImplicitProperties => {
