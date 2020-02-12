@@ -160,6 +160,12 @@ struct NamedTuple {
 }
 
 #[derive(Debug)]
+struct InputNamedTuple {
+    shape: NamedTupleShape,
+    codecs: Vec<Arc<dyn Codec>>,
+}
+
+#[derive(Debug)]
 struct Array {
     element: Arc<dyn Codec>,
 }
@@ -222,7 +228,13 @@ impl<'a> CodecBuilder<'a> {
                         Ok(Arc::new(Tuple::build(d, self)?))
                     }
                 }
-                D::NamedTuple(d) =>  Ok(Arc::new(NamedTuple::build(d, self)?)),
+                D::NamedTuple(d) => {
+                    if self.input {
+                        Ok(Arc::new(InputNamedTuple::build(d, self)?))
+                    } else {
+                        Ok(Arc::new(NamedTuple::build(d, self)?))
+                    }
+                }
                 D::Array(d) => Ok(Arc::new(Array {
                     element: self.build(d.type_pos)?,
                 })),
@@ -511,6 +523,19 @@ impl NamedTuple {
         -> Result<NamedTuple, CodecError>
     {
         Ok(NamedTuple {
+            shape: d.elements.as_slice().into(),
+            codecs: d.elements.iter()
+                .map(|e| dec.build(e.type_pos))
+                .collect::<Result<_, _>>()?,
+        })
+    }
+}
+
+impl InputNamedTuple {
+    fn build(d: &descriptors::NamedTupleTypeDescriptor, dec: &CodecBuilder)
+        -> Result<InputNamedTuple, CodecError>
+    {
+        Ok(InputNamedTuple {
             shape: d.elements.as_slice().into(),
             codecs: d.elements.iter()
                 .map(|e| dec.build(e.type_pos))
@@ -1063,6 +1088,54 @@ impl Codec for NamedTuple {
         for (codec, field) in self.codecs.iter().zip(fields) {
             buf.reserve(8);
             buf.put_u32(0);
+            let pos = buf.len();
+            buf.put_u32(0);  // replaced after serializing a value
+            codec.encode(buf, field)?;
+            let len = buf.len()-pos-4;
+            buf[pos..pos+4].copy_from_slice(&u32::try_from(len)
+                    .ok().context(errors::ElementTooLong)?
+                    .to_be_bytes());
+        }
+        Ok(())
+    }
+}
+
+impl Codec for InputNamedTuple {
+    fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
+        ensure!(buf.remaining() >= 4, errors::Underflow);
+        let size = buf.get_u32() as usize;
+        ensure!(size == self.codecs.len(), errors::TupleSizeMismatch);
+        let mut fields = Vec::with_capacity(size);
+        for codec in &self.codecs {
+            ensure!(buf.remaining() >= 4, errors::Underflow);
+            let len = buf.get_u32() as usize;
+            ensure!(buf.remaining() >= len, errors::Underflow);
+            let off = buf.position() as usize;
+            let mut chunk = Cursor::new(buf.get_ref().slice(off..off + len));
+            buf.advance(len);
+            fields.push(codec.decode_value(&mut chunk)?);
+        }
+        return Ok(Value::NamedTuple {
+            shape: self.shape.clone(),
+            fields,
+        })
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        let (shape, fields) = match val {
+            Value::NamedTuple { shape, fields } => (shape, fields),
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        ensure!(shape == &self.shape, errors::TupleShapeMismatch);
+        ensure!(self.codecs.len() == fields.len(),
+                errors::ObjectShapeMismatch);
+        debug_assert_eq!(self.codecs.len(), shape.0.elements.len());
+        buf.reserve(4 + 8*self.codecs.len());
+        buf.put_u32(self.codecs.len().try_into()
+                    .ok().context(errors::TooManyElements)?);
+        for (codec, field) in self.codecs.iter().zip(fields) {
+            buf.reserve(4);
             let pos = buf.len();
             buf.put_u32(0);  // replaced after serializing a value
             codec.encode(buf, field)?;

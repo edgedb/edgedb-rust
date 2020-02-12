@@ -28,7 +28,13 @@ pub async fn input_variables(desc: &InputTypedesc, state: &mut repl::State)
             return Ok(Value::Tuple(val));
         }
         Descriptor::NamedTuple(tuple) => {
-            todo!();
+            let mut fields = Vec::with_capacity(tuple.elements.len());
+            let shape = tuple.elements[..].into();
+            for el in tuple.elements.iter() {
+                fields.push(input_item(&el.name,
+                    desc.get(el.type_pos)?, desc, state).await?);
+            }
+            return Ok(Value::NamedTuple { shape, fields });
         }
         root => {
             return Err(anyhow::anyhow!(

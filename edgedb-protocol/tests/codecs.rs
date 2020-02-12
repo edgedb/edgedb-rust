@@ -711,6 +711,53 @@ fn named_tuple() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn input_named_tuple() -> Result<(), Box<dyn Error>> {
+    let elements = vec![
+        TupleElement {
+            name: "a".into(),
+            type_pos: TypePos(0),
+        },
+        TupleElement {
+            name: "b".into(),
+            type_pos: TypePos(1),
+        },
+    ];
+    let shape = elements.as_slice().into();
+    let codec = build_input_codec(Some(TypePos(2)),
+        &[
+            Descriptor::BaseScalar(
+                BaseScalarTypeDescriptor {
+                    id: "00000000-0000-0000-0000-000000000105".parse()?,
+                },
+            ),
+            Descriptor::BaseScalar(
+                BaseScalarTypeDescriptor {
+                    id: "00000000-0000-0000-0000-000000000101".parse()?,
+                },
+            ),
+            Descriptor::NamedTuple(
+                    NamedTupleTypeDescriptor {
+                        id: "101385c1-d6d5-ec67-eec4-b2b88be8a197".parse()?,
+                        elements,
+                    },
+                ),
+        ],
+    )?;
+
+    // TODO(tailhook) test with non-zero reserved bytes
+    encoding_eq!(&codec, bconcat!(b"\0\0\0\x02\0\0\0"
+        b"\x08\0\0\0\0\0\0\0\x01\0\0\0\x01x"),
+        Value::NamedTuple {
+            shape,
+            fields: vec![
+                Value::Int64(1),
+                Value::Str("x".into()),
+            ],
+        });
+    Ok(())
+}
+
+#[test]
 fn array() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(Some(TypePos(1)),
         &[
