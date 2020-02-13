@@ -2,7 +2,6 @@ use anyhow;
 
 use crate::client::Client;
 use crate::commands::{self, Options};
-use crate::prompt;
 use crate::repl;
 use crate::server_params::PostgresAddress;
 use crate::commands::type_names::get_type_names;
