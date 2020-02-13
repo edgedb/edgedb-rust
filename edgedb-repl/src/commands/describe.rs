@@ -6,7 +6,7 @@ use crate::commands::Options;
 use crate::client::Client;
 
 
-pub async fn describe<'x>(cli: &mut Client<'x>, options: &Options,
+pub async fn describe<'x>(cli: &mut Client<'x>, _options: &Options,
     name: &str, verbose: bool)
     -> Result<(), anyhow::Error>
 {
