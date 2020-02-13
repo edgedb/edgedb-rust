@@ -1,18 +1,44 @@
 use async_std::prelude::StreamExt;
 
+use prettytable::{Table, Row, Cell, Attr};
+use prettytable::format::{FormatBuilder, LinePosition, LineSeparator};
+use prettytable::format::{Alignment, TableFormat};
+
+use edgedb_derive::Queryable;
 use edgedb_protocol::value::Value;
 use crate::commands::Options;
 use crate::client::Client;
 
-use edgedb_derive::Queryable;
+lazy_static::lazy_static! {
+    pub static ref TABLE_FORMAT: TableFormat = FormatBuilder::new()
+        .column_separator('│')
+        .borders('│')
+        .separators(&[LinePosition::Top],
+                    LineSeparator::new('─',
+                                       '┬',
+                                       '┌',
+                                       '┐'))
+        .separators(&[LinePosition::Title],
+                    LineSeparator::new('─',
+                                       '┼',
+                                       '├',
+                                       '┤'))
+        .separators(&[LinePosition::Bottom],
+                    LineSeparator::new('─',
+                                       '┴',
+                                       '└',
+                                       '┘'))
+        .padding(1, 1)
+        .build();
+}
+
 
 #[derive(Queryable)]
-struct Row {
+struct ScalarType {
     name: String,
     extending: String,
     kind: String,
 }
-
 
 pub async fn list_scalar_types<'x>(cli: &mut Client<'x>, options: &Options,
     pattern: &Option<String>, system: bool, case_sensitive: bool)
@@ -64,10 +90,30 @@ pub async fn list_scalar_types<'x>(cli: &mut Client<'x>, options: &Options,
         ORDER BY .name;
     "###, filter=filter);
 
-    let mut items = cli.query::<Row>(&query, &var).await?;
-
-    while let Some(item) = items.next().await.transpose()? {
-        println!("{}\t{}\t{}", item.name, item.extending, item.kind);
+    let mut items = cli.query::<ScalarType>(&query, &var).await?;
+    if atty::is(atty::Stream::Stdout) || !options.command_line {
+        let mut table = Table::new();
+        table.set_format(*TABLE_FORMAT);
+        table.set_titles(Row::new(vec![
+            Cell::new_align("Name", Alignment::CENTER)
+                .with_style(Attr::Dim),
+            Cell::new_align("Extending", Alignment::CENTER)
+                .with_style(Attr::Dim),
+            Cell::new_align("Kind", Alignment::CENTER)
+                .with_style(Attr::Dim),
+        ]));
+        while let Some(item) = items.next().await.transpose()? {
+            table.add_row(Row::new(vec![
+                Cell::new(&item.name),
+                Cell::new(&item.extending),
+                Cell::new(&item.kind),
+            ]));
+        }
+        table.printstd();
+    } else {
+        while let Some(item) = items.next().await.transpose()? {
+            println!("{}\t{}\t{}", item.name, item.extending, item.kind);
+        }
     }
     Ok(())
 }
