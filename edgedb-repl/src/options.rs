@@ -49,6 +49,7 @@ pub enum Command {
     Pgaddr,
     Psql,
     ListScalarTypes(ListTypes),
+    ListRoles(ListRoles),
     Describe(Describe),
 }
 
@@ -65,6 +66,13 @@ pub struct ListTypes {
     pub case_sensitive: bool,
     #[structopt(long, short="S")]
     pub system: bool,
+}
+
+#[derive(StructOpt, Clone, Debug)]
+pub struct ListRoles {
+    pub pattern: Option<String>,
+    #[structopt(long, short="I")]
+    pub case_sensitive: bool,
 }
 
 #[derive(StructOpt, Clone, Debug)]

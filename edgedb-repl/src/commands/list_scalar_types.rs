@@ -5,8 +5,8 @@ use prettytable::format::{FormatBuilder, LinePosition, LineSeparator};
 use prettytable::format::{Alignment, TableFormat};
 
 use edgedb_derive::Queryable;
-use edgedb_protocol::value::Value;
 use crate::commands::Options;
+use crate::commands::filter;
 use crate::client::Client;
 
 lazy_static::lazy_static! {
@@ -44,34 +44,22 @@ pub async fn list_scalar_types<'x>(cli: &mut Client<'x>, options: &Options,
     pattern: &Option<String>, system: bool, case_sensitive: bool)
     -> Result<(), anyhow::Error>
 {
-    let pat = pattern.as_ref().map(|pattern| {
-        if case_sensitive {
-            pattern.clone()
-        } else {
-            String::from("(?i)") + pattern
-        }
-    });
-    let (filter, var) = match (pat, system) {
-        (None, true) => {
-            ("FILTER NOT .is_from_alias",
-             Value::empty_tuple())
-        }
+    let pat = filter::pattern_to_value(pattern, case_sensitive);
+    let filter = match (pattern, system) {
+        (None, true) => "FILTER NOT .is_from_alias",
         (None, false) => {
-            (r#"FILTER NOT
+            r#"FILTER NOT
                 re_test("^(?:std|schema|math|sys|cfg|cal|stdgraphql)::",
-                .name)"#,
-             Value::empty_tuple())
+                .name)"#
         }
-        (Some(pattern), true) => {
-            ("FILTER NOT .is_from_alias AND re_test(<str>$0, .name)",
-             Value::Tuple(vec![Value::Str(pattern)]))
+        (Some(_), true) => {
+            "FILTER NOT .is_from_alias AND re_test(<str>$0, .name)"
         }
-        (Some(pattern), false) => {
-            (r#"FILTER NOT .is_from_alias
+        (Some(_), false) => {
+            r#"FILTER NOT .is_from_alias
                 AND re_test(<str>$0, .name) AND
                 NOT re_test("^(?:std|schema|math|sys|cfg|cal|stdgraphql)::",
-                .name)"#,
-             Value::Tuple(vec![Value::Str(pattern)]))
+                .name)"#
         }
     };
 
@@ -90,7 +78,7 @@ pub async fn list_scalar_types<'x>(cli: &mut Client<'x>, options: &Options,
         ORDER BY .name;
     "###, filter=filter);
 
-    let mut items = cli.query::<ScalarType>(&query, &var).await?;
+    let mut items = cli.query::<ScalarType>(&query, &pat).await?;
     if atty::is(atty::Stream::Stdout) || !options.command_line {
         let mut table = Table::new();
         table.set_format(*TABLE_FORMAT);
