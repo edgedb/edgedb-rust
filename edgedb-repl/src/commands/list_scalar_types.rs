@@ -44,14 +44,14 @@ pub async fn list_scalar_types<'x>(cli: &mut Client<'x>, options: &Options,
     pattern: &Option<String>, system: bool, case_sensitive: bool)
     -> Result<(), anyhow::Error>
 {
-    let pattern = pattern.as_ref().map(|pattern| {
+    let pat = pattern.as_ref().map(|pattern| {
         if case_sensitive {
             pattern.clone()
         } else {
             String::from("(?i)") + pattern
         }
     });
-    let (filter, var) = match (pattern, system) {
+    let (filter, var) = match (pat, system) {
         (None, true) => {
             ("FILTER NOT .is_from_alias",
              Value::empty_tuple())
@@ -109,7 +109,17 @@ pub async fn list_scalar_types<'x>(cli: &mut Client<'x>, options: &Options,
                 Cell::new(&item.kind),
             ]));
         }
-        table.printstd();
+        if table.is_empty() {
+            if let Some(pattern) = pattern {
+                eprintln!("No scalar types found matching {:?}", pattern);
+            } else if !system {
+                eprintln!("No user-defined scalar types found. {}",
+                    if options.command_line { "Try --system" }
+                    else { r"Try \lTS" });
+            }
+        } else {
+            table.printstd();
+        }
     } else {
         while let Some(item) = items.next().await.transpose()? {
             println!("{}\t{}\t{}", item.name, item.extending, item.kind);
