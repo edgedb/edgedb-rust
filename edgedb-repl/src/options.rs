@@ -50,6 +50,7 @@ pub enum Command {
     Psql,
     ListScalarTypes(ListTypes),
     ListRoles(ListRoles),
+    ListModules(ListModules),
     Describe(Describe),
 }
 
@@ -70,6 +71,13 @@ pub struct ListTypes {
 
 #[derive(StructOpt, Clone, Debug)]
 pub struct ListRoles {
+    pub pattern: Option<String>,
+    #[structopt(long, short="I")]
+    pub case_sensitive: bool,
+}
+
+#[derive(StructOpt, Clone, Debug)]
+pub struct ListModules {
     pub pattern: Option<String>,
     #[structopt(long, short="I")]
     pub case_sensitive: bool,

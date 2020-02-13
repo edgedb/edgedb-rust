@@ -16,6 +16,8 @@ Introspection
                            (alias: \list-scalar-types)
   \lr[I]                   list roles
                            (alias: \list-roles)
+  \lm[I]                   list modules
+                           (alias: \list-modules)
 
 Settings
   \vi                      switch to vi-mode editing
@@ -50,6 +52,7 @@ pub const HINTS: &'static [&'static str] = &[
     r"\lTS [PATTERN]",
     r"\lTSI [PATTERN]",
     r"\list-databases",
+    r"\list-modules [PATTERN]",
     r"\list-roles [PATTERN]",
     r"\list-scalar-types [PATTERN]",
     r"\lr",
@@ -77,6 +80,7 @@ pub const COMMAND_NAMES: &'static [&'static str] = &[
     r"\lTS",
     r"\lTSI",
     r"\list-databases",
+    r"\list-modules",
     r"\list-roles",
     r"\list-scalar-types",
     r"\lr",
@@ -91,6 +95,10 @@ pub const COMMAND_NAMES: &'static [&'static str] = &[
 pub enum Command {
     Help,
     ListDatabases,
+    ListModules {
+        pattern: Option<String>,
+        case_sensitive: bool,
+    },
     ListRoles {
         pattern: Option<String>,
         case_sensitive: bool,
@@ -157,6 +165,13 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
             pattern: pattern.map(|x| x.to_owned()),
             case_sensitive: cmd.contains('I'),
         }),
+        | ("list-modules", pattern)
+        | ("lm", pattern)
+        | ("lmI", pattern)
+        => Ok(Command::ListModules {
+            pattern: pattern.map(|x| x.to_owned()),
+            case_sensitive: cmd.contains('I'),
+        }),
         | ("describe", Some(name))
         | ("d", Some(name))
         => Ok(Command::Describe { name: name.to_owned(), verbose: false}),
@@ -205,6 +220,10 @@ pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command,
         ListScalarTypes { pattern, case_sensitive, system } => {
             commands::list_scalar_types(cli, &options,
                 &pattern, case_sensitive, system).await
+        }
+        ListModules { pattern, case_sensitive } => {
+            commands::list_modules(cli, &options,
+                &pattern, case_sensitive).await
         }
         ListRoles { pattern, case_sensitive } => {
             commands::list_roles(cli, &options, &pattern, case_sensitive).await

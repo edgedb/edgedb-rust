@@ -49,6 +49,15 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
                 Ok(())
             }).into()
         },
+        Command::ListModules(t) => {
+            task::block_on(async {
+                let mut conn = Connection::from_options(&options).await?;
+                let mut cli = conn.authenticate(&options).await?;
+                commands::list_modules(&mut cli, &cmdopt,
+                    &t.pattern, t.case_sensitive).await?;
+                Ok(())
+            }).into()
+        },
         Command::Pgaddr => {
             task::block_on(async {
                 let mut conn = Connection::from_options(&options).await?;
