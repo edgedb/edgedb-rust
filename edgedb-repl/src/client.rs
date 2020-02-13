@@ -7,7 +7,7 @@ use anyhow;
 use async_std::io::stdin;
 use async_std::io::prelude::WriteExt;
 use async_std::net::{TcpStream, ToSocketAddrs};
-use bytes::{Bytes, BytesMut, BufMut};
+use bytes::{Bytes, BytesMut};
 use scram::ScramClient;
 use serde_json::from_slice;
 use typemap::TypeMap;
@@ -18,6 +18,7 @@ use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
 use edgedb_protocol::client_message::{Execute, ExecuteScript};
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use edgedb_protocol::queryable::{Queryable};
+use edgedb_protocol::value::Value;
 use crate::commands::backslash;
 use crate::options::Options;
 use crate::print::print_to_stdout;
@@ -386,7 +387,7 @@ impl<'a> Client<'a> {
         Ok(status)
     }
 
-    pub async fn query<R>(&mut self, request: &str)
+    pub async fn query<R>(&mut self, request: &str, arguments: &Value)
         -> Result<
             QueryResponse<'_, &'a TcpStream, QueryableDecoder<R>>,
             anyhow::Error
@@ -445,18 +446,18 @@ impl<'a> Client<'a> {
             }
         };
         let desc = data_description.output()?;
+        let incodec = data_description.input()?.build_codec()?;
         let root_pos = desc.root_pos()
             .ok_or_else(|| anyhow::anyhow!("no result expected"))?;
         R::check_descriptor(&desc.as_queryable_context(), root_pos)?;
 
-        let mut arguments = BytesMut::with_capacity(8);
-        // empty tuple
-        arguments.put_u32(0);
+        let mut arg_buf = BytesMut::with_capacity(8);
+        incodec.encode(&mut arg_buf, &arguments)?;
 
         self.send_message(&ClientMessage::Execute(Execute {
             headers: HashMap::new(),
             statement_name: statement_name.clone(),
-            arguments: arguments.freeze(),
+            arguments: arg_buf.freeze(),
         })).await?;
         self.send_message(&ClientMessage::Sync).await?;
 

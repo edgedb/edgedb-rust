@@ -9,10 +9,11 @@ use crate::commands::type_names::get_type_names;
 
 const HELP: &str = r###"
 Introspection
-  (options: + = verbose)
+  (options: + = verbose, S = show system objects, I = case-sensitive match)
   \d[+] NAME               describe schema object
   \l, \list-databases      list databases
-  \lT, \list-scalar-types  list scalar types
+  \lT[IS] [PATTERN]        list scalar types
+  \list-scalar-types
 
 Settings
   \vi                      switch to vi-mode editing
@@ -42,6 +43,10 @@ pub const HINTS: &'static [&'static str] = &[
     r"\introspect-types",
     r"\l",
     r"\lT [PATTERN]",
+    r"\lTS [PATTERN]",
+    r"\lTI [PATTERN]",
+    r"\lTIS [PATTERN]",
+    r"\lTSI [PATTERN]",
     r"\list-databases",
     r"\list-scalar-types [PATTERN]",
     r"\no-implicit-properties",
@@ -62,6 +67,10 @@ pub const COMMAND_NAMES: &'static [&'static str] = &[
     r"\introspect-types",
     r"\l",
     r"\lT",
+    r"\lTS",
+    r"\lTI",
+    r"\lTIS",
+    r"\lTSI",
     r"\list-databases",
     r"\list-scalar-types",
     r"\no-implicit-properties",
@@ -77,7 +86,7 @@ pub enum Command {
     ListScalarTypes {
         pattern: Option<String>,
         system: bool,
-        insensitive: bool,
+        case_sensitive: bool,
     },
     Describe {
         name: String,
@@ -120,10 +129,14 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
         => Ok(Command::ListDatabases),
         | ("list-scalar-types", pattern)
         | ("lT", pattern)
+        | ("lTI", pattern)
+        | ("lTS", pattern)
+        | ("lTIS", pattern)
+        | ("lTSI", pattern)
         => Ok(Command::ListScalarTypes {
             pattern: pattern.map(|x| x.to_owned()),
-            system: false, // TODO(tailhook)
-            insensitive: false, // TODO(tailhook)
+            system: cmd.contains('S'),
+            case_sensitive: cmd.contains('I'),
         }),
         | ("describe", Some(name))
         | ("d", Some(name))
@@ -170,9 +183,9 @@ pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command,
             Ok(())
         }
         ListDatabases => commands::list_databases(cli, &options).await,
-        ListScalarTypes { pattern, insensitive, system } => {
+        ListScalarTypes { pattern, case_sensitive, system } => {
             commands::list_scalar_types(cli, &options,
-                &pattern, insensitive, system).await
+                &pattern, case_sensitive, system).await
         }
         PostgresAddr => {
             match cli.params.get::<PostgresAddress>() {

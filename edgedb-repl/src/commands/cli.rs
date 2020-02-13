@@ -36,7 +36,7 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
                 let mut conn = Connection::from_options(&options).await?;
                 let mut cli = conn.authenticate(&options).await?;
                 commands::list_scalar_types(&mut cli, &cmdopt,
-                    &t.pattern, t.system, t.insensitive).await?;
+                    &t.pattern, t.system, t.case_sensitive).await?;
                 Ok(())
             }).into()
         },

@@ -62,7 +62,7 @@ pub struct CreateDatabase {
 pub struct ListTypes {
     pub pattern: Option<String>,
     #[structopt(long, short="I")]
-    pub insensitive: bool,
+    pub case_sensitive: bool,
     #[structopt(long, short="S")]
     pub system: bool,
 }

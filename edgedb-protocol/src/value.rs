@@ -116,6 +116,9 @@ impl Value {
             Enum(..) => "enum",
         }
     }
+    pub fn empty_tuple() -> Value {
+        Value::Tuple(Vec::new())
+    }
 }
 
 impl Duration {
