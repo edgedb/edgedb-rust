@@ -14,6 +14,8 @@ Introspection
   \l, \list-databases      list databases
   \lT[IS] [PATTERN]        list scalar types
                            (alias: \list-scalar-types)
+  \lt[IS] [PATTERN]        list object types
+                           (alias: \list-object-types)
   \lr[I]                   list roles
                            (alias: \list-roles)
   \lm[I]                   list modules
@@ -51,9 +53,15 @@ pub const HINTS: &'static [&'static str] = &[
     r"\lTIS [PATTERN]",
     r"\lTS [PATTERN]",
     r"\lTSI [PATTERN]",
+    r"\lt [PATTERN]",
+    r"\ltI [PATTERN]",
+    r"\ltIS [PATTERN]",
+    r"\ltS [PATTERN]",
+    r"\ltSI [PATTERN]",
     r"\list-databases",
     r"\list-modules [PATTERN]",
     r"\list-roles [PATTERN]",
+    r"\list-object-types [PATTERN]",
     r"\list-scalar-types [PATTERN]",
     r"\lr",
     r"\lrI",
@@ -79,9 +87,15 @@ pub const COMMAND_NAMES: &'static [&'static str] = &[
     r"\lTIS",
     r"\lTS",
     r"\lTSI",
+    r"\lt",
+    r"\ltI",
+    r"\ltIS",
+    r"\ltS",
+    r"\ltSI",
     r"\list-databases",
     r"\list-modules",
     r"\list-roles",
+    r"\list-object-types",
     r"\list-scalar-types",
     r"\lr",
     r"\lrI",
@@ -104,6 +118,11 @@ pub enum Command {
         case_sensitive: bool,
     },
     ListScalarTypes {
+        pattern: Option<String>,
+        system: bool,
+        case_sensitive: bool,
+    },
+    ListObjectTypes {
         pattern: Option<String>,
         system: bool,
         case_sensitive: bool,
@@ -154,6 +173,16 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
         | ("lTIS", pattern)
         | ("lTSI", pattern)
         => Ok(Command::ListScalarTypes {
+            pattern: pattern.map(|x| x.to_owned()),
+            system: cmd.contains('S'),
+            case_sensitive: cmd.contains('I'),
+        }),
+        | ("lt", pattern)
+        | ("ltI", pattern)
+        | ("ltS", pattern)
+        | ("ltIS", pattern)
+        | ("ltSI", pattern)
+        => Ok(Command::ListObjectTypes {
             pattern: pattern.map(|x| x.to_owned()),
             system: cmd.contains('S'),
             case_sensitive: cmd.contains('I'),
@@ -219,7 +248,11 @@ pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command,
         ListDatabases => commands::list_databases(cli, &options).await,
         ListScalarTypes { pattern, case_sensitive, system } => {
             commands::list_scalar_types(cli, &options,
-                &pattern, case_sensitive, system).await
+                &pattern, system, case_sensitive).await
+        }
+        ListObjectTypes { pattern, case_sensitive, system } => {
+            commands::list_object_types(cli, &options,
+                &pattern, system, case_sensitive).await
         }
         ListModules { pattern, case_sensitive } => {
             commands::list_modules(cli, &options,

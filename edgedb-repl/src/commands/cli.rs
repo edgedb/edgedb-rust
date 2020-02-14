@@ -40,6 +40,15 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
                 Ok(())
             }).into()
         },
+        Command::ListObjectTypes(t) => {
+            task::block_on(async {
+                let mut conn = Connection::from_options(&options).await?;
+                let mut cli = conn.authenticate(&options).await?;
+                commands::list_object_types(&mut cli, &cmdopt,
+                    &t.pattern, t.system, t.case_sensitive).await?;
+                Ok(())
+            }).into()
+        },
         Command::ListRoles(t) => {
             task::block_on(async {
                 let mut conn = Connection::from_options(&options).await?;

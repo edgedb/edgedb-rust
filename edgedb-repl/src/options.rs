@@ -49,6 +49,7 @@ pub enum Command {
     Pgaddr,
     Psql,
     ListScalarTypes(ListTypes),
+    ListObjectTypes(ListTypes),
     ListRoles(ListRoles),
     ListModules(ListModules),
     Describe(Describe),
