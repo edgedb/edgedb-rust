@@ -49,6 +49,7 @@ pub enum Command {
     Pgaddr,
     Psql,
     ListAliases(ListAliases),
+    ListCasts(ListCasts),
     ListScalarTypes(ListTypes),
     ListObjectTypes(ListTypes),
     ListRoles(ListRoles),
@@ -70,6 +71,13 @@ pub struct ListAliases {
     pub system: bool,
     #[structopt(long, short="v")]
     pub verbose: bool,
+}
+
+#[derive(StructOpt, Clone, Debug)]
+pub struct ListCasts {
+    pub pattern: Option<String>,
+    #[structopt(long, short="I")]
+    pub case_sensitive: bool,
 }
 
 #[derive(StructOpt, Clone, Debug)]

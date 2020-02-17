@@ -22,6 +22,8 @@ Introspection
                            (alias: \list-modules)
   \la[IS+] [PATTERN]       list expression aliases
                            (alias: \list-aliases)
+  \lc[I] [PATTERN]         list casts
+                           (alias: \list-casts)
 
 Settings
   \vi                      switch to vi-mode editing
@@ -60,6 +62,8 @@ pub const HINTS: &'static [&'static str] = &[
     r"\laIS+ [PATTERN]",
     r"\laS+ [PATTERN]",
     r"\laSI+ [PATTERN]",
+    r"\lc [PATTERN]",
+    r"\lcI [PATTERN]",
     r"\lT [PATTERN]",
     r"\lTI [PATTERN]",
     r"\lTIS [PATTERN]",
@@ -104,6 +108,8 @@ pub const COMMAND_NAMES: &'static [&'static str] = &[
     r"\laIS+",
     r"\laS+",
     r"\laSI+",
+    r"\lc",
+    r"\lcI",
     r"\lT",
     r"\lTI",
     r"\lTIS",
@@ -135,6 +141,10 @@ pub enum Command {
         system: bool,
         case_sensitive: bool,
         verbose: bool,
+    },
+    ListCasts {
+        pattern: Option<String>,
+        case_sensitive: bool,
     },
     ListDatabases,
     ListModules {
@@ -194,6 +204,13 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
         | ("list-databases", None)
         | ("l", None)
         => Ok(Command::ListDatabases),
+        | ("list-casts", pattern)
+        | ("lc", pattern)
+        | ("lcI", pattern)
+        => Ok(Command::ListCasts {
+            pattern: pattern.map(|x| x.to_owned()),
+            case_sensitive: cmd.contains('I'),
+        }),
         | ("list-aliases", pattern)
         | ("la", pattern)
         | ("laI", pattern)
@@ -293,6 +310,9 @@ pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command,
         ListAliases { pattern, case_sensitive, system, verbose } => {
             commands::list_aliases(cli, &options,
                 &pattern, system, case_sensitive, verbose).await
+        }
+        ListCasts { pattern, case_sensitive } => {
+            commands::list_casts(cli, &options, &pattern, case_sensitive).await
         }
         ListDatabases => commands::list_databases(cli, &options).await,
         ListScalarTypes { pattern, case_sensitive, system } => {
