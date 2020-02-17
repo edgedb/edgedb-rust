@@ -3,6 +3,7 @@ pub mod backslash;
 pub mod options;
 mod filter;
 mod list;
+mod list_aliases;
 mod list_databases;
 mod list_object_types;
 mod list_scalar_types;
@@ -14,6 +15,7 @@ mod type_names;
 mod describe;
 
 pub use self::describe::describe;
+pub use self::list_aliases::list_aliases;
 pub use self::list_databases::list_databases;
 pub use self::list_modules::list_modules;
 pub use self::list_roles::list_roles;

@@ -48,6 +48,7 @@ pub enum Command {
     ListDatabases,
     Pgaddr,
     Psql,
+    ListAliases(ListAliases),
     ListScalarTypes(ListTypes),
     ListObjectTypes(ListTypes),
     ListRoles(ListRoles),
@@ -60,6 +61,16 @@ pub struct CreateDatabase {
     pub database_name: String,
 }
 
+#[derive(StructOpt, Clone, Debug)]
+pub struct ListAliases {
+    pub pattern: Option<String>,
+    #[structopt(long, short="I")]
+    pub case_sensitive: bool,
+    #[structopt(long, short="S")]
+    pub system: bool,
+    #[structopt(long, short="v")]
+    pub verbose: bool,
+}
 
 #[derive(StructOpt, Clone, Debug)]
 pub struct ListTypes {

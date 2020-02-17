@@ -20,6 +20,8 @@ Introspection
                            (alias: \list-roles)
   \lm[I]                   list modules
                            (alias: \list-modules)
+  \la[IS+] [PATTERN]       list expression aliases
+                           (alias: \list-aliases)
 
 Settings
   \vi                      switch to vi-mode editing
@@ -48,6 +50,16 @@ pub const HINTS: &'static [&'static str] = &[
     r"\implicit-properties",
     r"\introspect-types",
     r"\l",
+    r"\la [PATTERN]",
+    r"\laI [PATTERN]",
+    r"\laIS [PATTERN]",
+    r"\laS [PATTERN]",
+    r"\laSI [PATTERN]",
+    r"\la+ [PATTERN]",
+    r"\laI+ [PATTERN]",
+    r"\laIS+ [PATTERN]",
+    r"\laS+ [PATTERN]",
+    r"\laSI+ [PATTERN]",
     r"\lT [PATTERN]",
     r"\lTI [PATTERN]",
     r"\lTIS [PATTERN]",
@@ -82,6 +94,16 @@ pub const COMMAND_NAMES: &'static [&'static str] = &[
     r"\implicit-properties",
     r"\introspect-types",
     r"\l",
+    r"\la",
+    r"\laI",
+    r"\laIS",
+    r"\laS",
+    r"\laSI",
+    r"\la+",
+    r"\laI+",
+    r"\laIS+",
+    r"\laS+",
+    r"\laSI+",
     r"\lT",
     r"\lTI",
     r"\lTIS",
@@ -108,6 +130,12 @@ pub const COMMAND_NAMES: &'static [&'static str] = &[
 
 pub enum Command {
     Help,
+    ListAliases {
+        pattern: Option<String>,
+        system: bool,
+        case_sensitive: bool,
+        verbose: bool,
+    },
     ListDatabases,
     ListModules {
         pattern: Option<String>,
@@ -166,6 +194,23 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
         | ("list-databases", None)
         | ("l", None)
         => Ok(Command::ListDatabases),
+        | ("list-aliases", pattern)
+        | ("la", pattern)
+        | ("laI", pattern)
+        | ("laS", pattern)
+        | ("laIS", pattern)
+        | ("laSI", pattern)
+        | ("la+", pattern)
+        | ("laI+", pattern)
+        | ("laS+", pattern)
+        | ("laIS+", pattern)
+        | ("laSI+", pattern)
+        => Ok(Command::ListAliases {
+            pattern: pattern.map(|x| x.to_owned()),
+            system: cmd.contains('S'),
+            case_sensitive: cmd.contains('I'),
+            verbose: cmd.contains('+'),
+        }),
         | ("list-scalar-types", pattern)
         | ("lT", pattern)
         | ("lTI", pattern)
@@ -244,6 +289,10 @@ pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command,
         Help => {
             print!("{}", HELP);
             Ok(())
+        }
+        ListAliases { pattern, case_sensitive, system, verbose } => {
+            commands::list_aliases(cli, &options,
+                &pattern, system, case_sensitive, verbose).await
         }
         ListDatabases => commands::list_databases(cli, &options).await,
         ListScalarTypes { pattern, case_sensitive, system } => {
