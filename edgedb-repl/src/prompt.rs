@@ -84,31 +84,53 @@ fn emit_insignificant(buf: &mut String, styler: &Styler, mut chunk: &str) {
 
 impl Highlighter for EdgeqlHelper {
     fn highlight<'l>(&self, line: &'l str, _pos: usize) -> Cow<'l, str> {
-
-        let mut outbuf = String::with_capacity(line.len());
-        let mut pos = 0;
-        let mut token_stream = TokenStream::new(line);
-        for res in &mut token_stream {
-            let tok = match res {
-                Ok(tok) => tok,
-                Err(_) => {
-                    outbuf.push_str(&line[pos..]);
-                    break;
+        let line_trim = line.trim_start();
+        if line_trim.starts_with('\\') {
+            let off = line.len() - line_trim.len();
+            if let Some(cmd) = line.split_whitespace().next() {
+                if backslash::COMMAND_NAMES.contains(&cmd) {
+                    let mut buf = String::with_capacity(line.len() + 8);
+                    buf.push_str(&line[..off]);
+                    self.styler.apply(Style::BackslashCommand, cmd, &mut buf);
+                    buf.push_str(&line[off+cmd.len()..]);
+                    return buf.into();
+                } else if !backslash::COMMAND_NAMES
+                    .iter().any(|c| c.starts_with(cmd))
+                {
+                    let mut buf = String::with_capacity(line.len() + 8);
+                    buf.push_str(&line[..off]);
+                    self.styler.apply(Style::Error, cmd, &mut buf);
+                    buf.push_str(&line[off+cmd.len()..]);
+                    return buf.into();
                 }
-            };
-            if tok.start.offset as usize > pos {
-                emit_insignificant(&mut outbuf, &self.styler,
-                    &line[pos..tok.start.offset as usize]);
             }
-            if let Some(st) = token_style(tok.token.kind) {
-                self.styler.apply(st, tok.token.value, &mut outbuf);
-            } else {
-                outbuf.push_str(tok.token.value);
+            return line.into();
+        } else {
+            let mut outbuf = String::with_capacity(line.len());
+            let mut pos = 0;
+            let mut token_stream = TokenStream::new(line);
+            for res in &mut token_stream {
+                let tok = match res {
+                    Ok(tok) => tok,
+                    Err(_) => {
+                        outbuf.push_str(&line[pos..]);
+                        break;
+                    }
+                };
+                if tok.start.offset as usize > pos {
+                    emit_insignificant(&mut outbuf, &self.styler,
+                        &line[pos..tok.start.offset as usize]);
+                }
+                if let Some(st) = token_style(tok.token.kind) {
+                    self.styler.apply(st, tok.token.value, &mut outbuf);
+                } else {
+                    outbuf.push_str(tok.token.value);
+                }
+                pos = tok.end.offset as usize;
             }
-            pos = tok.end.offset as usize;
+            emit_insignificant(&mut outbuf, &self.styler, &line[pos..]);
+            return outbuf.into();
         }
-        emit_insignificant(&mut outbuf, &self.styler, &line[pos..]);
-        return outbuf.into();
     }
     fn highlight_hint<'h>(&self, hint: &'h str) -> std::borrow::Cow<'h, str> {
         return hint.light_gray().to_string().into()

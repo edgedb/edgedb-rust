@@ -17,6 +17,8 @@ pub enum Style {
     DeclName,
     Tag,
     Attribute,
+    BackslashCommand,
+    Error,
 }
 
 #[derive(Debug)]
@@ -96,6 +98,10 @@ impl Styler {
         t.insert(DeclName, Item(RGB::new(0xbc, 0x74, 0xd7), Some(Bold)));
         t.insert(Tag, Item(RGB::new(0x1d, 0xbd, 0xd0), None));
         t.insert(Comment, Item(RGB::new(0x56, 0x56, 0x56), None));
+        t.insert(BackslashCommand,
+            Item(RGB::new(0xbc, 0x74, 0xd7), Some(Bold)));
+        t.insert(Error,
+            Item(RGB::new(0xff, 0x40, 0x40), Some(Bold)));
 
         return Styler(Arc::new(Theme {
             items: t,
