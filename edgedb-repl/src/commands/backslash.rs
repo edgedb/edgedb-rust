@@ -24,6 +24,8 @@ Introspection
                            (alias: \list-aliases)
   \lc[I] [PATTERN]         list casts
                            (alias: \list-casts)
+  \li[IS+] [PATTERN]       list indexes
+                           (alias: \list-indexes)
 
 Settings
   \vi                      switch to vi-mode editing
@@ -64,6 +66,16 @@ pub const HINTS: &'static [&'static str] = &[
     r"\laSI+ [PATTERN]",
     r"\lc [PATTERN]",
     r"\lcI [PATTERN]",
+    r"\li [PATTERN]",
+    r"\liI [PATTERN]",
+    r"\liIS [PATTERN]",
+    r"\liS [PATTERN]",
+    r"\liSI [PATTERN]",
+    r"\li+ [PATTERN]",
+    r"\liI+ [PATTERN]",
+    r"\liIS+ [PATTERN]",
+    r"\liS+ [PATTERN]",
+    r"\liSI+ [PATTERN]",
     r"\lT [PATTERN]",
     r"\lTI [PATTERN]",
     r"\lTIS [PATTERN]",
@@ -108,6 +120,16 @@ pub const COMMAND_NAMES: &'static [&'static str] = &[
     r"\laIS+",
     r"\laS+",
     r"\laSI+",
+    r"\li",
+    r"\liI",
+    r"\liIS",
+    r"\liS",
+    r"\liSI",
+    r"\li+",
+    r"\liI+",
+    r"\liIS+",
+    r"\liS+",
+    r"\liSI+",
     r"\lc",
     r"\lcI",
     r"\lT",
@@ -145,6 +167,12 @@ pub enum Command {
     ListCasts {
         pattern: Option<String>,
         case_sensitive: bool,
+    },
+    ListIndexes {
+        pattern: Option<String>,
+        system: bool,
+        case_sensitive: bool,
+        verbose: bool,
     },
     ListDatabases,
     ListModules {
@@ -223,6 +251,23 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
         | ("laIS+", pattern)
         | ("laSI+", pattern)
         => Ok(Command::ListAliases {
+            pattern: pattern.map(|x| x.to_owned()),
+            system: cmd.contains('S'),
+            case_sensitive: cmd.contains('I'),
+            verbose: cmd.contains('+'),
+        }),
+        | ("list-indexes", pattern)
+        | ("li", pattern)
+        | ("liI", pattern)
+        | ("liS", pattern)
+        | ("liIS", pattern)
+        | ("liSI", pattern)
+        | ("li+", pattern)
+        | ("liI+", pattern)
+        | ("liS+", pattern)
+        | ("liIS+", pattern)
+        | ("liSI+", pattern)
+        => Ok(Command::ListIndexes {
             pattern: pattern.map(|x| x.to_owned()),
             system: cmd.contains('S'),
             case_sensitive: cmd.contains('I'),
@@ -313,6 +358,10 @@ pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command,
         }
         ListCasts { pattern, case_sensitive } => {
             commands::list_casts(cli, &options, &pattern, case_sensitive).await
+        }
+        ListIndexes { pattern, case_sensitive, system, verbose } => {
+            commands::list_indexes(cli, &options,
+                &pattern, system, case_sensitive, verbose).await
         }
         ListDatabases => commands::list_databases(cli, &options).await,
         ListScalarTypes { pattern, case_sensitive, system } => {

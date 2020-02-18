@@ -31,3 +31,15 @@ impl RawCodec for Uuid {
         Ok(uuid)
     }
 }
+
+impl RawCodec for bool {
+    fn decode_raw(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+        ensure!(buf.remaining() >= 1, errors::Underflow);
+        let res = match buf.get_u8() {
+            0x00 => false,
+            0x01 => true,
+            _ => errors::InvalidBool.fail()?,
+        };
+        Ok(res)
+    }
+}

@@ -800,13 +800,7 @@ impl Codec for BigInt {
 
 impl Codec for Bool {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 1, errors::Underflow);
-        let res = match buf.get_u8() {
-            0x00 => false,
-            0x01 => true,
-            _ => errors::InvalidBool.fail()?,
-        };
-        Ok(Value::Bool(res))
+        raw::RawCodec::decode_raw(buf).map(Value::Bool)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>

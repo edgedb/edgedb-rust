@@ -122,3 +122,25 @@ impl Queryable for Uuid {
         Err(ctx.wrong_type(desc, "uuid"))
     }
 }
+
+impl Queryable for bool {
+    fn decode_raw(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+        RawCodec::decode_raw(buf)
+    }
+    fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
+        -> Result<(), DescriptorMismatch>
+    {
+        use crate::descriptors::Descriptor::{Scalar, BaseScalar};
+        let desc = ctx.get(type_pos)?;
+        match desc {
+            Scalar(scalar) => {
+                return Self::check_descriptor(ctx, scalar.base_type_pos);
+            }
+            BaseScalar(base) if base.id == codec::STD_BOOL => {
+                return Ok(());
+            }
+            _ => {}
+        }
+        Err(ctx.wrong_type(desc, "bool"))
+    }
+}

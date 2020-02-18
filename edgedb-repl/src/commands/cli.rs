@@ -41,6 +41,15 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
                 Ok(())
             }).into()
         },
+        Command::ListIndexes(t) => {
+            task::block_on(async {
+                let mut conn = Connection::from_options(&options).await?;
+                let mut cli = conn.authenticate(&options).await?;
+                commands::list_indexes(&mut cli, &cmdopt,
+                    &t.pattern, t.system, t.case_sensitive, t.verbose).await?;
+                Ok(())
+            }).into()
+        },
         Command::ListDatabases => {
             task::block_on(async {
                 let mut conn = Connection::from_options(&options).await?;

@@ -50,6 +50,7 @@ pub enum Command {
     Psql,
     ListAliases(ListAliases),
     ListCasts(ListCasts),
+    ListIndexes(ListIndexes),
     ListScalarTypes(ListTypes),
     ListObjectTypes(ListTypes),
     ListRoles(ListRoles),
@@ -78,6 +79,17 @@ pub struct ListCasts {
     pub pattern: Option<String>,
     #[structopt(long, short="I")]
     pub case_sensitive: bool,
+}
+
+#[derive(StructOpt, Clone, Debug)]
+pub struct ListIndexes {
+    pub pattern: Option<String>,
+    #[structopt(long, short="I")]
+    pub case_sensitive: bool,
+    #[structopt(long, short="S")]
+    pub system: bool,
+    #[structopt(long, short="v")]
+    pub verbose: bool,
 }
 
 #[derive(StructOpt, Clone, Debug)]
