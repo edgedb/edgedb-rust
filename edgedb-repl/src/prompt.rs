@@ -132,6 +132,10 @@ impl Highlighter for EdgeqlHelper {
             return outbuf.into();
         }
     }
+    fn highlight_char<'l>(&self, _line: &'l str, _pos: usize) -> bool {
+        // TODO(tailhook) optimize: only need to return true on insert
+        true
+    }
     fn highlight_hint<'h>(&self, hint: &'h str) -> std::borrow::Cow<'h, str> {
         return hint.light_gray().to_string().into()
     }
