@@ -801,7 +801,7 @@ impl Codec for BigInt {
 impl Codec for Bool {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 1, errors::Underflow);
-        let res = match buf.get_u64() {
+        let res = match buf.get_u8() {
             0x00 => false,
             0x01 => true,
             _ => errors::InvalidBool.fail()?,
@@ -816,7 +816,7 @@ impl Codec for Bool {
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(1);
-        buf.put_u64(match val {
+        buf.put_u8(match val {
             true => 1,
             false => 0,
         });

@@ -499,8 +499,8 @@ fn bool() -> Result<(), Box<dyn Error>> {
             ),
         ]
     )?;
-    encoding_eq!(&codec, b"\0\0\0\0\0\0\0\x01", Value::Bool(true));
-    encoding_eq!(&codec, b"\0\0\0\0\0\0\0\0", Value::Bool(false));
+    encoding_eq!(&codec, b"\x01", Value::Bool(true));
+    encoding_eq!(&codec, b"\x00", Value::Bool(false));
     Ok(())
 }
 
