@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::fmt::Write;
 
 use crate::tokenizer::is_keyword;
 
@@ -25,4 +26,25 @@ pub fn quote_name(s: &str) -> Cow<str> {
     s.push_str(&escaped);
     s.push('`');
     return s.into();
+}
+
+pub fn quote_string(s: &str) -> String {
+    let mut buf = String::with_capacity(s.len() + 2);
+    buf.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => {
+                buf.push('\\');
+                buf.push('"');
+            }
+            '\x00'..='\x08' | '\x0B' | '\x0C' | '\x0E'..='\x1F' |
+            '\u{007F}' | '\u{0080}'..='\u{009F}'
+            => {
+                write!(buf, "\\x{:02x}", c as u32).unwrap();
+            }
+            c => buf.push(c),
+        }
+    }
+    buf.push('"');
+    return buf;
 }

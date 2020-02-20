@@ -19,6 +19,7 @@ use edgedb_protocol::client_message::{Execute, ExecuteScript};
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use edgedb_protocol::queryable::{Queryable};
 use edgedb_protocol::value::Value;
+use edgedb_protocol::descriptors::OutputTypedesc;
 use crate::commands::backslash;
 use crate::options::Options;
 use crate::print::print_to_stdout;
@@ -387,12 +388,8 @@ impl<'a> Client<'a> {
         Ok(status)
     }
 
-    pub async fn query<R>(&mut self, request: &str, arguments: &Value)
-        -> Result<
-            QueryResponse<'_, &'a TcpStream, QueryableDecoder<R>>,
-            anyhow::Error
-        >
-        where R: Queryable,
+    async fn _query(&mut self, request: &str, arguments: &Value)
+        -> Result<OutputTypedesc, anyhow::Error >
     {
         let statement_name = Bytes::from_static(b"");
 
@@ -447,9 +444,6 @@ impl<'a> Client<'a> {
         };
         let desc = data_description.output()?;
         let incodec = data_description.input()?.build_codec()?;
-        let root_pos = desc.root_pos()
-            .ok_or_else(|| anyhow::anyhow!("no result expected"))?;
-        R::check_descriptor(&desc.as_queryable_context(), root_pos)?;
 
         let mut arg_buf = BytesMut::with_capacity(8);
         incodec.encode(&mut arg_buf, &arguments)?;
@@ -460,8 +454,43 @@ impl<'a> Client<'a> {
             arguments: arg_buf.freeze(),
         })).await?;
         self.send_message(&ClientMessage::Sync).await?;
+        Ok(desc)
+    }
 
+    pub async fn query<R>(&mut self, request: &str, arguments: &Value)
+        -> Result<
+            QueryResponse<'_, &'a TcpStream, QueryableDecoder<R>>,
+            anyhow::Error
+        >
+        where R: Queryable,
+    {
+        let desc = self._query(request, arguments).await?;
+        let root_pos = desc.root_pos()
+            .ok_or_else(|| anyhow::anyhow!("no result expected"))?;
+        R::check_descriptor(&desc.as_queryable_context(), root_pos)?;
         return Ok(self.reader.response(QueryableDecoder::new()));
+    }
+    #[allow(dead_code)]
+    pub async fn execute_args(&mut self, request: &str, arguments: &Value)
+        -> Result<Bytes, anyhow::Error>
+    {
+        self._query(request, arguments).await?;
+        let status = loop {
+            match self.reader.message().await? {
+                ServerMessage::CommandComplete(c) => {
+                    self.reader.wait_ready().await?;
+                    break c.status_data;
+                }
+                ServerMessage::ErrorResponse(err) => {
+                    return Err(anyhow::anyhow!(err));
+                }
+                ServerMessage::Data(_) => { }
+                msg => {
+                    eprintln!("WARNING: unsolicited message {:?}", msg);
+                }
+            }
+        };
+        Ok(status)
     }
 }
 
