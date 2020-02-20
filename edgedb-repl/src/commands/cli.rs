@@ -134,5 +134,30 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
                 Ok(())
             }).into()
         }
+        Command::CreateSuperuserRole(opt) => {
+            task::block_on(async {
+                let mut conn = Connection::from_options(&options).await?;
+                let mut cli = conn.authenticate(&options).await?;
+                commands::roles::create_superuser(
+                    &mut cli, &cmdopt, opt).await?;
+                Ok(())
+            }).into()
+        },
+        Command::AlterRole(opt) => {
+            task::block_on(async {
+                let mut conn = Connection::from_options(&options).await?;
+                let mut cli = conn.authenticate(&options).await?;
+                commands::roles::alter(&mut cli, &cmdopt, opt).await?;
+                Ok(())
+            }).into()
+        },
+        Command::DropRole(opt) => {
+            task::block_on(async {
+                let mut conn = Connection::from_options(&options).await?;
+                let mut cli = conn.authenticate(&options).await?;
+                commands::roles::drop(&mut cli, &cmdopt, &opt.role).await?;
+                Ok(())
+            }).into()
+        },
     }
 }

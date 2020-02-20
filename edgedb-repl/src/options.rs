@@ -45,7 +45,10 @@ pub enum Password {
 
 #[derive(StructOpt, Clone, Debug)]
 pub enum Command {
+    AlterRole(RoleParams),
     CreateDatabase(CreateDatabase),
+    CreateSuperuserRole(RoleParams),
+    DropRole(RoleName),
     ListDatabases,
     Pgaddr,
     Psql,
@@ -264,6 +267,25 @@ pub struct ListenPort {
 #[structopt(setting=AppSettings::DisableVersion)]
 pub struct ConfigStr {
     pub value: String,
+}
+
+#[derive(StructOpt, Clone, Debug)]
+#[structopt(setting=AppSettings::DisableVersion)]
+pub struct RoleParams {
+    /// Role name
+    pub role: String,
+    /// Set the password for role (read separately from the terminal)
+    #[structopt(long="password")]
+    pub password: bool,
+    /// Set the password for role, read from the stdin
+    #[structopt(long)]
+    pub password_from_stdin: bool,
+}
+
+#[derive(StructOpt, Clone, Debug)]
+#[structopt(setting=AppSettings::DisableVersion)]
+pub struct RoleName {
+    pub role: String,
 }
 
 #[derive(StructOpt, Clone, Debug)]

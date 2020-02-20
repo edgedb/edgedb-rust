@@ -1,14 +1,8 @@
-use bytes::Bytes;
-
 use edgeql_parser::helpers::{quote_string, quote_name};
 use crate::commands::Options;
+use crate::commands::helpers::print_result;
 use crate::client::Client;
 use crate::options::{Configure, ConfigStr, AuthParameter, PortParameter};
-
-
-fn print_result(res: Bytes) {
-    eprintln!("  -> {}: Ok", String::from_utf8_lossy(&res[..]));
-}
 
 async fn set_string(cli: &mut Client<'_>, name: &str, value: &ConfigStr)
     -> Result<(), anyhow::Error>
