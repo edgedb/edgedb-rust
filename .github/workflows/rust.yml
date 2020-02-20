@@ -28,9 +28,11 @@ jobs:
       - working-directory: ./edgedb-protocol
         run: |
           cargo test --no-default-features
+      - run: python -V
       - uses: actions-rs/cargo@v1
         env:
-          LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.8.0/x64/lib
+          # The python version here needs to be updated ocasionally
+          LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.8.1/x64/lib
         with:
           command: test
           args: -p edgeql-pytest
