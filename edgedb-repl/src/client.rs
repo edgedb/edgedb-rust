@@ -24,7 +24,7 @@ use edgedb_protocol::value::Value;
 use edgedb_protocol::descriptors::OutputTypedesc;
 use crate::commands::backslash;
 use crate::options::Options;
-use crate::print::print_to_stdout;
+use crate::print::{print_to_stdout, PrintError};
 use crate::prompt;
 use crate::reader::{Reader, ReadError, QueryableDecoder, QueryResponse};
 use crate::repl;
@@ -284,7 +284,21 @@ pub async fn interactive_main(options: Options, mut state: repl::State)
         })).await?;
         cli.send_message(&ClientMessage::Sync).await?;
 
-        print_to_stdout(cli.reader.response(codec), &state.print).await?;
+        match print_to_stdout(cli.reader.response(codec), &state.print).await {
+            Ok(()) => {}
+            Err(e) => {
+                match e {
+                    PrintError::StreamErr {
+                        source: ReadError::RequestError { error, ..},
+                        ..
+                    } => {
+                        eprintln!("{}", error);
+                    }
+                    _ => eprintln!("{:#?}", e),
+                }
+                cli.reader.wait_ready().await?;
+            }
+        }
     }
 }
 

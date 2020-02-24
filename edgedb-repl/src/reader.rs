@@ -13,7 +13,7 @@ use async_std::stream::Stream;
 use bytes::{Bytes, BytesMut, BufMut};
 use snafu::{Snafu, ResultExt, Backtrace};
 
-use edgedb_protocol::server_message::{ServerMessage};
+use edgedb_protocol::server_message::{ServerMessage, ErrorResponse};
 use edgedb_protocol::errors::{DecodeError};
 use edgedb_protocol::queryable::Queryable;
 use edgedb_protocol::codec::Codec;
@@ -49,6 +49,8 @@ pub enum ReadError {
     Io { source: io::Error },
     #[snafu(display("server message out of order: {:?}", message))]
     OutOfOrder { message: ServerMessage, backtrace: Backtrace },
+    #[snafu(display("request error: {}", error))]
+    RequestError { error: ErrorResponse, backtrace: Backtrace },
     #[snafu(display("end of stream"))]
     Eos,
 }
@@ -201,6 +203,9 @@ impl<'a, T, D> Stream for QueryResponse<'a, T, D>
                         OutOfOrder { message: m }.fail()?;
                     }
                     return Poll::Ready(None);
+                }
+                Poll::Ready(Ok(ServerMessage::ErrorResponse(e))) => {
+                    return Poll::Ready(Some(RequestError { error: e }.fail()));
                 }
                 Poll::Ready(Ok(message)) => {
                     OutOfOrder { message }.fail()?;
