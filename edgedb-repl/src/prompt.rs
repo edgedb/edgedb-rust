@@ -114,7 +114,7 @@ impl Highlighter for EdgeqlHelper {
                     Ok(tok) => tok,
                     Err(_) => {
                         outbuf.push_str(&line[pos..]);
-                        break;
+                        return outbuf.into();
                     }
                 };
                 if tok.start.offset as usize > pos {
