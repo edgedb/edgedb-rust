@@ -145,6 +145,9 @@ impl Validator for EdgeqlHelper {
         -> Result<ValidationResult, ReadlineError>
     {
         let line = ctx.input().trim();
+        if line.trim().is_empty() {
+            return Ok(ValidationResult::Valid(None));
+        }
         if line.starts_with("\\") {
             match backslash::parse(line) {
                 Ok(_) => Ok(ValidationResult::Valid(None)),

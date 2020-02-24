@@ -174,6 +174,9 @@ pub async fn interactive_main(options: Options, mut state: repl::State)
             prompt::Input::Interrupt => continue,
             prompt::Input::Text(inp) => inp,
         };
+        if inp.trim().is_empty() {
+            continue;
+        }
         if inp.trim_start().starts_with("\\") {
             let cmd = match backslash::parse(&inp) {
                 Ok(cmd) => cmd,
