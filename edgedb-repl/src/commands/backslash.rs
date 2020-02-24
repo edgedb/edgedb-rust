@@ -1,3 +1,6 @@
+use std::fmt;
+use std::error::Error;
+
 use anyhow;
 
 use crate::client::Client;
@@ -36,6 +39,9 @@ Settings
                            schema is updated after enabling option)
   \no-introspect-types     disable type introspection
 
+Connection
+  \c [DBNAME]              Connect to database DBNAME
+
 Development
   \pgaddr                  show the network addr of the postgres server
   \psql                    open psql to the current postgres process
@@ -46,6 +52,8 @@ Help
 
 pub const HINTS: &'static [&'static str] = &[
     r"\?",
+    r"\c DBNAME",
+    r"\d NAME",
     r"\d NAME",
     r"\d+ NAME",
     r"\describe NAME",
@@ -105,11 +113,12 @@ pub const HINTS: &'static [&'static str] = &[
 
 pub const COMMAND_NAMES: &'static [&'static str] = &[
     r"\?",
-    r"\emacs",
+    r"\c",
     r"\d",
     r"\d+",
     r"\describe",
     r"\describe+",
+    r"\emacs",
     r"\implicit-properties",
     r"\introspect-types",
     r"\l",
@@ -211,11 +220,17 @@ pub enum Command {
     NoImplicitProperties,
     IntrospectTypes,
     NoIntrospectTypes,
+    Connect { database: String },
 }
 
 pub struct ParseError {
     pub message: String,
     pub hint: String,
+}
+
+#[derive(Debug)]
+pub struct ChangeDb {
+    pub target: String,
 }
 
 pub fn error<T, S: ToString>(message: S, hint: &str) -> Result<T, ParseError> {
@@ -314,6 +329,8 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
             pattern: pattern.map(|x| x.to_owned()),
             case_sensitive: cmd.contains('I'),
         }),
+        | ("c", Some(database))
+        => Ok(Command::Connect { database: database.to_owned() }),
         | ("describe", Some(name))
         | ("d", Some(name))
         => Ok(Command::Describe { name: name.to_owned(), verbose: false}),
@@ -428,5 +445,15 @@ pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command,
             commands::describe(cli, &options, &name, verbose).await?;
             Ok(())
         }
+        Connect { database } => {
+            Err(ChangeDb { target: database })?
+        }
     }
 }
+
+impl fmt::Display for ChangeDb {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "switch database to {:?}", self.target)
+    }
+}
+impl Error for ChangeDb {}

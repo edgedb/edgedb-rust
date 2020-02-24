@@ -143,11 +143,30 @@ impl Connection {
     }
 }
 
-pub async fn interactive_main(options: Options, mut state: repl::State)
+
+pub async fn interactive_main(mut options: Options, mut state: repl::State)
     -> Result<(), anyhow::Error>
 {
-    let mut conn = Connection::from_options(&options).await?;
-    let mut cli = conn.authenticate(&options).await?;
+    loop {
+        let mut conn = Connection::from_options(&options).await?;
+        let cli = conn.authenticate(&options).await?;
+        match _interactive_main(cli, &options, &mut state).await {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                if let Some(err) = e.downcast_ref::<backslash::ChangeDb>() {
+                    options.database = err.target.clone();
+                    continue;
+                }
+                return Err(e);
+            }
+        }
+    }
+}
+
+async fn _interactive_main(
+    mut cli: Client<'_>, options: &Options, mut state: &mut repl::State)
+    -> Result<(), anyhow::Error>
+{
     let mut initial = String::new();
     let statement_name = Bytes::from_static(b"");
 
@@ -169,7 +188,7 @@ pub async fn interactive_main(options: Options, mut state: repl::State)
                         eprintln!("WARNING: unsolicited message {:?}", msg);
                     }
                 }
-                return Ok(())
+                return Ok(());
             }
             prompt::Input::Interrupt => continue,
             prompt::Input::Text(inp) => inp,
@@ -190,6 +209,9 @@ pub async fn interactive_main(options: Options, mut state: repl::State)
             };
             let exec_res = backslash::execute(&mut cli, cmd, &mut state).await;
             if let Err(e) = exec_res {
+                if e.is::<backslash::ChangeDb>() {
+                    return Err(e);
+                }
                 eprintln!("Error executing command: {}", e);
                 // Quick-edit command on error
                 initial = inp.trim_start().into();
@@ -266,7 +288,7 @@ pub async fn interactive_main(options: Options, mut state: repl::State)
             println!("Input Codec {:#?}", codec);
         }
 
-        let input = match input_variables(&indesc, &mut state).await {
+        let input = match input_variables(&indesc, state).await {
             Ok(input) => input,
             Err(e) => {
                 eprintln!("{:#?}", e);
