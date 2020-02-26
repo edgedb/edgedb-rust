@@ -215,6 +215,7 @@ async fn _interactive_main(
                 eprintln!("Error executing command: {}", e);
                 // Quick-edit command on error
                 initial = inp.trim_start().into();
+                state.last_error = Some(e);
             }
             continue;
         }
@@ -237,7 +238,8 @@ async fn _interactive_main(
                     break;
                 }
                 ServerMessage::ErrorResponse(err) => {
-                    eprintln!("{}", err);
+                    eprintln!("{}", err.display(state.verbose_errors));
+                    state.last_error = Some(err.into());
                     cli.reader.wait_ready().await?;
                     continue 'input_loop;
                 }
@@ -261,7 +263,8 @@ async fn _interactive_main(
                     break data_desc;
                 }
                 ServerMessage::ErrorResponse(err) => {
-                    eprintln!("{}", err);
+                    eprintln!("{}", err.display(state.verbose_errors));
+                    state.last_error = Some(err.into());
                     cli.reader.wait_ready().await?;
                     continue 'input_loop;
                 }
@@ -292,6 +295,7 @@ async fn _interactive_main(
             Ok(input) => input,
             Err(e) => {
                 eprintln!("{:#?}", e);
+                state.last_error = Some(e);
                 continue 'input_loop;
             }
         };
@@ -311,16 +315,19 @@ async fn _interactive_main(
             Err(e) => {
                 match e {
                     PrintError::StreamErr {
-                        source: ReadError::RequestError { error, ..},
+                        source: ReadError::RequestError { ref error, ..},
                         ..
                     } => {
                         eprintln!("{}", error);
                     }
                     _ => eprintln!("{:#?}", e),
                 }
+                state.last_error = Some(e.into());
                 cli.reader.wait_ready().await?;
+                continue;
             }
         }
+        state.last_error = None;
     }
 }
 
@@ -358,7 +365,7 @@ impl<'a> Client<'a> {
                 Authentication::SaslContinue { data }
             ) => data,
             ServerMessage::ErrorResponse(err) => {
-                return Err(anyhow::anyhow!(err));
+                return Err(err.into());
             }
             msg => {
                 return Err(anyhow::anyhow!("Bad auth response: {:?}", msg));

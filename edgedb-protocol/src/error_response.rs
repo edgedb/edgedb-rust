@@ -1,5 +1,6 @@
 use std::fmt;
 use std::str;
+use std::error::Error;
 
 use crate::server_message::{ErrorSeverity, ErrorResponse};
 
@@ -16,6 +17,18 @@ const FIELD_POSITION_END: u16 = 0x_FF_F2;
 const FIELD_LINE: u16 = 0x_FF_F3;
 #[allow(unused)]
 const FIELD_COLUMN: u16 = 0x_FF_F4;
+
+pub struct DisplayError<'a>(&'a ErrorResponse, bool);
+pub struct VerboseError<'a>(&'a ErrorResponse);
+
+impl ErrorResponse {
+    pub fn display(&self, verbose: bool) -> DisplayError {
+        DisplayError(self, verbose)
+    }
+    pub fn display_verbose(&self) -> VerboseError {
+        VerboseError(self)
+    }
+}
 
 pub fn severity_marker(code: ErrorSeverity) -> &'static str {
     match code {
@@ -105,27 +118,68 @@ pub fn error_name(code: u32) -> &'static str {
     }
 }
 
+impl Error for ErrorResponse {}
+
 impl fmt::Display for ErrorResponse {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.display(false).fmt(f)
+    }
+}
+
+impl fmt::Display for DisplayError<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let DisplayError(ref e, verbose) = self;
         write!(f, "{}: {}: {}",
-            severity_marker(self.severity),
-            error_name(self.code),
-            self.message)?;
-        if let Some(hint) = self.attributes.get(&FIELD_HINT) {
+            severity_marker(e.severity),
+            error_name(e.code),
+            e.message)?;
+        if let Some(hint) = e.attributes.get(&FIELD_HINT) {
             if let Ok(hint) = str::from_utf8(hint) {
                 write!(f, "\n  Hint: {}", hint)?;
             }
         }
-        if let Some(detail) = self.attributes.get(&FIELD_DETAILS) {
+        if let Some(detail) = e.attributes.get(&FIELD_DETAILS) {
             if let Ok(detail) = str::from_utf8(detail) {
                 write!(f, "\n  Detail: {}", detail)?;
             }
         }
-        if let Some(traceback) = self.attributes.get(&FIELD_SERVER_TRACEBACK) {
+        if e.code == 0x_01_00_00_00 || *verbose {
+            let tb = e.attributes.get(&FIELD_SERVER_TRACEBACK);
+            if let Some(traceback) = tb {
+                if let Ok(traceback) = str::from_utf8(traceback) {
+                    write!(f, "\n  Server traceback:")?;
+                    for line in traceback.lines() {
+                        write!(f, "\n      {}", line)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for VerboseError<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let e = self.0;
+        writeln!(f, "Severity: {} [{}]",
+            severity_marker(e.severity), e.severity.to_u8())?;
+        writeln!(f, "Error type: {} [0x{:x}]", error_name(e.code), e.code)?;
+        writeln!(f, "Message: {}", e.message)?;
+        if let Some(hint) = e.attributes.get(&FIELD_HINT) {
+            if let Ok(hint) = str::from_utf8(hint) {
+                writeln!(f, "Hint: {}", hint)?;
+            }
+        }
+        if let Some(detail) = e.attributes.get(&FIELD_DETAILS) {
+            if let Ok(detail) = str::from_utf8(detail) {
+                writeln!(f, "Detail: {}", detail)?;
+            }
+        }
+        if let Some(traceback) = e.attributes.get(&FIELD_SERVER_TRACEBACK) {
             if let Ok(traceback) = str::from_utf8(traceback) {
-                write!(f, "\n  Server traceback:")?;
+                writeln!(f, "Server traceback:")?;
                 for line in traceback.lines() {
-                    write!(f, "\n      {}", line)?;
+                    writeln!(f, "    {}", line)?;
                 }
             }
         }

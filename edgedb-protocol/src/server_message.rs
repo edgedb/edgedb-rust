@@ -467,7 +467,7 @@ impl Decode for ReadyForCommand {
 }
 
 impl ErrorSeverity {
-    fn from_u8(code: u8) -> ErrorSeverity {
+    pub fn from_u8(code: u8) -> ErrorSeverity {
         use ErrorSeverity::*;
         match code {
             120 => Error,
@@ -476,7 +476,7 @@ impl ErrorSeverity {
             _ => Unknown(code),
         }
     }
-    fn to_u8(&self) -> u8 {
+    pub fn to_u8(&self) -> u8 {
         use ErrorSeverity::*;
         match *self {
             Error => 120,

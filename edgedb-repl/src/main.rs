@@ -43,6 +43,8 @@ fn interactive_main(options: Options) -> Result<(), anyhow::Error> {
             implicit_properties: false,
             type_names: None,
         },
+        verbose_errors: false,
+        last_error: None,
     };
     let handle = task::spawn(client::interactive_main(options, state));
     prompt::main(repl_wr, control_rd)?;

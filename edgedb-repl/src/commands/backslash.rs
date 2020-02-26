@@ -3,6 +3,8 @@ use std::error::Error;
 
 use anyhow;
 
+use edgedb_protocol::server_message::ErrorResponse;
+
 use crate::client::Client;
 use crate::commands::{self, Options};
 use crate::repl;
@@ -38,11 +40,15 @@ Settings
   \introspect-types        print typenames instead of `Object` (may fail if
                            schema is updated after enabling option)
   \no-introspect-types     disable type introspection
+  \verbose-errors          print all errors with maximum verbosity
+  \no-verbose-errors       only print InternalServerError with maximum verbosity
 
 Connection
   \c [DBNAME]              Connect to database DBNAME
 
 Development
+  \E                       show most recent error message at maximum verbosity
+                           (alias: \last-error)
   \pgaddr                  show the network addr of the postgres server
   \psql                    open psql to the current postgres process
 
@@ -72,6 +78,7 @@ pub const HINTS: &'static [&'static str] = &[
     r"\laIS+ [PATTERN]",
     r"\laS+ [PATTERN]",
     r"\laSI+ [PATTERN]",
+    r"\last-error",
     r"\lc [PATTERN]",
     r"\lcI [PATTERN]",
     r"\li [PATTERN]",
@@ -106,9 +113,11 @@ pub const HINTS: &'static [&'static str] = &[
     r"\lrI",
     r"\no-implicit-properties",
     r"\no-introspect-types",
+    r"\no-verbose-errors",
     r"\pgaddr",
     r"\psql",
     r"\vi",
+    r"\verbose-errors",
 ];
 
 pub const COMMAND_NAMES: &'static [&'static str] = &[
@@ -123,15 +132,16 @@ pub const COMMAND_NAMES: &'static [&'static str] = &[
     r"\introspect-types",
     r"\l",
     r"\la",
-    r"\laI",
-    r"\laIS",
-    r"\laS",
-    r"\laSI",
     r"\la+",
+    r"\laI",
     r"\laI+",
+    r"\laIS",
     r"\laIS+",
+    r"\laS",
     r"\laS+",
+    r"\laSI",
     r"\laSI+",
+    r"\last-error",
     r"\li",
     r"\liI",
     r"\liIS",
@@ -166,9 +176,11 @@ pub const COMMAND_NAMES: &'static [&'static str] = &[
     r"\lrI",
     r"\no-implicit-properties",
     r"\no-introspect-types",
+    r"\no-verbose-errors",
     r"\pgaddr",
     r"\psql",
     r"\vi",
+    r"\verbose-errors",
 ];
 
 pub enum Command {
@@ -221,6 +233,9 @@ pub enum Command {
     IntrospectTypes,
     NoIntrospectTypes,
     Connect { database: String },
+    LastError,
+    VerboseErrors,
+    NoVerboseErrors,
 }
 
 pub struct ParseError {
@@ -337,6 +352,9 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
         | ("describe+", Some(name))
         | ("d+", Some(name))
         => Ok(Command::Describe { name: name.to_owned(), verbose: true}),
+        | ("last-error", None)
+        | ("E", None)
+        => Ok(Command::LastError),
         ("pgaddr", None) => Ok(Command::PostgresAddr),
         ("psql", None) => Ok(Command::Psql),
         ("vi", None) => Ok(Command::ViMode),
@@ -345,6 +363,8 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
         ("no-implicit-properties", None) => Ok(Command::NoImplicitProperties),
         ("introspect-types", None) => Ok(Command::IntrospectTypes),
         ("no-introspect-types", None) => Ok(Command::NoIntrospectTypes),
+        ("verbose-errors", None) => Ok(Command::VerboseErrors),
+        ("no-verbose-errors", None) => Ok(Command::NoVerboseErrors),
         (_, Some(_)) if COMMAND_NAMES.contains(&&s[..cmd.len()+1]) => {
             error(format_args!("Command `\\{}` doesn't support arguments",
                                cmd.escape_default()),
@@ -447,6 +467,26 @@ pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command,
         }
         Connect { database } => {
             Err(ChangeDb { target: database })?
+        }
+        VerboseErrors => {
+            prompt.verbose_errors = true;
+            Ok(())
+        }
+        NoVerboseErrors => {
+            prompt.verbose_errors = false;
+            Ok(())
+        }
+        LastError => {
+            if let Some(ref err) = prompt.last_error {
+                if let Some(ref err) = err.downcast_ref::<ErrorResponse>() {
+                    println!("{}", err.display_verbose());
+                } else {
+                    println!("{:#?}", err);
+                }
+            } else {
+                eprintln!("== there is no previous error ==");
+            }
+            Ok(())
         }
     }
 }

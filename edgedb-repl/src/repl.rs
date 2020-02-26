@@ -8,6 +8,8 @@ pub struct State {
     pub control: Sender<prompt::Control>,
     pub data: Receiver<prompt::Input>,
     pub print: print::Config,
+    pub verbose_errors: bool,
+    pub last_error: Option<anyhow::Error>,
 }
 
 
