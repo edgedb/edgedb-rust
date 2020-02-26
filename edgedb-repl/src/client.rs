@@ -616,12 +616,10 @@ pub async fn non_interactive_main(options: Options)
                 Err(e) => Err(e)?,
             },
         };
-        let out = stdout();
-        let mut out = out.lock().await;
         while let Some(mut row) = items.next().await.transpose()? {
             // trying to make writes atomic if possible
             row += "\n";
-            out.write_all(row.as_bytes()).await?;
+            stdout().write_all(row.as_bytes()).await?;
         }
     }
     Ok(())

@@ -17,6 +17,7 @@ pub struct EndOfFile;
 
 pub struct ReadStatement<'a, T> {
     buf: &'a mut BytesMut,
+    eof: bool,
     stream: &'a mut T,
     continuation: Option<Continuation>,
 }
@@ -26,7 +27,7 @@ impl<'a, T> ReadStatement<'a, T> {
     pub fn new(buf: &'a mut BytesMut, stream: &'a mut T)
         -> ReadStatement<'a, T>
     {
-        ReadStatement { buf, stream, continuation: None }
+        ReadStatement { buf, stream, continuation: None, eof: false }
     }
 }
 
@@ -35,7 +36,12 @@ impl<'a, T> Future for ReadStatement<'a, T>
 {
     type Output = Result<Bytes, anyhow::Error>;
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let ReadStatement { buf, stream, ref mut continuation } = &mut *self;
+        let ReadStatement {
+            buf, stream, ref mut continuation, ref mut eof
+        } = &mut *self;
+        if *eof {
+            return Poll::Ready(Err(EndOfFile.into()));
+        }
         let statement_len = loop {
             match full_statement(&buf[..], continuation.take()) {
                 Ok(len) => break len,
@@ -43,11 +49,16 @@ impl<'a, T> Future for ReadStatement<'a, T>
             };
             buf.reserve(8192);
             unsafe {
-                // this is save because the underlying ByteStream always
+                // this is safe because the underlying ByteStream always
                 // initializes read bytes
                 let dest: &mut [u8] = transmute(buf.bytes_mut());
                 match Pin::new(&mut *stream).poll_read(cx, dest) {
                     Poll::Ready(Ok(0)) => {
+                        *eof = true;
+                        if buf.iter().any(|x| !x.is_ascii_whitespace()) {
+                            return Poll::Ready(Ok(
+                                buf.split_to(buf.len()).freeze()));
+                        }
                         return Poll::Ready(Err(EndOfFile.into()));
                     }
                     Poll::Ready(Ok(bytes)) => {
