@@ -32,6 +32,10 @@ struct TmpOptions {
     #[structopt(long)]
     pub debug_print_codecs: bool,
 
+    /// Tab-separated output of the queries
+    #[structopt(short="t", long)]
+    pub tab_separated: bool,
+
     #[structopt(subcommand)]
     pub subcommand: Option<Command>,
 }
@@ -357,6 +361,7 @@ pub struct Options {
     pub debug_print_data_frames: bool,
     pub debug_print_descriptors: bool,
     pub debug_print_codecs: bool,
+    pub tab_separated: bool,
 }
 
 impl Options {
@@ -405,6 +410,7 @@ impl Options {
             debug_print_data_frames: tmp.debug_print_data_frames,
             debug_print_descriptors: tmp.debug_print_descriptors,
             debug_print_codecs: tmp.debug_print_codecs,
+            tab_separated: tmp.tab_separated,
         }
     }
 }

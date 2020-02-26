@@ -1,8 +1,9 @@
-use std::io;
-use std::fmt;
 use std::collections::HashMap;
-use std::str;
+use std::fmt;
+use std::io;
 use std::mem::replace;
+use std::str;
+use std::sync::Arc;
 
 use anyhow::{self, Context};
 use async_std::prelude::StreamExt;
@@ -18,6 +19,7 @@ use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
 use edgedb_protocol::client_message::{Prepare, IoFormat, Cardinality};
 use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
 use edgedb_protocol::client_message::{Execute, ExecuteScript};
+use edgedb_protocol::codec::Codec;
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use edgedb_protocol::queryable::{Queryable};
 use edgedb_protocol::value::Value;
@@ -310,21 +312,32 @@ async fn _interactive_main(
         })).await?;
         cli.send_message(&ClientMessage::Sync).await?;
 
-        match print_to_stdout(cli.reader.response(codec), &state.print).await {
-            Ok(()) => {}
-            Err(e) => {
-                match e {
-                    PrintError::StreamErr {
-                        source: ReadError::RequestError { ref error, ..},
-                        ..
-                    } => {
-                        eprintln!("{}", error);
+        let mut items = cli.reader.response(codec);
+
+        if options.tab_separated {
+            while let Some(row) = items.next().await.transpose()? {
+                let mut text = value_to_tab_separated(&row)?;
+                // trying to make writes atomic if possible
+                text += "\n";
+                stdout().write_all(text.as_bytes()).await?;
+            }
+        } else {
+            match print_to_stdout(items, &state.print).await {
+                Ok(()) => {}
+                Err(e) => {
+                    match e {
+                        PrintError::StreamErr {
+                            source: ReadError::RequestError { ref error, ..},
+                            ..
+                        } => {
+                            eprintln!("{}", error);
+                        }
+                        _ => eprintln!("{:#?}", e),
                     }
-                    _ => eprintln!("{:#?}", e),
+                    state.last_error = Some(e.into());
+                    cli.reader.wait_ready().await?;
+                    continue;
                 }
-                state.last_error = Some(e.into());
-                cli.reader.wait_ready().await?;
-                continue;
             }
         }
         state.last_error = None;
@@ -560,6 +573,17 @@ impl<'a> Client<'a> {
         }
     }
 
+    pub async fn query_dynamic(&mut self, request: &str, arguments: &Value)
+        -> Result<
+            QueryResponse<'_, &'a TcpStream, Arc<dyn Codec>>,
+            anyhow::Error
+        >
+    {
+        let desc = self._query(request, arguments, IoFormat::Binary).await?;
+        let codec = desc.build_codec()?;
+        Ok(self.reader.response(codec))
+    }
+
     async fn _process_exec(&mut self) -> Result<Bytes, anyhow::Error> {
         let status = loop {
             match self.reader.message().await? {
@@ -588,6 +612,53 @@ impl<'a> Client<'a> {
     }
 }
 
+fn value_to_string(v: &Value) -> Result<String, anyhow::Error> {
+    use edgedb_protocol::value::Value::*;
+    match v {
+        Nothing => Ok(String::new()),
+        Uuid(uuid) => Ok(uuid.to_string()),
+        Str(s) => Ok(s.clone()),
+        Int16(v) => Ok(v.to_string()),
+        Int32(v) => Ok(v.to_string()),
+        Int64(v) => Ok(v.to_string()),
+        Float32(v) => Ok(v.to_string()),
+        Float64(v) => Ok(v.to_string()),
+        Bool(v) => Ok(v.to_string()),
+        Json(v) => Ok(v.to_string()),
+        Enum(v) => Ok(v.to_string()),
+        | Datetime(_) // TODO(tailhook)
+        | BigInt(_) // TODO(tailhook)
+        | Decimal(_) // TODO(tailhook)
+        | LocalDatetime(_) // TODO(tailhook)
+        | LocalDate(_) // TODO(tailhook)
+        | LocalTime(_) // TODO(tailhook)
+        | Duration(_) // TODO(tailhook)
+        | Bytes(_)
+        | Object {..}
+        | NamedTuple {..}
+        | Array(_)
+        | Set(_)
+        | Tuple(_)
+        => {
+            Err(anyhow::anyhow!(
+                "Complex objects like {:?} be printed tab-separated", v))
+        }
+    }
+}
+
+fn value_to_tab_separated(v: &Value) -> Result<String, anyhow::Error> {
+    use edgedb_protocol::value::Value::*;
+    match v {
+        Object { shape, fields } => {
+            Ok(shape.elements.iter().zip(fields)
+                .filter(|(s, _)| !s.flag_implicit)
+                .map(|(_, v)| value_to_string(v))
+                .collect::<Result<Vec<_>,_>>()?.join("\t"))
+        }
+        _ => value_to_string(v),
+    }
+}
+
 pub async fn non_interactive_main(options: Options)
     -> Result<(), anyhow::Error>
 {
@@ -604,22 +675,45 @@ pub async fn non_interactive_main(options: Options)
         };
         let stmt = str::from_utf8(&stmt[..])
             .context("can't decode statement")?;
-        let mut items = match cli.query_json(stmt, &Value::empty_tuple()).await
-        {
-            Ok(items) => items,
-            Err(e) => match e.downcast::<NoResultExpected>() {
-                Ok(e) => {
-                    eprintln!("  -> {}: Ok",
-                        String::from_utf8_lossy(&e.completion_message[..]));
-                    continue;
-                }
-                Err(e) => Err(e)?,
-            },
-        };
-        while let Some(mut row) = items.next().await.transpose()? {
-            // trying to make writes atomic if possible
-            row += "\n";
-            stdout().write_all(row.as_bytes()).await?;
+        if options.tab_separated {
+            let mut items = match
+                cli.query_dynamic(stmt, &Value::empty_tuple()).await
+            {
+                Ok(items) => items,
+                Err(e) => match e.downcast::<NoResultExpected>() {
+                    Ok(e) => {
+                        eprintln!("  -> {}: Ok",
+                            String::from_utf8_lossy(&e.completion_message[..]));
+                        continue;
+                    }
+                    Err(e) => Err(e)?,
+                },
+            };
+            while let Some(row) = items.next().await.transpose()? {
+                let mut text = value_to_tab_separated(&row)?;
+                // trying to make writes atomic if possible
+                text += "\n";
+                stdout().write_all(text.as_bytes()).await?;
+            }
+        } else {
+            let mut items = match
+                cli.query_json(stmt, &Value::empty_tuple()).await
+            {
+                Ok(items) => items,
+                Err(e) => match e.downcast::<NoResultExpected>() {
+                    Ok(e) => {
+                        eprintln!("  -> {}: Ok",
+                            String::from_utf8_lossy(&e.completion_message[..]));
+                        continue;
+                    }
+                    Err(e) => Err(e)?,
+                },
+            };
+            while let Some(mut row) = items.next().await.transpose()? {
+                // trying to make writes atomic if possible
+                row += "\n";
+                stdout().write_all(row.as_bytes()).await?;
+            }
         }
     }
     Ok(())
