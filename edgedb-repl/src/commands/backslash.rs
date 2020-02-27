@@ -32,6 +32,9 @@ Introspection
   \li[IS+] [PATTERN]       list indexes
                            (alias: \list-indexes)
 
+Editing
+  \s, \history             show history
+
 Settings
   \vi                      switch to vi-mode editing
   \emacs                   switch to emacs (normal) mode editing, disables vi-mode
@@ -65,6 +68,7 @@ pub const HINTS: &'static [&'static str] = &[
     r"\describe NAME",
     r"\describe+ NAME",
     r"\emacs",
+    r"\history",
     r"\implicit-properties",
     r"\introspect-types",
     r"\l",
@@ -116,8 +120,9 @@ pub const HINTS: &'static [&'static str] = &[
     r"\no-verbose-errors",
     r"\pgaddr",
     r"\psql",
-    r"\vi",
+    r"\s",
     r"\verbose-errors",
+    r"\vi",
 ];
 
 pub const COMMAND_NAMES: &'static [&'static str] = &[
@@ -130,6 +135,7 @@ pub const COMMAND_NAMES: &'static [&'static str] = &[
     r"\emacs",
     r"\implicit-properties",
     r"\introspect-types",
+    r"\history",
     r"\l",
     r"\la",
     r"\la+",
@@ -179,8 +185,9 @@ pub const COMMAND_NAMES: &'static [&'static str] = &[
     r"\no-verbose-errors",
     r"\pgaddr",
     r"\psql",
-    r"\vi",
+    r"\s",
     r"\verbose-errors",
+    r"\vi",
 ];
 
 pub enum Command {
@@ -236,6 +243,7 @@ pub enum Command {
     LastError,
     VerboseErrors,
     NoVerboseErrors,
+    History,
 }
 
 pub struct ParseError {
@@ -355,6 +363,9 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
         | ("last-error", None)
         | ("E", None)
         => Ok(Command::LastError),
+        | ("history", None)
+        | ("s", None)
+        => Ok(Command::History),
         ("pgaddr", None) => Ok(Command::PostgresAddr),
         ("psql", None) => Ok(Command::Psql),
         ("vi", None) => Ok(Command::ViMode),
@@ -486,6 +497,10 @@ pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command,
             } else {
                 eprintln!("== there is no previous error ==");
             }
+            Ok(())
+        }
+        History => {
+            prompt.show_history().await;
             Ok(())
         }
     }

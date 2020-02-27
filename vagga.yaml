@@ -104,6 +104,7 @@ containers:
       - git
       - build-essential
       - vim
+      - less  # as pager for repl
       - musl-tools
       # for cargo geiger
       - libssl-dev

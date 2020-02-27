@@ -1,6 +1,8 @@
 use std::borrow::Cow;
 use std::fs;
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Write};
+use std::env;
+use std::process::{Command, Stdio};
 
 use anyhow::{self, Context as _Context};
 use async_std::sync::{Sender, Receiver};
@@ -11,6 +13,7 @@ use rustyline::{Editor, Config, Helper, Context};
 use rustyline::config::EditMode;
 use rustyline::hint::Hinter;
 use rustyline::highlight::Highlighter;
+use rustyline::history::History;
 use rustyline::validate::{Validator, ValidationResult, ValidationContext};
 use rustyline::completion::Completer;
 
@@ -25,6 +28,7 @@ use colorful::Colorful;
 pub enum Control {
     EdgeqlInput { database: String, initial: String },
     VariableInput { name: String, type_name: String, initial: String },
+    ShowHistory,
     ViMode,
     EmacsMode,
 }
@@ -310,9 +314,44 @@ pub fn main(data: Sender<Input>, control: Receiver<Control>)
                 save_history(&mut editor, &format!("var_{}", &type_name));
                 task::block_on(data.send(Input::Text(text)))
             }
+            Some(Control::ShowHistory) => {
+                match show_history(editor.history()) {
+                    Ok(()) => {}
+                    Err(e) => {
+                        eprintln!("Error displaying history: {}", e);
+                    }
+                }
+            }
         }
     }
     save_history(&mut editor, "edgeql");
+    Ok(())
+}
+
+fn show_history(history: &History) -> Result<(), anyhow::Error> {
+    let pager = env::var("EDGEDB_PAGER")
+        .or_else(|_| env::var("PAGER"))
+        .unwrap_or_else(|_| String::from("less -RF"));
+    let mut items = pager.split_whitespace();
+    let mut cmd = Command::new(items.next().unwrap());
+    cmd.stdin(Stdio::piped());
+    cmd.args(items);
+    let mut child = cmd.spawn()?;
+    let childin = child.stdin.as_mut().expect("stdin is piped");
+    for index in (0..history.len()).rev() {
+        if let Some(s) = history.get(index) {
+            let prefix = format!("[-{}] ", history.len() - index);
+            let mut lines = s.lines();
+            if let Some(first) = lines.next() {
+                writeln!(childin, "{}{}", prefix, first)?;
+            }
+            for next in lines {
+                writeln!(childin, "{:1$}{2}", "", prefix.len(), next)?;
+            }
+        }
+    }
+    drop(childin);
+    child.wait()?;
     Ok(())
 }
 

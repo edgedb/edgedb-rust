@@ -50,4 +50,7 @@ impl State {
     pub async fn emacs_mode(&self) {
         self.control.send(prompt::Control::EmacsMode).await;
     }
+    pub async fn show_history(&self) {
+        self.control.send(prompt::Control::ShowHistory).await;
+    }
 }
