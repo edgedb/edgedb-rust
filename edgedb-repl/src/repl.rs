@@ -10,16 +10,15 @@ pub struct State {
     pub print: print::Config,
     pub verbose_errors: bool,
     pub last_error: Option<anyhow::Error>,
+    pub database: String,
 }
 
 
 impl State {
-    pub async fn edgeql_input(&mut self, database: &str, initial: &str)
-        -> prompt::Input
-    {
+    pub async fn edgeql_input(&mut self, initial: &str) -> prompt::Input {
         self.control.send(
             prompt::Control::EdgeqlInput {
-                database: database.to_owned(),
+                database: self.database.clone(),
                 initial: initial.to_owned(),
             }
         ).await;
@@ -52,5 +51,12 @@ impl State {
     }
     pub async fn show_history(&self) {
         self.control.send(prompt::Control::ShowHistory).await;
+    }
+    pub async fn spawn_editor(&self, entry: Option<isize>) -> prompt::Input {
+        self.control.send(prompt::Control::SpawnEditor { entry }).await;
+        match self.data.recv().await {
+            None | Some(prompt::Input::Eof) => prompt::Input::Eof,
+            Some(x) => x,
+        }
     }
 }

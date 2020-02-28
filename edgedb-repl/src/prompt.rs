@@ -29,6 +29,7 @@ pub enum Control {
     EdgeqlInput { database: String, initial: String },
     VariableInput { name: String, type_name: String, initial: String },
     ShowHistory,
+    SpawnEditor { entry: Option<isize> },
     ViMode,
     EmacsMode,
 }
@@ -246,6 +247,33 @@ pub fn var_editor(mode: EditMode, type_name: &str) -> Editor<()> {
     return editor;
 }
 
+pub fn edgeql_input(prompt: &mut String, editor: &mut Editor<EdgeqlHelper>,
+    data: &Sender<Input>, database: &str, initial: &str)
+{
+    prompt.clear();
+    prompt.push_str(&database);
+    prompt.push_str("> ");
+    let text = match
+        editor.readline_with_initial(&prompt, (&initial, ""))
+    {
+        Ok(text) => text,
+        Err(ReadlineError::Eof) => {
+            task::block_on(data.send(Input::Eof));
+            return;
+        }
+        Err(ReadlineError::Interrupted) => {
+            task::block_on(data.send(Input::Interrupt));
+            return;
+        }
+        Err(e) => {
+            eprintln!("Readline error: {}", e);
+            return;
+        }
+    };
+    editor.add_history_entry(&text);
+    task::block_on(data.send(Input::Text(text)))
+}
+
 
 pub fn main(data: Sender<Input>, control: Receiver<Control>)
     -> Result<(), anyhow::Error>
@@ -267,25 +295,8 @@ pub fn main(data: Sender<Input>, control: Receiver<Control>)
                 editor = create_editor(mode);
             }
             Some(Control::EdgeqlInput { database, initial }) => {
-                prompt.clear();
-                prompt.push_str(&database);
-                prompt.push_str("> ");
-                let text = match
-                    editor.readline_with_initial(&prompt, (&initial, ""))
-                {
-                    Ok(text) => text,
-                    Err(ReadlineError::Eof) => {
-                        task::block_on(data.send(Input::Eof));
-                        continue;
-                    }
-                    Err(ReadlineError::Interrupted) => {
-                        task::block_on(data.send(Input::Interrupt));
-                        continue;
-                    }
-                    Err(e) => Err(e)?,
-                };
-                editor.add_history_entry(&text);
-                task::block_on(data.send(Input::Text(text)))
+                edgeql_input(&mut prompt, &mut editor, &data,
+                    &database, &initial);
             }
             Some(Control::VariableInput { name, type_name, initial })
             => {
@@ -322,6 +333,41 @@ pub fn main(data: Sender<Input>, control: Receiver<Control>)
                     }
                 }
             }
+            Some(Control::SpawnEditor { entry }) => {
+                let h = editor.history();
+                let e = entry.unwrap_or(-1);
+                let normal = if e < 0 {
+                    (h.len() as isize)
+                        // last history entry is the current command which
+                        // is useless
+                        .saturating_sub(1)
+                        .saturating_add(e)
+                } else {
+                    e as isize
+                };
+                if normal < 0 {
+                    eprintln!("No history entry {}", e);
+                    task::block_on(data.send(Input::Interrupt));
+                    continue;
+                }
+                let value = if let Some(value) = h.get(normal as usize) {
+                    value
+                } else {
+                    eprintln!("No history entry {}", e);
+                    task::block_on(data.send(Input::Interrupt));
+                    continue;
+                };
+                let mut text = match spawn_editor(value) {
+                    Ok(text) => text,
+                    Err(e) => {
+                        eprintln!("Error editing history entry: {}", e);
+                        task::block_on(data.send(Input::Interrupt));
+                        continue;
+                    }
+                };
+                text.truncate(text.trim_end().len());
+                task::block_on(data.send(Input::Text(text)));
+            }
         }
     }
     save_history(&mut editor, "edgeql");
@@ -351,8 +397,33 @@ fn show_history(history: &History) -> Result<(), anyhow::Error> {
         }
     }
     drop(childin);
-    child.wait()?;
-    Ok(())
+    let res = child.wait()?;
+    if res.success() {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("pager exited with: {}", res))
+    }
+}
+
+fn spawn_editor(data: &str) -> Result<String, anyhow::Error> {
+    let mut temp_file = tempfile::Builder::new()
+        .suffix(".edgedb")
+        .tempfile()?;
+    temp_file.write_all(data.as_bytes())?;
+    let temp_path = temp_file.into_temp_path();
+    let editor = env::var("EDGEDB_EDITOR")
+        .or_else(|_| env::var("EDITOR"))
+        .unwrap_or_else(|_| String::from("vim"));
+    let mut items = editor.split_whitespace();
+    let mut cmd = Command::new(items.next().unwrap());
+    cmd.args(items);
+    cmd.arg(&temp_path);
+    let res = cmd.status()?;
+    if res.success() {
+        return Ok(fs::read_to_string(&temp_path)?);
+    } else {
+        Err(anyhow::anyhow!("editor exited with: {}", res))
+    }
 }
 
 fn token_style(kind: Kind) -> Option<Style> {

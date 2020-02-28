@@ -65,7 +65,8 @@ impl Connection {
         Ok(Connection::new((&options.host[..], options.port)).await?)
     }
 
-    pub async fn authenticate<'x>(&'x mut self, options: &Options)
+    pub async fn authenticate<'x>(&'x mut self, options: &Options,
+        database: &str)
         -> Result<Client<'x>, anyhow::Error>
     {
         let (rd, stream) = (&self.stream, &self.stream);
@@ -77,7 +78,7 @@ impl Connection {
         };
         let mut params = HashMap::new();
         params.insert(String::from("user"), options.user.clone());
-        params.insert(String::from("database"), options.database.clone());
+        params.insert(String::from("database"), String::from(database));
 
         cli.send_message(&ClientMessage::ClientHandshake(ClientHandshake {
             major_ver: 0,
@@ -146,17 +147,17 @@ impl Connection {
 }
 
 
-pub async fn interactive_main(mut options: Options, mut state: repl::State)
+pub async fn interactive_main(options: Options, mut state: repl::State)
     -> Result<(), anyhow::Error>
 {
     loop {
         let mut conn = Connection::from_options(&options).await?;
-        let cli = conn.authenticate(&options).await?;
+        let cli = conn.authenticate(&options, &state.database).await?;
         match _interactive_main(cli, &options, &mut state).await {
             Ok(()) => return Ok(()),
             Err(e) => {
                 if let Some(err) = e.downcast_ref::<backslash::ChangeDb>() {
-                    options.database = err.target.clone();
+                    state.database = err.target.clone();
                     continue;
                 }
                 return Err(e);
@@ -174,10 +175,7 @@ async fn _interactive_main(
 
     'input_loop: loop {
         let inp = match
-            state.edgeql_input(
-                &options.database,
-                &replace(&mut initial, String::new()),
-            ).await
+            state.edgeql_input(&replace(&mut initial, String::new())).await
         {
             prompt::Input::Eof => {
                 cli.send_message(&ClientMessage::Terminate).await?;
@@ -199,6 +197,7 @@ async fn _interactive_main(
             continue;
         }
         if inp.trim_start().starts_with("\\") {
+            use backslash::ExecuteResult::*;
             let cmd = match backslash::parse(&inp) {
                 Ok(cmd) => cmd,
                 Err(e) => {
@@ -210,14 +209,18 @@ async fn _interactive_main(
                 }
             };
             let exec_res = backslash::execute(&mut cli, cmd, &mut state).await;
-            if let Err(e) = exec_res {
-                if e.is::<backslash::ChangeDb>() {
-                    return Err(e);
+            match exec_res {
+                Ok(Skip) => continue,
+                Ok(Input(text)) => initial = text,
+                Err(e) => {
+                    if e.is::<backslash::ChangeDb>() {
+                        return Err(e);
+                    }
+                    eprintln!("Error executing command: {}", e);
+                    // Quick-edit command on error
+                    initial = inp.trim_start().into();
+                    state.last_error = Some(e);
                 }
-                eprintln!("Error executing command: {}", e);
-                // Quick-edit command on error
-                initial = inp.trim_start().into();
-                state.last_error = Some(e);
             }
             continue;
         }
@@ -663,7 +666,7 @@ pub async fn non_interactive_main(options: Options)
     -> Result<(), anyhow::Error>
 {
     let mut conn = Connection::from_options(&options).await?;
-    let mut cli = conn.authenticate(&options).await?;
+    let mut cli = conn.authenticate(&options, &options.database).await?;
     let stdin_obj = stdin();
     let mut stdin = stdin_obj.lock().await; // only lock *after* authentication
     let mut inbuf = BytesMut::with_capacity(8192);

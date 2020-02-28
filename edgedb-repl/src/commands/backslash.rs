@@ -8,9 +8,14 @@ use edgedb_protocol::server_message::ErrorResponse;
 use crate::client::Client;
 use crate::commands::{self, Options};
 use crate::repl;
+use crate::prompt;
 use crate::server_params::PostgresAddress;
 use crate::commands::type_names::get_type_names;
 
+pub enum ExecuteResult {
+    Skip,
+    Input(String),
+}
 
 const HELP: &str = r###"
 Introspection
@@ -34,6 +39,8 @@ Introspection
 
 Editing
   \s, \history             show history
+  \e, \edit [N]            spawn $EDITOR to edit history entry N then use the
+                           output as the input
 
 Settings
   \vi                      switch to vi-mode editing
@@ -67,6 +74,8 @@ pub const HINTS: &'static [&'static str] = &[
     r"\d+ NAME",
     r"\describe NAME",
     r"\describe+ NAME",
+    r"\e [N]",
+    r"\edit [N]",
     r"\emacs",
     r"\history",
     r"\implicit-properties",
@@ -132,6 +141,8 @@ pub const COMMAND_NAMES: &'static [&'static str] = &[
     r"\d+",
     r"\describe",
     r"\describe+",
+    r"\e",
+    r"\edit",
     r"\emacs",
     r"\implicit-properties",
     r"\introspect-types",
@@ -244,6 +255,7 @@ pub enum Command {
     VerboseErrors,
     NoVerboseErrors,
     History,
+    Edit { entry: Option<isize> },
 }
 
 pub struct ParseError {
@@ -366,6 +378,15 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
         | ("history", None)
         | ("s", None)
         => Ok(Command::History),
+        | ("edit", param)
+        | ("e", param)
+        => Ok(Command::Edit {
+            entry: param.map(|x| x.parse()).transpose()
+                .map_err(|e| ParseError {
+                    message: format!("bad number: {}", e),
+                    hint: "integer expected".into(),
+                })?,
+        }),
         ("pgaddr", None) => Ok(Command::PostgresAddr),
         ("psql", None) => Ok(Command::Psql),
         ("vi", None) => Ok(Command::ViMode),
@@ -395,43 +416,56 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
 
 pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command,
     prompt: &mut repl::State)
-    -> Result<(), anyhow::Error>
+    -> Result<ExecuteResult, anyhow::Error>
 {
     use Command::*;
+    use ExecuteResult::*;
     let options = Options {
         command_line: false,
     };
     match cmd {
         Help => {
             print!("{}", HELP);
-            Ok(())
+            Ok(Skip)
         }
         ListAliases { pattern, case_sensitive, system, verbose } => {
             commands::list_aliases(cli, &options,
-                &pattern, system, case_sensitive, verbose).await
+                &pattern, system, case_sensitive, verbose).await?;
+            Ok(Skip)
         }
         ListCasts { pattern, case_sensitive } => {
-            commands::list_casts(cli, &options, &pattern, case_sensitive).await
+            commands::list_casts(cli, &options,
+                &pattern, case_sensitive).await?;
+            Ok(Skip)
         }
         ListIndexes { pattern, case_sensitive, system, verbose } => {
             commands::list_indexes(cli, &options,
-                &pattern, system, case_sensitive, verbose).await
+                &pattern, system, case_sensitive, verbose).await?;
+            Ok(Skip)
         }
-        ListDatabases => commands::list_databases(cli, &options).await,
+        ListDatabases => {
+            commands::list_databases(cli, &options).await?;
+            Ok(Skip)
+        }
         ListScalarTypes { pattern, case_sensitive, system } => {
             commands::list_scalar_types(cli, &options,
-                &pattern, system, case_sensitive).await
+                &pattern, system, case_sensitive).await?;
+            Ok(Skip)
         }
         ListObjectTypes { pattern, case_sensitive, system } => {
             commands::list_object_types(cli, &options,
-                &pattern, system, case_sensitive).await
+                &pattern, system, case_sensitive).await?;
+            Ok(Skip)
         }
         ListModules { pattern, case_sensitive } => {
             commands::list_modules(cli, &options,
-                &pattern, case_sensitive).await
+                &pattern, case_sensitive).await?;
+            Ok(Skip)
         }
         ListRoles { pattern, case_sensitive } => {
-            commands::list_roles(cli, &options, &pattern, case_sensitive).await
+            commands::list_roles(cli, &options,
+                &pattern, case_sensitive).await?;
+            Ok(Skip)
         }
         PostgresAddr => {
             match cli.params.get::<PostgresAddress>() {
@@ -442,50 +476,50 @@ pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command,
                     eprintln!("\\pgaddr requires EdgeDB to run in DEV mode");
                 }
             }
-            Ok(())
+            Ok(Skip)
         }
         Psql => {
             commands::psql(cli, &options).await?;
-            Ok(())
+            Ok(Skip)
         }
         ViMode => {
             prompt.vi_mode().await;
-            Ok(())
+            Ok(Skip)
         }
         EmacsMode => {
             prompt.emacs_mode().await;
-            Ok(())
+            Ok(Skip)
         }
         ImplicitProperties => {
             prompt.print.implicit_properties = true;
-            Ok(())
+            Ok(Skip)
         }
         NoImplicitProperties => {
             prompt.print.implicit_properties = true;
-            Ok(())
+            Ok(Skip)
         }
         IntrospectTypes => {
             prompt.print.type_names = Some(get_type_names(cli).await?);
-            Ok(())
+            Ok(Skip)
         }
         NoIntrospectTypes => {
             prompt.print.type_names = None;
-            Ok(())
+            Ok(Skip)
         }
         Describe { name, verbose } => {
             commands::describe(cli, &options, &name, verbose).await?;
-            Ok(())
+            Ok(Skip)
         }
         Connect { database } => {
             Err(ChangeDb { target: database })?
         }
         VerboseErrors => {
             prompt.verbose_errors = true;
-            Ok(())
+            Ok(Skip)
         }
         NoVerboseErrors => {
             prompt.verbose_errors = false;
-            Ok(())
+            Ok(Skip)
         }
         LastError => {
             if let Some(ref err) = prompt.last_error {
@@ -497,11 +531,18 @@ pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command,
             } else {
                 eprintln!("== there is no previous error ==");
             }
-            Ok(())
+            Ok(Skip)
         }
         History => {
             prompt.show_history().await;
-            Ok(())
+            Ok(Skip)
+        }
+        Edit { entry } => {
+            match prompt.spawn_editor(entry).await {
+                | prompt::Input::Text(text) => Ok(Input(text)),
+                | prompt::Input::Interrupt
+                | prompt::Input::Eof => Ok(Skip),
+            }
         }
     }
 }

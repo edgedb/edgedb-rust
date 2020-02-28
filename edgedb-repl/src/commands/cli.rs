@@ -15,7 +15,8 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
         Command::CreateDatabase(d) => {
             task::block_on(async {
                 let mut conn = Connection::from_options(&options).await?;
-                let mut cli = conn.authenticate(&options).await?;
+                let mut cli = conn.authenticate(
+                    &options, &options.database).await?;
                 let res = cli.execute(&format!("CREATE DATABASE {}",
                                      quote_name(&d.database_name))).await?;
                 eprintln!("  -> {}: Ok",
@@ -26,7 +27,8 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
         Command::ListAliases(t) => {
             task::block_on(async {
                 let mut conn = Connection::from_options(&options).await?;
-                let mut cli = conn.authenticate(&options).await?;
+                let mut cli = conn.authenticate(
+                    &options, &options.database).await?;
                 commands::list_aliases(&mut cli, &cmdopt,
                     &t.pattern, t.system, t.case_sensitive, t.verbose).await?;
                 Ok(())
@@ -35,7 +37,8 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
         Command::ListCasts(t) => {
             task::block_on(async {
                 let mut conn = Connection::from_options(&options).await?;
-                let mut cli = conn.authenticate(&options).await?;
+                let mut cli = conn.authenticate(
+                    &options, &options.database).await?;
                 commands::list_casts(&mut cli, &cmdopt,
                     &t.pattern, t.case_sensitive).await?;
                 Ok(())
@@ -44,7 +47,8 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
         Command::ListIndexes(t) => {
             task::block_on(async {
                 let mut conn = Connection::from_options(&options).await?;
-                let mut cli = conn.authenticate(&options).await?;
+                let mut cli = conn.authenticate(
+                    &options, &options.database).await?;
                 commands::list_indexes(&mut cli, &cmdopt,
                     &t.pattern, t.system, t.case_sensitive, t.verbose).await?;
                 Ok(())
@@ -53,7 +57,8 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
         Command::ListDatabases => {
             task::block_on(async {
                 let mut conn = Connection::from_options(&options).await?;
-                let mut cli = conn.authenticate(&options).await?;
+                let mut cli = conn.authenticate(
+                    &options, &options.database).await?;
                 commands::list_databases(&mut cli, &cmdopt).await?;
                 Ok(())
             }).into()
@@ -61,7 +66,8 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
         Command::ListScalarTypes(t) => {
             task::block_on(async {
                 let mut conn = Connection::from_options(&options).await?;
-                let mut cli = conn.authenticate(&options).await?;
+                let mut cli = conn.authenticate(
+                    &options, &options.database).await?;
                 commands::list_scalar_types(&mut cli, &cmdopt,
                     &t.pattern, t.system, t.case_sensitive).await?;
                 Ok(())
@@ -70,7 +76,8 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
         Command::ListObjectTypes(t) => {
             task::block_on(async {
                 let mut conn = Connection::from_options(&options).await?;
-                let mut cli = conn.authenticate(&options).await?;
+                let mut cli = conn.authenticate(
+                    &options, &options.database).await?;
                 commands::list_object_types(&mut cli, &cmdopt,
                     &t.pattern, t.system, t.case_sensitive).await?;
                 Ok(())
@@ -79,7 +86,8 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
         Command::ListRoles(t) => {
             task::block_on(async {
                 let mut conn = Connection::from_options(&options).await?;
-                let mut cli = conn.authenticate(&options).await?;
+                let mut cli = conn.authenticate(
+                    &options, &options.database).await?;
                 commands::list_roles(&mut cli, &cmdopt,
                     &t.pattern, t.case_sensitive).await?;
                 Ok(())
@@ -88,7 +96,8 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
         Command::ListModules(t) => {
             task::block_on(async {
                 let mut conn = Connection::from_options(&options).await?;
-                let mut cli = conn.authenticate(&options).await?;
+                let mut cli = conn.authenticate(
+                    &options, &options.database).await?;
                 commands::list_modules(&mut cli, &cmdopt,
                     &t.pattern, t.case_sensitive).await?;
                 Ok(())
@@ -97,7 +106,8 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
         Command::Pgaddr => {
             task::block_on(async {
                 let mut conn = Connection::from_options(&options).await?;
-                let cli = conn.authenticate(&options).await?;
+                let cli = conn.authenticate(
+                    &options, &options.database).await?;
                 match cli.params.get::<PostgresAddress>() {
                     Some(addr) => {
                         println!("{}", serde_json::to_string_pretty(addr)?);
@@ -112,7 +122,8 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
         Command::Psql => {
             task::block_on(async {
                 let mut conn = Connection::from_options(&options).await?;
-                let mut cli = conn.authenticate(&options).await?;
+                let mut cli = conn.authenticate(
+                    &options, &options.database).await?;
                 commands::psql(&mut cli, &cmdopt).await?;
                 Ok(())
             }).into()
@@ -120,7 +131,8 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
         Command::Describe(d) => {
             task::block_on(async {
                 let mut conn = Connection::from_options(&options).await?;
-                let mut cli = conn.authenticate(&options).await?;
+                let mut cli = conn.authenticate(
+                    &options, &options.database).await?;
                 commands::describe(&mut cli, &cmdopt,
                     &d.name, d.verbose).await?;
                 Ok(())
@@ -129,7 +141,8 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
         Command::Configure(c) => {
             task::block_on(async {
                 let mut conn = Connection::from_options(&options).await?;
-                let mut cli = conn.authenticate(&options).await?;
+                let mut cli = conn.authenticate(
+                    &options, &options.database).await?;
                 commands::configure(&mut cli, &cmdopt, &c).await?;
                 Ok(())
             }).into()
@@ -137,7 +150,8 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
         Command::CreateSuperuserRole(opt) => {
             task::block_on(async {
                 let mut conn = Connection::from_options(&options).await?;
-                let mut cli = conn.authenticate(&options).await?;
+                let mut cli = conn.authenticate(
+                    &options, &options.database).await?;
                 commands::roles::create_superuser(
                     &mut cli, &cmdopt, opt).await?;
                 Ok(())
@@ -146,7 +160,8 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
         Command::AlterRole(opt) => {
             task::block_on(async {
                 let mut conn = Connection::from_options(&options).await?;
-                let mut cli = conn.authenticate(&options).await?;
+                let mut cli = conn.authenticate(
+                    &options, &options.database).await?;
                 commands::roles::alter(&mut cli, &cmdopt, opt).await?;
                 Ok(())
             }).into()
@@ -154,7 +169,8 @@ pub fn main(options: Options) -> Result<(), anyhow::Error> {
         Command::DropRole(opt) => {
             task::block_on(async {
                 let mut conn = Connection::from_options(&options).await?;
-                let mut cli = conn.authenticate(&options).await?;
+                let mut cli = conn.authenticate(
+                    &options, &options.database).await?;
                 commands::roles::drop(&mut cli, &cmdopt, &opt.role).await?;
                 Ok(())
             }).into()
