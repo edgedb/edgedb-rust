@@ -12,7 +12,7 @@ use rustyline::{self, error::ReadlineError, KeyPress, Cmd};
 use rustyline::{Editor, Config, Helper, Context};
 use rustyline::config::EditMode;
 use rustyline::hint::Hinter;
-use rustyline::highlight::Highlighter;
+use rustyline::highlight::{Highlighter, PromptInfo};
 use rustyline::history::History;
 use rustyline::validate::{Validator, ValidationResult, ValidationContext};
 use rustyline::completion::Completer;
@@ -88,6 +88,16 @@ fn emit_insignificant(buf: &mut String, styler: &Styler, mut chunk: &str) {
 }
 
 impl Highlighter for EdgeqlHelper {
+    fn highlight_prompt<'b, 's: 'b, 'p: 'b>(&'s self,
+        prompt: &'p str, info: PromptInfo<'_>,)
+        -> Cow<'b, str>
+    {
+        if info.line_no() > 0 {
+            return format!("{0:.>1$}", " ", prompt.len()).into();
+        } else {
+            return prompt.into();
+        }
+    }
     fn highlight<'l>(&self, line: &'l str, _pos: usize) -> Cow<'l, str> {
         let line_trim = line.trim_start();
         if line_trim.starts_with('\\') {
