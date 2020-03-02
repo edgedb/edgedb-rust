@@ -43,6 +43,7 @@ Editing
                            output as the input
 
 Settings
+  \limit [LIMIT]           Set implicit LIMIT. Defaults to 100, specify 0 to disable.
   \vi                      switch to vi-mode editing
   \emacs                   switch to emacs (normal) mode editing, disables vi-mode
   \implicit-properties     print implicit properties of objects (id, type id)
@@ -92,19 +93,20 @@ pub const HINTS: &'static [&'static str] = &[
     r"\laS+ [PATTERN]",
     r"\laSI+ [PATTERN]",
     r"\last-error",
+    r"\lT [PATTERN]",
     r"\lc [PATTERN]",
     r"\lcI [PATTERN]",
     r"\li [PATTERN]",
-    r"\liI [PATTERN]",
-    r"\liIS [PATTERN]",
-    r"\liS [PATTERN]",
-    r"\liSI [PATTERN]",
     r"\li+ [PATTERN]",
+    r"\liI [PATTERN]",
     r"\liI+ [PATTERN]",
+    r"\liIS [PATTERN]",
     r"\liIS+ [PATTERN]",
+    r"\liS [PATTERN]",
     r"\liS+ [PATTERN]",
+    r"\liSI [PATTERN]",
     r"\liSI+ [PATTERN]",
-    r"\lT [PATTERN]",
+    r"\limit [LIMIT]",
     r"\lTI [PATTERN]",
     r"\lTIS [PATTERN]",
     r"\lTS [PATTERN]",
@@ -169,6 +171,7 @@ pub const COMMAND_NAMES: &'static [&'static str] = &[
     r"\liIS+",
     r"\liS+",
     r"\liSI+",
+    r"\limit",
     r"\lc",
     r"\lcI",
     r"\lT",
@@ -256,6 +259,8 @@ pub enum Command {
     NoVerboseErrors,
     History,
     Edit { entry: Option<isize> },
+    SetLimit { value: usize },
+    ShowLimit,
 }
 
 pub struct ParseError {
@@ -391,6 +396,13 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
         ("psql", None) => Ok(Command::Psql),
         ("vi", None) => Ok(Command::ViMode),
         ("emacs", None) => Ok(Command::EmacsMode),
+        ("limit", Some(value)) => Ok(Command::SetLimit {
+            value: value.parse().map_err(|e| ParseError {
+                message: format!("bad number: {}", e),
+                hint: "integer expected".into(),
+            })?,
+        }),
+        ("limit", None) => Ok(Command::ShowLimit),
         ("implicit-properties", None) => Ok(Command::ImplicitProperties),
         ("no-implicit-properties", None) => Ok(Command::NoImplicitProperties),
         ("introspect-types", None) => Ok(Command::IntrospectTypes),
@@ -543,6 +555,22 @@ pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command,
                 | prompt::Input::Interrupt
                 | prompt::Input::Eof => Ok(Skip),
             }
+        }
+        SetLimit { value } => {
+            if value == 0 {
+                prompt.implicit_limit = None;
+            } else {
+                prompt.implicit_limit = Some(value);
+            }
+            Ok(Skip)
+        }
+        ShowLimit => {
+            if let Some(limit) = prompt.implicit_limit {
+                println!("{}", limit);
+            } else {
+                eprintln!("No limit");
+            }
+            Ok(Skip)
         }
     }
 }

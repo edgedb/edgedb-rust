@@ -11,6 +11,7 @@ pub struct State {
     pub verbose_errors: bool,
     pub last_error: Option<anyhow::Error>,
     pub database: String,
+    pub implicit_limit: Option<usize>,
 }
 
 

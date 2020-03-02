@@ -34,6 +34,10 @@ use crate::server_params::PostgresAddress;
 use crate::statement::{ReadStatement, EndOfFile};
 use crate::variables::input_variables;
 
+
+const QUERY_OPT_IMPLICIT_LIMIT: u16 = 0xFF01;
+
+
 pub struct Connection {
     stream: TcpStream,
 }
@@ -224,9 +228,15 @@ async fn _interactive_main(
             }
             continue;
         }
+        let mut headers = HashMap::new();
+        if let Some(implicit_limit) = state.implicit_limit {
+            headers.insert(
+                QUERY_OPT_IMPLICIT_LIMIT,
+                Bytes::from(format!("{}", implicit_limit+1)));
+        }
 
         cli.send_message(&ClientMessage::Prepare(Prepare {
-            headers: HashMap::new(),
+            headers,
             io_format: IoFormat::Binary,
             expected_cardinality: Cardinality::Many,
             statement_name: statement_name.clone(),
