@@ -1,28 +1,77 @@
 use edgedb_protocol::value::Value;
 use edgedb_protocol::codec::{ObjectShape, ShapeElement};
-use crate::print::test_format;
+use crate::print::{test_format, test_format_cfg, Config};
 
 
 #[test]
 fn int() {
-    assert_eq!(test_format(&[Value::Int64(10)], 100).unwrap(), "{10}");
+    assert_eq!(test_format(&[Value::Int64(10)]).unwrap(), "{10}");
     assert_eq!(test_format(&[
         Value::Int64(10),
         Value::Int64(20),
-    ], 100).unwrap(), "{10, 20}");
+    ]).unwrap(), "{10, 20}");
+}
+
+#[test]
+fn array_ellipsis() {
+    assert_eq!(test_format(&[
+        Value::Array(vec![
+            Value::Int64(10),
+            Value::Int64(20),
+            Value::Int64(30),
+        ]),
+    ]).unwrap(), "{[10, 20, 30]}");
+    assert_eq!(test_format_cfg(&[
+        Value::Array(vec![
+            Value::Int64(10),
+            Value::Int64(20),
+            Value::Int64(30),
+        ]),
+    ], Config::new().max_items(2)).unwrap(), "{[10, 20, ...]}");
+    assert_eq!(test_format_cfg(&[
+        Value::Array(vec![
+            Value::Int64(10),
+            Value::Int64(20),
+            Value::Int64(30),
+        ]),
+    ], Config::new().max_items(2).max_width(10)).unwrap(), r###"{
+  [
+    10,
+    20,
+    ... (further results hidden \limit 2)
+  ],
+}"###);
+}
+
+#[test]
+fn set_ellipsis() {
+    assert_eq!(test_format(&[
+        Value::Set(vec![
+            Value::Int64(10),
+            Value::Int64(20),
+            Value::Int64(30),
+        ]),
+    ]).unwrap(), "{{10, 20, 30}}");
+    assert_eq!(test_format_cfg(&[
+        Value::Set(vec![
+            Value::Int64(10),
+            Value::Int64(20),
+            Value::Int64(30),
+        ]),
+    ], Config::new().max_items(2)).unwrap(), "{{10, 20, ...}}");
 }
 
 #[test]
 fn wrap() {
-    assert_eq!(test_format(&[
+    assert_eq!(test_format_cfg(&[
         Value::Int64(10),
         Value::Int64(20),
-    ], 10).unwrap(), "{10, 20}");
-    assert_eq!(test_format(&[
+    ], Config::new().max_width(10)).unwrap(), "{10, 20}");
+    assert_eq!(test_format_cfg(&[
         Value::Int64(10),
         Value::Int64(20),
         Value::Int64(30),
-    ], 10).unwrap(), "{\n  10,\n  20,\n  30,\n}");
+    ], Config::new().max_width(10)).unwrap(), "{\n  10,\n  20,\n  30,\n}");
 }
 
 #[test]
@@ -41,7 +90,7 @@ fn object() {
             name: "field2".into(),
         }
     ]);
-    assert_eq!(test_format(&[
+    assert_eq!(test_format_cfg(&[
         Value::Object { shape: shape.clone(), fields: vec![
             Value::Int32(10),
             Value::Int32(20),
@@ -50,11 +99,11 @@ fn object() {
             Value::Int32(30),
             Value::Int32(40),
         ]},
-    ], 60).unwrap(), r###"{
+    ], Config::new().max_width(60)).unwrap(), r###"{
   Object {field1: 10, field2: 20},
   Object {field1: 30, field2: 40},
 }"###);
-    assert_eq!(test_format(&[
+    assert_eq!(test_format_cfg(&[
         Value::Object { shape: shape.clone(), fields: vec![
             Value::Int32(10),
             Value::Int32(20),
@@ -63,7 +112,7 @@ fn object() {
             Value::Int32(30),
             Value::Int32(40),
         ]},
-    ], 20).unwrap(), r###"{
+    ], Config::new().max_width(20)).unwrap(), r###"{
   Object {
     field1: 10,
     field2: 20,

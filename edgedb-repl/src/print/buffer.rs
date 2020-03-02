@@ -1,5 +1,6 @@
 use std::fmt::Write;
 
+use colorful::Colorful;
 use colorful::core::color_string::CString;
 use colorful::core::StrMarker;
 use unicode_segmentation::UnicodeSegmentation;
@@ -171,6 +172,19 @@ impl<'a, T: Output> Printer<'a, T> {
         } else {
             self.write(",".clear())?;
             self.commit_line()?;
+        }
+        Ok(())
+    }
+
+    pub(in crate::print) fn ellipsis(&mut self) -> Result<T::Error> {
+        self.delimit()?;
+        if self.flow {
+            self.write("...".clear())?;
+        } else {
+            self.write("...".clear())?;
+            self.write(format!(" (further results hidden \\limit {limit})\n",
+                limit=self.max_items.unwrap_or(0))
+                .dark_gray())?;
         }
         Ok(())
     }

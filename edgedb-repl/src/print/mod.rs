@@ -38,6 +38,7 @@ pub struct Config {
     pub max_width: Option<usize>,
     pub implicit_properties: bool,
     pub type_names: Option<HashMap<Uuid, String>>,
+    pub max_items: Option<usize>,
 }
 
 
@@ -48,6 +49,7 @@ pub(in crate::print) struct Printer<'a, T> {
     max_width: usize,
     implicit_properties: bool,
     type_names: &'a Option<HashMap<Uuid, String>>,
+    max_items: Option<usize>,
 
     // state
     buffer: String,
@@ -63,6 +65,28 @@ pub(in crate::print) struct Printer<'a, T> {
 
 struct Stdout {}
 
+impl Config {
+    pub fn new() -> Config {
+        Config {
+            colors: None,
+            indent: 2,
+            max_width: None,
+            implicit_properties: false,
+            type_names: None,
+            max_items: None,
+        }
+    }
+    #[allow(dead_code)]
+    pub fn max_width(&mut self, value: usize) -> &mut Config {
+        self.max_width = Some(value);
+        self
+    }
+    pub fn max_items(&mut self, value: usize) -> &mut Config {
+        self.max_items = Some(value);
+        self
+    }
+}
+
 async fn format_rows_buf<S, I, E, O>(prn: &mut Printer<'_, O>, rows: &mut S,
     row_buf: &mut Vec<I>)
     -> Result<(), Exception<PrintError<E, O::Error>>>
@@ -76,6 +100,15 @@ async fn format_rows_buf<S, I, E, O>(prn: &mut Printer<'_, O>, rows: &mut S,
     debug_assert!(branch);
     while let Some(v) = rows.next().await.transpose().wrap_err(StreamErr)? {
         row_buf.push(v);
+        if let Some(limit) = prn.max_items {
+            if row_buf.len() > limit {
+                prn.ellipsis().wrap_err(PrintErr)?;
+                // consume extra items if any
+                while let Some(_) = rows.next().await
+                    .transpose().wrap_err(StreamErr)? {}
+                break;
+            }
+        }
         let v = row_buf.last().unwrap();
         v.format(prn).wrap_err(PrintErr)?;
         prn.comma().wrap_err(PrintErr)?;
@@ -96,11 +129,29 @@ async fn format_rows<S, I, E, O>(prn: &mut Printer<'_, O>,
           O::Error: fmt::Debug + Error + 'static,
 {
     prn.reopen_block().wrap_err(PrintErr)?;
+    let mut counter: usize = 0;
     for v in buffered_rows {
+        counter += 1;
+        if let Some(limit) = prn.max_items {
+            if counter > limit {
+                prn.ellipsis().wrap_err(PrintErr)?;
+                break;
+            }
+        }
         v.format(prn).wrap_err(PrintErr)?;
         prn.comma().wrap_err(PrintErr)?;
     }
     while let Some(v) = rows.next().await.transpose().wrap_err(StreamErr)? {
+        counter += 1;
+        if let Some(limit) = prn.max_items {
+            if counter > limit {
+                prn.ellipsis().wrap_err(PrintErr)?;
+                // consume extra items if any
+                while let Some(_) = rows.next().await
+                    .transpose().wrap_err(StreamErr)? {}
+                break;
+            }
+        }
         v.format(prn).wrap_err(PrintErr)?;
         prn.comma().wrap_err(PrintErr)?;
     }
@@ -124,6 +175,7 @@ pub async fn print_to_stdout<S, I, E>(mut rows: S, config: &Config)
         max_width: w,
         implicit_properties: config.implicit_properties,
         type_names: &config.type_names,
+        max_items: config.max_items,
 
         buffer: String::with_capacity(8192),
         stream: Stdout {},
@@ -168,16 +220,17 @@ fn test_format_rows<I: FormatExt>(prn: &mut Printer<&mut String>, items: &[I],
 }
 
 #[cfg(test)]
-pub fn test_format<I: FormatExt>(items: &[I], max_width: usize)
+pub fn test_format_cfg<I: FormatExt>(items: &[I], config: &Config)
     -> Result<String, Infallible>
 {
     let mut out = String::new();
     let mut prn = Printer {
         colors: false,
-        indent: 2,
-        max_width: max_width,
-        implicit_properties: false,
-        type_names: &None,
+        indent: config.indent,
+        max_width: config.max_width.unwrap_or(80),
+        implicit_properties: config.implicit_properties,
+        type_names: &config.type_names,
+        max_items: config.max_items,
 
         buffer: String::with_capacity(8192),
         stream: &mut out,
@@ -198,4 +251,18 @@ pub fn test_format<I: FormatExt>(items: &[I], max_width: usize)
     };
     prn.end().unwrap_exc()?;
     Ok(out)
+}
+
+#[cfg(test)]
+pub fn test_format<I: FormatExt>(items: &[I])
+    -> Result<String, Infallible>
+{
+    test_format_cfg(items, &Config {
+        colors: Some(false),
+        indent: 2,
+        max_width: Some(80),
+        implicit_properties: false,
+        type_names: None,
+        max_items: None,
+    })
 }

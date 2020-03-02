@@ -88,9 +88,19 @@ impl FormatExt for Value {
             V::Json(d) => prn.const_scalar(format!("{:?}", d)),
             V::Set(items) => {
                 prn.set(|prn| {
-                    for item in items {
-                        item.format(prn)?;
-                        prn.comma()?;
+                    if let Some(limit) = prn.max_items() {
+                        for item in &items[..limit] {
+                            item.format(prn)?;
+                            prn.comma()?;
+                        }
+                        if items.len() > limit {
+                            prn.ellipsis()?;
+                        }
+                    } else {
+                        for item in items {
+                            item.format(prn)?;
+                            prn.comma()?;
+                        }
                     }
                     Ok(())
                 })
@@ -150,9 +160,19 @@ impl FormatExt for Value {
             }
             V::Array(items) => {
                 prn.array(|prn| {
-                    for item in items {
-                        item.format(prn)?;
-                        prn.comma()?;
+                    if let Some(limit) = prn.max_items() {
+                        for item in &items[..limit] {
+                            item.format(prn)?;
+                            prn.comma()?;
+                        }
+                        if items.len() > limit {
+                            prn.ellipsis()?;
+                        }
+                    } else {
+                        for item in items {
+                            item.format(prn)?;
+                            prn.comma()?;
+                        }
                     }
                     Ok(())
                 })

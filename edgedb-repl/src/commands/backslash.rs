@@ -559,8 +559,10 @@ pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command,
         SetLimit { value } => {
             if value == 0 {
                 prompt.implicit_limit = None;
+                prompt.print.max_items = None;
             } else {
                 prompt.implicit_limit = Some(value);
+                prompt.print.max_items = Some(value);
             }
             Ok(Skip)
         }

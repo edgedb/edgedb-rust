@@ -36,13 +36,9 @@ fn interactive_main(options: Options) -> Result<(), anyhow::Error> {
     let state = repl::State {
         control: control_wr,
         data: repl_rd,
-        print: print::Config {
-            indent: 2,
-            colors: None,
-            max_width: None,
-            implicit_properties: false,
-            type_names: None,
-        },
+        print: print::Config::new()
+            .max_items(100)
+            .clone(),
         verbose_errors: false,
         last_error: None,
         database: options.database.clone(),

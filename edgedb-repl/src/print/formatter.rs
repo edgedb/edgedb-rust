@@ -35,10 +35,12 @@ pub trait Formatter {
     fn named_tuple<F>(&mut self, f: F) -> Result<Self::Error>
         where F: FnMut(&mut Self) -> Result<Self::Error>;
     fn comma(&mut self) -> Result<Self::Error>;
+    fn ellipsis(&mut self) -> Result<Self::Error>;
     fn object_field(&mut self, f: &str) -> Result<Self::Error>;
     fn tuple_field(&mut self, f: &str) -> Result<Self::Error>;
 
     fn implicit_properties(&self) -> bool;
+    fn max_items(&self) -> Option<usize>;
 }
 
 impl<'a, T: Output> Formatter for Printer<'a, T> {
@@ -68,6 +70,9 @@ impl<'a, T: Output> Formatter for Printer<'a, T> {
     }
     fn comma(&mut self) -> Result<Self::Error> {
         Printer::comma(self)
+    }
+    fn ellipsis(&mut self) -> Result<Self::Error> {
+        Printer::ellipsis(self)
     }
     fn object<F>(&mut self, type_id: Option<&Uuid>, f: F)
         -> Result<Self::Error>
@@ -125,5 +130,9 @@ impl<'a, T: Output> Formatter for Printer<'a, T> {
 
     fn implicit_properties(&self) -> bool {
         self.implicit_properties
+    }
+
+    fn max_items(&self) -> Option<usize> {
+        self.max_items
     }
 }
