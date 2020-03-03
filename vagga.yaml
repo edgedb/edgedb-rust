@@ -55,6 +55,8 @@ commands:
     description: Run edgedb repl
     container: ubuntu
     run: [cargo, run, --bin, edgedb, '--']
+    environ:
+      EDGEDB_HOST: /work/tmp/run
 
   server: !Command
     description: Run edgedb server

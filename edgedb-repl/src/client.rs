@@ -10,6 +10,7 @@ use async_std::prelude::StreamExt;
 use async_std::io::{stdin, stdout};
 use async_std::io::prelude::WriteExt;
 use async_std::net::{TcpStream, ToSocketAddrs};
+use async_listen::ByteStream;
 use bytes::{Bytes, BytesMut};
 use scram::ScramClient;
 use serde_json::from_slice;
@@ -40,13 +41,13 @@ const QUERY_OPT_IMPLICIT_LIMIT: u16 = 0xFF01;
 
 
 pub struct Connection {
-    stream: TcpStream,
+    stream: ByteStream,
 }
 
 pub struct Client<'a> {
-    stream: &'a TcpStream,
+    stream: &'a ByteStream,
     outbuf: BytesMut,
-    reader: Reader<&'a TcpStream>,
+    reader: Reader<&'a ByteStream>,
     pub params: TypeMap<dyn typemap::DebugAny + Send>,
 }
 
@@ -61,9 +62,43 @@ impl Connection {
         -> Result<Connection, io::Error>
     {
         Ok(Connection {
-            stream: TcpStream::connect(addrs).await?,
+            stream: ByteStream::new_tcp_detached(
+                TcpStream::connect(addrs).await?),
         })
     }
+    #[cfg(unix)]
+    pub async fn from_options(options: &Options)
+        -> Result<Connection, io::Error>
+    {
+        let unix_host = options.host.contains("/");
+        if options.admin || unix_host {
+            let prefix = if unix_host {
+                &options.host
+            } else {
+                "/var/run/edgedb"
+            };
+            let path = if prefix.contains(".s.EDGEDB") {
+                // it's the full path
+                prefix.into()
+            } else {
+                if options.admin {
+                    format!("{}/.s.EDGEDB.admin.{}", prefix, options.port)
+                } else {
+                    format!("{}/.s.EDGEDB.{}", prefix, options.port)
+                }
+            };
+            println!("UNIX {:?}", path);
+            Ok(Connection {
+                stream: ByteStream::new_unix_detached(
+                    async_std::os::unix::net::UnixStream::connect(path).await?
+                ),
+            })
+        } else {
+            Ok(Connection::new((&options.host[..], options.port)).await?)
+        }
+    }
+
+    #[cfg(windows)]
     pub async fn from_options(options: &Options)
         -> Result<Connection, io::Error>
     {
@@ -551,7 +586,7 @@ impl<'a> Client<'a> {
 
     pub async fn query<R>(&mut self, request: &str, arguments: &Value)
         -> Result<
-            QueryResponse<'_, &'a TcpStream, QueryableDecoder<R>>,
+            QueryResponse<'_, &'a ByteStream, QueryableDecoder<R>>,
             anyhow::Error
         >
         where R: Queryable,
@@ -573,7 +608,7 @@ impl<'a> Client<'a> {
 
     pub async fn query_json(&mut self, request: &str, arguments: &Value)
         -> Result<
-            QueryResponse<'_, &'a TcpStream, QueryableDecoder<String>>,
+            QueryResponse<'_, &'a ByteStream, QueryableDecoder<String>>,
             anyhow::Error
         >
     {
@@ -595,7 +630,7 @@ impl<'a> Client<'a> {
 
     pub async fn query_dynamic(&mut self, request: &str, arguments: &Value)
         -> Result<
-            QueryResponse<'_, &'a TcpStream, Arc<dyn Codec>>,
+            QueryResponse<'_, &'a ByteStream, Arc<dyn Codec>>,
             anyhow::Error
         >
     {

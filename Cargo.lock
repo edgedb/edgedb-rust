@@ -445,6 +445,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow 1.0.26 (registry+https://github.com/rust-lang/crates.io-index)",
  "assert_cmd 0.10.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "async-listen 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "async-std 1.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "atty 0.2.14 (registry+https://github.com/rust-lang/crates.io-index)",
  "bigdecimal 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
