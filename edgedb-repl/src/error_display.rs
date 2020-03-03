@@ -6,7 +6,7 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::term::{emit};
 use termcolor::{StandardStream, ColorChoice};
 
-use edgedb_protocol::error_response::{ErrorSeverity, ErrorResponse};
+use edgedb_protocol::error_response::ErrorResponse;
 use edgedb_protocol::error_response::FIELD_POSITION_START;
 use edgedb_protocol::error_response::FIELD_POSITION_END;
 use edgedb_protocol::error_response::{FIELD_HINT, FIELD_DETAILS};
@@ -32,13 +32,15 @@ pub fn print_query_error(err: &ErrorResponse, query: &str, verbose: bool)
     let hint = err.attributes.get(&FIELD_HINT)
         .and_then(|x| str::from_utf8(x).ok())
         .unwrap_or("error");
+    let detail = err.attributes.get(&FIELD_DETAILS)
+        .and_then(|x| String::from_utf8(x.to_vec()).ok());
     let mut files = Files::new();
     let file_id = files.add("query", query);
     let diag = Diagnostic::new_error(&err.message, Label {
         file_id,
         span: Span::new(pstart, pend),
         message: hint.into(),
-    });
+    }).with_notes(detail.into_iter().collect());
 
     emit(&mut StandardStream::stderr(ColorChoice::Auto),
         &Default::default(), &files, &diag)?;
