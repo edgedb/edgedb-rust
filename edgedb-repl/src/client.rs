@@ -33,6 +33,7 @@ use crate::repl;
 use crate::server_params::PostgresAddress;
 use crate::statement::{ReadStatement, EndOfFile};
 use crate::variables::input_variables;
+use crate::error_display::print_query_error;
 
 
 const QUERY_OPT_IMPLICIT_LIMIT: u16 = 0xFF01;
@@ -240,7 +241,7 @@ async fn _interactive_main(
             io_format: IoFormat::Binary,
             expected_cardinality: Cardinality::Many,
             statement_name: statement_name.clone(),
-            command_text: String::from(inp),
+            command_text: String::from(&inp),
         })).await?;
         // TODO(tailhook) optimize
         cli.send_message(&ClientMessage::Sync).await?;
@@ -253,7 +254,7 @@ async fn _interactive_main(
                     break;
                 }
                 ServerMessage::ErrorResponse(err) => {
-                    eprintln!("{}", err.display(state.verbose_errors));
+                    print_query_error(&err, &inp, state.verbose_errors)?;
                     state.last_error = Some(err.into());
                     cli.reader.wait_ready().await?;
                     continue 'input_loop;

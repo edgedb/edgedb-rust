@@ -5,20 +5,21 @@ use std::collections::BTreeMap;
 
 use bytes::Bytes;
 
-use crate::server_message::{ErrorSeverity, ErrorResponse};
+pub use crate::server_message::{ErrorSeverity, ErrorResponse};
 
-const FIELD_HINT: u16 = 0x_00_01;
-const FIELD_DETAILS: u16 = 0x_00_02;
-const FIELD_SERVER_TRACEBACK: u16 = 0x_01_01;
+pub const FIELD_HINT: u16 = 0x_00_01;
+pub const FIELD_DETAILS: u16 = 0x_00_02;
+pub const FIELD_SERVER_TRACEBACK: u16 = 0x_01_01;
 
 // TODO(tailhook) these might be deprecated?
-const FIELD_POSITION_START: u16 = 0x_FF_F1;
-const FIELD_POSITION_END: u16 = 0x_FF_F2;
-const FIELD_LINE: u16 = 0x_FF_F3;
-const FIELD_COLUMN: u16 = 0x_FF_F4;
+pub const FIELD_POSITION_START: u16 = 0x_FF_F1;
+pub const FIELD_POSITION_END: u16 = 0x_FF_F2;
+pub const FIELD_LINE: u16 = 0x_FF_F3;
+pub const FIELD_COLUMN: u16 = 0x_FF_F4;
 
 pub struct DisplayError<'a>(&'a ErrorResponse, bool);
 pub struct VerboseError<'a>(&'a ErrorResponse);
+
 struct DisplayNum<'a>(Option<&'a Bytes>);
 
 impl ErrorResponse {

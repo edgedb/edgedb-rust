@@ -15,6 +15,7 @@ mod repl;
 mod server_params;
 mod statement;
 mod variables;
+mod error_display;
 
 
 fn main() -> Result<(), anyhow::Error> {
