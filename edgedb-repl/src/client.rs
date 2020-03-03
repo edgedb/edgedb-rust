@@ -87,7 +87,6 @@ impl Connection {
                     format!("{}/.s.EDGEDB.{}", prefix, options.port)
                 }
             };
-            println!("UNIX {:?}", path);
             Ok(Connection {
                 stream: ByteStream::new_unix_detached(
                     async_std::os::unix::net::UnixStream::connect(path).await?
