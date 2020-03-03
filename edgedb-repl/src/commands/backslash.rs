@@ -55,7 +55,7 @@ Settings
   \no-verbose-errors       only print InternalServerError with maximum verbosity
 
 Connection
-  \c [DBNAME]              Connect to database DBNAME
+  \c, \connect [DBNAME]    Connect to database DBNAME
 
 Development
   \E                       show most recent error message at maximum verbosity
@@ -70,6 +70,7 @@ Help
 pub const HINTS: &'static [&'static str] = &[
     r"\?",
     r"\c DBNAME",
+    r"\connect DBNAME",
     r"\d NAME",
     r"\d NAME",
     r"\d+ NAME",
@@ -139,6 +140,7 @@ pub const HINTS: &'static [&'static str] = &[
 pub const COMMAND_NAMES: &'static [&'static str] = &[
     r"\?",
     r"\c",
+    r"\connect",
     r"\d",
     r"\d+",
     r"\describe",
@@ -370,6 +372,7 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
             case_sensitive: cmd.contains('I'),
         }),
         | ("c", Some(database))
+        | ("connect", Some(database))
         => Ok(Command::Connect { database: database.to_owned() }),
         | ("describe", Some(name))
         | ("d", Some(name))
