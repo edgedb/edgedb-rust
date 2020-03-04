@@ -5,6 +5,8 @@ use std::env;
 use whoami;
 use atty;
 
+use crate::repl::OutputMode;
+
 
 #[derive(StructOpt, Debug)]
 struct TmpOptions {
@@ -33,8 +35,12 @@ struct TmpOptions {
     pub debug_print_codecs: bool,
 
     /// Tab-separated output of the queries
-    #[structopt(short="t", long)]
+    #[structopt(short="t", long, overrides_with="json")]
     pub tab_separated: bool,
+
+    /// JSON output for the queries (single JSON list per query)
+    #[structopt(short="j", long, overrides_with="tab_separated")]
+    pub json: bool,
 
     #[structopt(subcommand)]
     pub subcommand: Option<Command>,
@@ -361,7 +367,7 @@ pub struct Options {
     pub debug_print_data_frames: bool,
     pub debug_print_descriptors: bool,
     pub debug_print_codecs: bool,
-    pub tab_separated: bool,
+    pub output_mode: OutputMode,
 }
 
 impl Options {
@@ -410,7 +416,15 @@ impl Options {
             debug_print_data_frames: tmp.debug_print_data_frames,
             debug_print_descriptors: tmp.debug_print_descriptors,
             debug_print_codecs: tmp.debug_print_codecs,
-            tab_separated: tmp.tab_separated,
+            output_mode: if tmp.tab_separated {
+                OutputMode::TabSeparated
+            } else if tmp.json {
+                OutputMode::Json
+            } else if interactive {
+                OutputMode::Default
+            } else {
+                OutputMode::JsonElements
+            },
         }
     }
 }

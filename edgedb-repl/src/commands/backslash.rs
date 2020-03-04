@@ -7,7 +7,7 @@ use edgedb_protocol::server_message::ErrorResponse;
 
 use crate::client::Client;
 use crate::commands::{self, Options};
-use crate::repl;
+use crate::repl::{self, OutputMode};
 use crate::prompt;
 use crate::server_params::PostgresAddress;
 use crate::commands::type_names::get_type_names;
@@ -44,6 +44,8 @@ Editing
 
 Settings
   \limit [LIMIT]           Set implicit LIMIT. Defaults to 100, specify 0 to disable.
+  \output [MODE]           Set output mode. One of:
+                             json, json-elements, default, tab-separated
   \vi                      switch to vi-mode editing
   \emacs                   switch to emacs (normal) mode editing, disables vi-mode
   \implicit-properties     print implicit properties of objects (id, type id)
@@ -130,6 +132,7 @@ pub const HINTS: &'static [&'static str] = &[
     r"\no-implicit-properties",
     r"\no-introspect-types",
     r"\no-verbose-errors",
+    r"\output [json|json-elements|default|tab-separated]",
     r"\pgaddr",
     r"\psql",
     r"\s",
@@ -199,6 +202,11 @@ pub const COMMAND_NAMES: &'static [&'static str] = &[
     r"\no-implicit-properties",
     r"\no-introspect-types",
     r"\no-verbose-errors",
+    r"\output default",
+    r"\output json",
+    r"\output json-elements",
+    r"\output tab-separated",
+    r"\output",
     r"\pgaddr",
     r"\psql",
     r"\s",
@@ -263,6 +271,8 @@ pub enum Command {
     Edit { entry: Option<isize> },
     SetLimit { value: usize },
     ShowLimit,
+    SetOutput { mode: OutputMode },
+    ShowOutput,
 }
 
 pub struct ParseError {
@@ -412,6 +422,22 @@ pub fn parse(s: &str) -> Result<Command, ParseError> {
         ("no-introspect-types", None) => Ok(Command::NoIntrospectTypes),
         ("verbose-errors", None) => Ok(Command::VerboseErrors),
         ("no-verbose-errors", None) => Ok(Command::NoVerboseErrors),
+        ("output", None) => Ok(Command::ShowOutput),
+        ("output", Some(param)) => {
+            Ok(Command::SetOutput {
+                mode: match param {
+                    "json" => OutputMode::Json,
+                    "json-elements" => OutputMode::JsonElements,
+                    "default" => OutputMode::Default,
+                    "tab-separated" => OutputMode::TabSeparated,
+                    _ => return Err(ParseError {
+                        message: format!("invalid output format: {}", param),
+                        hint: "expected one of: json, json-elements, \
+                            default, tab-separated".into(),
+                    }),
+                },
+            })
+        }
         (_, Some(_)) if COMMAND_NAMES.contains(&&s[..cmd.len()+1]) => {
             error(format_args!("Command `\\{}` doesn't support arguments",
                                cmd.escape_default()),
@@ -575,6 +601,19 @@ pub async fn execute<'x>(cli: &mut Client<'x>, cmd: Command,
             } else {
                 eprintln!("No limit");
             }
+            Ok(Skip)
+        }
+        SetOutput { mode } => {
+            prompt.output_mode = mode;
+            Ok(Skip)
+        }
+        ShowOutput => {
+            println!("{}", match prompt.output_mode {
+                OutputMode::Json => "json",
+                OutputMode::JsonElements => "json-elements",
+                OutputMode::Default => "default",
+                OutputMode::TabSeparated => "tab-separated",
+            });
             Ok(Skip)
         }
     }

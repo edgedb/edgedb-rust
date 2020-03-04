@@ -3,6 +3,13 @@ use async_std::sync::{Sender, Receiver};
 use crate::prompt;
 use crate::print;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputMode {
+    Default,
+    Json,
+    JsonElements,
+    TabSeparated,
+}
 
 pub struct State {
     pub control: Sender<prompt::Control>,
@@ -12,6 +19,7 @@ pub struct State {
     pub last_error: Option<anyhow::Error>,
     pub database: String,
     pub implicit_limit: Option<usize>,
+    pub output_mode: OutputMode,
 }
 
 
