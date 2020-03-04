@@ -123,3 +123,13 @@ fn object() {
   },
 }"###);
 }
+
+#[test]
+fn str() {
+    assert_eq!(
+        test_format(&[Value::Str("hello".into())]).unwrap(),
+        r#"{'hello'}"#);
+    assert_eq!(
+        test_format(&[Value::Str("a\nb".into())]).unwrap(),
+        "{\n  'a\nb',\n}");
+}

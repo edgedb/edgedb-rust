@@ -44,13 +44,30 @@ pub trait FormatExt {
     fn format<F: Formatter>(&self, prn: &mut F) -> Result<F::Error>;
 }
 
+fn escape_string(s: &str) -> String {
+    let mut buf = String::with_capacity(s.len()+2);
+    buf.push('\'');
+    for c in s.chars() {
+        match c {
+            '\x00'..='\x08' | '\x0B' | '\x0C'
+            | '\x0E'..='\x1F' | '\x7F'
+            => buf.push_str(&format!("\\x{:02x}", c as u32)),
+            '\u{0080}'..='\u{009F}'
+            => buf.push_str(&format!("\\u{:04x}", c as u32)),
+            _ => buf.push(c),
+        }
+    }
+    buf.push('\'');
+    return buf;
+}
+
 impl FormatExt for Value {
     fn format<F: Formatter>(&self, prn: &mut F) -> Result<F::Error> {
         use Value as V;
         match self {
             V::Nothing => prn.const_scalar("Nothing"),
             V::Uuid(u) => prn.const_scalar(u),
-            V::Str(s) => prn.const_scalar(format_args!("{:?}", s)),
+            V::Str(s) => prn.const_scalar(escape_string(s)),
             V::Bytes(b) => prn.const_scalar(format_args!("{:?}", b)),
             V::Int16(v) => prn.const_scalar(v),
             V::Int32(v) => prn.const_scalar(v),
