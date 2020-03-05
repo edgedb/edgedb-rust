@@ -839,9 +839,18 @@ fn unquote_string<'a>(s: &'a str) -> Result<String, String> {
                         res.push(ch);
                         chars.nth(7);
                     },
-                    '\n' => {
-                        let nleft = chars.as_str().trim_start().len();
-                        chars.nth(chars.as_str().len() - nleft - 1);
+                    c@'\r' | c@'\n' => {
+                        if c == '\r' && chars.as_str().starts_with('\n') {
+                            chars.next();
+                        }
+                        let nleft = chars.as_str()
+                            .trim_start_matches(|x: char| {
+                                x.is_whitespace() && x != '\r' && x != '\n'
+                            }).len();
+                        let nskip = chars.as_str().len() - nleft;
+                        if nskip > 0 {
+                            chars.nth(nskip - 1);
+                        }
                     }
                     c => {
                         return Err(format!(
@@ -884,6 +893,20 @@ fn unquote_bytes<'a>(s: &'a str) -> Result<Vec<u8>, String> {
                         res.push(code);
                         bytes.nth(1);
                     }
+                    c@b'\r' | c@b'\n' => {
+                        if c == b'\r' &&
+                            bytes.as_slice().get(0) == Some(&b'\n')
+                        {
+                            bytes.next();
+                        }
+                        let nskip = bytes.as_slice()
+                            .iter()
+                            .take_while(|&&x| x == b' ' || x == b'\t')
+                            .count();
+                        if nskip > 0 {
+                            bytes.nth(nskip-1);
+                        }
+                    }
                     c => {
                         let ch = if c < 0x7f {
                             c as char
@@ -907,19 +930,68 @@ fn unquote_bytes<'a>(s: &'a str) -> Result<Vec<u8>, String> {
 
 #[test]
 fn unquote_unicode_string() {
-    // basic tests
     assert_eq!(unquote_string(r#"\x09"#).unwrap(), "\u{09}");
     assert_eq!(unquote_string(r#"\u000A"#).unwrap(), "\u{000A}");
     assert_eq!(unquote_string(r#"\u000D"#).unwrap(), "\u{000D}");
     assert_eq!(unquote_string(r#"\u0020"#).unwrap(), "\u{0020}");
     assert_eq!(unquote_string(r#"\uFFFF"#).unwrap(), "\u{FFFF}");
+}
+
+#[test]
+fn newline_escaping_str() {
     assert_eq!(unquote_string(r"hello \
                                 world").unwrap(), "hello world");
 
-    // a more complex string
+    assert_eq!(unquote_string(r"bb\
+aa \
+            bb").unwrap(), "bbaa bb");
+    assert_eq!(unquote_string(r"bb\
+
+        aa").unwrap(), "bb\n        aa");
+    assert_eq!(unquote_string(r"bb\
+        \
+        aa").unwrap(), "bbaa");
+    assert_eq!(unquote_string("bb\\\r   aa").unwrap(), "bbaa");
+    assert_eq!(unquote_string("bb\\\r\n   aa").unwrap(), "bbaa");
+}
+
+#[test]
+fn complex_strings() {
     assert_eq!(unquote_string(r#"\u0009 hello \u000A there"#).unwrap(),
         "\u{0009} hello \u{000A} there");
 
     assert_eq!(unquote_string(r#"\x62:\u2665:\U000025C6"#).unwrap(),
         "\u{62}:\u{2665}:\u{25C6}");
+}
+
+#[test]
+fn simple_bytes() {
+    assert_eq!(unquote_bytes(r#"\x09"#).unwrap(), b"\x09");
+    assert_eq!(unquote_bytes(r#"\x0A"#).unwrap(), b"\x0A");
+    assert_eq!(unquote_bytes(r#"\x0D"#).unwrap(), b"\x0D");
+    assert_eq!(unquote_bytes(r#"\x20"#).unwrap(), b"\x20");
+}
+
+#[test]
+fn newline_escaping_bytes() {
+    assert_eq!(unquote_bytes(r"hello \
+                                world").unwrap(), b"hello world");
+
+    assert_eq!(unquote_bytes(r"bb\
+aa \
+            bb").unwrap(), b"bbaa bb");
+    assert_eq!(unquote_bytes(r"bb\
+
+        aa").unwrap(), b"bb\n        aa");
+    assert_eq!(unquote_bytes(r"bb\
+        \
+        aa").unwrap(), b"bbaa");
+    assert_eq!(unquote_bytes("bb\\\r   aa").unwrap(), b"bbaa");
+    assert_eq!(unquote_bytes("bb\\\r\n   aa").unwrap(), b"bbaa");
+}
+
+#[test]
+fn complex_bytes() {
+    assert_eq!(unquote_bytes(r#"\x09 hello \x0A there"#).unwrap(),
+        b"\x09 hello \x0A there");
 }
