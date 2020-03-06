@@ -839,14 +839,8 @@ fn unquote_string<'a>(s: &'a str) -> Result<String, String> {
                         res.push(ch);
                         chars.nth(7);
                     },
-                    c@'\r' | c@'\n' => {
-                        if c == '\r' && chars.as_str().starts_with('\n') {
-                            chars.next();
-                        }
-                        let nleft = chars.as_str()
-                            .trim_start_matches(|x: char| {
-                                x.is_whitespace() && x != '\r' && x != '\n'
-                            }).len();
+                    '\r' | '\n' => {
+                        let nleft = chars.as_str().trim_start().len();
                         let nskip = chars.as_str().len() - nleft;
                         if nskip > 0 {
                             chars.nth(nskip - 1);
@@ -893,15 +887,10 @@ fn unquote_bytes<'a>(s: &'a str) -> Result<Vec<u8>, String> {
                         res.push(code);
                         bytes.nth(1);
                     }
-                    c@b'\r' | c@b'\n' => {
-                        if c == b'\r' &&
-                            bytes.as_slice().get(0) == Some(&b'\n')
-                        {
-                            bytes.next();
-                        }
+                    b'\r' | b'\n' => {
                         let nskip = bytes.as_slice()
                             .iter()
-                            .take_while(|&&x| x == b' ' || x == b'\t')
+                            .take_while(|&&x| x.is_ascii_whitespace())
                             .count();
                         if nskip > 0 {
                             bytes.nth(nskip-1);
@@ -947,7 +936,7 @@ aa \
             bb").unwrap(), "bbaa bb");
     assert_eq!(unquote_string(r"bb\
 
-        aa").unwrap(), "bb\n        aa");
+        aa").unwrap(), "bbaa");
     assert_eq!(unquote_string(r"bb\
         \
         aa").unwrap(), "bbaa");
@@ -982,7 +971,7 @@ aa \
             bb").unwrap(), b"bbaa bb");
     assert_eq!(unquote_bytes(r"bb\
 
-        aa").unwrap(), b"bb\n        aa");
+        aa").unwrap(), b"bbaa");
     assert_eq!(unquote_bytes(r"bb\
         \
         aa").unwrap(), b"bbaa");
