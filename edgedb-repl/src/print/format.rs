@@ -1,9 +1,11 @@
+use std::cmp::min;
+use std::convert::TryInto;
+
 use bigdecimal::BigDecimal;
 use chrono::format::{Item, Numeric, Pad, Fixed};
 use chrono::{NaiveDateTime, NaiveDate, NaiveTime};
 use humantime::format_rfc3339;
 use num_bigint::BigInt;
-use std::convert::TryInto;
 
 use edgedb_protocol::value::Value;
 use crate::print::formatter::Formatter;
@@ -106,7 +108,7 @@ impl FormatExt for Value {
             V::Set(items) => {
                 prn.set(|prn| {
                     if let Some(limit) = prn.max_items() {
-                        for item in &items[..limit] {
+                        for item in &items[..min(limit, items.len())] {
                             item.format(prn)?;
                             prn.comma()?;
                         }
@@ -178,7 +180,7 @@ impl FormatExt for Value {
             V::Array(items) => {
                 prn.array(|prn| {
                     if let Some(limit) = prn.max_items() {
-                        for item in &items[..limit] {
+                        for item in &items[..min(limit, items.len())] {
                             item.format(prn)?;
                             prn.comma()?;
                         }

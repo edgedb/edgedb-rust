@@ -41,6 +41,11 @@ fn array_ellipsis() {
     ... (further results hidden \limit 2)
   ],
 }"###);
+    assert_eq!(test_format_cfg(&[
+        Value::Array(vec![
+            Value::Int64(10),
+        ]),
+    ], Config::new().max_items(2)).unwrap(), "{[10]}");
 }
 
 #[test]
@@ -59,6 +64,11 @@ fn set_ellipsis() {
             Value::Int64(30),
         ]),
     ], Config::new().max_items(2)).unwrap(), "{{10, 20, ...}}");
+    assert_eq!(test_format_cfg(&[
+        Value::Set(vec![
+            Value::Int64(10),
+        ]),
+    ], Config::new().max_items(2)).unwrap(), "{{10}}");
 }
 
 #[test]
