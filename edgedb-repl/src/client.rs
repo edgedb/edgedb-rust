@@ -349,7 +349,7 @@ async fn _interactive_main(
         }
         let incodec = indesc.build_codec()?;
         if options.debug_print_codecs {
-            println!("Input Codec {:#?}", codec);
+            println!("Input Codec {:#?}", incodec);
         }
 
         let input = match input_variables(&indesc, state).await {
