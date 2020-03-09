@@ -294,8 +294,10 @@ fn object_codec() -> Result<(), Box<dyn Error>> {
         b"\xa6\xad\xb3\x83"), Value::Object {
             shape,
             fields: vec![
-                Value::Uuid("30576400-2064-11ea-98c5-33c5cfb4725e".parse()?),
-                Value::Uuid("4928cc1e-2065-11ea-8848-7b53a6adb383".parse()?),
+                Some(Value::Uuid("30576400-2064-11ea-98c5-33c5cfb4725e"
+                    .parse()?)),
+                Some(Value::Uuid("4928cc1e-2065-11ea-8848-7b53a6adb383"
+                    .parse()?)),
             ]
         });
     Ok(())
@@ -395,29 +397,29 @@ fn set_codec() -> Result<(), Box<dyn Error>> {
         b"\x08Harrison"
     ), Value::Object {
         shape: outer_shape.clone(), fields: vec![
-            Value::Uuid("0cf036bd-20bd-11ea-a4eb-e954b4281391".parse()?),
-            Value::Uuid("5be39c28-20bd-11ea-aab9-6734822af1c9".parse()?),
-            Value::Str(String::from("Ryan")),
-            Value::Set(vec![
+            Some(Value::Uuid("0cf036bd-20bd-11ea-a4eb-e954b4281391".parse()?)),
+            Some(Value::Uuid("5be39c28-20bd-11ea-aab9-6734822af1c9".parse()?)),
+            Some(Value::Str(String::from("Ryan"))),
+            Some(Value::Set(vec![
                 Value::Object {
                     shape: inner_shape.clone(),
                     fields: vec![
-                        Value::Uuid("0cf036bd-20bd-11ea-a4eb-e954b4281391"
-                                    .parse()?),
-                        Value::Uuid("5be39e80-20bd-11ea-aab9-175dbf1847e5"
-                                    .parse()?),
-                        Value::Str(String::from("Ana")),
+                        Some(Value::Uuid("0cf036bd-20bd-11ea-a4eb-e954b4281391"
+                                         .parse()?)),
+                        Some(Value::Uuid("5be39e80-20bd-11ea-aab9-175dbf1847e5"
+                                    .parse()?)),
+                        Some(Value::Str(String::from("Ana"))),
                 ]},
                 Value::Object {
                     shape: inner_shape,
                     fields: vec![
-                        Value::Uuid("0cf036bd-20bd-11ea-a4eb-e954b4281391"
-                                    .parse()?),
-                        Value::Uuid("5be39714-20bd-11ea-aab9-3f37e720b854"
-                                    .parse()?),
-                        Value::Str(String::from("Harrison")),
+                        Some(Value::Uuid("0cf036bd-20bd-11ea-a4eb-e954b4281391"
+                                         .parse()?)),
+                        Some(Value::Uuid("5be39714-20bd-11ea-aab9-3f37e720b854"
+                                         .parse()?)),
+                        Some(Value::Str(String::from("Harrison"))),
                     ]
-                }]),
+                }])),
             ]
     });
     encoding_eq!(&codec, bconcat!(b"\0\0\0\x04\0\0\x00\x00\0\0\0\x10\x0c\xf06"
@@ -425,11 +427,23 @@ fn set_codec() -> Result<(), Box<dyn Error>> {
         b"[\xe3\x9c( \xbd\x11\xea\xaa\xb9g4\x82*\xf1\xc9\0\0\0\x00"
         b"\0\0\0\x04Ryan\0\0\x00\x00\0\0\0\x0c\0\0\0\0\0\0\0\0\0\0\x00\x00"
     ), Value::Object {
+        shape: outer_shape.clone(), fields: vec![
+            Some(Value::Uuid("0cf036bd-20bd-11ea-a4eb-e954b4281391".parse()?)),
+            Some(Value::Uuid("5be39c28-20bd-11ea-aab9-6734822af1c9".parse()?)),
+            Some(Value::Str(String::from("Ryan"))),
+            Some(Value::Set(vec![])),
+        ]
+    });
+    encoding_eq!(&codec, bconcat!(b"\0\0\0\x04\0\0\x00\x00\0\0\0\x10\x0c\xf06"
+        b"\xbd \xbd\x11\xea\xa4\xeb\xe9T\xb4(\x13\x91\0\0\x00\x00\0\0\0\x10"
+        b"[\xe3\x9c( \xbd\x11\xea\xaa\xb9g4\x82*\xf1\xc9\0\0\0\x00"
+        b"\xFF\xFF\xFF\xFF\0\0\x00\x00\0\0\0\x0c\0\0\0\0\0\0\0\0\0\0\x00\x00"
+    ), Value::Object {
         shape: outer_shape, fields: vec![
-            Value::Uuid("0cf036bd-20bd-11ea-a4eb-e954b4281391".parse()?),
-            Value::Uuid("5be39c28-20bd-11ea-aab9-6734822af1c9".parse()?),
-            Value::Str(String::from("Ryan")),
-            Value::Set(vec![]),
+            Some(Value::Uuid("0cf036bd-20bd-11ea-a4eb-e954b4281391".parse()?)),
+            Some(Value::Uuid("5be39c28-20bd-11ea-aab9-6734822af1c9".parse()?)),
+            None,
+            Some(Value::Set(vec![])),
         ]
     });
     Ok(())

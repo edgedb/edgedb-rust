@@ -32,7 +32,7 @@ pub enum Value {
     Duration(Duration),
     Json(String),  // or should we use serde::Json?
     Set(Vec<Value>),
-    Object { shape: ObjectShape, fields: Vec<Value> },
+    Object { shape: ObjectShape, fields: Vec<Option<Value>> },
     Tuple(Vec<Value>),
     NamedTuple { shape: NamedTupleShape, fields: Vec<Value> },
     Array(Vec<Value>),

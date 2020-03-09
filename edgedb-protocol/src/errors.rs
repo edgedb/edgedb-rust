@@ -36,6 +36,8 @@ pub enum DecodeError {
     ObjectSizeMismatch { backtrace: Backtrace },
     #[snafu(display("tuple size does not match its shape"))]
     TupleSizeMismatch { backtrace: Backtrace },
+    #[snafu(display("unknown negative length marker"))]
+    InvalidMarker { backtrace: Backtrace },
     #[snafu(display("array shape for the Set codec is invalid"))]
     InvalidSetShape { backtrace: Backtrace },
     #[snafu(display("array shape is invalid"))]

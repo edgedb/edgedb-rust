@@ -130,7 +130,7 @@ impl FormatExt for Value {
                 let type_id = shape.elements
                     .iter().zip(fields)
                     .find(|(f, _) | f.name == "__tid__")
-                    .and_then(|(_, v)| if let Value::Uuid(type_id) = v {
+                    .and_then(|(_, v)| if let Some(Value::Uuid(type_id)) = v {
                         Some(type_id)
                     } else {
                         None
@@ -197,6 +197,15 @@ impl FormatExt for Value {
                 })
             }
             V::Enum(v) => prn.const_scalar(&**v),
+        }
+    }
+}
+
+impl FormatExt for Option<Value> {
+    fn format<F: Formatter>(&self, prn: &mut F) -> Result<F::Error> {
+        match self {
+            Some(v) => v.format(prn),
+            None => prn.nil(),
         }
     }
 }

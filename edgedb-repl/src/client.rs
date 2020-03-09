@@ -757,7 +757,10 @@ fn value_to_tab_separated(v: &Value) -> Result<String, anyhow::Error> {
         Object { shape, fields } => {
             Ok(shape.elements.iter().zip(fields)
                 .filter(|(s, _)| !s.flag_implicit)
-                .map(|(_, v)| value_to_string(v))
+                .map(|(_, v)| match v {
+                    Some(v) => value_to_string(v),
+                    None => Ok(String::new()),
+                })
                 .collect::<Result<Vec<_>,_>>()?.join("\t"))
         }
         _ => value_to_string(v),

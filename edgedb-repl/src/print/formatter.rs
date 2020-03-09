@@ -21,6 +21,7 @@ impl<'a> ColorfulExt for &'a str {
 pub trait Formatter {
     type Error;
     fn const_scalar<T: ToString>(&mut self, s: T) -> Result<Self::Error>;
+    fn nil(&mut self) -> Result<Self::Error>;
     fn typed<S: ToString>(&mut self, typ: &str, s: S) -> Result<Self::Error>;
     fn error<S: ToString>(&mut self, typ: &str, s: S) -> Result<Self::Error>;
     fn set<F>(&mut self, f: F) -> Result<Self::Error>
@@ -48,6 +49,10 @@ impl<'a, T: Output> Formatter for Printer<'a, T> {
     fn const_scalar<S: ToString>(&mut self, s: S) -> Result<Self::Error> {
         self.delimit()?;
         self.write(s.to_string().green())
+    }
+    fn nil(&mut self) -> Result<Self::Error> {
+        self.delimit()?;
+        self.write("{}".dark_gray())
     }
     fn typed<S: ToString>(&mut self, typ: &str, s: S) -> Result<Self::Error> {
         self.delimit()?;

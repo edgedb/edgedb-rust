@@ -553,12 +553,18 @@ impl Codec for Object {
         for codec in &self.codecs {
             ensure!(buf.remaining() >= 8, errors::Underflow);
             let _reserved = buf.get_i32();
-            let len = buf.get_u32() as usize;
+            let len = buf.get_i32();
+            if len < 0 {
+                ensure!(len == -1, errors::InvalidMarker);
+                fields.push(None);
+                continue;
+            }
+            let len = len as usize;
             ensure!(buf.remaining() >= len, errors::Underflow);
             let off = buf.position() as usize;
             let mut chunk = Cursor::new(buf.get_ref().slice(off..off + len));
             buf.advance(len);
-            fields.push(codec.decode_value(&mut chunk)?);
+            fields.push(Some(codec.decode_value(&mut chunk)?));
         }
         return Ok(Value::Object {
             shape: self.shape.clone(),
@@ -582,13 +588,20 @@ impl Codec for Object {
         for (codec, field) in self.codecs.iter().zip(fields) {
             buf.reserve(8);
             buf.put_u32(0);
-            let pos = buf.len();
-            buf.put_u32(0);  // replaced after serializing a value
-            codec.encode(buf, field)?;
-            let len = buf.len()-pos-4;
-            buf[pos..pos+4].copy_from_slice(&u32::try_from(len)
-                    .ok().context(errors::ElementTooLong)?
-                    .to_be_bytes());
+            match field {
+                Some(v) => {
+                    let pos = buf.len();
+                    buf.put_i32(0);  // replaced after serializing a value
+                    codec.encode(buf, v)?;
+                    let len = buf.len()-pos-4;
+                    buf[pos..pos+4].copy_from_slice(&i32::try_from(len)
+                            .ok().context(errors::ElementTooLong)?
+                            .to_be_bytes());
+                }
+                None => {
+                    buf.put_i32(-1);
+                }
+            }
         }
         Ok(())
     }

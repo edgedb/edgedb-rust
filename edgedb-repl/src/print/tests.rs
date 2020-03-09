@@ -102,12 +102,12 @@ fn object() {
     ]);
     assert_eq!(test_format_cfg(&[
         Value::Object { shape: shape.clone(), fields: vec![
-            Value::Int32(10),
-            Value::Int32(20),
+            Some(Value::Int32(10)),
+            Some(Value::Int32(20)),
         ]},
         Value::Object { shape: shape.clone(), fields: vec![
-            Value::Int32(30),
-            Value::Int32(40),
+            Some(Value::Int32(30)),
+            Some(Value::Int32(40)),
         ]},
     ], Config::new().max_width(60)).unwrap(), r###"{
   Object {field1: 10, field2: 20},
@@ -115,12 +115,12 @@ fn object() {
 }"###);
     assert_eq!(test_format_cfg(&[
         Value::Object { shape: shape.clone(), fields: vec![
-            Value::Int32(10),
-            Value::Int32(20),
+            Some(Value::Int32(10)),
+            Some(Value::Int32(20)),
         ]},
         Value::Object { shape: shape.clone(), fields: vec![
-            Value::Int32(30),
-            Value::Int32(40),
+            Some(Value::Int32(30)),
+            None,
         ]},
     ], Config::new().max_width(20)).unwrap(), r###"{
   Object {
@@ -129,7 +129,7 @@ fn object() {
   },
   Object {
     field1: 30,
-    field2: 40,
+    field2: {},
   },
 }"###);
 }
