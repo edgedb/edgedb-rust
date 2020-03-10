@@ -61,9 +61,11 @@ impl Connection {
     pub async fn new<A: ToSocketAddrs>(addrs: A)
         -> Result<Connection, io::Error>
     {
+        let s = ByteStream::new_tcp_detached(
+                TcpStream::connect(addrs).await?);
+        s.set_nodelay(true)?;
         Ok(Connection {
-            stream: ByteStream::new_tcp_detached(
-                TcpStream::connect(addrs).await?),
+            stream: s,
         })
     }
     #[cfg(unix)]
@@ -87,10 +89,12 @@ impl Connection {
                     format!("{}/.s.EDGEDB.{}", prefix, options.port)
                 }
             };
+            let s = ByteStream::new_unix_detached(
+                async_std::os::unix::net::UnixStream::connect(path).await?
+            );
+            s.set_nodelay(true)?;
             Ok(Connection {
-                stream: ByteStream::new_unix_detached(
-                    async_std::os::unix::net::UnixStream::connect(path).await?
-                ),
+                stream: s,
             })
         } else {
             Ok(Connection::new((&options.host[..], options.port)).await?)
