@@ -27,21 +27,26 @@ pub async fn configure(cli: &mut Client<'_>, _options: &Options,
     match &cfg.command {
         C::Insert(Ins { parameter: I::Auth(param) }) => {
             let AuthParameter { users, comment, priority, method } = param;
-            print_result(cli.execute(&format!(r###"
-                    CONFIGURE SYSTEM INSERT Auth {{
-                        priority := {priority},
-                        method := (INSERT {method}),
-                        comment := {comment},
-                        user := {{ {users} }},
-                    }}
+            let mut props = vec![
+                format!("priority := {}", priority),
+                format!("method := (INSERT {})", quote_name(method)),
+            ];
+            let users = users.iter().map(|x| quote_string(x))
+                .collect::<Vec<_>>().join(", ");
+            if !users.is_empty() {
+                props.push(format!("user := {{ {} }}", users))
+            }
+            if comment.is_some() {
+                props.push(format!("comment := {:?}", comment))
+            }
+            let result = cli.execute(&format!(r###"
+                CONFIGURE SYSTEM INSERT Auth {{
+                    {}
+                }}
                 "###,
-                priority=priority,
-                method=quote_name(method),
-                users=users.iter().map(|x| quote_string(x))
-                    .collect::<Vec<_>>().join(", "),
-                comment=comment.as_ref().map(|x| quote_string(x))
-                    .unwrap_or_else(|| String::from("{}")),
-            )).await?);
+                props.join(",\n")
+            )).await?;
+            print_result(result);
             Ok(())
         }
         C::Insert(Ins { parameter: I::Port(param) }) => {
