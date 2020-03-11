@@ -40,7 +40,7 @@ pub async fn configure(cli: &mut Client<'_>, _options: &Options,
                 users=users.iter().map(|x| quote_string(x))
                     .collect::<Vec<_>>().join(", "),
                 comment=comment.as_ref().map(|x| quote_string(x))
-                    .unwrap_or_else(|| String::from("NULL")),
+                    .unwrap_or_else(|| String::from("{}")),
             )).await?);
             Ok(())
         }
