@@ -37,7 +37,8 @@ pub async fn configure(cli: &mut Client<'_>, _options: &Options,
                 props.push(format!("user := {{ {} }}", users))
             }
             if comment.is_some() {
-                props.push(format!("comment := {:?}", comment))
+                props.push(format!(
+                    "comment := {}", quote_string(comment.as_ref().unwrap())))
             }
             let result = cli.execute(&format!(r###"
                 CONFIGURE SYSTEM INSERT Auth {{
