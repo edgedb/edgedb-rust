@@ -11,6 +11,7 @@ use async_std::io::{stdin, stdout};
 use async_std::io::prelude::WriteExt;
 use async_std::net::{TcpStream, ToSocketAddrs};
 use async_listen::ByteStream;
+use colorful::Colorful;
 use bytes::{Bytes, BytesMut};
 use scram::ScramClient;
 use serde_json::from_slice;
@@ -195,9 +196,22 @@ impl Connection {
 pub async fn interactive_main(options: Options, mut state: repl::State)
     -> Result<(), anyhow::Error>
 {
+    let mut banner = false;
+    let mut version = None;
     loop {
         let mut conn = Connection::from_options(&options).await?;
-        let cli = conn.authenticate(&options, &state.database).await?;
+        let mut cli = conn.authenticate(&options, &state.database).await?;
+        let fetched_version = cli.get_version().await?;
+        if !banner || version.as_ref() != Some(&fetched_version) {
+            println!("{} {}",
+                "EdgeDB".light_gray(),
+                fetched_version[..].light_gray());
+            version = Some(fetched_version);
+        }
+        if !banner {
+            println!("{}", r#"Type "\?" for help."#.light_gray());
+            banner = true;
+        }
         match _interactive_main(cli, &options, &mut state).await {
             Ok(()) => return Ok(()),
             Err(e) => {
@@ -737,6 +751,19 @@ impl<'a> Client<'a> {
     {
         self._query(request, arguments, IoFormat::Binary).await?;
         return self._process_exec().await;
+    }
+
+    async fn get_version(&mut self) -> Result<String, anyhow::Error> {
+        let mut q = self.query::<String>(
+            "SELECT sys::get_version_as_str()",
+            &Value::empty_tuple(),
+        ).await?;
+        let mut fetched_version = None;
+        while let Some(ver) = q.next().await.transpose()? {
+            fetched_version = Some(ver);
+        }
+        return fetched_version
+            .ok_or_else(|| anyhow::anyhow!("Can't fetch version"));
     }
 }
 
