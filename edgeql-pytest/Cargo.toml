@@ -10,8 +10,7 @@ edgeql-parser = {path = "../edgeql-parser"}
 lazy_static = "1.4.0"
 
 [dependencies.cpython]
-git = "git://github.com/dgrunwald/rust-cpython"
-rev = "dabc06c"
+version = "0.4.1"
 
 [[bin]]
 name = "edgeql-pytest"
