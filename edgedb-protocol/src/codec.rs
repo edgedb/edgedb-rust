@@ -337,9 +337,7 @@ impl Codec for Int16 {
 
 impl Codec for Int64 {
     fn decode(&self, buf: &mut Cursor<Bytes>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 8, errors::Underflow);
-        let inner = buf.get_i64();
-        Ok(Value::Int64(inner))
+        raw::RawCodec::decode_raw(buf).map(Value::Int64)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>

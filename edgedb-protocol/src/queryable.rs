@@ -101,6 +101,28 @@ impl Queryable for String {
     }
 }
 
+impl Queryable for i64 {
+    fn decode_raw(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+        RawCodec::decode_raw(buf)
+    }
+    fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
+        -> Result<(), DescriptorMismatch>
+    {
+        use crate::descriptors::Descriptor::{Scalar, BaseScalar};
+        let desc = ctx.get(type_pos)?;
+        match desc {
+            Scalar(scalar) => {
+                return Self::check_descriptor(ctx, scalar.base_type_pos);
+            }
+            BaseScalar(base) if base.id == codec::STD_INT64 => {
+                return Ok(());
+            }
+            _ => {}
+        }
+        Err(ctx.wrong_type(desc, "int64"))
+    }
+}
+
 impl Queryable for Uuid {
     fn decode_raw(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
         RawCodec::decode_raw(buf)

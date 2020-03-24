@@ -43,3 +43,10 @@ impl RawCodec for bool {
         Ok(res)
     }
 }
+
+impl RawCodec for i64 {
+    fn decode_raw(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+        ensure!(buf.remaining() >= 8, errors::Underflow);
+        return Ok(buf.get_i64());
+    }
+}
