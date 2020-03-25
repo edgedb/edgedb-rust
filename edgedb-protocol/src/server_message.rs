@@ -144,7 +144,7 @@ pub struct Data {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RawPacket {
-    data: Bytes,
+    pub data: Bytes,
 }
 
 fn encode<T: Encode>(buf: &mut BytesMut, code: u8, msg: &T)
