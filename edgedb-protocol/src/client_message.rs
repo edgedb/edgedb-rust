@@ -22,6 +22,7 @@ pub enum ClientMessage {
     UnknownMessage(u8, Bytes),
     AuthenticationSaslInitialResponse(SaslInitialResponse),
     AuthenticationSaslResponse(SaslResponse),
+    Dump(Dump),
     Sync,
     Flush,
     Terminate,
@@ -75,6 +76,11 @@ pub struct Execute {
     pub arguments: Bytes,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Dump {
+    pub headers: Headers,
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum DescribeAspect {
     DataDescription = 0x54,
@@ -100,6 +106,7 @@ impl ClientMessage {
             Prepare(h) => encode(buf, 0x50, h),
             DescribeStatement(h) => encode(buf, 0x44, h),
             Execute(h) => encode(buf, 0x45, h),
+            Dump(d) => encode(buf, 0x3e, d),
             Sync => encode(buf, 0x53, &Empty),
             Flush => encode(buf, 0x48, &Empty),
             Terminate => encode(buf, 0x58, &Empty),
@@ -126,6 +133,7 @@ impl ClientMessage {
             0x51 => ExecuteScript::decode(&mut data).map(M::ExecuteScript),
             0x50 => Prepare::decode(&mut data).map(M::Prepare),
             0x45 => Execute::decode(&mut data).map(M::Execute),
+            0x3e => Dump::decode(&mut data).map(M::Dump),
             0x53 => Ok(M::Sync),
             0x48 => Ok(M::Flush),
             0x58 => Ok(M::Terminate),
@@ -368,6 +376,11 @@ impl Encode for Execute {
         buf.reserve(10);
         buf.put_u16(u16::try_from(self.headers.len()).ok()
             .context(errors::TooManyHeaders)?);
+        for (&name, value) in &self.headers {
+            buf.reserve(2);
+            buf.put_u16(name);
+            value.encode(buf)?;
+        }
         self.statement_name.encode(buf)?;
         self.arguments.encode(buf)?;
         Ok(())
@@ -390,5 +403,34 @@ impl Decode for Execute {
             statement_name,
             arguments,
         })
+    }
+}
+
+impl Encode for Dump {
+    fn encode(&self, buf: &mut BytesMut)
+        -> Result<(), EncodeError>
+    {
+        buf.reserve(10);
+        buf.put_u16(u16::try_from(self.headers.len()).ok()
+            .context(errors::TooManyHeaders)?);
+        for (&name, value) in &self.headers {
+            buf.reserve(2);
+            buf.put_u16(name);
+            value.encode(buf)?;
+        }
+        Ok(())
+    }
+}
+
+impl Decode for Dump {
+    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+        ensure!(buf.remaining() >= 12, errors::Underflow);
+        let num_headers = buf.get_u16();
+        let mut headers = HashMap::new();
+        for _ in 0..num_headers {
+            ensure!(buf.remaining() >= 4, errors::Underflow);
+            headers.insert(buf.get_u16(), Bytes::decode(buf)?);
+        }
+        Ok(Dump { headers })
     }
 }
