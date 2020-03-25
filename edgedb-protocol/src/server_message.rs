@@ -29,6 +29,10 @@ pub enum ServerMessage {
     PrepareComplete(PrepareComplete),
     CommandDataDescription(CommandDataDescription),
     Data(Data),
+    // Don't decode Dump packets here as we only need to process them as
+    // whole
+    DumpHeader(RawPacket),
+    DumpBlock(RawPacket),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -138,6 +142,11 @@ pub struct Data {
     pub data: Vec<Bytes>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawPacket {
+    data: Bytes,
+}
+
 fn encode<T: Encode>(buf: &mut BytesMut, code: u8, msg: &T)
     -> Result<(), EncodeError>
 {
@@ -210,6 +219,8 @@ impl ServerMessage {
             PrepareComplete(h) => encode(buf, 0x31, h),
             CommandDataDescription(h) => encode(buf, 0x54, h),
             Data(h) => encode(buf, 0x44, h),
+            DumpHeader(h) => encode(buf, 0x40, h),
+            DumpBlock(h) => encode(buf, 0x3d, h),
 
             UnknownMessage(_, _) => {
                 errors::UnknownMessageCantBeEncoded.fail()?
@@ -235,6 +246,8 @@ impl ServerMessage {
             0x43 => CommandComplete::decode(&mut data).map(M::CommandComplete),
             0x31 => PrepareComplete::decode(&mut data).map(M::PrepareComplete),
             0x44 => Data::decode(&mut data).map(M::Data),
+            0x40 => RawPacket::decode(&mut data).map(M::DumpHeader),
+            0x3d => RawPacket::decode(&mut data).map(M::DumpBlock),
             0x54 => {
                 CommandDataDescription::decode(&mut data)
                 .map(M::CommandDataDescription)
@@ -701,5 +714,23 @@ impl Decode for Data {
             data.push(Bytes::decode(buf)?);
         }
         return Ok(Data { data })
+    }
+}
+
+impl Encode for RawPacket {
+    fn encode(&self, buf: &mut BytesMut)
+        -> Result<(), EncodeError>
+    {
+        buf.extend(&self.data);
+        Ok(())
+    }
+}
+
+impl Decode for RawPacket {
+    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+        let buf_pos = buf.position() as usize;
+        let data = buf.get_ref().slice(buf_pos..);
+        buf.advance(data.len());
+        return Ok(RawPacket { data })
     }
 }
