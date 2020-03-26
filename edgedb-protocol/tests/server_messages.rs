@@ -15,6 +15,7 @@ use edgedb_protocol::server_message::{PrepareComplete, Cardinality};
 use edgedb_protocol::server_message::{CommandDataDescription, Data};
 use edgedb_protocol::server_message::{Authentication};
 use edgedb_protocol::server_message::{LogMessage, MessageSeverity};
+use edgedb_protocol::server_message::{RestoreReady};
 
 mod base;
 
@@ -161,6 +162,15 @@ fn data() -> Result<(), Box<dyn Error>> {
     encoding_eq!(ServerMessage::Data(Data {
         data: vec![Bytes::from_static(b"\0\0\0\0\0\0\0\x01")],
     }), b"D\0\0\0\x12\0\x01\0\0\0\x08\0\0\0\0\0\0\0\x01");
+    Ok(())
+}
+
+#[test]
+fn restore_ready() -> Result<(), Box<dyn Error>> {
+    encoding_eq!(ServerMessage::RestoreReady(RestoreReady {
+        jobs: 1,
+        headers: HashMap::new(),
+    }), b"+\0\0\0\x08\0\0\0\x01");
     Ok(())
 }
 

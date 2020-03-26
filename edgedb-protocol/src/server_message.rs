@@ -29,6 +29,7 @@ pub enum ServerMessage {
     PrepareComplete(PrepareComplete),
     CommandDataDescription(CommandDataDescription),
     Data(Data),
+    RestoreReady(RestoreReady),
     // Don't decode Dump packets here as we only need to process them as
     // whole
     DumpHeader(RawPacket),
@@ -143,6 +144,12 @@ pub struct Data {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreReady {
+    pub headers: Headers,
+    pub jobs: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RawPacket {
     pub data: Bytes,
 }
@@ -219,6 +226,7 @@ impl ServerMessage {
             PrepareComplete(h) => encode(buf, 0x31, h),
             CommandDataDescription(h) => encode(buf, 0x54, h),
             Data(h) => encode(buf, 0x44, h),
+            RestoreReady(h) => encode(buf, 0x2b, h),
             DumpHeader(h) => encode(buf, 0x40, h),
             DumpBlock(h) => encode(buf, 0x3d, h),
 
@@ -246,6 +254,7 @@ impl ServerMessage {
             0x43 => CommandComplete::decode(&mut data).map(M::CommandComplete),
             0x31 => PrepareComplete::decode(&mut data).map(M::PrepareComplete),
             0x44 => Data::decode(&mut data).map(M::Data),
+            0x2b => RestoreReady::decode(&mut data).map(M::RestoreReady),
             0x40 => RawPacket::decode(&mut data).map(M::DumpHeader),
             0x3d => RawPacket::decode(&mut data).map(M::DumpBlock),
             0x54 => {
@@ -714,6 +723,39 @@ impl Decode for Data {
             data.push(Bytes::decode(buf)?);
         }
         return Ok(Data { data })
+    }
+}
+
+impl Encode for RestoreReady {
+    fn encode(&self, buf: &mut BytesMut)
+        -> Result<(), EncodeError>
+    {
+        buf.reserve(4);
+        buf.put_u16(u16::try_from(self.headers.len()).ok()
+            .context(errors::TooManyHeaders)?);
+        for (&name, value) in &self.headers {
+            buf.reserve(2);
+            buf.put_u16(name);
+            value.encode(buf)?;
+        }
+        buf.reserve(2);
+        buf.put_u16(self.jobs);
+        Ok(())
+    }
+}
+
+impl Decode for RestoreReady {
+    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+        ensure!(buf.remaining() >= 4, errors::Underflow);
+        let num_headers = buf.get_u16();
+        let mut headers = HashMap::new();
+        for _ in 0..num_headers {
+            ensure!(buf.remaining() >= 4, errors::Underflow);
+            headers.insert(buf.get_u16(), Bytes::decode(buf)?);
+        }
+        ensure!(buf.remaining() >= 2, errors::Underflow);
+        let jobs = buf.get_u16();
+        return Ok(RestoreReady { jobs, headers })
     }
 }
 
