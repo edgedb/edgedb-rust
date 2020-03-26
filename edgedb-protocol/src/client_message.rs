@@ -23,6 +23,9 @@ pub enum ClientMessage {
     AuthenticationSaslInitialResponse(SaslInitialResponse),
     AuthenticationSaslResponse(SaslResponse),
     Dump(Dump),
+    Restore(Restore),
+    RestoreBlock(RestoreBlock),
+    RestoreEof,
     Sync,
     Flush,
     Terminate,
@@ -81,6 +84,18 @@ pub struct Dump {
     pub headers: Headers,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Restore {
+    pub headers: Headers,
+    pub jobs: u16,
+    pub data: Bytes,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreBlock {
+    pub data: Bytes,
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum DescribeAspect {
     DataDescription = 0x54,
@@ -106,7 +121,10 @@ impl ClientMessage {
             Prepare(h) => encode(buf, 0x50, h),
             DescribeStatement(h) => encode(buf, 0x44, h),
             Execute(h) => encode(buf, 0x45, h),
-            Dump(d) => encode(buf, 0x3e, d),
+            Dump(h) => encode(buf, 0x3e, h),
+            Restore(h) => encode(buf, 0x3c, h),
+            RestoreBlock(h) => encode(buf, 0x3d, h),
+            RestoreEof => encode(buf, 0x2e, &Empty),
             Sync => encode(buf, 0x53, &Empty),
             Flush => encode(buf, 0x48, &Empty),
             Terminate => encode(buf, 0x58, &Empty),
@@ -134,6 +152,9 @@ impl ClientMessage {
             0x50 => Prepare::decode(&mut data).map(M::Prepare),
             0x45 => Execute::decode(&mut data).map(M::Execute),
             0x3e => Dump::decode(&mut data).map(M::Dump),
+            0x3c => Restore::decode(&mut data).map(M::Restore),
+            0x3d => RestoreBlock::decode(&mut data).map(M::RestoreBlock),
+            0x2e => Ok(M::RestoreEof),
             0x53 => Ok(M::Sync),
             0x48 => Ok(M::Flush),
             0x58 => Ok(M::Terminate),
@@ -432,5 +453,59 @@ impl Decode for Dump {
             headers.insert(buf.get_u16(), Bytes::decode(buf)?);
         }
         Ok(Dump { headers })
+    }
+}
+
+impl Encode for Restore {
+    fn encode(&self, buf: &mut BytesMut)
+        -> Result<(), EncodeError>
+    {
+        buf.reserve(4 + self.data.len());
+        buf.put_u16(u16::try_from(self.headers.len()).ok()
+            .context(errors::TooManyHeaders)?);
+        for (&name, value) in &self.headers {
+            buf.reserve(2);
+            buf.put_u16(name);
+            value.encode(buf)?;
+        }
+        buf.extend(&self.data);
+        Ok(())
+    }
+}
+
+impl Decode for Restore {
+    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+        ensure!(buf.remaining() >= 4, errors::Underflow);
+        let jobs = buf.get_u16();
+
+        let num_headers = buf.get_u16();
+        let mut headers = HashMap::new();
+        for _ in 0..num_headers {
+            ensure!(buf.remaining() >= 4, errors::Underflow);
+            headers.insert(buf.get_u16(), Bytes::decode(buf)?);
+        }
+
+        let buf_pos = buf.position() as usize;
+        let data = buf.get_ref().slice(buf_pos..);
+        buf.advance(data.len());
+        return Ok(Restore { jobs, headers, data })
+    }
+}
+
+impl Encode for RestoreBlock {
+    fn encode(&self, buf: &mut BytesMut)
+        -> Result<(), EncodeError>
+    {
+        buf.extend(&self.data);
+        Ok(())
+    }
+}
+
+impl Decode for RestoreBlock {
+    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+        let buf_pos = buf.position() as usize;
+        let data = buf.get_ref().slice(buf_pos..);
+        buf.advance(data.len());
+        return Ok(RestoreBlock { data })
     }
 }
