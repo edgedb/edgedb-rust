@@ -23,16 +23,10 @@ commands:
     container: nightly
     run: [cargo, rustc, "--", -Zunstable-options, --pretty=expanded]
 
-  test-py: !Command
-    description: Run tests
-    container: ubuntu
-    prerequisites: [make]
-    run: [cargo, test, -p, edgeql-pytest]
-
   test-rust: !Command
     description: Run tests
     container: ubuntu
-    run: [cargo, test, --workspace, --exclude=edgeql-pytest]
+    run: [cargo, test]
 
   test-rust-no-features: !Command
     description: Run tests
@@ -43,7 +37,7 @@ commands:
   test: !Command
     description: Run tests
     container: ubuntu
-    prerequisites: [test-rust, test-py, test-rust-no-features]
+    prerequisites: [test-rust, test-rust-no-features]
     run: "echo OK"
 
   _bulk: !Command

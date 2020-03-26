@@ -16,23 +16,6 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --workspace --exclude edgeql-pytest
-      - uses: actions/setup-python@v1
-        with:
-          python-version: '3.8'
-          architecture: 'x64'
-      - uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: -p edgeql-python
       - working-directory: ./edgedb-protocol
         run: |
           cargo test --no-default-features
-      - run: python -V
-      - uses: actions-rs/cargo@v1
-        env:
-          # The python version here needs to be updated ocasionally
-          LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.8.2/x64/lib
-        with:
-          command: test
-          args: -p edgeql-pytest
