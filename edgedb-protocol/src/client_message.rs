@@ -468,6 +468,7 @@ impl Encode for Restore {
             buf.put_u16(name);
             value.encode(buf)?;
         }
+        buf.put_u16(self.jobs);
         buf.extend(&self.data);
         Ok(())
     }
@@ -476,7 +477,6 @@ impl Encode for Restore {
 impl Decode for Restore {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 4, errors::Underflow);
-        let jobs = buf.get_u16();
 
         let num_headers = buf.get_u16();
         let mut headers = HashMap::new();
@@ -484,6 +484,8 @@ impl Decode for Restore {
             ensure!(buf.remaining() >= 4, errors::Underflow);
             headers.insert(buf.get_u16(), Bytes::decode(buf)?);
         }
+
+        let jobs = buf.get_u16();
 
         let buf_pos = buf.position() as usize;
         let data = buf.get_ref().slice(buf_pos..);

@@ -9,6 +9,7 @@ use edgedb_protocol::client_message::{Prepare, IoFormat, Cardinality};
 use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
 use edgedb_protocol::client_message::{SaslInitialResponse};
 use edgedb_protocol::client_message::{SaslResponse};
+use edgedb_protocol::client_message::Restore;
 
 mod base;
 
@@ -120,5 +121,15 @@ fn authentication() -> Result<(), Box<dyn Error>> {
                  b"YsykYKRbp/Gli53UEElsGb4I,"
                  b"p=UNQQkuQ0m5RRy24Ovzj/"
                  b"sCevUB36WTDbGXIWbCIsJmo="));
+    Ok(())
+}
+
+#[test]
+fn restore() -> Result<(), Box<dyn Error>> {
+    encoding_eq!(ClientMessage::Restore(Restore {
+        headers: HashMap::new(),
+        jobs: 1,
+        data: Bytes::from_static(b"TEST"),
+    }), b"<\x00\x00\x00\x0C\x00\x00\x00\x01TEST");
     Ok(())
 }
