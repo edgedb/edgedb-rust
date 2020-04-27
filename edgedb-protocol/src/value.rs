@@ -1,6 +1,6 @@
 use std::fmt;
 use std::time::{SystemTime};
-use std::{u32, u64};
+use std::{u32, u64, i32};
 
 use uuid::Uuid;
 
@@ -281,16 +281,24 @@ impl std::convert::TryFrom<bigdecimal::BigDecimal> for Decimal {
     fn try_from(dec: bigdecimal::BigDecimal) -> Result<Decimal, Self::Error> {
         use num_traits::{ToPrimitive, Zero};
         use std::convert::TryInto;
+        use std::cmp::max;
 
         let mut digits = Vec::new();
-        let (v, decimal_digits) = dec.into_bigint_and_exponent();
+        let (v, scale) = dec.into_bigint_and_exponent();
         let (negative, mut val) = match v.sign() {
             num_bigint::Sign::Minus => (true, -v),
             num_bigint::Sign::NoSign => (false, v),
             num_bigint::Sign::Plus => (false, v),
         };
-        if decimal_digits % 4 > 0 {
-            val *= 10u16.pow(4 - (decimal_digits % 4) as u32);
+        let scale_4digits = if scale < 0 {
+            scale/4
+        } else {
+            scale/4 + 1
+        };
+        let pad = scale_4digits*4 - scale;
+
+        if pad > 0 {
+            val *= 10u16.pow(pad as u32);
         }
         while !val.is_zero() {
             digits.push((&val % 10000u16).to_u16().unwrap());
@@ -300,9 +308,8 @@ impl std::convert::TryFrom<bigdecimal::BigDecimal> for Decimal {
 
         // These return "out of range integral type conversion attempted"
         // which should be good enough for this error
-        let decimal_digits = decimal_digits.try_into()?;
-        let weight = i16::try_from(digits.len())? -
-            (decimal_digits+3) as i16/4 - 1;
+        let decimal_digits = max(0, scale).try_into()?;
+        let weight = i16::try_from(digits.len() as i64 - scale_4digits - 1)?;
 
         // TODO(tailhook) normalization can be optimized here
         return Ok(Decimal {
@@ -330,29 +337,42 @@ impl Into<bigdecimal::BigDecimal> for &Decimal {
         use std::cmp::max;
 
         let mut r = BigInt::from(0);
+        // TODO(tailhook) this is quite slow, use preallocated vector
         for &digit in &self.digits {
             r *= 10000;
             r += digit;
         }
-        let digits_stored = max(0,
-            (self.digits.len() as i64 - self.weight as i64 - 1)*4,
+        let decimal_stored = 4*max(0,
+            self.digits.len() as i64 - self.weight as i64 - 1
         ) as usize;
-        if digits_stored < self.decimal_digits as usize {
-            r *= pow(10, self.decimal_digits as usize - digits_stored);
-            if (self.weight+1) as usize > self.digits.len() {
-                r *= pow(BigInt::from(10000),
-                         (self.weight+1) as usize - self.digits.len());
+        let pad = if decimal_stored > 0 {
+            let pad = decimal_stored as i64 - self.decimal_digits as i64;
+            if pad > 0 {
+                r /= pow(10, pad as usize);
+            } else if pad < 0 {
+                r *= pow(10, (-pad) as usize);
             }
+            pad
         } else {
-            let rem = self.decimal_digits % 4;
-            if rem > 0 {
-                r /= pow(10, (4 - rem) as usize);
+            0
+        };
+
+        let scale = if self.decimal_digits == 0 {
+            -(self.weight as i64 + 1 - self.digits.len() as i64)*4 - pad as i64
+        } else {
+            if decimal_stored == 0 {
+                let power = (self.weight as usize + 1 - self.digits.len())*4
+                    + self.decimal_digits as usize;
+                if power > 0 {
+                    r *= pow(BigInt::from(10), power);
+                }
             }
-        }
+            self.decimal_digits as i64
+        };
         if self.negative {
             r = -r;
         }
-        return BigDecimal::new(r, self.decimal_digits as i64)
+        return BigDecimal::new(r, scale)
     }
 }
 
@@ -576,7 +596,58 @@ mod test {
     }
 
     #[test]
-    #[cfg(feature="bigdecimal_types")]
+    fn big_duration_abs() {
+        use super::Duration as Src;
+        use std::time::Duration as Trg;
+        assert_eq!(Src { micros: -1 }.abs_duration(), Trg::new(0, 1000));
+        assert_eq!(Src { micros: -1000 }.abs_duration(), Trg::new(0, 1000000));
+        assert_eq!(Src { micros: -1000000 }.abs_duration(), Trg::new(1, 0));
+        assert_eq!(Src { micros: i64::min_value() }.abs_duration(),
+                   Trg::new(9223372036854, 775808000));
+    }
+
+    #[test]
+    #[cfg(feature="chrono")]
+    fn chrono_roundtrips() -> Result<(), Box<dyn std::error::Error>> {
+        use std::convert::TryInto;
+        use super::{LocalDatetime, LocalDate, LocalTime};
+        use chrono::naive::{NaiveDateTime, NaiveDate, NaiveTime};
+
+        let naive = NaiveDateTime::from_str("2019-12-27T01:02:03.123456")?;
+        assert_eq!(naive,
+            TryInto::<NaiveDateTime>::try_into(
+                LocalDatetime::try_from(naive)?)?);
+        let naive = NaiveDate::from_str("2019-12-27")?;
+        assert_eq!(naive,
+            TryInto::<NaiveDate>::try_into(LocalDate::try_from(naive)?)?);
+        let naive = NaiveTime::from_str("01:02:03.123456")?;
+        assert_eq!(naive,
+            TryInto::<NaiveTime>::try_into(LocalTime::try_from(naive)?)?);
+        Ok(())
+    }
+}
+
+#[cfg(all(test, feature="num-bigint", feature="bigdecimal"))]
+mod decimal {
+    use rand::{Rng, SeedableRng, rngs::StdRng};
+    use std::str::FromStr;
+    use std::convert::TryFrom;
+    use bigdecimal::BigDecimal;
+    use num_bigint::ToBigInt;
+    use super::{Decimal, BigInt};
+
+    fn gen_u64<T: Rng>(rng: &mut T) -> u64 {
+        // change distribution to generate different length more frequently
+        let max = 10_u64.pow(rng.gen_range(0, 20));
+        return rng.gen_range(0, max);
+    }
+    fn gen_i64<T: Rng>(rng: &mut T) -> i64 {
+        // change distribution to generate different length more frequently
+        let max = 10_i64.pow(rng.gen_range(0, 19));
+        return rng.gen_range(-max, max);
+    }
+
+    #[test]
     fn big_big_int_conversion() -> Result<(), Box<dyn std::error::Error>> {
         let x = BigInt::try_from(num_bigint::BigInt::from_str(
             "10000000000000000000000000000000000000")?)?;
@@ -586,7 +657,15 @@ mod test {
     }
 
     #[test]
-    #[cfg(feature="bigdecimal_types")]
+    fn bigint_conversion() -> Result<(), Box<dyn std::error::Error>> {
+        let x = BigInt::try_from(BigDecimal::from_str("1e20")?
+            .to_bigint().unwrap())?;
+        assert_eq!(x.weight, 5);
+        assert_eq!(x.digits, &[1]);
+        Ok(())
+    }
+
+    #[test]
     fn decimal_conversion() -> Result<(), Box<dyn std::error::Error>> {
         use bigdecimal::BigDecimal;
         let x = Decimal::try_from(BigDecimal::from_str("42.00")?)?;
@@ -620,96 +699,315 @@ mod test {
         assert_eq!(x.digits, &[700]);
         let x = Decimal::try_from(BigDecimal::from_str(
             "10000000000000000000000000000000000000.00000")?)?;
+        assert_eq!(x.digits, &[10]);
         assert_eq!(x.weight, 9);
         assert_eq!(x.decimal_digits, 5);
-        assert_eq!(x.digits, &[10]);
+        let x = Decimal::try_from(BigDecimal::from_str("1e100")?)?;
+        assert_eq!(x.weight, 25);
+        assert_eq!(x.decimal_digits, 0);
+        assert_eq!(x.digits, &[1]);
+        let x = Decimal::try_from(BigDecimal::from_str(
+            "-703367234220692490200000000000000000000000000")?)?;
+        assert_eq!(x.weight, 11);
+        assert_eq!(x.decimal_digits, 0);
+        assert_eq!(x.digits, &[7, 336, 7234, 2206, 9249, 200]);
+        let x = Decimal::try_from(BigDecimal::from_str(
+            "-7033672342206924902e26")?)?;
+        assert_eq!(x.weight, 11);
+        assert_eq!(x.decimal_digits, 0);
+        assert_eq!(x.digits, &[7, 336, 7234, 2206, 9249, 200]);
+
+        let x = Decimal::try_from(BigDecimal::from_str(
+            "6545218855030988517.14400196897187081925e47")?)?;
+        assert_eq!(x.weight, 16);
+        assert_eq!(x.decimal_digits, 0);
+        assert_eq!(x.digits, &[
+            65,
+            4521,
+            8855,
+            309,
+            8851,
+            7144,
+            19,
+            6897,
+            1870,
+            8192,
+            5000]);
+        let x = Decimal::try_from(BigDecimal::from_str(
+            "-260399300000000000000000000000000000000000000.\
+                000000000007745502260")?)?;
+        assert_eq!(x.weight, 11);
+        assert_eq!(x.decimal_digits, 21);
+        assert_eq!(x.digits, &[
+            2,
+            6039,
+            9300,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0, // decimal digits start here
+            0,
+            7,
+            7455,
+            226,
+        ]);
+
         Ok(())
     }
 
-    #[test]
-    fn big_duration_abs() {
-        use super::Duration as Src;
-        use std::time::Duration as Trg;
-        assert_eq!(Src { micros: -1 }.abs_duration(), Trg::new(0, 1000));
-        assert_eq!(Src { micros: -1000 }.abs_duration(), Trg::new(0, 1000000));
-        assert_eq!(Src { micros: -1000000 }.abs_duration(), Trg::new(1, 0));
-        assert_eq!(Src { micros: i64::min_value() }.abs_duration(),
-                   Trg::new(9223372036854, 775808000));
+    fn int_roundtrip(s: &str) -> num_bigint::BigInt {
+        let decimal = BigDecimal::from_str(s).expect("can parse decimal");
+        let rust = decimal.to_bigint().expect("can convert to big int");
+        let edgedb = BigInt::try_from(rust).expect("can convert for edgedb");
+        num_bigint::BigInt::try_from(edgedb)
+            .expect("can convert back to big int")
     }
 
     #[test]
-    #[cfg(feature="num-bigint")]
     fn big_int_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
         use num_bigint::BigInt as N;
-        use crate::value::BigInt as C;
 
-        fn roundtrip(s: &str)-> Result<N, Box<dyn std::error::Error>> {
-            Ok(N::try_from(C::try_from(N::from_str(s)?)?)?)
-        }
 
-        assert_eq!(roundtrip("1")?, N::from_str("1")?);
-        assert_eq!(roundtrip("1000")?, N::from_str("1000")?);
-        assert_eq!(roundtrip("0")?, N::from_str("0")?);
-        assert_eq!(roundtrip("-1000")?, N::from_str("-1000")?);
-        assert_eq!(roundtrip("10000000000000000000000000000000000000000000")?,
-                 N::from_str("10000000000000000000000000000000000000000000")?);
-        assert_eq!(roundtrip("12345678901234567890012345678901234567890123")?,
-                 N::from_str("12345678901234567890012345678901234567890123")?);
-        assert_eq!(roundtrip("10000000000000000000000000000000000000")?,
+        assert_eq!(int_roundtrip("1"), N::from_str("1")?);
+        assert_eq!(int_roundtrip("1000"), N::from_str("1000")?);
+        assert_eq!(int_roundtrip("1e20"),
+                   N::from_str("100000000000000000000")?);
+        assert_eq!(int_roundtrip("0"), N::from_str("0")?);
+        assert_eq!(int_roundtrip("-1000"), N::from_str("-1000")?);
+        assert_eq!(
+            int_roundtrip("10000000000000000000000000000000000000000000"),
+            N::from_str("10000000000000000000000000000000000000000000")?);
+        assert_eq!(
+            int_roundtrip("12345678901234567890012345678901234567890123"),
+            N::from_str("12345678901234567890012345678901234567890123")?);
+        assert_eq!(int_roundtrip("10000000000000000000000000000000000000"),
                  N::from_str("10000000000000000000000000000000000000")?);
         Ok(())
     }
 
+    fn dec_roundtrip(s: &str) -> BigDecimal {
+        let rust = BigDecimal::from_str(s).expect("can parse big decimal");
+        let edgedb = Decimal::try_from(rust).expect("can convert for edgedb");
+        BigDecimal::try_from(edgedb).expect("can convert back to big decimal")
+    }
+
     #[test]
-    #[cfg(feature="bigdecimal")]
     fn decimal_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
         use bigdecimal::BigDecimal as B;
-        use crate::value::Decimal as D;
 
-        fn roundtrip(s: &str)-> Result<B, Box<dyn std::error::Error>> {
-            Ok(B::try_from(D::try_from(B::from_str(s)?)?)?)
+        assert_eq!(dec_roundtrip("1"), B::from_str("1")?);
+        assert_eq!(dec_roundtrip("1000"), B::from_str("1000")?);
+        assert_eq!(dec_roundtrip("1e100"), B::from_str("1e100")?);
+        assert_eq!(dec_roundtrip("0"), B::from_str("0")?);
+        assert_eq!(dec_roundtrip("-1000"), B::from_str("-1000")?);
+        assert_eq!(dec_roundtrip("1.01"), B::from_str("1.01")?);
+        assert_eq!(dec_roundtrip("1000.0070"), B::from_str("1000.0070")?);
+        assert_eq!(dec_roundtrip("0.00008"), B::from_str("0.00008")?);
+        assert_eq!(dec_roundtrip("-1000.1"), B::from_str("-1000.1")?);
+        assert_eq!(
+            dec_roundtrip("10000000000000000000000000000000000000.00001"),
+            B::from_str("10000000000000000000000000000000000000.00001")?);
+        assert_eq!(
+            dec_roundtrip("12345678901234567890012345678901234567890123"),
+            B::from_str("12345678901234567890012345678901234567890123")?);
+        assert_eq!(
+            dec_roundtrip("1234567890123456789.012345678901234567890123"),
+            B::from_str("1234567890123456789.012345678901234567890123")?);
+        assert_eq!(
+            dec_roundtrip("0.000000000000000000000000000000000000017238"),
+            B::from_str("0.000000000000000000000000000000000000017238")?);
+        assert_eq!(dec_roundtrip("1234.00000"), B::from_str("1234.00000")?);
+        assert_eq!(
+            dec_roundtrip("10000000000000000000000000000000000000.00000"),
+            B::from_str("10000000000000000000000000000000000000.00000")?);
+        assert_eq!(
+            dec_roundtrip("100010001000000000000000000000000000"),
+            B::from_str("100010001000000000000000000000000000")?);
+
+        Ok(())
+    }
+
+
+    #[test]
+    fn decimal_rand_i64() -> Result<(), Box<dyn std::error::Error>> {
+        use bigdecimal::BigDecimal as B;
+
+        let mut rng = StdRng::seed_from_u64(1);
+        for _ in 0..10000 {
+            let head = gen_u64(&mut rng);
+            let txt = format!("{}", head);
+            assert_eq!(dec_roundtrip(&txt), B::from_str(&txt)?,
+                       "parsing: {}", txt);
         }
-
-        assert_eq!(roundtrip("1")?, B::from_str("1")?);
-        assert_eq!(roundtrip("1000")?, B::from_str("1000")?);
-        assert_eq!(roundtrip("0")?, B::from_str("0")?);
-        assert_eq!(roundtrip("-1000")?, B::from_str("-1000")?);
-        assert_eq!(roundtrip("1.01")?, B::from_str("1.01")?);
-        assert_eq!(roundtrip("1000.0070")?, B::from_str("1000.0070")?);
-        assert_eq!(roundtrip("0.00008")?, B::from_str("0.00008")?);
-        assert_eq!(roundtrip("-1000.1")?, B::from_str("-1000.1")?);
-        assert_eq!(roundtrip("10000000000000000000000000000000000000.00001")?,
-                 B::from_str("10000000000000000000000000000000000000.00001")?);
-        assert_eq!(roundtrip("12345678901234567890012345678901234567890123")?,
-                 B::from_str("12345678901234567890012345678901234567890123")?);
-        assert_eq!(roundtrip("1234567890123456789.012345678901234567890123")?,
-                 B::from_str("1234567890123456789.012345678901234567890123")?);
-        assert_eq!(roundtrip("0.000000000000000000000000000000000000017238")?,
-                 B::from_str("0.000000000000000000000000000000000000017238")?);
-        assert_eq!(roundtrip("1234.00000")?,
-                 B::from_str("1234.00000")?);
-        assert_eq!(roundtrip("10000000000000000000000000000000000000.00000")?,
-                 B::from_str("10000000000000000000000000000000000000.00000")?);
         Ok(())
     }
 
     #[test]
-    #[cfg(feature="chrono")]
-    fn chrono_roundtrips() -> Result<(), Box<dyn std::error::Error>> {
-        use std::convert::TryInto;
-        use super::{LocalDatetime, LocalDate, LocalTime};
-        use chrono::naive::{NaiveDateTime, NaiveDate, NaiveTime};
+    fn decimal_rand_nulls() -> Result<(), Box<dyn std::error::Error>> {
+        use bigdecimal::BigDecimal as B;
 
-        let naive = NaiveDateTime::from_str("2019-12-27T01:02:03.123456")?;
-        assert_eq!(naive,
-            TryInto::<NaiveDateTime>::try_into(
-                LocalDatetime::try_from(naive)?)?);
-        let naive = NaiveDate::from_str("2019-12-27")?;
-        assert_eq!(naive,
-            TryInto::<NaiveDate>::try_into(LocalDate::try_from(naive)?)?);
-        let naive = NaiveTime::from_str("01:02:03.123456")?;
-        assert_eq!(naive,
-            TryInto::<NaiveTime>::try_into(LocalTime::try_from(naive)?)?);
+        let mut rng = StdRng::seed_from_u64(2);
+        for iter in 0..10000 {
+            let head = gen_u64(&mut rng);
+            let nulls = rng.gen_range(0, 100);
+            let txt = format!("{0}{1:0<2$}", head, "", nulls);
+            assert_eq!(dec_roundtrip(&txt), B::from_str(&txt)?,
+                       "parsing {}: {}", iter, txt);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn decimal_rand_eplus() -> Result<(), Box<dyn std::error::Error>> {
+        use bigdecimal::BigDecimal as B;
+
+        let mut rng = StdRng::seed_from_u64(3);
+        for iter in 0..10000 {
+            let head = gen_u64(&mut rng);
+            let nulls = rng.gen_range(-100, 100);
+            let txt = format!("{}e{}", head, nulls);
+            assert_eq!(dec_roundtrip(&txt), B::from_str(&txt)?,
+                       "parsing {}: {}", iter, txt);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn decimal_rand_fract_eplus() -> Result<(), Box<dyn std::error::Error>> {
+        use bigdecimal::BigDecimal as B;
+
+        let mut rng = StdRng::seed_from_u64(4);
+        for iter in 0..10000 {
+            let head = gen_i64(&mut rng);
+            let fract = gen_u64(&mut rng);
+            let nulls = rng.gen_range(-100, 100);
+            let txt = format!("{}.{}e{}", head, fract, nulls);
+            let rt = dec_roundtrip(&txt);
+            let dec = B::from_str(&txt)?;
+            assert_eq!(rt, dec,
+                       "parsing {}: {}", iter, txt);
+            if dec.as_bigint_and_exponent().1 > 0 {
+                // check precision
+                // (if scale is negative it's integer, we don't have precision)
+                assert_eq!(rt.as_bigint_and_exponent().1,
+                           dec.as_bigint_and_exponent().1,
+                           "precision: {}", txt);
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn decimal_rand_nulls_eplus() -> Result<(), Box<dyn std::error::Error>> {
+        use bigdecimal::BigDecimal as B;
+
+        let mut rng = StdRng::seed_from_u64(5);
+        for iter in 0..10000 {
+            let head = gen_i64(&mut rng);
+            let nulls1 = rng.gen_range(0, 100);
+            let nulls2 = rng.gen_range(0, 100);
+            let txt = format!("{0}{1:0<2$}e{3}", head, "", nulls1, nulls2);
+            let rt = dec_roundtrip(&txt);
+            let dec = B::from_str(&txt)?;
+            assert_eq!(rt, dec,
+                       "parsing {}: {}", iter, txt);
+            if dec.as_bigint_and_exponent().1 > 0 {
+                // check precision
+                // (if scale is negative it's integer, we don't have precision)
+                assert_eq!(rt.as_bigint_and_exponent().1,
+                           dec.as_bigint_and_exponent().1,
+                           "precision: {}", txt);
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn decimal_rand_decim() -> Result<(), Box<dyn std::error::Error>> {
+        use bigdecimal::BigDecimal as B;
+
+        let mut rng = StdRng::seed_from_u64(6);
+        for iter in 0..10000 {
+            let head = gen_i64(&mut rng);
+            let nulls1 = rng.gen_range(0, 100);
+            let nulls2 = rng.gen_range(0, 100);
+            let decimals = gen_u64(&mut rng);
+            let txt = format!("{0}{1:0<2$}.{1:0<3$}{4}", head,
+                "", nulls1, nulls2, decimals);
+            assert_eq!(dec_roundtrip(&txt), B::from_str(&txt)?,
+                       "parsing {}: {}", iter, txt);
+            assert_eq!(dec_roundtrip(&txt).as_bigint_and_exponent().1,
+                       B::from_str(&txt)?.as_bigint_and_exponent().1,
+                       "precision: {}", txt);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn int_rand_i64() -> Result<(), Box<dyn std::error::Error>> {
+        use num_bigint::BigInt as B;
+
+        let mut rng = StdRng::seed_from_u64(7);
+        for _ in 0..10000 {
+            let head = gen_i64(&mut rng);
+            let txt = format!("{}", head);
+            assert_eq!(int_roundtrip(&txt), B::from_str(&txt)?,
+                       "parsing: {}", txt);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn int_rand_nulls() -> Result<(), Box<dyn std::error::Error>> {
+        use num_bigint::BigInt as B;
+
+        let mut rng = StdRng::seed_from_u64(8);
+        for iter in 0..10000 {
+            let head = gen_i64(&mut rng);
+            let nulls = rng.gen_range(0, 100);
+            let txt = format!("{0}{1:0<2$}", head, "", nulls);
+            assert_eq!(int_roundtrip(&txt), B::from_str(&txt)?,
+                       "parsing {}: {}", iter, txt);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn int_rand_eplus() -> Result<(), Box<dyn std::error::Error>> {
+        use num_bigint::BigInt as B;
+
+        let mut rng = StdRng::seed_from_u64(9);
+        for iter in 0..10000 {
+            let head = gen_i64(&mut rng);
+            let nulls = rng.gen_range(0, 100);
+            let edb = format!("{}e{}", head, nulls);
+            let bigint = format!("{}{1:0<2$}", head, "", nulls);
+            assert_eq!(int_roundtrip(&edb), B::from_str(&bigint)?,
+                       "parsing {}: {}", iter, edb);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn int_rand_nulls_eplus() -> Result<(), Box<dyn std::error::Error>> {
+        use num_bigint::BigInt as B;
+
+        let mut rng = StdRng::seed_from_u64(10);
+        for iter in 0..10000 {
+            let head = gen_i64(&mut rng);
+            let nulls1 = rng.gen_range(0, 100);
+            let nulls2 = rng.gen_range(0, 100);
+            let edb = format!("{0}{1:0<2$}e{3}", head, "", nulls1, nulls2);
+            let bigint = format!("{}{1:0<2$}", head, "", nulls1+nulls2);
+            assert_eq!(int_roundtrip(&edb), B::from_str(&bigint)?,
+                       "parsing {}: {}", iter, edb);
+        }
         Ok(())
     }
 }

@@ -499,6 +499,16 @@ fn decimal() -> Result<(), Box<dyn Error>> {
     encoding_eq!(&codec, b"\0\x05\0\x01\0\0\0\t\x04\xd2\x16.#4\r\x80\x1bX",
         Value::Decimal(
             BigDecimal::from_str("12345678.901234567")?.try_into()?));
+    encoding_eq!(&codec, b"\0\x01\0\x19\0\0\0\0\0\x01",
+        Value::Decimal(BigDecimal::from_str("1e100")?.try_into()?));
+    encoding_eq!(&codec,
+        b"\0\x06\0\x0b@\0\0\0\0\x07\x01P\x1cB\x08\x9e$!\0\xc8",
+        Value::Decimal(BigDecimal::from_str(
+            "-703367234220692490200000000000000000000000000")?.try_into()?));
+    encoding_eq!(&codec,
+        b"\0\x06\0\x0b@\0\0\0\0\x07\x01P\x1cB\x08\x9e$!\0\xc8",
+        Value::Decimal(BigDecimal::from_str(
+            "-7033672342206924902e26")?.try_into()?));
     Ok(())
 }
 

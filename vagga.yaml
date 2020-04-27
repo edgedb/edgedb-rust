@@ -28,6 +28,12 @@ commands:
     container: ubuntu
     run: [cargo, test]
 
+  test-all-types: !Command
+    description: Run tests
+    container: ubuntu
+    work-dir: edgedb-protocol
+    run: [cargo, test, --features=all-types]
+
   test-rust-no-features: !Command
     description: Run tests
     container: ubuntu
@@ -37,7 +43,7 @@ commands:
   test: !Command
     description: Run tests
     container: ubuntu
-    prerequisites: [test-rust, test-rust-no-features]
+    prerequisites: [test-rust, test-all-types, test-rust-no-features]
     run: "echo OK"
 
   _bulk: !Command
