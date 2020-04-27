@@ -21,5 +21,4 @@ jobs:
           cargo test --no-default-features
       - working-directory: ./edgedb-protocol
         run: |
-          cd edgedb-protocol
           cargo test --features=all-types
