@@ -165,8 +165,9 @@ impl From<u64> for BigInt {
     fn from(v: u64) -> BigInt {
         return BigInt {
             negative: false,
-            weight: 3,
+            weight: 4,
             digits: vec![
+                (v / 10000_0000_0000_0000 % 10000) as u16,
                 (v / 10000_0000_0000 % 10000) as u16,
                 (v / 10000_0000 % 10000) as u16,
                 (v / 10000 % 10000) as u16,
@@ -185,8 +186,9 @@ impl From<i64> for BigInt {
         };
         return BigInt {
             negative,
-            weight: 3,
+            weight: 4,
             digits: vec![
+                (abs / 10000_0000_0000_0000 % 10000) as u16,
                 (abs / 10000_0000_0000 % 10000) as u16,
                 (abs / 10000_0000 % 10000) as u16,
                 (abs / 10000 % 10000) as u16,
@@ -200,8 +202,12 @@ impl From<u32> for BigInt {
     fn from(v: u32) -> BigInt {
         return BigInt {
             negative: false,
-            weight: 1,
-            digits: vec![(v / 10000) as u16, (v % 10000) as u16],
+            weight: 2,
+            digits: vec![
+                (v / 10000_0000) as u16,
+                (v / 10000 % 10000) as u16,
+                (v % 10000) as u16,
+            ],
         }.normalize();
     }
 }
@@ -215,8 +221,12 @@ impl From<i32> for BigInt {
         };
         return BigInt {
             negative,
-            weight: 1,
-            digits: vec![(abs / 10000) as u16, (abs % 10000) as u16],
+            weight: 2,
+            digits: vec![
+                (abs / 10000_0000) as u16,
+                (abs / 10000 % 10000) as u16,
+                (abs % 10000) as u16,
+            ],
         }.normalize();
     }
 }
@@ -558,6 +568,8 @@ mod test {
         assert_eq!(&BigInt::from(30000u32).digits, &[3]);
         assert_eq!(BigInt::from(30001u32).weight, 1);
         assert_eq!(&BigInt::from(30001u32).digits, &[3, 1]);
+        assert_eq!(BigInt::from(u32::MAX).weight, 2);
+        assert_eq!(BigInt::from(u32::MAX).digits, &[42, 9496, 7295]);
 
         assert_eq!(BigInt::from(125i32).weight, 0);
         assert_eq!(&BigInt::from(125i32).digits, &[125]);
@@ -565,6 +577,8 @@ mod test {
         assert_eq!(&BigInt::from(30000i32).digits, &[3]);
         assert_eq!(BigInt::from(30001i32).weight, 1);
         assert_eq!(&BigInt::from(30001i32).digits, &[3, 1]);
+        assert_eq!(BigInt::from(i32::MAX).weight, 2);
+        assert_eq!(BigInt::from(i32::MAX).digits, &[21, 4748, 3647]);
 
         assert_eq!(BigInt::from(-125i32).weight, 0);
         assert_eq!(&BigInt::from(-125i32).digits, &[125]);
@@ -572,6 +586,8 @@ mod test {
         assert_eq!(&BigInt::from(-30000i32).digits, &[3]);
         assert_eq!(BigInt::from(-30001i32).weight, 1);
         assert_eq!(&BigInt::from(-30001i32).digits, &[3, 1]);
+        assert_eq!(BigInt::from(i32::MIN).weight, 2);
+        assert_eq!(BigInt::from(i32::MIN).digits, &[21, 4748, 3648]);
 
         assert_eq!(BigInt::from(125u64).weight, 0);
         assert_eq!(&BigInt::from(125u64).digits, &[125]);
@@ -579,6 +595,11 @@ mod test {
         assert_eq!(&BigInt::from(30000u64).digits, &[3]);
         assert_eq!(BigInt::from(30001u64).weight, 1);
         assert_eq!(&BigInt::from(30001u64).digits, &[3, 1]);
+        assert_eq!(BigInt::from(u64::MAX).weight, 4);
+        assert_eq!(
+            BigInt::from(u64::MAX).digits,
+            &[1844, 6744, 0737, 0955, 1615]
+        );
 
         assert_eq!(BigInt::from(125i64).weight, 0);
         assert_eq!(&BigInt::from(125i64).digits, &[125]);
@@ -586,6 +607,11 @@ mod test {
         assert_eq!(&BigInt::from(30000i64).digits, &[3]);
         assert_eq!(BigInt::from(30001i64).weight, 1);
         assert_eq!(&BigInt::from(30001i64).digits, &[3, 1]);
+        assert_eq!(BigInt::from(i64::MAX).weight, 4);
+        assert_eq!(
+            BigInt::from(i64::MAX).digits,
+            &[922, 3372, 0368, 5477, 5807]
+        );
 
         assert_eq!(BigInt::from(-125i64).weight, 0);
         assert_eq!(&BigInt::from(-125i64).digits, &[125]);
@@ -593,6 +619,11 @@ mod test {
         assert_eq!(&BigInt::from(-30000i64).digits, &[3]);
         assert_eq!(BigInt::from(-30001i64).weight, 1);
         assert_eq!(&BigInt::from(-30001i64).digits, &[3, 1]);
+        assert_eq!(BigInt::from(i64::MIN).weight, 4);
+        assert_eq!(
+            BigInt::from(i64::MIN).digits,
+            &[922, 3372, 0368, 5477, 5808]
+        );
     }
 
     #[test]
