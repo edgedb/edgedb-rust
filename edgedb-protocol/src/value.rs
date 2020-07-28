@@ -580,6 +580,24 @@ impl From<chrono::naive::NaiveTime> for LocalTime {
 }
 
 #[cfg(test)]
+#[allow(dead_code)] // used by optional tests
+pub(self) mod test_helpers{
+    use rand::Rng;
+
+    pub fn gen_u64<T: Rng>(rng: &mut T) -> u64 {
+        // change distribution to generate different length more frequently
+        let max = 10_u64.pow(rng.gen_range(0, 20));
+        return rng.gen_range(0, max);
+    }
+
+    pub fn gen_i64<T: Rng>(rng: &mut T) -> i64 {
+        // change distribution to generate different length more frequently
+        let max = 10_i64.pow(rng.gen_range(0, 19));
+        return rng.gen_range(-max, max);
+    }
+}
+
+#[cfg(test)]
 #[allow(unused_imports)]  // because of optional tests
 mod test {
     use std::str::FromStr;
@@ -670,6 +688,16 @@ mod test {
     }
 
     #[test]
+    fn display_rand() {
+        use rand::{Rng, SeedableRng, rngs::StdRng};
+        let mut rng = StdRng::seed_from_u64(4);
+        for _ in 0..1000 {
+            let i = super::test_helpers::gen_i64(&mut rng);
+            assert_eq!(BigInt::from(i).to_string(), i.to_string());
+        }
+    }
+
+    #[test]
     fn big_duration_abs() {
         use super::Duration as Src;
         use std::time::Duration as Trg;
@@ -709,17 +737,7 @@ mod decimal {
     use bigdecimal::BigDecimal;
     use num_bigint::ToBigInt;
     use super::{Decimal, BigInt};
-
-    fn gen_u64<T: Rng>(rng: &mut T) -> u64 {
-        // change distribution to generate different length more frequently
-        let max = 10_u64.pow(rng.gen_range(0, 20));
-        return rng.gen_range(0, max);
-    }
-    fn gen_i64<T: Rng>(rng: &mut T) -> i64 {
-        // change distribution to generate different length more frequently
-        let max = 10_i64.pow(rng.gen_range(0, 19));
-        return rng.gen_range(-max, max);
-    }
+    use super::test_helpers::{gen_u64, gen_i64};
 
     #[test]
     fn big_big_int_conversion() -> Result<(), Box<dyn std::error::Error>> {
