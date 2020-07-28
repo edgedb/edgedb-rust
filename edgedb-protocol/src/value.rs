@@ -159,6 +159,32 @@ impl BigInt {
         }
         return self
     }
+
+    fn trailing_zero_groups(&self) -> i16 {
+        self.weight - self.digits.len() as i16 + 1
+    }
+}
+
+impl std::fmt::Display for BigInt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.negative {
+            write!(f, "-")?;
+        }
+        if let Some(digit) = self.digits.first() {
+            write!(f, "{}", digit)?;
+            for digit in &mut self.digits.iter().skip(1) {
+                write!(f, "{:04}", digit)?;
+            }
+            let trailing_zero_groups = self.trailing_zero_groups();
+            debug_assert!(trailing_zero_groups >= 0);
+            for _ in 0..trailing_zero_groups {
+                write!(f, "0000")?;
+            }
+        } else {
+            write!(f, "0")?;
+        }
+        Ok(())
+    }
 }
 
 impl From<u64> for BigInt {
@@ -624,6 +650,23 @@ mod test {
             BigInt::from(i64::MIN).digits,
             &[922, 3372, 0368, 5477, 5808]
         );
+    }
+
+    #[test]
+    fn display() {
+        let cases = [
+            0,
+            1,
+            -1,
+            1_0000,
+            -1_0000,
+            1_2345_6789,
+            i64::MAX,
+            i64::MIN,
+        ];
+        for i in cases.iter() {
+            assert_eq!(BigInt::from(*i).to_string(), i.to_string());
+        }
     }
 
     #[test]
