@@ -60,7 +60,7 @@ pub struct Connection {
     dirty: bool,
 }
 
-pub(crate) struct Sequence<'a> {
+pub struct Sequence<'a> {
     pub writer: Writer<'a>,
     pub reader: Reader<'a>,
     dirty: &'a mut bool,
@@ -357,7 +357,7 @@ impl Connection {
             Ok(msg) => anyhow::bail!("unsolicited message {:?}", msg),
         }
     }
-    pub(crate) async fn start_sequence<'x>(&'x mut self)
+    pub async fn start_sequence<'x>(&'x mut self)
         -> anyhow::Result<Sequence<'x>>
     {
         if self.dirty {
