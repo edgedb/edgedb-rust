@@ -449,7 +449,7 @@ impl LocalDatetime {
 
 impl LocalTime {
     pub fn from_micros(micros: u64) -> LocalTime {
-        assert!(micros < 86400*1000_0000);
+        assert!(micros < 86400*1000_000);
         return LocalTime { micros: micros as i64  }
     }
 }
