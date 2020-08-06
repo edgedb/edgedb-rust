@@ -1,6 +1,7 @@
 use std::str;
+use std::error::Error;
 
-use snafu::{Snafu, Backtrace};
+use snafu::{Snafu, Backtrace, IntoError};
 use uuid;
 
 use crate::value::Value;
@@ -56,6 +57,8 @@ pub enum DecodeError {
     TooManyDescriptors { backtrace: Backtrace, index: usize },
     #[snafu(display("uuid {} not found", uuid))]
     UuidNotFound { backtrace: Backtrace, uuid: uuid::Uuid },
+    #[snafu(display("error decoding value"))]
+    DecodeValue { backtrace: Backtrace, source: Box<dyn Error + Send + Sync> }
 }
 
 #[derive(Snafu, Debug)]
@@ -115,4 +118,8 @@ pub enum CodecError {
 pub fn invalid_value(codec: &'static str, value: &Value) -> EncodeError
 {
     InvalidValue { codec, value_type: value.kind() }.fail::<()>().unwrap_err()
+}
+
+pub fn decode_error<E: Error + Send + Sync + 'static>(e: E) -> DecodeError {
+    DecodeValue.into_error(Box::new(e))
 }

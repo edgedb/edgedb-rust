@@ -1,0 +1,58 @@
+use syn::punctuated::Punctuated;
+use syn::parse::{Parse, ParseStream};
+
+#[derive(Debug)]
+enum FieldAttr {
+    Json,
+}
+
+struct AttrList(pub Punctuated<FieldAttr, syn::Token![,]>);
+
+pub struct FieldAttrs {
+    pub json: bool,
+}
+
+mod kw {
+    syn::custom_keyword!(json);
+}
+
+impl Parse for FieldAttr {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let lookahead = input.lookahead1();
+        if lookahead.peek(kw::json) {
+            let _ident: syn::Ident = input.parse()?;
+            Ok(FieldAttr::Json)
+        } else {
+            Err(lookahead.error())
+        }
+    }
+}
+impl Parse for AttrList {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        Punctuated::parse_terminated(input).map(AttrList)
+    }
+}
+
+impl FieldAttrs {
+    fn default() -> FieldAttrs{
+        FieldAttrs {
+            json: false,
+        }
+    }
+    pub fn from_syn(attrs: &[syn::Attribute]) -> syn::Result<FieldAttrs> {
+        let mut res = FieldAttrs::default();
+        for attr in attrs {
+            if matches!(attr.style, syn::AttrStyle::Outer) &&
+                attr.path.is_ident("edgedb")
+            {
+                let chunk: AttrList = attr.parse_args()?;
+                for item in chunk.0 {
+                    match item {
+                        FieldAttr::Json => res.json = true,
+                    }
+                }
+            }
+        }
+        Ok(res)
+    }
+}

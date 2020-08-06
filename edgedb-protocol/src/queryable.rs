@@ -8,6 +8,7 @@ use crate::errors::{self, DecodeError};
 use crate::codec::raw::RawCodec;
 use crate::codec;
 use crate::descriptors::{Descriptor, TypePos};
+use crate::json::Json;
 
 
 #[derive(Snafu, Debug)]
@@ -98,6 +99,28 @@ impl Queryable for String {
             _ => {}
         }
         Err(ctx.wrong_type(desc, "str"))
+    }
+}
+
+impl Queryable for Json {
+    fn decode_raw(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+        RawCodec::decode_raw(buf)
+    }
+    fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
+        -> Result<(), DescriptorMismatch>
+    {
+        use crate::descriptors::Descriptor::{Scalar, BaseScalar};
+        let desc = ctx.get(type_pos)?;
+        match desc {
+            Scalar(scalar) => {
+                return Self::check_descriptor(ctx, scalar.base_type_pos);
+            }
+            BaseScalar(base) if base.id == codec::STD_JSON => {
+                return Ok(());
+            }
+            _ => {}
+        }
+        Err(ctx.wrong_type(desc, "json"))
     }
 }
 
