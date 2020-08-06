@@ -1,5 +1,8 @@
-error: expected `struct`
+error: can only derive Queryable for a struct in non-JSON mode
  --> $DIR/enum.rs:4:1
   |
-4 | enum MyEnum {
-  | ^^^^
+4 | / enum MyEnum {
+5 | |     SomeValue,
+6 | |     Option2,
+7 | | }
+  | |_^
