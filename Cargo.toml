@@ -2,6 +2,7 @@
 members = [
     "edgedb-derive",
     "edgedb-protocol",
+    "edgedb-client"
 ]
 
 [profile.release]

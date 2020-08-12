@@ -1,0 +1,25 @@
+[package]
+name = "edgedb-client"
+license = "MIT/Apache-2.0"
+version = "0.1.0"
+authors = ["MagicStack Inc. <hello@magic.io>"]
+edition = "2018"
+
+[dependencies]
+edgedb-protocol = {path = "../edgedb-protocol"}
+snafu = {version="0.6.0", features=["backtraces"]}
+anyhow = "1.0.23"
+async-std = {version="1.6.*", features=[
+    # we need stdin/stdout and channel
+    "unstable",
+]}
+async-listen = "0.2.0"
+bytes = "0.5.3"
+scram = "0.5.0"
+typemap = "0.3.3"
+serde = "1.0"
+serde_json = "1.0"
+thiserror = "1.0.16"
+log = "0.4.8"
+whoami = "0.6.0"
+humantime-serde = "1.0.0"
