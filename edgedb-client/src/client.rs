@@ -646,6 +646,37 @@ impl Connection {
         }
     }
 
+    pub async fn query_row<R>(&mut self, request: &str, arguments: &Value)
+        -> anyhow::Result<R>
+        where R: Queryable,
+    {
+        let mut query = self.query(request, arguments).await?;
+        if let Some(result) = query.next().await.transpose()? {
+            if let Some(_) = query.next().await.transpose()? {
+                query.skip_remaining().await?;
+                anyhow::bail!("extra row returned for query_row");
+            }
+            Ok(result)
+        } else {
+            anyhow::bail!("no results returned")
+        }
+    }
+
+    pub async fn query_row_opt<R>(&mut self, request: &str, arguments: &Value)
+        -> anyhow::Result<Option<R>>
+        where R: Queryable,
+    {
+        let mut query = self.query(request, arguments).await?;
+        if let Some(result) = query.next().await.transpose()? {
+            if let Some(_) = query.next().await.transpose()? {
+                anyhow::bail!("extra row returned for query_row");
+            }
+            Ok(Some(result))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub async fn query_json(&mut self, request: &str, arguments: &Value)
         -> anyhow::Result<QueryResponse<'_, QueryableDecoder<String>>>
     {
@@ -706,16 +737,11 @@ impl Connection {
     }
 
     pub async fn get_version(&mut self) -> Result<String, anyhow::Error> {
-        let mut q = self.query::<String>(
+        self.query_row(
             "SELECT sys::get_version_as_str()",
             &Value::empty_tuple(),
-        ).await?;
-        let mut fetched_version = None;
-        while let Some(ver) = q.next().await.transpose()? {
-            fetched_version = Some(ver);
-        }
-        return fetched_version
-            .ok_or_else(|| anyhow::anyhow!("Can't fetch version"));
+        ).await
+        .context("cannot fetch database version")
     }
 }
 
