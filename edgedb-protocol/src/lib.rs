@@ -8,3 +8,4 @@ pub mod descriptors;
 pub mod value;
 pub mod codec;
 pub mod queryable;
+pub mod json;

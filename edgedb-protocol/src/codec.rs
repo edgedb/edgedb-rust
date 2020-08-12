@@ -15,6 +15,7 @@ use snafu::{ensure, OptionExt, ResultExt};
 use crate::descriptors::{self, Descriptor, TypePos};
 use crate::errors::{self, CodecError, DecodeError, EncodeError};
 use crate::value::{self, Value};
+use crate::json;
 
 pub mod raw;
 
@@ -933,14 +934,8 @@ impl Codec for LocalTime {
 
 impl Codec for Json {
     fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 1, errors::Underflow);
-        let format = buf.get_u8();
-        ensure!(format == 1, errors::InvalidJsonFormat);
-        let val = str::from_utf8(&buf.bytes())
-            .context(errors::InvalidUtf8)?
-            .to_owned();
-        buf.advance(val.len());
-        Ok(Value::Json(val))
+        let json: json::Json = raw::RawCodec::decode_raw(buf)?;
+        Ok(Value::Json(json.into()))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>

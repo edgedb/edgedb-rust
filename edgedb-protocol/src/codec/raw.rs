@@ -5,6 +5,7 @@ use bytes::{Bytes, Buf};
 use uuid::Uuid;
 
 use crate::errors::{self, DecodeError};
+use crate::json::Json;
 use snafu::{ResultExt, ensure};
 
 
@@ -19,6 +20,19 @@ impl RawCodec for String {
             .to_owned();
         buf.advance(buf.bytes().len());
         Ok(val)
+    }
+}
+
+impl RawCodec for Json {
+    fn decode_raw(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+        ensure!(buf.remaining() >= 1, errors::Underflow);
+        let format = buf.get_u8();
+        ensure!(format == 1, errors::InvalidJsonFormat);
+        let val = str::from_utf8(&buf.bytes())
+            .context(errors::InvalidUtf8)?
+            .to_owned();
+        buf.advance(val.len());
+        Ok(Json(val))
     }
 }
 

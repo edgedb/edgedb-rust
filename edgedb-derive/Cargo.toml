@@ -7,8 +7,15 @@ edition = "2018"
 
 [dependencies]
 syn = {version="1.0", features=["full"]}
+proc-macro2 = "1.0.19"
 quote = "1.0"
 trybuild = "1.0.19"
+
+[dev-dependencies]
+bytes = "0.5.3"
+edgedb-protocol = {path="../edgedb-protocol"}
+serde = "1.0"
+serde_json = "1.0"
 
 [lib]
 proc-macro = true

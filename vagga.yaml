@@ -118,15 +118,14 @@ containers:
       - postgresql-client
 
     - !TarInstall
-      url: "https://static.rust-lang.org/dist/rust-1.41.0-x86_64-unknown-linux-gnu.tar.gz"
+      url: "https://static.rust-lang.org/dist/rust-1.45.0-x86_64-unknown-linux-gnu.tar.gz"
       script: "./install.sh --prefix=/usr \
                 --components=rustc,rust-std-x86_64-unknown-linux-gnu,cargo"
     - !TarInstall
-      url: "https://static.rust-lang.org/dist/rust-std-1.41.0-x86_64-unknown-linux-musl.tar.gz"
+      url: "https://static.rust-lang.org/dist/rust-std-1.45.0-x86_64-unknown-linux-musl.tar.gz"
       script: "./install.sh --prefix=/musl \
                --components=rust-std-x86_64-unknown-linux-musl"
     - !Env RUSTFLAGS: -g
-    - !Sh 'cargo install cargo-tree cargo-fuzz cargo-outdated --root=/usr'
     - !Sh 'ln -s /musl/lib/rustlib/x86_64-unknown-linux-musl /usr/lib/rustlib/x86_64-unknown-linux-musl'
     - &bulk !Tar
       url: "https://github.com/tailhook/bulk/releases/download/v0.4.10/bulk-v0.4.10.tar.gz"
