@@ -1,6 +1,3 @@
-#[allow(unused_imports)]
-use crate::value::OutOfRange;
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct Duration {
     pub(crate) micros: i64,
@@ -68,7 +65,30 @@ impl LocalDate {
     }
 }
 
-#[cfg(feature="chrono")]
+#[cfg(test)]
+mod test {
+    #[test]
+    fn big_duration_abs() {
+        use super::Duration as Src;
+        use std::time::Duration as Trg;
+        assert_eq!(Src { micros: -1 }.abs_duration(), Trg::new(0, 1000));
+        assert_eq!(Src { micros: -1000 }.abs_duration(), Trg::new(0, 1000000));
+        assert_eq!(Src { micros: -1000000 }.abs_duration(), Trg::new(1, 0));
+        assert_eq!(
+            Src {
+                micros: i64::min_value()
+            }
+            .abs_duration(),
+            Trg::new(9223372036854, 775808000)
+        );
+    }
+}
+
+#[cfg(feature = "chrono")]
+mod chrono_interop {
+use super::{LocalDate, LocalDatetime, LocalTime};
+use crate::value::OutOfRange;
+
 impl std::convert::TryInto<chrono::naive::NaiveDateTime> for &LocalDatetime {
     type Error = OutOfRange;
     fn try_into(self) -> Result<chrono::naive::NaiveDateTime, Self::Error> {
@@ -78,7 +98,6 @@ impl std::convert::TryInto<chrono::naive::NaiveDateTime> for &LocalDatetime {
     }
 }
 
-#[cfg(feature="chrono")]
 impl std::convert::TryFrom<&chrono::naive::NaiveDateTime> for LocalDatetime {
     type Error = OutOfRange;
     fn try_from(d: &chrono::naive::NaiveDateTime)
@@ -94,7 +113,6 @@ impl std::convert::TryFrom<&chrono::naive::NaiveDateTime> for LocalDatetime {
     }
 }
 
-#[cfg(feature="chrono")]
 impl std::convert::TryFrom<&chrono::naive::NaiveDate> for LocalDate {
     type Error = OutOfRange;
     fn try_from(d: &chrono::naive::NaiveDate) -> Result<LocalDate, Self::Error>
@@ -107,8 +125,6 @@ impl std::convert::TryFrom<&chrono::naive::NaiveDate> for LocalDate {
     }
 }
 
-
-#[cfg(feature="chrono")]
 impl std::convert::TryInto<chrono::naive::NaiveDate> for &LocalDate {
     type Error = OutOfRange;
     fn try_into(self) -> Result<chrono::naive::NaiveDate, Self::Error> {
@@ -118,7 +134,6 @@ impl std::convert::TryInto<chrono::naive::NaiveDate> for &LocalDate {
     }
 }
 
-#[cfg(feature="chrono")]
 impl Into<chrono::naive::NaiveTime> for &LocalTime {
     fn into(self) -> chrono::naive::NaiveTime {
         chrono::naive::NaiveTime::from_num_seconds_from_midnight(
@@ -127,7 +142,6 @@ impl Into<chrono::naive::NaiveTime> for &LocalTime {
     }
 }
 
-#[cfg(feature="chrono")]
 impl From<&chrono::naive::NaiveTime> for LocalTime {
     fn from(time: &chrono::naive::NaiveTime) -> LocalTime {
         let sec = chrono::Timelike::num_seconds_from_midnight(time);
@@ -138,7 +152,6 @@ impl From<&chrono::naive::NaiveTime> for LocalTime {
     }
 }
 
-#[cfg(feature="chrono")]
 impl std::convert::TryInto<chrono::naive::NaiveDateTime> for LocalDatetime {
     type Error = OutOfRange;
     fn try_into(self) -> Result<chrono::naive::NaiveDateTime, Self::Error> {
@@ -146,7 +159,6 @@ impl std::convert::TryInto<chrono::naive::NaiveDateTime> for LocalDatetime {
     }
 }
 
-#[cfg(feature="chrono")]
 impl std::convert::TryInto<chrono::naive::NaiveDate> for LocalDate {
     type Error = OutOfRange;
     fn try_into(self) -> Result<chrono::naive::NaiveDate, Self::Error> {
@@ -154,7 +166,6 @@ impl std::convert::TryInto<chrono::naive::NaiveDate> for LocalDate {
     }
 }
 
-#[cfg(feature="chrono")]
 impl std::convert::TryFrom<chrono::naive::NaiveDate> for LocalDate {
     type Error = OutOfRange;
     fn try_from(d: chrono::naive::NaiveDate) -> Result<LocalDate, Self::Error>
@@ -163,14 +174,12 @@ impl std::convert::TryFrom<chrono::naive::NaiveDate> for LocalDate {
     }
 }
 
-#[cfg(feature="chrono")]
 impl Into<chrono::naive::NaiveTime> for LocalTime {
     fn into(self) -> chrono::naive::NaiveTime {
         (&self).into()
     }
 }
 
-#[cfg(feature="chrono")]
 impl std::convert::TryFrom<chrono::naive::NaiveDateTime> for LocalDatetime {
     type Error = OutOfRange;
     fn try_from(d: chrono::naive::NaiveDateTime)
@@ -180,7 +189,6 @@ impl std::convert::TryFrom<chrono::naive::NaiveDateTime> for LocalDatetime {
     }
 }
 
-#[cfg(feature="chrono")]
 impl From<chrono::naive::NaiveTime> for LocalTime {
     fn from(time: chrono::naive::NaiveTime) -> LocalTime {
         From::from(&time)
@@ -188,29 +196,13 @@ impl From<chrono::naive::NaiveTime> for LocalTime {
 }
 
 #[cfg(test)]
-#[allow(unused_imports)]  // because of optional tests
 mod test {
+    use super::*;
+    use std::convert::{TryFrom, TryInto};
     use std::str::FromStr;
-    use std::convert::TryFrom;
 
     #[test]
-    fn big_duration_abs() {
-        use super::Duration as Src;
-        use std::time::Duration as Trg;
-        assert_eq!(Src { micros: -1 }.abs_duration(), Trg::new(0, 1000));
-        assert_eq!(Src { micros: -1000 }.abs_duration(), Trg::new(0, 1000000));
-        assert_eq!(Src { micros: -1000000 }.abs_duration(), Trg::new(1, 0));
-        assert_eq!(Src { micros: i64::min_value() }.abs_duration(),
-                   Trg::new(9223372036854, 775808000));
-    }
-
-    #[test]
-    #[cfg(feature="chrono")]
     fn chrono_roundtrips() -> Result<(), Box<dyn std::error::Error>> {
-        use std::convert::TryInto;
-        use super::{LocalDatetime, LocalDate, LocalTime};
-        use chrono::naive::{NaiveDateTime, NaiveDate, NaiveTime};
-
         let naive = NaiveDateTime::from_str("2019-12-27T01:02:03.123456")?;
         assert_eq!(naive,
             TryInto::<NaiveDateTime>::try_into(
@@ -223,4 +215,5 @@ mod test {
             TryInto::<NaiveTime>::try_into(LocalTime::try_from(naive)?)?);
         Ok(())
     }
+}
 }
