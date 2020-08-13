@@ -3,9 +3,10 @@ use std::fmt;
 use std::io;
 use std::str;
 use std::time::{Instant, Duration};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{self, Context};
+use async_std::fs;
 use async_std::net::{TcpStream, ToSocketAddrs};
 use async_std::task::sleep;
 use async_listen::ByteStream;
@@ -20,6 +21,7 @@ use edgedb_protocol::server_message::{TransactionState};
 
 use crate::server_params::PostgresAddress;
 use crate::client::{Connection, Sequence};
+use crate::credentials::Credentials;
 use crate::errors::PasswordRequired;
 
 #[derive(Debug, Clone)]
@@ -38,6 +40,30 @@ pub struct Builder {
 }
 
 impl Builder {
+    pub fn from_credentials(credentials: &Credentials) -> Builder {
+        Builder {
+            addr: Addr::Tcp(
+                credentials.host.clone().unwrap_or_else(|| "127.0.0.1".into()),
+                credentials.port),
+            user: Some(credentials.user.clone()),
+            password: credentials.password.clone(),
+            database: credentials.database.clone(),
+            wait: None,
+        }
+    }
+    pub async fn read_credentials(path: impl AsRef<Path>)
+        -> anyhow::Result<Builder>
+    {
+        let path = path.as_ref();
+        let res: anyhow::Result<Builder> = async {
+            let data = fs::read(path).await?;
+            let creds = serde_json::from_slice(&data)?;
+            Ok(Builder::from_credentials(&creds))
+        }.await;
+        Ok(res.with_context(|| {
+                format!("cannot read credentials file {}", path.display())
+        })?)
+    }
     pub fn new() -> Builder {
         Builder {
             addr: Addr::Tcp("127.0.0.1".into(), 5656),
@@ -329,4 +355,14 @@ async fn scram(seq: &mut Sequence<'_>, user: &str, password: &str)
         };
     }
     Ok(())
+}
+
+#[test]
+fn read_credentials() {
+    let bld = async_std::task::block_on(
+        Builder::read_credentials("tests/credentials1.json")).unwrap();
+    assert!(matches!(bld.addr, Addr::Tcp(_, x) if x == 10702));
+    assert_eq!(bld.user, Some("test3n".into()));
+    assert_eq!(bld.database, Some("test3n".into()));
+    assert_eq!(bld.password, Some("lZTBy1RVCfOpBAOwSCwIyBIR".into()));
 }
