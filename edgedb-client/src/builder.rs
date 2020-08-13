@@ -83,6 +83,9 @@ impl Builder {
         self.addr = Addr::Tcp(addr.into(), port);
         self
     }
+    pub fn get_user(&self) -> Option<&str> {
+        self.user.as_ref().map(|s| &s[..])
+    }
     pub fn user(&mut self, user: impl Into<String>) -> &mut Self {
         self.user = Some(user.into());
         self
@@ -94,6 +97,9 @@ impl Builder {
     pub fn database(&mut self, database: impl Into<String>) -> &mut Self {
         self.database = Some(database.into());
         self
+    }
+    pub fn get_database(&self) -> Option<&str> {
+        self.database.as_ref().map(|s| &s[..])
     }
     pub fn get_effective_database(&self) -> String {
         self.database.as_ref().or(self.user.as_ref())
