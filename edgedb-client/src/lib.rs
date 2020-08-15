@@ -1,4 +1,4 @@
-mod builder;
+pub mod builder;
 pub mod errors;
 pub mod reader;
 pub mod client;
