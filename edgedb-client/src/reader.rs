@@ -193,7 +193,12 @@ impl<D> Stream for QueryResponse<'_, D>
             ref mut seq,
             ref decoder,
         } = *self;
-        let seq = seq.as_mut().expect("poll after end of stream");
+        let seq = match seq.as_mut() {
+            Some(v) => v,
+            None => {
+                return Poll::Ready(None);
+            }
+        };
         while buffer.len() == 0 {
             match seq.reader.poll_message(cx) {
                 Poll::Ready(Ok(ServerMessage::Data(data))) if error.is_none()
