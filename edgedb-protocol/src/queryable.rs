@@ -1,14 +1,11 @@
-use std::io::Cursor;
-
-use bytes::{Bytes, Buf};
-use snafu::{Snafu, ensure};
+use snafu::Snafu;
 use uuid::Uuid;
 
-use crate::errors::{self, DecodeError};
-use crate::codec::raw::RawCodec;
+use crate::errors::DecodeError;
 use crate::codec;
 use crate::descriptors::{Descriptor, TypePos};
 use crate::json::Json;
+use crate::serialization::Reader;
 
 
 #[derive(Snafu, Debug)]
@@ -31,12 +28,12 @@ pub struct DescriptorContext<'a> {
 }
 
 pub trait Queryable: Sized {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
-        let result = Queryable::decode_raw(buf)?;
-        ensure!(buf.bytes().len() == 0, errors::ExtraData);
+    fn decode(mut buf: Reader) -> Result<Self, DecodeError> {
+        let result = Queryable::decode_raw(&mut buf)?;
+        buf.complete()?;
         Ok(result)
     }
-    fn decode_raw(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError>;
+    fn decode_raw(buf: &mut Reader) -> Result<Self, DecodeError>;
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
         -> Result<(), DescriptorMismatch>;
 }
@@ -81,8 +78,8 @@ impl DescriptorContext<'_> {
 }
 
 impl Queryable for String {
-    fn decode_raw(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
-        RawCodec::decode_raw(buf)
+    fn decode_raw(buf: &mut Reader) -> Result<Self, DecodeError> {
+        buf.decode_raw()
     }
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
         -> Result<(), DescriptorMismatch>
@@ -103,8 +100,8 @@ impl Queryable for String {
 }
 
 impl Queryable for Json {
-    fn decode_raw(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
-        RawCodec::decode_raw(buf)
+    fn decode_raw(buf: &mut Reader) -> Result<Self, DecodeError> {
+        buf.decode_raw()
     }
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
         -> Result<(), DescriptorMismatch>
@@ -125,8 +122,8 @@ impl Queryable for Json {
 }
 
 impl Queryable for i64 {
-    fn decode_raw(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
-        RawCodec::decode_raw(buf)
+    fn decode_raw(buf: &mut Reader) -> Result<Self, DecodeError> {
+        buf.decode_raw()
     }
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
         -> Result<(), DescriptorMismatch>
@@ -147,8 +144,8 @@ impl Queryable for i64 {
 }
 
 impl Queryable for Uuid {
-    fn decode_raw(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
-        RawCodec::decode_raw(buf)
+    fn decode_raw(buf: &mut Reader) -> Result<Self, DecodeError> {
+        buf.decode_raw()
     }
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
         -> Result<(), DescriptorMismatch>
@@ -169,8 +166,8 @@ impl Queryable for Uuid {
 }
 
 impl Queryable for bool {
-    fn decode_raw(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
-        RawCodec::decode_raw(buf)
+    fn decode_raw(buf: &mut Reader) -> Result<Self, DecodeError> {
+        buf.decode_raw()
     }
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
         -> Result<(), DescriptorMismatch>

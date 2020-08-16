@@ -45,30 +45,14 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
         None
     } else {
         Some(quote! {
-            if ::bytes::buf::Buf::remaining(buf) < 8 {
-                return ::edgedb_protocol::errors::Underflow.fail();
-            }
-            let _reserved = ::bytes::buf::Buf::get_i32(buf);
-            let len = ::bytes::buf::Buf::get_u32(buf) as usize;
-            if ::bytes::buf::Buf::remaining(buf) < len {
-                return ::edgedb_protocol::errors::Underflow.fail();
-            }
-            ::bytes::buf::Buf::advance(buf, len);
+            reader.read_object_element()?;
         })
     };
     let id_block = if has_id {
         None
     } else {
         Some(quote! {
-            if ::bytes::buf::Buf::remaining(buf) < 8 {
-                return ::edgedb_protocol::errors::Underflow.fail();
-            }
-            let _reserved = ::bytes::buf::Buf::get_i32(buf);
-            let len = ::bytes::buf::Buf::get_u32(buf) as usize;
-            if ::bytes::buf::Buf::remaining(buf) < len {
-                return ::edgedb_protocol::errors::Underflow.fail();
-            }
-            ::bytes::buf::Buf::advance(buf, len);
+            reader.read_object_element()?;
         })
     };
     let type_id_check = if has_type_id {
@@ -91,37 +75,18 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
         })
     };
     let field_decoders = fields.iter().map(|field| {
-        let mut result = quote!{
-            if ::bytes::buf::Buf::remaining(buf) < 8 {
-                return ::edgedb_protocol::errors::Underflow.fail();
-            }
-            let _reserved = ::bytes::buf::Buf::get_i32(buf);
-            let len = ::bytes::buf::Buf::get_u32(buf) as usize;
-            if ::bytes::buf::Buf::remaining(buf) < len {
-                return ::edgedb_protocol::errors::Underflow.fail();
-            }
-            let off = ::std::io::Cursor::position(buf) as usize;
-            let mut chunk = ::std::io::Cursor::new(
-                buf.get_ref().slice(off..off + len));
-            ::bytes::buf::Buf::advance(buf, len);
-        };
         let ref fieldname = field.name;
         if field.attrs.json {
-            result.extend(quote!{
-                let #fieldname: ::edgedb_protocol::json::Json =
-                    ::edgedb_protocol::queryable::Queryable::decode(
-                        &mut chunk)?;
+            quote!{
+                let #fieldname: ::edgedb_protocol::json::Json = reader.get_object_element()?;
                 let #fieldname = ::serde_json::from_str(#fieldname.as_ref())
                     .map_err(::edgedb_protocol::errors::decode_error)?;
-            });
+            }
         } else {
-            result.extend(quote!{
-                let #fieldname =
-                    ::edgedb_protocol::queryable::Queryable::decode(
-                        &mut chunk)?;
-            });
+            quote!{
+                let #fieldname = reader.get_object_element()?;
+            }
         }
-        result
     }).collect::<TokenStream>();
     let field_checks = fields.iter().enumerate().map(|(idx, field)| {
         let idx = idx + implicit_fields;
@@ -151,13 +116,10 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
     let expanded = quote! {
         impl #impl_generics ::edgedb_protocol::queryable::Queryable
             for #name #ty_generics {
-            fn decode_raw(buf: &mut ::std::io::Cursor<::bytes::Bytes>)
+            fn decode_raw(reader: &mut ::edgedb_protocol::serialization::Reader)
                 -> Result<Self, ::edgedb_protocol::errors::DecodeError>
             {
-                if ::bytes::buf::Buf::remaining(buf) < 4 {
-                    return ::edgedb_protocol::errors::Underflow.fail();
-                }
-                let size = ::bytes::buf::Buf::get_u32(buf) as usize;
+                let size = reader.read_tuple_like_header()?;
                 if size != #nfields {
                     return ::edgedb_protocol::errors::ObjectSizeMismatch.fail()
                 }

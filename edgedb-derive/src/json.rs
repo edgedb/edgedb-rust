@@ -21,11 +21,11 @@ pub fn derive(item: &syn::Item) -> syn::Result<TokenStream> {
     let expanded = quote! {
         impl #impl_generics ::edgedb_protocol::queryable::Queryable
             for #name #ty_generics {
-            fn decode_raw(buf: &mut ::std::io::Cursor<::bytes::Bytes>)
+            fn decode_raw(buf: &mut ::edgedb_protocol::serialization::Reader)
                 -> Result<Self, ::edgedb_protocol::errors::DecodeError>
             {
                 let json: ::edgedb_protocol::json::Json =
-                    ::edgedb_protocol::queryable::Queryable::decode(buf)?;
+                    ::edgedb_protocol::queryable::Queryable::decode_raw(buf)?;
                 Ok(::serde_json::from_str(json.as_ref())
                     .map_err(::edgedb_protocol::errors::decode_error)?)
             }

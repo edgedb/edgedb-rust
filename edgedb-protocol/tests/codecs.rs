@@ -1,10 +1,7 @@
-use std::io::{Cursor};
 use std::error::Error;
 use std::{i16, i32, i64};
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
-
-use bytes::{Bytes, Buf};
 
 use edgedb_protocol::codec::{build_codec, build_input_codec};
 use edgedb_protocol::codec::{Codec, ObjectShape};
@@ -37,10 +34,9 @@ macro_rules! encoding_eq {
 
 fn decode(codec: &Arc<dyn Codec>, data: &[u8]) -> Result<Value, Box<dyn Error>>
 {
-    let bytes = Bytes::copy_from_slice(data);
-    let mut cur = Cursor::new(bytes);
+    let mut cur = edgedb_protocol::serialization::Reader::from_bytes(data);
     let res = codec.decode(&mut cur)?;
-    assert!(cur.bytes() == b"");
+    cur.complete().expect("reader was not read to the end");
     Ok(res)
 }
 
