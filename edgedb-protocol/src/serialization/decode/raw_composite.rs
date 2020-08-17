@@ -67,13 +67,18 @@ pub struct DecodeArrayLike<'t> {
 }
 
 impl<'t> DecodeArrayLike<'t> {
-    pub fn new_array(buf:&'t [u8]) -> Result<Self, DecodeError> {    
+    pub fn new_array(buf:&'t [u8]) -> Result<Self, DecodeError> {
         let inner = DecodeCompositeInner::read_array_like_header(buf, || errors::InvalidArrayShape.fail::<()>().err().unwrap())?;
         Ok(DecodeArrayLike{inner})
     }    
 
-    pub fn new_set(buf:&'t [u8]) -> Result<Self, DecodeError> {    
+    pub fn new_set(buf:&'t [u8]) -> Result<Self, DecodeError> {
         let inner = DecodeCompositeInner::read_array_like_header(buf, || errors::InvalidSetShape.fail::<()>().err().unwrap())?;
+        Ok(DecodeArrayLike{inner})
+    }
+
+    pub fn new(buf:&'t [u8]) -> Result<Self, DecodeError> {
+        let inner = DecodeCompositeInner::read_array_like_header(buf, || errors::InvalidArrayOrSetShape.fail::<()>().err().unwrap())?;
         Ok(DecodeArrayLike{inner})
     }
 }

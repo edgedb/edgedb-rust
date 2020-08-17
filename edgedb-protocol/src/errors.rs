@@ -43,6 +43,8 @@ pub enum DecodeError {
     InvalidSetShape { backtrace: Backtrace },
     #[snafu(display("array shape is invalid"))]
     InvalidArrayShape { backtrace: Backtrace },
+    #[snafu(display("array or set shape is invalid"))]
+    InvalidArrayOrSetShape { backtrace: Backtrace },
     #[snafu(display("decimal or bigint sign bytes have invalid value"))]
     BadSign { backtrace: Backtrace },
     #[snafu(display("invalid boolean value"))]
