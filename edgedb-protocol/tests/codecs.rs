@@ -8,8 +8,8 @@ use bytes::{Bytes, Buf};
 
 use edgedb_protocol::codec::{build_codec, build_input_codec};
 use edgedb_protocol::codec::{Codec, ObjectShape};
-use edgedb_protocol::value::{Value, Duration};
-use edgedb_protocol::value::{LocalDatetime, LocalDate, LocalTime};
+use edgedb_protocol::value::{Value};
+use edgedb_protocol::model::{LocalDatetime, LocalDate, LocalTime, Duration};
 use edgedb_protocol::descriptors::{Descriptor, TypePos};
 use edgedb_protocol::descriptors::BaseScalarTypeDescriptor;
 use edgedb_protocol::descriptors::{ObjectShapeDescriptor, ShapeElement};
