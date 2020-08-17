@@ -1,12 +1,7 @@
-use std::fmt;
 use std::time::SystemTime;
-
-use uuid::Uuid;
-
 use crate::codec::{NamedTupleShape, ObjectShape, EnumValue};
-
-pub use crate::bignum::{ BigInt, Decimal };
-pub use crate::time::{ LocalDatetime, LocalDate, LocalTime, Duration };
+// turn this private later
+pub(crate) use crate::model::{ BigInt, Decimal, LocalDatetime, LocalDate, LocalTime, Duration, Uuid, OutOfRangeError as OutOfRange };
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
@@ -68,21 +63,5 @@ impl Value {
     }
     pub fn empty_tuple() -> Value {
         Value::Tuple(Vec::new())
-    }
-}
-
-#[derive(Debug)]
-pub struct OutOfRange;
-
-impl std::error::Error for OutOfRange {}
-impl fmt::Display for OutOfRange {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        "value is out of range".fmt(f)
-    }
-}
-
-impl From<std::num::TryFromIntError> for OutOfRange {
-    fn from(_: std::num::TryFromIntError) -> OutOfRange {
-        OutOfRange
     }
 }

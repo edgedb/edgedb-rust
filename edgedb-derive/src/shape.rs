@@ -108,7 +108,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
         let ref fieldname = field.name;
         if field.attrs.json {
             result.extend(quote!{
-                let #fieldname: ::edgedb_protocol::json::Json =
+                let #fieldname: ::edgedb_protocol::model::Json =
                     ::edgedb_protocol::queryable::Queryable::decode(
                         &mut chunk)?;
                 let #fieldname = ::serde_json::from_str(#fieldname.as_ref())
@@ -135,7 +135,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
         let ref fieldtype = field.ty;
         if field.attrs.json {
             result.extend(quote!{
-                <::edgedb_protocol::json::Json as
+                <::edgedb_protocol::model::Json as
                     ::edgedb_protocol::queryable::Queryable>
                     ::check_descriptor(ctx, el.type_pos)?;
             });

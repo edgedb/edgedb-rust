@@ -24,7 +24,7 @@ pub fn derive(item: &syn::Item) -> syn::Result<TokenStream> {
             fn decode_raw(buf: &mut ::std::io::Cursor<::bytes::Bytes>)
                 -> Result<Self, ::edgedb_protocol::errors::DecodeError>
             {
-                let json: ::edgedb_protocol::json::Json =
+                let json: ::edgedb_protocol::model::Json =
                     ::edgedb_protocol::queryable::Queryable::decode(buf)?;
                 Ok(::serde_json::from_str(json.as_ref())
                     .map_err(::edgedb_protocol::errors::decode_error)?)
@@ -34,7 +34,7 @@ pub fn derive(item: &syn::Item) -> syn::Result<TokenStream> {
                 type_pos: ::edgedb_protocol::descriptors::TypePos)
                 -> Result<(), ::edgedb_protocol::queryable::DescriptorMismatch>
             {
-                <::edgedb_protocol::json::Json as
+                <::edgedb_protocol::model::Json as
                     ::edgedb_protocol::queryable::Queryable>
                     ::check_descriptor(ctx, type_pos)
             }
