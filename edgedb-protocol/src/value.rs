@@ -1,7 +1,6 @@
 use std::time::SystemTime;
 use crate::codec::{NamedTupleShape, ObjectShape, EnumValue};
-// turn this private later
-pub(crate) use crate::model::{ BigInt, Decimal, LocalDatetime, LocalDate, LocalTime, Duration, Uuid, OutOfRangeError as OutOfRange };
+use crate::model::{ BigInt, Decimal, LocalDatetime, LocalDate, LocalTime, Duration, Uuid };
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {

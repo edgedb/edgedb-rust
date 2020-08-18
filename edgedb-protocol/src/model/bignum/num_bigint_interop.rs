@@ -1,7 +1,8 @@
 use super::BigInt;
+use crate::model::OutOfRangeError;
 
 impl std::convert::TryFrom<num_bigint::BigInt> for BigInt {
-    type Error = crate::value::OutOfRange;
+    type Error = OutOfRangeError;
     fn try_from(v: num_bigint::BigInt) -> Result<BigInt, Self::Error> {
         use num_traits::{ToPrimitive, Zero};
         use std::convert::TryInto;

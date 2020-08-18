@@ -87,20 +87,20 @@ mod test {
 #[cfg(feature = "chrono")]
 mod chrono_interop {
     use super::{LocalDate, LocalDatetime, LocalTime};
-    use crate::value::OutOfRange;
+    use crate::model::OutOfRangeError;
     use chrono::naive::{NaiveDate, NaiveDateTime, NaiveTime};
 
     impl std::convert::TryInto<NaiveDateTime> for &LocalDatetime {
-        type Error = OutOfRange;
+        type Error = OutOfRangeError;
         fn try_into(self) -> Result<NaiveDateTime, Self::Error> {
             NaiveDateTime::from_timestamp_opt(self.micros/1000_000,
                 ((self.micros % 1000_000)*1000) as u32)
-            .ok_or(OutOfRange)
+            .ok_or(OutOfRangeError)
         }
     }
 
     impl std::convert::TryFrom<&NaiveDateTime> for LocalDatetime {
-        type Error = OutOfRange;
+        type Error = OutOfRangeError;
         fn try_from(d: &NaiveDateTime)
             -> Result<LocalDatetime, Self::Error>
         {
@@ -109,29 +109,29 @@ mod chrono_interop {
             Ok(LocalDatetime {
                 micros: secs.checked_mul(1_000_000)
                     .and_then(|x| x.checked_add(micros as i64))
-                    .ok_or(OutOfRange)?,
+                    .ok_or(OutOfRangeError)?,
             })
         }
     }
 
     impl std::convert::TryFrom<&NaiveDate> for LocalDate {
-        type Error = OutOfRange;
+        type Error = OutOfRangeError;
         fn try_from(d: &NaiveDate) -> Result<LocalDate, Self::Error>
         {
             let days = chrono::Datelike::num_days_from_ce(d);
             Ok(LocalDate {
                 days: days.checked_sub(730120)
-                    .ok_or(OutOfRange)?,
+                    .ok_or(OutOfRangeError)?,
             })
         }
     }
 
     impl std::convert::TryInto<NaiveDate> for &LocalDate {
-        type Error = OutOfRange;
+        type Error = OutOfRangeError;
         fn try_into(self) -> Result<NaiveDate, Self::Error> {
             self.days.checked_add(730120)
             .and_then(NaiveDate::from_num_days_from_ce_opt)
-            .ok_or(OutOfRange)
+            .ok_or(OutOfRangeError)
         }
     }
 
@@ -154,21 +154,21 @@ mod chrono_interop {
     }
 
     impl std::convert::TryInto<NaiveDateTime> for LocalDatetime {
-        type Error = OutOfRange;
+        type Error = OutOfRangeError;
         fn try_into(self) -> Result<NaiveDateTime, Self::Error> {
             (&self).try_into()
         }
     }
 
     impl std::convert::TryInto<NaiveDate> for LocalDate {
-        type Error = OutOfRange;
+        type Error = OutOfRangeError;
         fn try_into(self) -> Result<NaiveDate, Self::Error> {
             (&self).try_into()
         }
     }
 
     impl std::convert::TryFrom<NaiveDate> for LocalDate {
-        type Error = OutOfRange;
+        type Error = OutOfRangeError;
         fn try_from(d: NaiveDate) -> Result<LocalDate, Self::Error>
         {
             std::convert::TryFrom::try_from(&d)
@@ -182,7 +182,7 @@ mod chrono_interop {
     }
 
     impl std::convert::TryFrom<NaiveDateTime> for LocalDatetime {
-        type Error = OutOfRange;
+        type Error = OutOfRangeError;
         fn try_from(d: NaiveDateTime)
             -> Result<LocalDatetime, Self::Error>
         {

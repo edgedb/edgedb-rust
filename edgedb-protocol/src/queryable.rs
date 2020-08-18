@@ -2,13 +2,12 @@ use std::io::Cursor;
 
 use bytes::{Bytes, Buf};
 use snafu::{Snafu, ensure};
-use uuid::Uuid;
 
 use crate::errors::{self, DecodeError};
 use crate::codec::raw::RawCodec;
 use crate::codec;
 use crate::descriptors::{Descriptor, TypePos};
-use crate::json::Json;
+use crate::model::{Json, Uuid};
 
 
 #[derive(Snafu, Debug)]
