@@ -2,10 +2,9 @@ use std::io::Cursor;
 use std::str;
 
 use bytes::{Bytes, Buf};
-use uuid::Uuid;
 
 use crate::errors::{self, DecodeError};
-use crate::json::Json;
+use crate::model::{Json, Uuid};
 use snafu::{ResultExt, ensure};
 
 
@@ -32,7 +31,7 @@ impl RawCodec for Json {
             .context(errors::InvalidUtf8)?
             .to_owned();
         buf.advance(val.len());
-        Ok(Json(val))
+        Ok(Json::new_unchecked(val))
     }
 }
 

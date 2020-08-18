@@ -1,5 +1,11 @@
 #[derive(Debug, Clone)]
-pub struct Json(pub(crate) String);
+pub struct Json(String);
+
+impl Json {
+	pub(crate) fn new_unchecked(value: String) -> Json {
+		Json(value)
+	}
+}
 
 impl AsRef<str> for Json {
     fn as_ref(&self) -> &str {

@@ -1,7 +1,8 @@
 use super::Decimal;
+use crate::model::OutOfRangeError;
 
 impl std::convert::TryFrom<bigdecimal::BigDecimal> for Decimal {
-    type Error = crate::value::OutOfRange;
+    type Error = OutOfRangeError;
     fn try_from(dec: bigdecimal::BigDecimal) -> Result<Decimal, Self::Error> {
         use num_traits::{ToPrimitive, Zero};
         use std::convert::TryInto;

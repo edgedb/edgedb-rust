@@ -14,8 +14,8 @@ use snafu::{ensure, OptionExt, ResultExt};
 
 use crate::descriptors::{self, Descriptor, TypePos};
 use crate::errors::{self, CodecError, DecodeError, EncodeError};
-use crate::value::{self, Value};
-use crate::json;
+use crate::value::Value;
+use crate::model;
 
 pub mod raw;
 
@@ -433,7 +433,7 @@ impl Codec for Duration {
         let months = buf.get_u32();
         ensure!(months == 0 && days == 0, errors::NonZeroReservedBytes);
         Ok(Value::Duration(
-            value::Duration { micros }))
+            model::Duration { micros }))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -745,7 +745,7 @@ impl Codec for Decimal {
         for _ in 0..ndigits {
             digits.push(buf.get_u16());
         }
-        Ok(Value::Decimal(value::Decimal {
+        Ok(Value::Decimal(model::Decimal {
             negative, weight, decimal_digits, digits,
         }))
     }
@@ -786,7 +786,7 @@ impl Codec for BigInt {
         for _ in 0..ndigits {
             digits.push(buf.get_u16());
         }
-        Ok(Value::BigInt(value::BigInt {
+        Ok(Value::BigInt(model::BigInt {
             negative, weight, digits,
         }))
     }
@@ -878,7 +878,7 @@ impl Codec for LocalDatetime {
         ensure!(buf.remaining() >= 8, errors::Underflow);
         let micros = buf.get_i64();
         Ok(Value::LocalDatetime(
-            value::LocalDatetime { micros }))
+            model::LocalDatetime { micros }))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -897,7 +897,7 @@ impl Codec for LocalDate {
     fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 4, errors::Underflow);
         let days = buf.get_i32();
-        Ok(Value::LocalDate(value::LocalDate { days }))
+        Ok(Value::LocalDate(model::LocalDate { days }))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -917,7 +917,7 @@ impl Codec for LocalTime {
         ensure!(buf.remaining() >= 8, errors::Underflow);
         let micros = buf.get_i64();
         ensure!(micros >= 0 && micros < 86400_000_000, errors::InvalidDate);
-        Ok(Value::LocalTime(value::LocalTime { micros }))
+        Ok(Value::LocalTime(model::LocalTime { micros }))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -934,7 +934,7 @@ impl Codec for LocalTime {
 
 impl Codec for Json {
     fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        let json: json::Json = raw::RawCodec::decode_raw(buf)?;
+        let json: model::Json = raw::RawCodec::decode_raw(buf)?;
         Ok(Value::Json(json.into()))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)

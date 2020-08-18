@@ -1,7 +1,6 @@
-// turn these into sub-modules later
-use crate::time;
-use crate::bignum;
-use crate::json;
+mod bignum;
+mod time;
+mod json;
 
 pub use self::time::{ LocalDatetime, LocalDate, LocalTime, Duration };
 pub use self::bignum:: {BigInt, Decimal};
