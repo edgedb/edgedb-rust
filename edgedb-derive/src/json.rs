@@ -21,7 +21,7 @@ pub fn derive(item: &syn::Item) -> syn::Result<TokenStream> {
     let expanded = quote! {
         impl #impl_generics ::edgedb_protocol::queryable::Queryable
             for #name #ty_generics {
-            fn decode_raw(buf: &mut ::std::io::Cursor<::bytes::Bytes>)
+            fn decode(buf: &[u8])
                 -> Result<Self, ::edgedb_protocol::errors::DecodeError>
             {
                 let json: ::edgedb_protocol::model::Json =

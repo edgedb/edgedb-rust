@@ -58,7 +58,9 @@ pub enum DecodeError {
     #[snafu(display("uuid {} not found", uuid))]
     UuidNotFound { backtrace: Backtrace, uuid: uuid::Uuid },
     #[snafu(display("error decoding value"))]
-    DecodeValue { backtrace: Backtrace, source: Box<dyn Error + Send + Sync> }
+    DecodeValue { backtrace: Backtrace, source: Box<dyn Error + Send + Sync> },
+    #[snafu(display("missing required link or property"))]
+    MissingRequiredElement { backtrace: Backtrace },
 }
 
 #[derive(Snafu, Debug)]

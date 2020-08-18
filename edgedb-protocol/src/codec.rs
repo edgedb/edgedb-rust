@@ -3,21 +3,19 @@ use std::convert::{TryInto, TryFrom};
 use std::fmt;
 use std::str;
 use std::time::{UNIX_EPOCH, SystemTime};
-use std::io::Cursor;
 use std::sync::Arc;
 use std::collections::HashSet;
 use std::ops::Deref;
 
-use bytes::{Bytes as Buf, Buf as _, BytesMut, BufMut};
+use bytes::{BytesMut, BufMut};
 use uuid::Uuid as UuidVal;
-use snafu::{ensure, OptionExt, ResultExt};
+use snafu::{ensure, OptionExt};
 
 use crate::descriptors::{self, Descriptor, TypePos};
 use crate::errors::{self, CodecError, DecodeError, EncodeError};
 use crate::value::Value;
 use crate::model;
-
-pub mod raw;
+use crate::serialization::decode::{RawCodec, required_element, DecodeTupleLike, DecodeArrayLike, DecodeInputTuple};
 
 pub const STD_UUID: UuidVal = UuidVal::from_u128(0x100);
 pub const STD_STR: UuidVal = UuidVal::from_u128(0x101);
@@ -39,7 +37,7 @@ pub const STD_BIGINT: UuidVal = UuidVal::from_u128(0x110);
 
 
 pub trait Codec: fmt::Debug + Send + Sync + 'static {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError>;
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError>;
     fn encode(&self, buf: &mut BytesMut, value: &Value)
         -> Result<(), EncodeError>;
 }
@@ -201,16 +199,6 @@ impl Deref for NamedTupleShape {
     }
 }
 
-impl dyn Codec {
-    pub fn decode_value(&self, buf: &mut Cursor<Buf>)
-        -> Result<Value, DecodeError>
-    {
-        let result = Codec::decode(self, buf)?;
-        ensure!(buf.bytes().len() == 0, errors::ExtraData);
-        Ok(result)
-    }
-}
-
 impl<'a> CodecBuilder<'a> {
     fn build(&self, pos: TypePos) -> Result<Arc<dyn Codec>, CodecError> {
         use Descriptor as D;
@@ -299,10 +287,8 @@ pub fn scalar_codec(uuid: &UuidVal) -> Result<Arc<dyn Codec>, CodecError> {
 }
 
 impl Codec for Int32 {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 4, errors::Underflow);
-        let inner = buf.get_i32();
-        Ok(Value::Int32(inner))
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::Int32)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -318,10 +304,8 @@ impl Codec for Int32 {
 }
 
 impl Codec for Int16 {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 2, errors::Underflow);
-        let inner = buf.get_i16();
-        Ok(Value::Int16(inner))
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::Int16)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -337,8 +321,8 @@ impl Codec for Int16 {
 }
 
 impl Codec for Int64 {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        raw::RawCodec::decode_raw(buf).map(Value::Int64)
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::Int64)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -354,10 +338,8 @@ impl Codec for Int64 {
 }
 
 impl Codec for Float32 {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 4, errors::Underflow);
-        let inner = buf.get_f32();
-        Ok(Value::Float32(inner))
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::Float32)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -373,10 +355,8 @@ impl Codec for Float32 {
 }
 
 impl Codec for Float64 {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 8, errors::Underflow);
-        let inner = buf.get_f64();
-        Ok(Value::Float64(inner))
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::Float64)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -392,8 +372,8 @@ impl Codec for Float64 {
 }
 
 impl Codec for Str {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        raw::RawCodec::decode_raw(buf).map(Value::Str)
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::Str)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -408,10 +388,8 @@ impl Codec for Str {
 }
 
 impl Codec for Bytes {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        let val = buf.bytes().to_owned();
-        buf.advance(val.len());
-        Ok(Value::Bytes(val))
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::Bytes)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -426,14 +404,8 @@ impl Codec for Bytes {
 }
 
 impl Codec for Duration {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 16, errors::Underflow);
-        let micros = buf.get_i64();
-        let days = buf.get_u32();
-        let months = buf.get_u32();
-        ensure!(months == 0 && days == 0, errors::NonZeroReservedBytes);
-        Ok(Value::Duration(
-            model::Duration { micros }))
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::Duration)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -451,8 +423,8 @@ impl Codec for Duration {
 }
 
 impl Codec for Uuid {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        raw::RawCodec::decode_raw(buf).map(Value::Uuid)
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::Uuid)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -467,7 +439,7 @@ impl Codec for Uuid {
 }
 
 impl Codec for Nothing {
-    fn decode(&self, _buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
+    fn decode(&self, _buf: &[u8]) -> Result<Value, DecodeError> {
         Ok(Value::Nothing)
     }
     fn encode(&self, _buf: &mut BytesMut, val: &Value)
@@ -543,29 +515,35 @@ impl InputNamedTuple {
     }
 }
 
+fn decode_input_tuple<'t>(mut elements:DecodeInputTuple, codecs:&Vec<Arc<dyn Codec>>) -> Result<Vec<Value>, DecodeError>{
+    codecs
+        .iter()
+        .map(|codec|codec.decode(elements.read()?))
+        .collect::<Result<Vec<Value>, DecodeError>>()
+}
+
+fn decode_tuple<'t>(mut elements:DecodeTupleLike, codecs:&Vec<Arc<dyn Codec>>) -> Result<Vec<Value>, DecodeError>{
+    codecs
+        .iter()
+        .map(|codec| codec.decode(required_element(elements.read()?)?))
+        .collect::<Result<Vec<Value>, DecodeError>>()
+}
+
+fn decode_array_like<'t>(elements: DecodeArrayLike<'t>, codec:&dyn Codec) -> Result<Vec<Value>, DecodeError>{
+    elements
+        .map(|element| codec.decode(element?))
+        .collect::<Result<Vec<Value>, DecodeError>>()
+}
+
 impl Codec for Object {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 4, errors::Underflow);
-        let size = buf.get_u32() as usize;
-        ensure!(size == self.codecs.len(), errors::ObjectSizeMismatch);
-        let mut fields = Vec::with_capacity(size);
-        for codec in &self.codecs {
-            ensure!(buf.remaining() >= 8, errors::Underflow);
-            let _reserved = buf.get_i32();
-            let len = buf.get_i32();
-            if len < 0 {
-                ensure!(len == -1, errors::InvalidMarker);
-                fields.push(None);
-                continue;
-            }
-            let len = len as usize;
-            ensure!(buf.remaining() >= len, errors::Underflow);
-            let off = buf.position() as usize;
-            let mut chunk = Cursor::new(buf.get_ref().slice(off..off + len));
-            buf.advance(len);
-            fields.push(Some(codec.decode_value(&mut chunk)?));
-        }
-        return Ok(Value::Object {
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        let mut elements = DecodeTupleLike::new_object(buf, self.codecs.len())?;
+        let fields = self.codecs
+            .iter()
+            .map(|codec| elements.read()?.map(|element| codec.decode(element)).transpose())
+            .collect::<Result<Vec<Option<Value>>, DecodeError>>()?;
+
+        Ok(Value::Object {
             shape: self.shape.clone(),
             fields,
         })
@@ -668,30 +646,9 @@ impl Set {
 }
 
 impl Codec for Set {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 12, errors::Underflow);
-        let ndims = buf.get_u32();
-        let _reserved0 = buf.get_u32();
-        let _reserved1 = buf.get_u32();
-        if ndims == 0 {
-            return Ok(Value::Set(Vec::new()));
-        }
-
-        ensure!(ndims == 1, errors::InvalidSetShape);
-        ensure!(buf.remaining() >= 8, errors::Underflow);
-        let size = buf.get_u32() as usize;
-        let lower = buf.get_u32();
-        ensure!(lower == 1, errors::InvalidSetShape);
-        let mut items = Vec::with_capacity(size);
-        for _ in 0..size {
-            ensure!(buf.remaining() >= 4, errors::Underflow);
-            let len = buf.get_u32() as usize;
-            ensure!(buf.remaining() >= len, errors::Underflow);
-            let off = buf.position() as usize;
-            let mut chunk = Cursor::new(buf.get_ref().slice(off..off + len));
-            buf.advance(len);
-            items.push(self.element.decode_value(&mut chunk)?);
-        }
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        let elements = DecodeArrayLike::new_set(buf)?;
+        let items = decode_array_like(elements, &*self.element)?;
         Ok(Value::Set(items))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
@@ -730,24 +687,8 @@ impl Codec for Set {
 }
 
 impl Codec for Decimal {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 8, errors::Underflow);
-        let ndigits = buf.get_u16() as usize;
-        let weight = buf.get_i16();
-        let negative = match buf.get_u16() {
-            0x0000 => false,
-            0x4000 => true,
-            _ => errors::BadSign.fail()?,
-        };
-        let decimal_digits = buf.get_u16();
-        ensure!(buf.remaining() >= ndigits*2, errors::Underflow);
-        let mut digits = Vec::with_capacity(ndigits);
-        for _ in 0..ndigits {
-            digits.push(buf.get_u16());
-        }
-        Ok(Value::Decimal(model::Decimal {
-            negative, weight, decimal_digits, digits,
-        }))
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::Decimal)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -770,25 +711,8 @@ impl Codec for Decimal {
 }
 
 impl Codec for BigInt {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 8, errors::Underflow);
-        let ndigits = buf.get_u16() as usize;
-        let weight = buf.get_i16();
-        let negative = match buf.get_u16() {
-            0x0000 => false,
-            0x4000 => true,
-            _ => errors::BadSign.fail()?,
-        };
-        let decimal_digits = buf.get_u16();
-        ensure!(decimal_digits == 0, errors::NonZeroReservedBytes);
-        let mut digits = Vec::with_capacity(ndigits);
-        ensure!(buf.remaining() >= ndigits*2, errors::Underflow);
-        for _ in 0..ndigits {
-            digits.push(buf.get_u16());
-        }
-        Ok(Value::BigInt(model::BigInt {
-            negative, weight, digits,
-        }))
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::BigInt)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -811,8 +735,8 @@ impl Codec for BigInt {
 }
 
 impl Codec for Bool {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        raw::RawCodec::decode_raw(buf).map(Value::Bool)
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::Bool)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -831,19 +755,8 @@ impl Codec for Bool {
 }
 
 impl Codec for Datetime {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        use std::time::{Duration};
-
-        ensure!(buf.remaining() >= 8, errors::Underflow);
-        let micros = buf.get_i64();
-        let postgres_epoch: SystemTime = UNIX_EPOCH +
-            std::time::Duration::from_secs(946684800);
-        let val = if micros > 0 {
-            postgres_epoch + Duration::from_micros(micros as u64)
-        } else {
-            postgres_epoch - Duration::from_micros((-micros) as u64)
-        };
-        Ok(Value::Datetime(val))
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::Datetime)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -874,11 +787,8 @@ impl Codec for Datetime {
 }
 
 impl Codec for LocalDatetime {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 8, errors::Underflow);
-        let micros = buf.get_i64();
-        Ok(Value::LocalDatetime(
-            model::LocalDatetime { micros }))
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::LocalDatetime)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -894,10 +804,8 @@ impl Codec for LocalDatetime {
 }
 
 impl Codec for LocalDate {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 4, errors::Underflow);
-        let days = buf.get_i32();
-        Ok(Value::LocalDate(model::LocalDate { days }))
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::LocalDate)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -913,11 +821,8 @@ impl Codec for LocalDate {
 }
 
 impl Codec for LocalTime {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 8, errors::Underflow);
-        let micros = buf.get_i64();
-        ensure!(micros >= 0 && micros < 86400_000_000, errors::InvalidDate);
-        Ok(Value::LocalTime(model::LocalTime { micros }))
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::LocalTime)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -933,9 +838,8 @@ impl Codec for LocalTime {
 }
 
 impl Codec for Json {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        let json: model::Json = raw::RawCodec::decode_raw(buf)?;
-        Ok(Value::Json(json.into()))
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(|json: model::Json| Value::Json(json.into()))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -952,7 +856,7 @@ impl Codec for Json {
 }
 
 impl Codec for Scalar {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         self.inner.decode(buf)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
@@ -963,21 +867,9 @@ impl Codec for Scalar {
 }
 
 impl Codec for Tuple {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 4, errors::Underflow);
-        let size = buf.get_u32() as usize;
-        ensure!(size == self.elements.len(), errors::TupleSizeMismatch);
-        let mut items = Vec::with_capacity(size);
-        for codec in &self.elements {
-            ensure!(buf.remaining() >= 8, errors::Underflow);
-            let _reserved = buf.get_i32();
-            let len = buf.get_u32() as usize;
-            ensure!(buf.remaining() >= len, errors::Underflow);
-            let off = buf.position() as usize;
-            let mut chunk = Cursor::new(buf.get_ref().slice(off..off + len));
-            buf.advance(len);
-            items.push(codec.decode_value(&mut chunk)?);
-        }
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        let elements = DecodeTupleLike::new_object(buf, self.elements.len())?;
+        let items = decode_tuple(elements, &self.elements)?;
         return Ok(Value::Tuple(items))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
@@ -1008,21 +900,10 @@ impl Codec for Tuple {
 }
 
 impl Codec for InputTuple {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 4, errors::Underflow);
-        let size = buf.get_u32() as usize;
-        ensure!(size == self.elements.len(), errors::TupleSizeMismatch);
-        let mut items = Vec::with_capacity(size);
-        for codec in &self.elements {
-            ensure!(buf.remaining() >= 4, errors::Underflow);
-            let len = buf.get_u32() as usize;
-            ensure!(buf.remaining() >= len, errors::Underflow);
-            let off = buf.position() as usize;
-            let mut chunk = Cursor::new(buf.get_ref().slice(off..off + len));
-            buf.advance(len);
-            items.push(codec.decode_value(&mut chunk)?);
-        }
-        return Ok(Value::Tuple(items))
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        let elements = DecodeInputTuple::with_count(buf, self.elements.len())?;
+        let items = decode_input_tuple(elements, &self.elements)?;
+        Ok(Value::Tuple(items))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -1051,21 +932,9 @@ impl Codec for InputTuple {
 }
 
 impl Codec for NamedTuple {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 4, errors::Underflow);
-        let size = buf.get_u32() as usize;
-        ensure!(size == self.codecs.len(), errors::TupleSizeMismatch);
-        let mut fields = Vec::with_capacity(size);
-        for codec in &self.codecs {
-            ensure!(buf.remaining() >= 8, errors::Underflow);
-            let _reserved = buf.get_i32();
-            let len = buf.get_u32() as usize;
-            ensure!(buf.remaining() >= len, errors::Underflow);
-            let off = buf.position() as usize;
-            let mut chunk = Cursor::new(buf.get_ref().slice(off..off + len));
-            buf.advance(len);
-            fields.push(codec.decode_value(&mut chunk)?);
-        }
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        let elements = DecodeTupleLike::new_tuple(buf, self.codecs.len())?;
+        let fields = decode_tuple(elements, &self.codecs)?;
         return Ok(Value::NamedTuple {
             shape: self.shape.clone(),
             fields,
@@ -1101,21 +970,10 @@ impl Codec for NamedTuple {
 }
 
 impl Codec for InputNamedTuple {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 4, errors::Underflow);
-        let size = buf.get_u32() as usize;
-        ensure!(size == self.codecs.len(), errors::TupleSizeMismatch);
-        let mut fields = Vec::with_capacity(size);
-        for codec in &self.codecs {
-            ensure!(buf.remaining() >= 4, errors::Underflow);
-            let len = buf.get_u32() as usize;
-            ensure!(buf.remaining() >= len, errors::Underflow);
-            let off = buf.position() as usize;
-            let mut chunk = Cursor::new(buf.get_ref().slice(off..off + len));
-            buf.advance(len);
-            fields.push(codec.decode_value(&mut chunk)?);
-        }
-        return Ok(Value::NamedTuple {
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        let elements = DecodeInputTuple::with_count(buf, self.codecs.len())?;
+        let fields = decode_input_tuple(elements, &self.codecs)?;
+        Ok(Value::NamedTuple {
             shape: self.shape.clone(),
             fields,
         })
@@ -1149,29 +1007,9 @@ impl Codec for InputNamedTuple {
 }
 
 impl Codec for Array {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        ensure!(buf.remaining() >= 12, errors::Underflow);
-        let ndims = buf.get_u32();
-        let _reserved0 = buf.get_u32();
-        let _reserved1 = buf.get_u32();
-        if ndims == 0 {
-            return Ok(Value::Array(Vec::new()));
-        }
-        ensure!(ndims == 1, errors::InvalidArrayShape);
-        ensure!(buf.remaining() >= 8, errors::Underflow);
-        let size = buf.get_u32() as usize;
-        let lower = buf.get_u32();
-        ensure!(lower == 1, errors::InvalidArrayShape);
-        let mut items = Vec::with_capacity(size);
-        for _ in 0..size {
-            ensure!(buf.remaining() >= 4, errors::Underflow);
-            let len = buf.get_u32() as usize;
-            ensure!(buf.remaining() >= len, errors::Underflow);
-            let off = buf.position() as usize;
-            let mut chunk = Cursor::new(buf.get_ref().slice(off..off + len));
-            buf.advance(len);
-            items.push(self.element.decode_value(&mut chunk)?);
-        }
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        let elements = DecodeArrayLike::new_array(buf)?;
+        let items = decode_array_like(elements, &*self.element)?;
         Ok(Value::Array(items))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
@@ -1210,12 +1048,10 @@ impl Codec for Array {
 }
 
 impl Codec for Enum {
-    fn decode(&self, buf: &mut Cursor<Buf>) -> Result<Value, DecodeError> {
-        let val = str::from_utf8(&buf.bytes())
-            .context(errors::InvalidUtf8)?;
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        let val : &str = RawCodec::decode(buf)?;
         let val = self.members.get(val)
             .context(errors::ExtraEnumValue)?;
-        buf.advance(buf.bytes().len());
         Ok(Value::Enum(EnumValue(val.clone())))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
