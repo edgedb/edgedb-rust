@@ -1,10 +1,10 @@
-use snafu::Snafu;
+use snafu::{Snafu, ensure};
 
-use crate::errors::DecodeError;
+use crate::errors::{self, DecodeError};
 use crate::codec;
 use crate::descriptors::{Descriptor, TypePos};
 use crate::model::{Json, Uuid};
-use crate::serialization::decode::{RawCodec, required_element};
+use crate::serialization::decode::{RawCodec};
 
 #[derive(Snafu, Debug)]
 #[non_exhaustive]
@@ -28,7 +28,8 @@ pub struct DescriptorContext<'a> {
 pub trait Queryable: Sized {
     fn decode(buf: &[u8]) -> Result<Self, DecodeError>;
     fn decode_optional(buf: Option<&[u8]>) -> Result<Self, DecodeError> {
-        Self::decode(required_element(buf)?)
+        ensure!(buf.is_some(), errors::MissingRequiredElement);
+        Self::decode(buf.unwrap())
     }
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
         -> Result<(), DescriptorMismatch>;
