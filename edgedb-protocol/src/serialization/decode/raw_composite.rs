@@ -68,12 +68,12 @@ pub struct DecodeArrayLike<'t> {
 
 impl<'t> DecodeArrayLike<'t> {
     pub fn new_array(buf:&'t [u8]) -> Result<Self, DecodeError> {    
-        let inner = DecodeCompositeInner::read_array_like_header(buf, |predicate| Ok(ensure!(predicate, errors::InvalidArrayShape)))?;
+        let inner = DecodeCompositeInner::read_array_like_header(buf, || errors::InvalidArrayShape.build())?;
         Ok(DecodeArrayLike{inner})
     }    
 
     pub fn new_set(buf:&'t [u8]) -> Result<Self, DecodeError> {    
-        let inner = DecodeCompositeInner::read_array_like_header(buf, |predicate| Ok(ensure!(predicate, errors::InvalidSetShape)))?;
+        let inner = DecodeCompositeInner::read_array_like_header(buf, || errors::InvalidSetShape.build())?;
         Ok(DecodeArrayLike{inner})
     }
 }
@@ -169,7 +169,7 @@ mod inner {
             Ok(Self::new(buf, count))
         }
 
-        pub fn read_array_like_header(mut buf:&'t [u8], ensure_shape: impl Fn(bool) -> Result<(), DecodeError>) -> Result<Self, DecodeError> {
+        pub fn read_array_like_header(mut buf:&'t [u8], error: impl Fn() -> DecodeError) -> Result<Self, DecodeError> {
             ensure!(buf.remaining() >= 12, errors::Underflow);
             let ndims = buf.get_u32();
             let _reserved0 = buf.get_u32();
@@ -177,11 +177,15 @@ mod inner {
             if ndims == 0 {
                 return Ok(Self::new(buf, 0));
             }
-            ensure_shape(ndims == 1)?;
+            if ndims != 1 {
+                return Err(error());
+            }
             ensure!(buf.remaining() >= 8, errors::Underflow);
             let size = buf.get_u32() as usize;
             let lower = buf.get_u32();
-            ensure_shape(lower == 1)?;
+            if lower != 1 {
+                return Err(error());
+            }
             Ok(Self::new(buf, size))
         }
     }

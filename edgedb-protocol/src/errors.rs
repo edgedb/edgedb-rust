@@ -119,7 +119,7 @@ pub enum CodecError {
 
 pub fn invalid_value(codec: &'static str, value: &Value) -> EncodeError
 {
-    InvalidValue { codec, value_type: value.kind() }.fail::<()>().unwrap_err()
+    InvalidValue { codec, value_type: value.kind() }.build()
 }
 
 pub fn decode_error<E: Error + Send + Sync + 'static>(e: E) -> DecodeError {

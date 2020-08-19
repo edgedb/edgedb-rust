@@ -15,7 +15,7 @@ use crate::descriptors::{self, Descriptor, TypePos};
 use crate::errors::{self, CodecError, DecodeError, EncodeError};
 use crate::value::Value;
 use crate::model;
-use crate::serialization::decode::{RawCodec, required_element, DecodeTupleLike, DecodeArrayLike, DecodeInputTuple};
+use crate::serialization::decode::{RawCodec, DecodeTupleLike, DecodeArrayLike, DecodeInputTuple};
 
 pub const STD_UUID: UuidVal = UuidVal::from_u128(0x100);
 pub const STD_STR: UuidVal = UuidVal::from_u128(0x101);
@@ -525,7 +525,7 @@ fn decode_input_tuple<'t>(mut elements:DecodeInputTuple, codecs:&Vec<Arc<dyn Cod
 fn decode_tuple<'t>(mut elements:DecodeTupleLike, codecs:&Vec<Arc<dyn Codec>>) -> Result<Vec<Value>, DecodeError>{
     codecs
         .iter()
-        .map(|codec| codec.decode(required_element(elements.read()?)?))
+        .map(|codec| codec.decode(elements.read()?.ok_or_else(|| errors::MissingRequiredElement.build())?))
         .collect::<Result<Vec<Value>, DecodeError>>()
 }
 
