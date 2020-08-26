@@ -58,7 +58,9 @@ pub enum DecodeError {
     #[snafu(display("uuid {} not found", uuid))]
     UuidNotFound { backtrace: Backtrace, uuid: uuid::Uuid },
     #[snafu(display("error decoding value"))]
-    DecodeValue { backtrace: Backtrace, source: Box<dyn Error + Send + Sync> }
+    DecodeValue { backtrace: Backtrace, source: Box<dyn Error + Send + Sync> },
+    #[snafu(display("missing required link or property"))]
+    MissingRequiredElement { backtrace: Backtrace },
 }
 
 #[derive(Snafu, Debug)]
@@ -117,7 +119,7 @@ pub enum CodecError {
 
 pub fn invalid_value(codec: &'static str, value: &Value) -> EncodeError
 {
-    InvalidValue { codec, value_type: value.kind() }.fail::<()>().unwrap_err()
+    InvalidValue { codec, value_type: value.kind() }.build()
 }
 
 pub fn decode_error<E: Error + Send + Sync + 'static>(e: E) -> DecodeError {

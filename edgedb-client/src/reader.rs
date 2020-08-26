@@ -80,14 +80,14 @@ impl<T> QueryableDecoder<T> {
 impl<T: Queryable> Decode for QueryableDecoder<T> {
     type Output = T;
     fn decode(&self, msg: Bytes) -> Result<T, DecodeError> {
-        Queryable::decode(&mut io::Cursor::new(msg))
+        Queryable::decode(&msg)
     }
 }
 
 impl Decode for Arc<dyn Codec> {
     type Output = Value;
     fn decode(&self, msg: Bytes) -> Result<Self::Output, DecodeError> {
-        self.decode_value(&mut io::Cursor::new(msg))
+        (&**self).decode(&msg)
     }
 }
 
