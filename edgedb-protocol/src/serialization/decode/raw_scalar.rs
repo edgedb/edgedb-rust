@@ -207,6 +207,6 @@ impl<'t> RawCodec<'t> for LocalTime {
     fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
         let micros = i64::decode(buf)?;
         ensure!(micros >= 0 && micros < 86_400 * 1_000_000, errors::InvalidDate);
-        Ok(LocalTime { micros })
+        Ok(LocalTime { micros: micros as u64 })
     }
 }
