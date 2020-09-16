@@ -832,7 +832,7 @@ impl Codec for LocalTime {
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(8);
-        buf.put_i64(val.micros);
+        buf.put_i64(val.micros as i64);
         Ok(())
     }
 }
