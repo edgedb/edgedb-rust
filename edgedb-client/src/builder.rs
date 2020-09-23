@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::fmt;
 use std::io;
 use std::str;
 use std::time::{Instant, Duration};
@@ -7,10 +6,12 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{self, Context};
 use async_std::fs;
-use async_std::net::{TcpStream, ToSocketAddrs};
+use async_std::future::Future;
+use async_std::net::TcpStream;
 use async_std::task::sleep;
 use async_listen::ByteStream;
 use bytes::{Bytes, BytesMut};
+use rand::{thread_rng, Rng};
 use scram::ScramClient;
 use serde_json::from_slice;
 use typemap::TypeMap;
@@ -23,6 +24,9 @@ use crate::server_params::PostgresAddress;
 use crate::client::{Connection, Sequence};
 use crate::credentials::Credentials;
 use crate::errors::PasswordRequired;
+use crate::reader::ReadError;
+
+pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Clone)]
 enum Addr {
@@ -37,6 +41,47 @@ pub struct Builder {
     password: Option<String>,
     database: Option<String>,
     wait: Option<Duration>,
+    connect_timeout: Duration,
+}
+
+pub async fn timeout<F, T>(dur: Duration, f: F) -> anyhow::Result<T>
+    where F: Future<Output = anyhow::Result<T>>,
+{
+    use async_std::future::timeout;
+
+    timeout(dur, f).await
+    .unwrap_or_else(|_| Err(io::Error::from(io::ErrorKind::TimedOut).into()))
+}
+
+fn sleep_duration() -> Duration {
+    Duration::from_millis(thread_rng().gen_range(10u64, 200u64))
+}
+
+fn is_temporary_error(e: &anyhow::Error) -> bool {
+    use io::ErrorKind::{ConnectionRefused, TimedOut, NotFound};
+    use io::ErrorKind::{ConnectionAborted, ConnectionReset};
+
+    match e.downcast_ref::<ReadError>() {
+        | Some(ReadError::Eos) => return true,
+        | Some(ReadError::Io { source, .. }) => {
+            return matches!(source.kind(),
+                ConnectionRefused | ConnectionReset | ConnectionAborted |
+                TimedOut
+            );
+        }
+        Some(_) => return false,
+        _ => {},
+    }
+    match e.downcast_ref::<io::Error>().map(|e| e.kind()) {
+        | Some(ConnectionRefused)
+        | Some(ConnectionReset)
+        | Some(ConnectionAborted)
+        | Some(NotFound)  // For unix sockets
+        | Some(TimedOut)
+        => return true,
+        _ => {},
+    }
+    return false;
 }
 
 impl Builder {
@@ -49,6 +94,7 @@ impl Builder {
             password: credentials.password.clone(),
             database: credentials.database.clone(),
             wait: None,
+            connect_timeout: DEFAULT_CONNECT_TIMEOUT,
         }
     }
     pub async fn read_credentials(path: impl AsRef<Path>)
@@ -71,6 +117,7 @@ impl Builder {
             password: None,
             database: None,
             wait: None,
+            connect_timeout: DEFAULT_CONNECT_TIMEOUT,
         }
     }
     pub fn unix_addr(&mut self, path: impl Into<PathBuf>) -> &mut Self {
@@ -110,80 +157,17 @@ impl Builder {
         self.wait = Some(time);
         self
     }
-    async fn connect_tcp(&self, addr: impl ToSocketAddrs + fmt::Debug)
-        -> anyhow::Result<ByteStream>
-    {
-        let start = Instant::now();
-        let conn = loop {
-            log::info!("Connecting via TCP {:?}", addr);
-            let cres = TcpStream::connect(&addr).await;
-            match cres {
-                Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
-                    if let Some(wait) = self.wait {
-                        if wait > start.elapsed() {
-                            sleep(Duration::from_millis(100)).await;
-                            continue;
-                        } else {
-                            Err(e).context(format!("Can't establish \
-                                                    connection for {:?}",
-                                                    wait))?
-                        }
-                    } else {
-                        Err(e).with_context(
-                            || format!("Can't connect to {:?}", addr))?;
-                    }
-                }
-                Err(e) => {
-                    Err(e).with_context(
-                        || format!("Can't connect to {:?}", addr))?;
-                }
-                Ok(conn) => break conn,
-            }
-        };
-        Ok(ByteStream::new_tcp_detached(conn))
-    }
-    #[cfg(unix)]
-    async fn connect_unix(&self, path: &PathBuf) -> anyhow::Result<ByteStream>
-    {
-        use async_std::os::unix::net::UnixStream;
-
-        let start = Instant::now();
-        let conn = loop {
-            log::info!("Connecting via {:?}", path);
-            let cres = UnixStream::connect(&path).await;
-            match cres {
-                Err(e) if matches!(e.kind(),
-                    io::ErrorKind::ConnectionRefused |
-                    io::ErrorKind::NotFound)
-                => {
-                    if let Some(wait) = self.wait {
-                        if wait > start.elapsed() {
-                            sleep(Duration::from_millis(100)).await;
-                            continue;
-                        } else {
-                            Err(e).context(format!("Can't establish \
-                                                    connection for {:?}",
-                                                    wait))?
-                        }
-                    } else {
-                        Err(e).with_context(|| format!(
-                            "Can't connect to unix socket {:?}", path))?
-                    }
-                }
-                Err(e) => {
-                    Err(e).with_context(|| format!(
-                        "Can't connect to unix socket {:?}", path))?
-                }
-                Ok(conn) => break conn,
-            }
-        };
-        Ok(ByteStream::new_unix_detached(conn))
-    }
-    #[cfg(windows)]
-    async fn connect_unix(&self, _path: &PathBuf)
-        -> anyhow::Result<ByteStream>
-    {
-        anyhow::bail!("Unix socket are not supported on windows");
+    /// A timeout for a single connect attempt
+    ///
+    /// Default is 3 seconds which should be enough for the latency across the
+    /// globe, except in very congested networks.
+    ///
+    /// Should be larger than `wait_until_available` because sometimes few
+    /// attempts work better than single one that waits for too long (common
+    /// case is in docker).
+    pub fn connect_timeout(&mut self, timeout: Duration) -> &mut Self {
+        self.connect_timeout = timeout;
+        self
     }
     pub async fn connect(&self) -> anyhow::Result<Connection> {
         let user = if let Some(user) = &self.user {
@@ -196,11 +180,62 @@ impl Builder {
         } else {
             &user
         };
+        match &self.addr {
+            Addr::Tcp(host, port) => {
+                log::info!("Connecting via TCP {}:{}", host, port);
+            }
+            Addr::Unix(path) => {
+                log::info!("Connecting via Unix `{}`", path.display());
+            }
+        };
+
+        let start = Instant::now();
+        let conn = loop {
+            match timeout(self.connect_timeout,
+                          self._connect(&user, &database)).await
+            {
+                Err(e) if is_temporary_error(&e) => {
+                    log::debug!("Temporary connection error: {:#}", e);
+                    if let Some(wait) = self.wait {
+                        if wait > start.elapsed() {
+                            sleep(sleep_duration()).await;
+                            continue;
+                        } else {
+                            Err(e).context(format!("cannot establish \
+                                                    connection for {:?}",
+                                                    wait))?
+                        }
+                    } else {
+                        return Err(e)?;
+                    }
+                }
+                Err(e) => {
+                    log::debug!("Connection error: {:#}", e);
+                    return Err(e)?;
+                }
+                Ok(conn) => break conn,
+            }
+        };
+        Ok(conn)
+    }
+    async fn _connect(&self, user: &str, database: &str)
+        -> anyhow::Result<Connection>
+    {
         let sock = match &self.addr {
             Addr::Tcp(host, port) => {
-                self.connect_tcp((host.as_ref(), *port)).await?
+                let conn = TcpStream::connect(&(&host[..], *port)).await?;
+                ByteStream::new_tcp_detached(conn)
             }
-            Addr::Unix(path) => self.connect_unix(path).await?,
+            Addr::Unix(path) => {
+                #[cfg(windows)] {
+                    anyhow::bail!("Unix socket are not supported on windows");
+                }
+                #[cfg(unix)] {
+                    use async_std::os::unix::net::UnixStream;
+                    let conn = UnixStream::connect(&path).await?;
+                    ByteStream::new_unix_detached(conn)
+                }
+            }
         };
         let mut conn = Connection {
             stream: sock,
@@ -212,8 +247,8 @@ impl Builder {
         };
         let mut seq = conn.start_sequence().await?;
         let mut params = HashMap::new();
-        params.insert(String::from("user"), user.clone());
-        params.insert(String::from("database"), database.clone());
+        params.insert(String::from("user"), user.into());
+        params.insert(String::from("database"), database.into());
 
         seq.send_messages(&[
             ClientMessage::ClientHandshake(ClientHandshake {
@@ -226,7 +261,7 @@ impl Builder {
 
         let mut msg = seq.message().await?;
         if let ServerMessage::ServerHandshake {..} = msg {
-            eprintln!("WARNING: Connection negotiantion issue {:?}", msg);
+            log::warn!("Connection negotiantion issue {:?}", msg);
             // TODO(tailhook) react on this somehow
             msg = seq.message().await?;
         }
@@ -274,25 +309,24 @@ impl Builder {
                             pgaddr = match from_slice(&par.value[..]) {
                                 Ok(a) => a,
                                 Err(e) => {
-                                    eprintln!("Can't decode param {:?}: {}",
+                                    log::warn!("Can't decode param {:?}: {}",
                                         par.name, e);
                                     continue;
                                 }
                             };
                             server_params.insert::<PostgresAddress>(pgaddr);
                         }
-                        _ => {},
+                        _ => {}
                     }
                 }
                 _ => {
-                    eprintln!("WARNING: unsolicited message {:?}", msg);
+                    log::warn!("unsolicited message {:?}", msg);
                 }
             }
         }
         conn.params = server_params;
         Ok(conn)
     }
-
 }
 
 async fn scram(seq: &mut Sequence<'_>, user: &str, password: &str)
@@ -356,7 +390,7 @@ async fn scram(seq: &mut Sequence<'_>, user: &str, password: &str)
         match msg {
             ServerMessage::Authentication(Authentication::Ok) => break,
             msg => {
-                eprintln!("WARNING: unsolicited message {:?}", msg);
+                log::warn!("unsolicited message {:?}", msg);
             }
         };
     }
