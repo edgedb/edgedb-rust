@@ -26,7 +26,7 @@ use crate::credentials::Credentials;
 use crate::errors::PasswordRequired;
 use crate::reader::ReadError;
 
-pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone)]
 enum Addr {
@@ -153,18 +153,32 @@ impl Builder {
             .map(|x| x.clone())
             .unwrap_or_else(|| whoami::username())
     }
+    /// Time to wait for database server to become available
+    ///
+    /// This works by ignoring certain errors known to happen while database is
+    /// starting up or restarting (e.g. "connecction refused" or early
+    /// "connection reset")
+    ///
+    /// Note: the whole time that connection is being established can be up to
+    /// `wait_until_available + connect_timeout`
     pub fn wait_until_available(&mut self, time: Duration) -> &mut Self {
         self.wait = Some(time);
         self
     }
     /// A timeout for a single connect attempt
     ///
-    /// Default is 3 seconds which should be enough for the latency across the
-    /// globe, except in very congested networks.
+    /// Default is 10 seconds. Subsecond timeout should be fine for most
+    /// networks, but since this timeout includes authentication, and currently
+    /// that means:
+    /// * Checking a password (slow by design)
+    /// * Creating a compiler process (slow now, may be optimized later)
     ///
-    /// Should be larger than `wait_until_available` because sometimes few
-    /// attempts work better than single one that waits for too long (common
-    /// case is in docker).
+    /// So in concurrent case on slower VM (such as CI with parallel tests)
+    /// 10 seconds is more reasonable default.
+    ///
+    /// The `wait_until_available` should be larger than this value to allow
+    /// multiple attempts. And also the whole time that connection is being
+    /// established can be up to `wait_until_available + connect_timeout`
     pub fn connect_timeout(&mut self, timeout: Duration) -> &mut Self {
         self.connect_timeout = timeout;
         self
