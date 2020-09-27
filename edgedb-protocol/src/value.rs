@@ -1,5 +1,5 @@
-use std::time::SystemTime;
-use crate::codec::{NamedTupleShape, ObjectShape, EnumValue};
+pub use std::time::SystemTime;
+pub use crate::codec::{NamedTupleShape, ObjectShape, EnumValue};
 pub use crate::model::{ BigInt, Decimal, LocalDatetime, LocalDate, LocalTime, Duration, Uuid };
 
 #[derive(Clone, Debug, PartialEq)]
