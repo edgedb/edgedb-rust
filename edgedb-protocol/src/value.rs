@@ -1,6 +1,6 @@
 use std::time::SystemTime;
 use crate::codec::{NamedTupleShape, ObjectShape, EnumValue};
-use crate::model::{ BigInt, Decimal, LocalDatetime, LocalDate, LocalTime, Duration, Uuid };
+pub use crate::model::{ BigInt, Decimal, LocalDatetime, LocalDate, LocalTime, Duration, Uuid };
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
