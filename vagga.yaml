@@ -86,12 +86,12 @@ commands:
 
   outdated: !Command
     description: Run outdated tool
-    container: ubuntu
+    container: tools
     run: [cargo, outdated]
 
   fuzz: !Command
     description: Run fuzz tool
-    container: ubuntu
+    container: tools
     run: [cargo, fuzz]
 
 containers:
@@ -132,13 +132,20 @@ containers:
       sha256: 481513f8a0306a9857d045497fb5b50b50a51e9ff748909ecf7d2bda1de275ab
       path: /
 
-    environ:
+    environ: &environ
       HOME: /work/target
+      CARGO_HOME: /work/target
       RUST_BACKTRACE: 1
       PYTHON_SYS_EXECUTABLE: /usr/bin/python3.8
       # needed for musl build
       PATH: /musl/bin:/usr/local/bin:/usr/bin:/bin
       LD_LIBRARY_PATH: /musl/lib/rustlib/x86_64-unknown-linux-musl/lib
+
+  tools:
+    setup:
+    - !Container ubuntu
+    - !Sh 'cargo install cargo-fuzz cargo-outdated --root=/usr'
+    environ: *environ
 
   nightly:
     setup:
