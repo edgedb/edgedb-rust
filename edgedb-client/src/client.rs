@@ -220,14 +220,13 @@ impl<'a> Sequence<'a> {
                 statement_name: statement_name.clone(),
                 command_text: String::from(request),
             }),
-            ClientMessage::Sync,
+            ClientMessage::Flush,
         ]).await?;
 
         loop {
             let msg = self.reader.message().await?;
             match msg {
                 ServerMessage::PrepareComplete(..) => {
-                    self.reader.wait_ready().await?;
                     break;
                 }
                 ServerMessage::ErrorResponse(err) => {
@@ -257,7 +256,7 @@ impl<'a> Sequence<'a> {
                     break data_desc;
                 }
                 ServerMessage::ErrorResponse(err) => {
-                    self.expect_ready().await?;
+                    self.err_sync().await?;
                     return Err(anyhow::anyhow!(err));
                 }
                 _ => {
