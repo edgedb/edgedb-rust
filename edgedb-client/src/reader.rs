@@ -49,9 +49,9 @@ pub struct QueryResponse<'a, D> {
 #[derive(Debug, Snafu)]
 #[non_exhaustive]
 pub enum ReadError {
-    #[snafu(display("error decoding message: {}", source))]
+    #[snafu(display("error decoding message"))]
     DecodeErr { source: DecodeError },
-    #[snafu(display("error reading data: {}", source))]
+    #[snafu(display("error reading data"))]
     Io { source: io::Error },
     #[snafu(display("server message out of order: {:?}", message))]
     OutOfOrder { message: ServerMessage, backtrace: Backtrace },
