@@ -47,6 +47,7 @@ pub struct Connection {
 pub struct Sequence<'a> {
     pub writer: Writer<'a>,
     pub reader: Reader<'a>,
+    pub(crate) active: bool,
     dirty: &'a mut bool,
 }
 
@@ -67,8 +68,9 @@ impl<'a> Sequence<'a> {
     pub fn response<D: reader::Decode>(self, decoder: D)
         -> QueryResponse<'a, D>
     {
+        assert!(self.active);  // TODO(tailhook) maybe debug_assert
         reader::QueryResponse {
-            seq: Some(self),
+            seq: self,
             buffer: Vec::new(),
             error: None,
             complete: false,
@@ -76,7 +78,8 @@ impl<'a> Sequence<'a> {
         }
     }
 
-    pub fn end_clean(self) {
+    pub fn end_clean(&mut self) {
+        self.active = false;
         *self.dirty = false;
     }
 }
@@ -119,7 +122,7 @@ impl Connection {
             outbuf: &mut self.output_buf,
             stream: &self.stream,
         };
-        Ok(Sequence { writer, reader, dirty: &mut self.dirty})
+        Ok(Sequence { writer, reader, active: true, dirty: &mut self.dirty})
     }
 
     pub fn get_param<T: PublicParam>(&self)
@@ -155,27 +158,32 @@ impl<'a> Sequence<'a> {
         -> Result<(), anyhow::Error>
         where I: IntoIterator<Item=&'x ClientMessage>
     {
+        assert!(self.active);  // TODO(tailhook) maybe debug_assert
         self.writer.send_messages(msgs).await
     }
 
-    pub async fn expect_ready(mut self) -> Result<(), reader::ReadError> {
+    pub async fn expect_ready(&mut self) -> Result<(), reader::ReadError> {
+        assert!(self.active);  // TODO(tailhook) maybe debug_assert
         self.reader.wait_ready().await?;
         self.end_clean();
         Ok(())
     }
 
     pub fn message(&mut self) -> reader::MessageFuture<'_, 'a> {
+        assert!(self.active);  // TODO(tailhook) maybe debug_assert
         self.reader.message()
     }
 
     // TODO(tailhook) figure out if this is the best way
-    pub async fn err_sync(mut self) -> Result<(), anyhow::Error> {
+    pub async fn err_sync(&mut self) -> Result<(), anyhow::Error> {
+        assert!(self.active);  // TODO(tailhook) maybe debug_assert
         self.writer.send_messages(&[ClientMessage::Sync]).await?;
         timeout(Duration::from_secs(10), self.expect_ready()).await??;
         Ok(())
     }
 
-    pub async fn _process_exec(mut self) -> anyhow::Result<Bytes> {
+    pub async fn _process_exec(&mut self) -> anyhow::Result<Bytes> {
+        assert!(self.active);  // TODO(tailhook) maybe debug_assert
         let status = loop {
             match self.reader.message().await? {
                 ServerMessage::CommandComplete(c) => {
@@ -201,6 +209,7 @@ impl<'a> Sequence<'a> {
         io_format: IoFormat)
         -> Result<OutputTypedesc, anyhow::Error >
     {
+        assert!(self.active);  // TODO(tailhook) maybe debug_assert
         let statement_name = Bytes::from_static(b"");
 
         self.send_messages(&[
@@ -222,7 +231,7 @@ impl<'a> Sequence<'a> {
                     break;
                 }
                 ServerMessage::ErrorResponse(err) => {
-                    self.reader.wait_ready().await?;
+                    self.err_sync().await?;
                     return Err(anyhow::anyhow!(err));
                 }
                 _ => {
@@ -248,7 +257,7 @@ impl<'a> Sequence<'a> {
                     break data_desc;
                 }
                 ServerMessage::ErrorResponse(err) => {
-                    self.reader.wait_ready().await?;
+                    self.expect_ready().await?;
                     return Err(anyhow::anyhow!(err));
                 }
                 _ => {

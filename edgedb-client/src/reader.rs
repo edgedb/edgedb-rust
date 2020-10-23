@@ -39,7 +39,7 @@ pub struct MessageFuture<'a, 'r: 'a> {
 
 // Note: query response expects query *followed by* Sync messsage
 pub struct QueryResponse<'a, D> {
-    pub(crate) seq: Option<client::Sequence<'a>>,
+    pub(crate) seq: client::Sequence<'a>,
     pub(crate) complete: bool,
     pub(crate) error: Option<ErrorResponse>,
     pub(crate) buffer: Vec<Bytes>,
@@ -174,8 +174,7 @@ impl<D> QueryResponse<'_, D>
         Ok(())
     }
     pub async fn get_completion(mut self) -> anyhow::Result<Bytes> {
-        let seq = self.seq.take().expect("poll after end of stream");
-        Ok(seq._process_exec().await?)
+        Ok(self.seq._process_exec().await?)
     }
 }
 
@@ -186,6 +185,7 @@ impl<D> Stream for QueryResponse<'_, D>
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context)
         -> Poll<Option<Self::Item>>
     {
+        assert!(self.seq.active);  // TODO(tailhook) maybe debug_assert
         let QueryResponse {
             ref mut buffer,
             ref mut complete,
@@ -193,7 +193,6 @@ impl<D> Stream for QueryResponse<'_, D>
             ref mut seq,
             ref decoder,
         } = *self;
-        let seq = seq.as_mut().expect("poll after end of stream");
         while buffer.len() == 0 {
             match seq.reader.poll_message(cx) {
                 Poll::Ready(Ok(ServerMessage::Data(data))) if error.is_none()
@@ -216,7 +215,7 @@ impl<D> Stream for QueryResponse<'_, D>
                 Poll::Ready(Ok(ServerMessage::ReadyForCommand(r))) => {
                     if let Some(error) = error.take() {
                         seq.reader.consume_ready(r);
-                        self.seq.take().unwrap().end_clean();
+                        seq.end_clean();
                         return Poll::Ready(Some(
                             RequestError { error }.fail()));
                     } else {
@@ -226,7 +225,7 @@ impl<D> Stream for QueryResponse<'_, D>
                             }.fail()?;
                         }
                         seq.reader.consume_ready(r);
-                        self.seq.take().unwrap().end_clean();
+                        seq.end_clean();
                         return Poll::Ready(None);
                     }
                 }
