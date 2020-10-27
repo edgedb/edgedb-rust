@@ -179,7 +179,7 @@ impl<'t> RawCodec<'t> for SystemTime {
 
         use std::time::{ Duration, UNIX_EPOCH };
         let postgres_epoch :SystemTime = UNIX_EPOCH + Duration::from_secs(946684800);
-       
+
         let val = if micros > 0 {
             postgres_epoch + Duration::from_micros(micros as u64)
         } else {

@@ -76,6 +76,11 @@ impl<'t> DecodeArrayLike<'t> {
         let inner = DecodeCompositeInner::read_array_like_header(buf, || errors::InvalidSetShape.build())?;
         Ok(DecodeArrayLike{inner})
     }
+
+    pub fn new_collection(buf:&'t [u8]) -> Result<Self, DecodeError> {    
+        let inner = DecodeCompositeInner::read_array_like_header(buf, || errors::InvalidArrayOrSetShape.build())?;
+        Ok(DecodeArrayLike{inner})
+    }
 }
 
 impl<'t> Iterator for DecodeArrayLike<'t> {
