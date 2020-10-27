@@ -29,7 +29,7 @@ impl Queryable for String {
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
         -> Result<(), DescriptorMismatch>
     {
-        check_scalar(ctx, type_pos, codec::STD_STR, "str")
+        check_scalar(ctx, type_pos, codec::STD_STR, "std::str")
     }
 }
 
@@ -40,7 +40,7 @@ impl Queryable for Json {
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
         -> Result<(), DescriptorMismatch>
     {
-        check_scalar(ctx, type_pos, codec::STD_JSON, "json")
+        check_scalar(ctx, type_pos, codec::STD_JSON, "std::json")
     }
 }
 
@@ -51,7 +51,7 @@ impl Queryable for Vec<u8> {
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
         -> Result<(), DescriptorMismatch>
     {
-        check_scalar(ctx, type_pos, codec::STD_BYTES, "bytes")
+        check_scalar(ctx, type_pos, codec::STD_BYTES, "std::bytes")
     }
 }
 
@@ -62,7 +62,7 @@ impl Queryable for i16 {
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
         -> Result<(), DescriptorMismatch>
     {
-        check_scalar(ctx, type_pos, codec::STD_INT16, "int16")
+        check_scalar(ctx, type_pos, codec::STD_INT16, "std::int16")
     }
 }
 
@@ -73,7 +73,7 @@ impl Queryable for i32 {
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
         -> Result<(), DescriptorMismatch>
     {
-        check_scalar(ctx, type_pos, codec::STD_INT32, "int32")
+        check_scalar(ctx, type_pos, codec::STD_INT32, "std::int32")
     }
 }
 
@@ -84,7 +84,7 @@ impl Queryable for i64 {
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
         -> Result<(), DescriptorMismatch>
     {
-        check_scalar(ctx, type_pos, codec::STD_INT64, "int64")
+        check_scalar(ctx, type_pos, codec::STD_INT64, "std::int64")
     }
 }
 
@@ -95,7 +95,7 @@ impl Queryable for f32 {
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
         -> Result<(), DescriptorMismatch>
     {
-        check_scalar(ctx, type_pos, codec::STD_FLOAT32, "float32")
+        check_scalar(ctx, type_pos, codec::STD_FLOAT32, "std::float32")
     }
 }
 
@@ -106,7 +106,7 @@ impl Queryable for f64 {
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
         -> Result<(), DescriptorMismatch>
     {
-        check_scalar(ctx, type_pos, codec::STD_FLOAT64, "float64")
+        check_scalar(ctx, type_pos, codec::STD_FLOAT64, "std::float64")
     }
 }
 
@@ -117,7 +117,7 @@ impl Queryable for Uuid {
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
         -> Result<(), DescriptorMismatch>
     {
-        check_scalar(ctx, type_pos, codec::STD_UUID, "uuid")
+        check_scalar(ctx, type_pos, codec::STD_UUID, "std::uuid")
     }
 }
 
@@ -128,7 +128,7 @@ impl Queryable for bool {
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
         -> Result<(), DescriptorMismatch>
     {
-        check_scalar(ctx, type_pos, codec::STD_BOOL, "bool")
+        check_scalar(ctx, type_pos, codec::STD_BOOL, "std::bool")
     }
 }
 
@@ -139,7 +139,7 @@ impl Queryable for BigInt {
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
         -> Result<(), DescriptorMismatch>
     {
-        check_scalar(ctx, type_pos, codec::STD_BIGINT, "bigint")
+        check_scalar(ctx, type_pos, codec::STD_BIGINT, "std::bigint")
     }
 }
 
@@ -150,7 +150,7 @@ impl Queryable for Decimal {
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
         -> Result<(), DescriptorMismatch>
     {
-        check_scalar(ctx, type_pos, codec::STD_DECIMAL, "decimal")
+        check_scalar(ctx, type_pos, codec::STD_DECIMAL, "std::decimal")
     }
 }
 
@@ -194,7 +194,7 @@ impl Queryable for Duration {
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
         -> Result<(), DescriptorMismatch>
     {
-        check_scalar(ctx, type_pos, codec::STD_DURATION, "duration")
+        check_scalar(ctx, type_pos, codec::STD_DURATION, "std::duration")
     }
 }
 
@@ -205,6 +205,6 @@ impl Queryable for SystemTime {
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
         -> Result<(), DescriptorMismatch>
     {
-        check_scalar(ctx, type_pos, codec::STD_DATETIME, "datetime")
+        check_scalar(ctx, type_pos, codec::STD_DATETIME, "std::datetime")
     }
 }
