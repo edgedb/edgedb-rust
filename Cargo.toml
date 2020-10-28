@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "edgedb-errors",
     "edgedb-derive",
     "edgedb-protocol",
     "edgedb-client"
