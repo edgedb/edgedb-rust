@@ -110,6 +110,29 @@ impl Builder {
                 format!("cannot read credentials file {}", path.display())
         })?)
     }
+    pub fn from_dsn(dsn: &str) -> anyhow::Result<Builder> {
+        if !dsn.starts_with("edgedb://") {
+            anyhow::bail!("String {:?} is not a valid DSN", dsn)
+        };
+        let url = url::Url::parse(dsn)
+            .with_context(|| format!("cannot parse DSN {:?}", dsn))?;
+        Ok(Builder {
+            addr: Addr::Tcp(
+                url.host_str().unwrap_or("127.0.0.1").to_owned(),
+                url.port().unwrap_or(5656),
+            ),
+            user: if url.username().is_empty() {
+                Some("edgedb".to_owned())
+            } else {
+                Some(url.username().to_owned())
+            },
+            password: url.password().map(|s| s.to_owned()),
+            database: Some(url.path().strip_prefix("/")
+                .unwrap_or("edgedb").to_owned()),
+            wait: None,
+            connect_timeout: DEFAULT_CONNECT_TIMEOUT,
+        })
+    }
     pub fn new() -> Builder {
         Builder {
             addr: Addr::Tcp("127.0.0.1".into(), 5656),
@@ -419,4 +442,34 @@ fn read_credentials() {
     assert_eq!(bld.user, Some("test3n".into()));
     assert_eq!(bld.database, Some("test3n".into()));
     assert_eq!(bld.password, Some("lZTBy1RVCfOpBAOwSCwIyBIR".into()));
+}
+
+#[test]
+fn from_dsn() {
+    let bld = Builder::from_dsn(
+        "edgedb://user1:EiPhohl7@edb-0134.elb.us-east-2.amazonaws.com/db2").unwrap();
+    assert!(matches!(bld.addr, Addr::Tcp(h, p) if
+        h == "edb-0134.elb.us-east-2.amazonaws.com" &&
+        p == 5656));
+    assert_eq!(bld.user, Some("user1".into()));
+    assert_eq!(bld.database, Some("db2".into()));
+    assert_eq!(bld.password, Some("EiPhohl7".into()));
+
+    let bld = Builder::from_dsn(
+        "edgedb://user2@edb-0134.elb.us-east-2.amazonaws.com:1756/db2").unwrap();
+    assert!(matches!(bld.addr, Addr::Tcp(h, p) if
+        h == "edb-0134.elb.us-east-2.amazonaws.com" &&
+        p == 1756));
+    assert_eq!(bld.user, Some("user2".into()));
+    assert_eq!(bld.database, Some("db2".into()));
+    assert_eq!(bld.password, None);
+
+    let bld = Builder::from_dsn(
+        "edgedb://edb-0134.elb.us-east-2.amazonaws.com:1756").unwrap();
+    assert!(matches!(bld.addr, Addr::Tcp(h, p) if
+        h == "edb-0134.elb.us-east-2.amazonaws.com" &&
+        p == 1756));
+    assert_eq!(bld.user, Some("edgedb".into()));
+    assert_eq!(bld.database, Some("edgedb".into()));
+    assert_eq!(bld.password, None);
 }
