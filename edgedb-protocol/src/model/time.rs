@@ -1,5 +1,7 @@
 use crate::model::OutOfRangeError;
-use std::{convert::TryFrom, time::SystemTime, fmt::{Debug, Display}};
+use std::convert::{TryFrom, TryInto};
+use std::time::SystemTime;
+use std::fmt::{Debug, Display};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Duration {
@@ -81,7 +83,7 @@ impl Duration {
 
 impl LocalDatetime {
     pub const MIN : LocalDatetime = LocalDatetime { micros: LocalDate::MIN.days as i64 * MICROS_PER_DAY as i64 };
-    pub const MAX : LocalDatetime = LocalDatetime { 
+    pub const MAX : LocalDatetime = LocalDatetime {
         micros: LocalDate::MAX.days as i64 * MICROS_PER_DAY as i64
          + LocalTime::MAX.micros as i64
     };
@@ -133,10 +135,10 @@ impl LocalTime {
     pub const MAX : LocalTime = LocalTime { micros: MICROS_PER_DAY - 1 };
 
     pub(crate) fn try_from_micros(micros: u64) -> Result<LocalTime, OutOfRangeError> {
-        if micros < MICROS_PER_DAY { 
-            Ok(LocalTime { micros: micros }) 
+        if micros < MICROS_PER_DAY {
+            Ok(LocalTime { micros: micros })
         } else {
-             Err(OutOfRangeError) 
+             Err(OutOfRangeError)
         }
     }
 
@@ -175,9 +177,9 @@ impl LocalTime {
         assert!(hour < 24);
 
         let micros =
-        microsecond as u64 
-        + 1000_000 * (second as u64 
-             + 60 * (minute as u64 
+        microsecond as u64
+        + 1000_000 * (second as u64
+             + 60 * (minute as u64
                 + 60 * (hour as u64)));
         LocalTime::from_micros(micros)
     }
@@ -246,7 +248,7 @@ impl LocalDate {
         let passed_years = (year - BASE_YEAR - 1) as u32;
         let days_from_year =
             365 * passed_years
-            + passed_years / 4 
+            + passed_years / 4
             - passed_years / 100
             + passed_years / 400
             + 366;
@@ -331,7 +333,7 @@ impl Datetime {
     pub const MAX : Datetime = Datetime { micros: LocalDatetime::MAX.micros };
     pub const UNIX_EPOCH : Datetime = Datetime { micros: LocalDate::UNIX_EPOCH.days as i64 * MICROS_PER_DAY as i64 };
 
-    fn try_from_micros(micros: i64) -> Result<Datetime, OutOfRangeError> {
+    pub fn try_from_micros(micros: i64) -> Result<Datetime, OutOfRangeError> {
         if micros < Self::MIN.micros || micros > Self::MAX.micros {
             return Err(OutOfRangeError);
         }
@@ -406,6 +408,37 @@ impl TryFrom<SystemTime> for Datetime {
 
     fn try_from(value: SystemTime) -> Result<Self, Self::Error> {
         Datetime::from_system_time(value)
+    }
+}
+impl std::ops::Add<&'_ std::time::Duration> for Datetime {
+    type Output = Datetime;
+    fn add(self, other: &std::time::Duration) -> Datetime {
+        let micros = match other.as_micros().try_into() {
+            Ok(m) => m,
+            Err(_) => {
+                // crash in debug mode
+                debug_assert!(false,
+                    "resulting datetime is out of range");
+                // saturate in release mode
+                return Datetime::MAX;
+            }
+        };
+        let micros = self.micros.saturating_add(micros);
+        if micros > Datetime::MAX.micros {
+            // crash in debug mode
+            debug_assert!(false,
+                "resulting datetime is out of range");
+            // saturate in release mode
+            return Datetime::MAX;
+        }
+        return Datetime { micros };
+    }
+}
+
+impl std::ops::Add<std::time::Duration> for Datetime {
+    type Output = Datetime;
+    fn add(self, other: std::time::Duration) -> Datetime {
+        self + &other
     }
 }
 
@@ -536,7 +569,7 @@ mod test {
     }
 
     pub fn valid_test_dates() -> impl Iterator<Item=(i32, u8, u8)> {
-        extended_test_dates().filter(|date| 
+        extended_test_dates().filter(|date|
                 LocalDate::try_from_ymd(date.0, date.1, date.2).is_ok())
     }
 

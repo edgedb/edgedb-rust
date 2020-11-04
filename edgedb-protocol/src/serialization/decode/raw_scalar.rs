@@ -7,7 +7,8 @@ use bytes::Buf;
 use crate::errors::{self, DecodeError};
 use crate::model::{Json, Uuid};
 use snafu::{ResultExt, ensure};
-use crate::model::{Duration, LocalDate, LocalTime, LocalDatetime, BigInt, Decimal};
+use crate::model::{BigInt, Decimal};
+use crate::model::{Duration, LocalDate, LocalTime, LocalDatetime, Datetime};
 
 
 pub trait RawCodec<'t>: Sized {
@@ -186,6 +187,14 @@ impl<'t> RawCodec<'t> for SystemTime {
             postgres_epoch - Duration::from_micros((-micros) as u64)
         };
         Ok(val)
+    }
+}
+
+impl<'t> RawCodec<'t> for Datetime {
+    fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
+        let micros = i64::decode(buf)?;
+        Ok(Datetime::try_from_micros(micros)
+            .map_err(|_| errors::InvalidDate.build())?)
     }
 }
 

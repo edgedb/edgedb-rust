@@ -3,7 +3,8 @@ use crate::queryable::{Queryable, DescriptorContext, DescriptorMismatch};
 use crate::errors::DecodeError;
 use crate::codec;
 use crate::descriptors::TypePos;
-use crate::model::{Json, Uuid, Duration, LocalDate, LocalTime, LocalDatetime, BigInt, Decimal};
+use crate::model::{Duration, LocalDate, LocalTime, LocalDatetime, Datetime};
+use crate::model::{Json, Uuid, BigInt, Decimal};
 use crate::serialization::decode::RawCodec;
 use std::time::SystemTime;
 
@@ -199,6 +200,17 @@ impl Queryable for Duration {
 }
 
 impl Queryable for SystemTime {
+    fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
+        RawCodec::decode(buf)
+    }
+    fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
+        -> Result<(), DescriptorMismatch>
+    {
+        check_scalar(ctx, type_pos, codec::STD_DATETIME, "std::datetime")
+    }
+}
+
+impl Queryable for Datetime {
     fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
         RawCodec::decode(buf)
     }

@@ -2,7 +2,6 @@ use std::any::type_name;
 use std::convert::{TryInto, TryFrom};
 use std::fmt;
 use std::str;
-use std::time::{UNIX_EPOCH, SystemTime};
 use std::sync::Arc;
 use std::collections::HashSet;
 use std::ops::Deref;
@@ -766,22 +765,7 @@ impl Codec for Datetime {
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(8);
-        let postgres_epoch: SystemTime = UNIX_EPOCH +
-            std::time::Duration::from_secs(946684800);
-        if *val >= postgres_epoch {
-            buf.put_i64(val.duration_since(postgres_epoch)
-                .ok().context(errors::DatetimeRange)?
-                .as_micros()
-                .try_into()
-                .ok().context(errors::DatetimeRange)?);
-        } else {
-            let micros: i64 = postgres_epoch.duration_since(*val)
-                .ok().context(errors::DatetimeRange)?
-                .as_micros()
-                .try_into()
-                .ok().context(errors::DatetimeRange)?;
-            buf.put_i64(-micros);
-        }
+        buf.put_i64(val.micros);
         Ok(())
     }
 }

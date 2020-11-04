@@ -1,12 +1,12 @@
 use std::error::Error;
 use std::{i16, i32, i64};
 use std::sync::Arc;
-use std::time::UNIX_EPOCH;
 
 use edgedb_protocol::codec::{build_codec, build_input_codec};
 use edgedb_protocol::codec::{Codec, ObjectShape};
 use edgedb_protocol::value::{Value};
 use edgedb_protocol::model::{LocalDatetime, LocalDate, LocalTime, Duration};
+use edgedb_protocol::model::{Datetime};
 use edgedb_protocol::descriptors::{Descriptor, TypePos};
 use edgedb_protocol::descriptors::BaseScalarTypeDescriptor;
 use edgedb_protocol::descriptors::{ObjectShapeDescriptor, ShapeElement};
@@ -534,7 +534,7 @@ fn datetime() -> Result<(), Box<dyn Error>> {
 
     encoding_eq!(&codec, b"\0\x02=^\x1bTc\xe7",
         Value::Datetime(
-            UNIX_EPOCH + Duration::new(1577109148, 156903000)));
+            Datetime::UNIX_EPOCH + Duration::new(1577109148, 156903000)));
     Ok(())
 }
 
