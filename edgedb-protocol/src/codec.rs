@@ -230,7 +230,7 @@ impl<'a> CodecBuilder<'a> {
                     members: d.members.iter().map(|x| x[..].into()).collect(),
                 })),
                 // type annotations are stripped from codecs array before
-                // bilding a codec
+                // building a codec
                 D::TypeAnnotation(..) => unreachable!(),
             }
         } else {

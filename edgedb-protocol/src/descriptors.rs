@@ -186,7 +186,7 @@ impl Decode for Descriptor {
             5 => NamedTupleTypeDescriptor::decode(buf).map(D::NamedTuple),
             6 => ArrayTypeDescriptor::decode(buf).map(D::Array),
             7 => EnumerationTypeDescriptor::decode(buf).map(D::Enumeration),
-            0xF0..=0xFF => {
+            0x7F..=0xFF => {
                 TypeAnnotationDescriptor::decode(buf).map(D::TypeAnnotation)
             }
             descriptor => InvalidTypeDescriptor { descriptor }.fail()?
@@ -333,7 +333,7 @@ impl Decode for TypeAnnotationDescriptor {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 21, errors::Underflow);
         let annotated_type = buf.get_u8();
-        assert!(annotated_type >= 0xF0);
+        assert!(annotated_type >= 0x7F);
         let id = Uuid::decode(buf)?;
         let annotation = String::decode(buf)?;
         Ok(TypeAnnotationDescriptor { annotated_type, id, annotation })
