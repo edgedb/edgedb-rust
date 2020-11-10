@@ -275,7 +275,7 @@ impl Builder {
         seq.send_messages(&[
             ClientMessage::ClientHandshake(ClientHandshake {
                 major_ver: 0,
-                minor_ver: 7,
+                minor_ver: 8,
                 params,
                 extensions: HashMap::new(),
             }),

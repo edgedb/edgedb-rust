@@ -119,7 +119,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
             fn decode(buf: &[u8])
                 -> Result<Self, ::edgedb_protocol::errors::DecodeError>
             {
-                let mut elements = edgedb_protocol::serialization::decode::DecodeTupleLike::new_object(buf, #nfields)?;
+                let mut elements = ::edgedb_protocol::serialization::decode::DecodeTupleLike::new_object(buf, #nfields)?;
 
                 #typeid_block
                 #id_block

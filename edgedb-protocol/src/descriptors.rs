@@ -8,7 +8,7 @@ use snafu::{ensure, OptionExt};
 use crate::encoding::{Decode};
 use crate::errors::{self, DecodeError, CodecError};
 use crate::errors::{InvalidTypeDescriptor, UnexpectedTypePos};
-use crate::codec::{Codec, build_codec, build_input_codec};
+use crate::codec::{Codec, build_codec};
 use crate::queryable;
 
 
@@ -132,7 +132,7 @@ impl InputTypedesc {
         &self.array
     }
     pub fn build_codec(&self) -> Result<Arc<dyn Codec>, CodecError> {
-        build_input_codec(Some(self.root_pos()), self.descriptors())
+        build_codec(Some(self.root_pos()), self.descriptors())
     }
     pub fn root_pos(&self) -> TypePos {
         self.root_pos

@@ -14,7 +14,7 @@ use crate::descriptors::{self, Descriptor, TypePos};
 use crate::errors::{self, CodecError, DecodeError, EncodeError};
 use crate::value::Value;
 use crate::model;
-use crate::serialization::decode::{RawCodec, DecodeTupleLike, DecodeArrayLike, DecodeInputTuple};
+use crate::serialization::decode::{RawCodec, DecodeTupleLike, DecodeArrayLike};
 
 pub const STD_UUID: UuidVal = UuidVal::from_u128(0x100);
 pub const STD_STR: UuidVal = UuidVal::from_u128(0x101);
@@ -147,18 +147,7 @@ pub struct Tuple {
 }
 
 #[derive(Debug)]
-pub struct InputTuple {
-    elements: Vec<Arc<dyn Codec>>,
-}
-
-#[derive(Debug)]
 pub struct NamedTuple {
-    shape: NamedTupleShape,
-    codecs: Vec<Arc<dyn Codec>>,
-}
-
-#[derive(Debug)]
-pub struct InputNamedTuple {
     shape: NamedTupleShape,
     codecs: Vec<Arc<dyn Codec>>,
 }
@@ -174,7 +163,6 @@ pub struct Enum {
 }
 
 struct CodecBuilder<'a> {
-    input: bool,
     descriptors: &'a [Descriptor],
 }
 
@@ -210,18 +198,10 @@ impl<'a> CodecBuilder<'a> {
                     inner: self.build(d.base_type_pos)?,
                 })),
                 D::Tuple(d) => {
-                    if self.input {
-                        Ok(Arc::new(InputTuple::build(d, self)?))
-                    } else {
-                        Ok(Arc::new(Tuple::build(d, self)?))
-                    }
+                    Ok(Arc::new(Tuple::build(d, self)?))
                 }
                 D::NamedTuple(d) => {
-                    if self.input {
-                        Ok(Arc::new(InputNamedTuple::build(d, self)?))
-                    } else {
-                        Ok(Arc::new(NamedTuple::build(d, self)?))
-                    }
+                    Ok(Arc::new(NamedTuple::build(d, self)?))
                 }
                 D::Array(d) => Ok(Arc::new(Array {
                     element: self.build(d.type_pos)?,
@@ -243,24 +223,12 @@ pub fn build_codec(root_pos: Option<TypePos>,
     descriptors: &[Descriptor])
     -> Result<Arc<dyn Codec>, CodecError>
 {
-    let dec = CodecBuilder { input: false, descriptors };
+    let dec = CodecBuilder { descriptors };
     match root_pos {
         Some(pos) => dec.build(pos),
         None => Ok(Arc::new(Nothing {})),
     }
 }
-
-pub fn build_input_codec(root_pos: Option<TypePos>,
-    descriptors: &[Descriptor])
-    -> Result<Arc<dyn Codec>, CodecError>
-{
-    let dec = CodecBuilder { input: true, descriptors };
-    match root_pos {
-        Some(pos) => dec.build(pos),
-        None => Ok(Arc::new(Nothing {})),
-    }
-}
-
 
 pub fn scalar_codec(uuid: &UuidVal) -> Result<Arc<dyn Codec>, CodecError> {
     match *uuid {
@@ -476,18 +444,6 @@ impl Tuple {
     }
 }
 
-impl InputTuple {
-    fn build(d: &descriptors::TupleTypeDescriptor, dec: &CodecBuilder)
-        -> Result<InputTuple, CodecError>
-    {
-        return Ok(InputTuple {
-            elements: d.element_types.iter()
-                .map(|&t| dec.build(t))
-                .collect::<Result<_, _>>()?,
-        })
-    }
-}
-
 impl NamedTuple {
     fn build(d: &descriptors::NamedTupleTypeDescriptor, dec: &CodecBuilder)
         -> Result<NamedTuple, CodecError>
@@ -499,26 +455,6 @@ impl NamedTuple {
                 .collect::<Result<_, _>>()?,
         })
     }
-}
-
-impl InputNamedTuple {
-    fn build(d: &descriptors::NamedTupleTypeDescriptor, dec: &CodecBuilder)
-        -> Result<InputNamedTuple, CodecError>
-    {
-        Ok(InputNamedTuple {
-            shape: d.elements.as_slice().into(),
-            codecs: d.elements.iter()
-                .map(|e| dec.build(e.type_pos))
-                .collect::<Result<_, _>>()?,
-        })
-    }
-}
-
-fn decode_input_tuple<'t>(mut elements:DecodeInputTuple, codecs:&Vec<Arc<dyn Codec>>) -> Result<Vec<Value>, DecodeError>{
-    codecs
-        .iter()
-        .map(|codec|codec.decode(elements.read()?))
-        .collect::<Result<Vec<Value>, DecodeError>>()
 }
 
 fn decode_tuple<'t>(mut elements:DecodeTupleLike, codecs:&Vec<Arc<dyn Codec>>) -> Result<Vec<Value>, DecodeError>{
@@ -883,38 +819,6 @@ impl Codec for Tuple {
     }
 }
 
-impl Codec for InputTuple {
-    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
-        let elements = DecodeInputTuple::with_count(buf, self.elements.len())?;
-        let items = decode_input_tuple(elements, &self.elements)?;
-        Ok(Value::Tuple(items))
-    }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
-        let items = match val {
-            Value::Tuple(items) => items,
-            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
-        };
-        ensure!(self.elements.len() == items.len(),
-            errors::TupleShapeMismatch);
-        buf.reserve(4 + 4*self.elements.len());
-        buf.put_u32(self.elements.len().try_into()
-                    .ok().context(errors::TooManyElements)?);
-        for (codec, item) in self.elements.iter().zip(items) {
-            buf.reserve(4);
-            let pos = buf.len();
-            buf.put_u32(0);  // replaced after serializing a value
-            codec.encode(buf, item)?;
-            let len = buf.len()-pos-4;
-            buf[pos..pos+4].copy_from_slice(&u32::try_from(len)
-                    .ok().context(errors::ElementTooLong)?
-                    .to_be_bytes());
-        }
-        Ok(())
-    }
-}
-
 impl Codec for NamedTuple {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         let elements = DecodeTupleLike::new_tuple(buf, self.codecs.len())?;
@@ -941,43 +845,6 @@ impl Codec for NamedTuple {
         for (codec, field) in self.codecs.iter().zip(fields) {
             buf.reserve(8);
             buf.put_u32(0);
-            let pos = buf.len();
-            buf.put_u32(0);  // replaced after serializing a value
-            codec.encode(buf, field)?;
-            let len = buf.len()-pos-4;
-            buf[pos..pos+4].copy_from_slice(&u32::try_from(len)
-                    .ok().context(errors::ElementTooLong)?
-                    .to_be_bytes());
-        }
-        Ok(())
-    }
-}
-
-impl Codec for InputNamedTuple {
-    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
-        let elements = DecodeInputTuple::with_count(buf, self.codecs.len())?;
-        let fields = decode_input_tuple(elements, &self.codecs)?;
-        Ok(Value::NamedTuple {
-            shape: self.shape.clone(),
-            fields,
-        })
-    }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
-        let (shape, fields) = match val {
-            Value::NamedTuple { shape, fields } => (shape, fields),
-            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
-        };
-        ensure!(shape == &self.shape, errors::TupleShapeMismatch);
-        ensure!(self.codecs.len() == fields.len(),
-                errors::ObjectShapeMismatch);
-        debug_assert_eq!(self.codecs.len(), shape.0.elements.len());
-        buf.reserve(4 + 8*self.codecs.len());
-        buf.put_u32(self.codecs.len().try_into()
-                    .ok().context(errors::TooManyElements)?);
-        for (codec, field) in self.codecs.iter().zip(fields) {
-            buf.reserve(4);
             let pos = buf.len();
             buf.put_u32(0);  // replaced after serializing a value
             codec.encode(buf, field)?;
