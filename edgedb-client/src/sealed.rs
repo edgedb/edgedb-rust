@@ -1,1 +1,1 @@
-pub trait ServerParam {}
+pub trait SealedParam {}

@@ -1,7 +1,9 @@
+//! Credentials file handling routines
 use std::default::Default;
 use serde::{Serialize, Deserialize};
 
 
+/// A structure that represents contents of the credentials file
 #[derive(Serialize, Deserialize, Debug)]
 #[non_exhaustive]
 pub struct Credentials {

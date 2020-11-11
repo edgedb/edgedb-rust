@@ -34,6 +34,7 @@ enum Addr {
     Unix(PathBuf),
 }
 
+/// A builder used to create connections
 #[derive(Debug, Clone)]
 pub struct Builder {
     addr: Addr,

@@ -1,12 +1,13 @@
+//! Parameters returned by the server on initial handshake
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 use typemap::Key;
 
-use crate::sealed::ServerParam;
-use crate::client::{PublicParam};
+use crate::sealed::SealedParam;
 
 
+/// Address of the underlying postgress, available only in dev mode
 #[derive(Deserialize, Debug, Serialize)]
 pub struct PostgresAddress {
     pub host: String,
@@ -17,10 +18,15 @@ pub struct PostgresAddress {
     pub server_settings: HashMap<String, String>,
 }
 
+/// A trait that represents param sent from server
+pub trait ServerParam: SealedParam
+    + typemap::Key + typemap::DebugAny + Send + Sync
+{}
+
 
 impl Key for PostgresAddress {
     type Value = PostgresAddress;
 }
 
+impl SealedParam for PostgresAddress { }
 impl ServerParam for PostgresAddress { }
-impl PublicParam for PostgresAddress { }

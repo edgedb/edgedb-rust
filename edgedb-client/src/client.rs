@@ -24,18 +24,12 @@ use edgedb_protocol::queryable::{Queryable};
 use edgedb_protocol::value::Value;
 use edgedb_protocol::descriptors::OutputTypedesc;
 
-use crate::sealed::ServerParam;
-use crate::reader::{self, QueryableDecoder, QueryResponse};
-
-pub use crate::reader::Reader;
-
+use crate::server_params::ServerParam;
+use crate::reader::{self, QueryableDecoder, QueryResponse, Reader};
+use crate::errors::NoResultExpected;
 
 
-pub trait PublicParam: ServerParam
-    + typemap::Key + typemap::DebugAny + Send + Sync
-{}
-
-
+/// A single connection to the EdgeDB
 pub struct Connection {
     pub(crate) stream: ByteStream,
     pub(crate) input_buf: BytesMut,
@@ -56,11 +50,6 @@ pub struct Sequence<'a> {
 pub struct Writer<'a> {
     stream: &'a ByteStream,
     outbuf: &'a mut BytesMut,
-}
-
-#[derive(Debug)]
-pub struct NoResultExpected {
-    pub completion_message: Bytes,
 }
 
 
@@ -126,7 +115,7 @@ impl Connection {
         Ok(Sequence { writer, reader, active: true, dirty: &mut self.dirty})
     }
 
-    pub fn get_param<T: PublicParam>(&self)
+    pub fn get_param<T: ServerParam>(&self)
         -> Option<&<T as typemap::Key>::Value>
         where <T as typemap::Key>::Value: fmt::Debug + Send + Sync
     {
@@ -433,11 +422,3 @@ impl Connection {
 }
 
 
-impl std::error::Error for NoResultExpected {}
-
-impl fmt::Display for NoResultExpected {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "no result expected: {}",
-            String::from_utf8_lossy(&self.completion_message[..]))
-    }
-}
