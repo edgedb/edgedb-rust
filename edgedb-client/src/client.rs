@@ -24,14 +24,15 @@ use edgedb_protocol::queryable::{Queryable};
 use edgedb_protocol::value::Value;
 use edgedb_protocol::descriptors::OutputTypedesc;
 
+use crate::sealed::ServerParam;
 use crate::reader::{self, QueryableDecoder, QueryResponse};
 
 pub use crate::reader::Reader;
 
 
 
-pub trait Sealed {}  // TODO(tailhook) private
-pub trait PublicParam: Sealed + typemap::Key + typemap::DebugAny + Send + Sync
+pub trait PublicParam: ServerParam
+    + typemap::Key + typemap::DebugAny + Send + Sync
 {}
 
 

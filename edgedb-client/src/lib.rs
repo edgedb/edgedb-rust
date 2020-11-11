@@ -1,4 +1,5 @@
 mod builder;
+mod sealed;
 pub mod errors;
 pub mod reader;
 pub mod client;

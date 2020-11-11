@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use typemap::Key;
 
-use crate::client::{Sealed, PublicParam};
+use crate::sealed::ServerParam;
+use crate::client::{PublicParam};
 
 
 #[derive(Deserialize, Debug, Serialize)]
@@ -21,5 +22,5 @@ impl Key for PostgresAddress {
     type Value = PostgresAddress;
 }
 
-impl Sealed for PostgresAddress { }
+impl ServerParam for PostgresAddress { }
 impl PublicParam for PostgresAddress { }
