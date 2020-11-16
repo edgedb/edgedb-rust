@@ -17,7 +17,7 @@ use snafu::{Snafu, ResultExt, Backtrace};
 use edgedb_protocol::server_message::{ServerMessage, ErrorResponse};
 use edgedb_protocol::server_message::{ReadyForCommand, TransactionState};
 use edgedb_protocol::errors::{DecodeError};
-use edgedb_protocol::queryable::Queryable;
+use edgedb_protocol::queryable::{Queryable, Decoder};
 use edgedb_protocol::codec::Codec;
 use edgedb_protocol::value::Value;
 
@@ -63,30 +63,39 @@ pub enum ReadError {
 
 pub trait Decode {
     type Output;
-    fn decode(&self, msg: Bytes) -> Result<Self::Output, DecodeError>;
+    fn decode(&self, msg: Bytes)
+        -> Result<Self::Output, DecodeError>;
 }
 
-pub struct QueryableDecoder<T>(PhantomData<*const T>);
+pub struct QueryableDecoder<T> {
+    decoder: Decoder,
+    phantom: PhantomData<*const T>,
+}
 
 unsafe impl<T> Send for QueryableDecoder<T> {}
 impl<D> Unpin for QueryResponse<'_, D> {}
 
 impl<T> QueryableDecoder<T> {
-    pub fn new() -> QueryableDecoder<T> {
-        QueryableDecoder(PhantomData)
+    pub fn new(decoder: Decoder) -> QueryableDecoder<T> {
+        QueryableDecoder {
+            decoder,
+            phantom: PhantomData,
+        }
     }
 }
 
 impl<T: Queryable> Decode for QueryableDecoder<T> {
     type Output = T;
     fn decode(&self, msg: Bytes) -> Result<T, DecodeError> {
-        Queryable::decode(&msg)
+        Queryable::decode(&self.decoder, &msg)
     }
 }
 
 impl Decode for Arc<dyn Codec> {
     type Output = Value;
-    fn decode(&self, msg: Bytes) -> Result<Self::Output, DecodeError> {
+    fn decode(&self, msg: Bytes)
+        -> Result<Self::Output, DecodeError>
+    {
         (&**self).decode(&msg)
     }
 }

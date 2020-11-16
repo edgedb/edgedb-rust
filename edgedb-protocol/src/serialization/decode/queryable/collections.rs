@@ -1,16 +1,20 @@
-use crate::queryable::{Queryable, DescriptorContext, DescriptorMismatch};
+use crate::queryable::{Queryable, Decoder, DescriptorContext};
+use crate::queryable::{DescriptorMismatch};
 use crate::errors::DecodeError;
 use crate::descriptors::{Descriptor, TypePos};
 use crate::serialization::decode::DecodeArrayLike;
 use std::iter::FromIterator;
 
+
 impl<T:Queryable> Queryable for Option<T> {
-    fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
-        Ok(Some(T::decode(buf)?))
+    fn decode(decoder: &Decoder, buf: &[u8]) -> Result<Self, DecodeError> {
+        Ok(Some(T::decode(decoder, buf)?))
     }
 
-    fn decode_optional(buf: Option<&[u8]>) -> Result<Self, DecodeError> {
-        buf.map(|buf|T::decode(buf)).transpose()
+    fn decode_optional(decoder: &Decoder, buf: Option<&[u8]>)
+        -> Result<Self, DecodeError>
+    {
+        buf.map(|buf|T::decode(decoder, buf)).transpose()
     }
 
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
@@ -25,15 +29,19 @@ struct Collection<T>(T);
 impl<T:IntoIterator + FromIterator<<T as IntoIterator>::Item>> Collection<T>
     where <T as IntoIterator>::Item : Queryable
 {
-    fn decode(buf: &[u8]) -> Result<T, DecodeError> {
+    fn decode(decoder: &Decoder, buf: &[u8]) -> Result<T, DecodeError> {
         let elements = DecodeArrayLike::new_collection(buf)?;
-        let elements = elements.map(|e| <T as IntoIterator>::Item::decode(e?));
+        let elements = elements.map(|e| {
+            <T as IntoIterator>::Item::decode(decoder, e?)
+        });
         elements.collect::<Result<T, DecodeError>>()
     }
 
-    fn decode_optional(buf: Option<&[u8]>) -> Result<T, DecodeError> {
+    fn decode_optional(decoder: &Decoder, buf: Option<&[u8]>)
+        -> Result<T, DecodeError>
+    {
         match buf {
-            Some(buf) => Self::decode(buf),
+            Some(buf) => Self::decode(decoder, buf),
             None => Ok(T::from_iter(std::iter::empty())),
         }
     }
@@ -52,12 +60,14 @@ impl<T:IntoIterator + FromIterator<<T as IntoIterator>::Item>> Collection<T>
 }
 
 impl<T:Queryable> Queryable for Vec<T> {
-    fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
-        Collection::<Vec<T>>::decode(buf)
+    fn decode(decoder: &Decoder, buf: &[u8]) -> Result<Self, DecodeError> {
+        Collection::<Vec<T>>::decode(decoder, buf)
     }
 
-    fn decode_optional(buf: Option<&[u8]>) -> Result<Self, DecodeError> {
-        Collection::<Vec<T>>::decode_optional(buf)
+    fn decode_optional(decoder: &Decoder, buf: Option<&[u8]>)
+        -> Result<Self, DecodeError>
+    {
+        Collection::<Vec<T>>::decode_optional(decoder, buf)
     }
 
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)

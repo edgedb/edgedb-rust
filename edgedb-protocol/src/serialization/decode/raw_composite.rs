@@ -1,4 +1,3 @@
-use crate::queryable::Queryable;
 use crate::errors::{self, DecodeError};
 use snafu::ensure;
 use self::inner::DecodeCompositeInner;
@@ -28,11 +27,6 @@ impl<'t> DecodeTupleLike<'t> {
 
     pub fn read(&mut self) -> Result<Option<&[u8]>, DecodeError> {
         self.inner.read_object_element()
-    }
-
-    pub fn decode_element<T:Queryable>(&mut self) -> Result<T, DecodeError> {
-        let element = self.read()?;
-        T::decode_optional(element)
     }
 
     pub fn skip_element(&mut self) -> Result<(), DecodeError> {

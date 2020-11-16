@@ -1,13 +1,33 @@
+use std::default::Default;
 use snafu::{Snafu, ensure};
 
 use crate::errors::{self, DecodeError};
 use crate::descriptors::{Descriptor, TypePos};
 
+
+#[non_exhaustive]
+pub struct Decoder {
+    pub has_implicit_tid: bool,
+    pub has_implicit_tname: bool,
+}
+
+impl Default for Decoder {
+    fn default() -> Decoder {
+        Decoder {
+            has_implicit_tid: false,
+            has_implicit_tname: false,
+        }
+    }
+}
+
 pub trait Queryable: Sized {
-    fn decode(buf: &[u8]) -> Result<Self, DecodeError>;
-    fn decode_optional(buf: Option<&[u8]>) -> Result<Self, DecodeError> {
+    fn decode(decoder: &Decoder, buf: &[u8])
+        -> Result<Self, DecodeError>;
+    fn decode_optional(decoder: &Decoder, buf: Option<&[u8]>)
+        -> Result<Self, DecodeError>
+    {
         ensure!(buf.is_some(), errors::MissingRequiredElement);
-        Self::decode(buf.unwrap())
+        Self::decode(decoder, buf.unwrap())
     }
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
         -> Result<(), DescriptorMismatch>;
@@ -29,12 +49,18 @@ pub enum DescriptorMismatch {
 }
 
 pub struct DescriptorContext<'a> {
+    pub has_implicit_tid: bool,
+    pub has_implicit_tname: bool,
     descriptors: &'a [Descriptor],
 }
 
 impl DescriptorContext<'_> {
     pub(crate) fn new(descriptors: &[Descriptor]) -> DescriptorContext {
-        DescriptorContext { descriptors }
+        DescriptorContext {
+            descriptors,
+            has_implicit_tid: false,
+            has_implicit_tname: false,
+        }
     }
     pub fn get(&self, type_pos: TypePos)
         -> Result<&Descriptor, DescriptorMismatch>

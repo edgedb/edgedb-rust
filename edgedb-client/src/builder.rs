@@ -18,13 +18,14 @@ use typemap::TypeMap;
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
-use edgedb_protocol::server_message::{TransactionState};
+use edgedb_protocol::server_message::{TransactionState, ServerHandshake};
 
-use crate::server_params::PostgresAddress;
 use crate::client::{Connection, Sequence};
 use crate::credentials::Credentials;
 use crate::errors::PasswordRequired;
+use crate::features::ProtocolVersion;
 use crate::reader::ReadError;
+use crate::server_params::PostgresAddress;
 
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -260,6 +261,7 @@ impl Builder {
                 }
             }
         };
+        let mut version = ProtocolVersion::current();
         let mut conn = Connection {
             stream: sock,
             input_buf: BytesMut::with_capacity(8192),
@@ -267,6 +269,7 @@ impl Builder {
             params: TypeMap::custom(),
             transaction_state: TransactionState::NotInTransaction,
             dirty: false,
+            version: version.clone(),
         };
         let mut seq = conn.start_sequence().await?;
         let mut params = HashMap::new();
@@ -275,17 +278,19 @@ impl Builder {
 
         seq.send_messages(&[
             ClientMessage::ClientHandshake(ClientHandshake {
-                major_ver: 0,
-                minor_ver: 8,
+                major_ver: version.major_ver,
+                minor_ver: version.minor_ver,
                 params,
                 extensions: HashMap::new(),
             }),
         ]).await?;
 
         let mut msg = seq.message().await?;
-        if let ServerMessage::ServerHandshake {..} = msg {
-            log::warn!("Connection negotiantion issue {:?}", msg);
-            // TODO(tailhook) react on this somehow
+        if let ServerMessage::ServerHandshake(ServerHandshake {
+            major_ver, minor_ver, extensions: _
+        }) = msg {
+            version = ProtocolVersion { major_ver, minor_ver };
+            // TODO(tailhook) record extensions
             msg = seq.message().await?;
         }
         match msg {
@@ -347,6 +352,7 @@ impl Builder {
                 }
             }
         }
+        conn.version = version;
         conn.params = server_params;
         Ok(conn)
     }

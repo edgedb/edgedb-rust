@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::default::Default;
 use std::fmt;
 use std::str;
 use std::sync::Arc;
@@ -20,7 +21,7 @@ use edgedb_protocol::client_message::{Execute, ExecuteScript};
 use edgedb_protocol::codec::Codec;
 use edgedb_protocol::server_message::ServerMessage;
 use edgedb_protocol::server_message::{TransactionState};
-use edgedb_protocol::queryable::{Queryable};
+use edgedb_protocol::queryable::{Queryable, Decoder};
 use edgedb_protocol::value::Value;
 use edgedb_protocol::descriptors::OutputTypedesc;
 
@@ -28,12 +29,15 @@ use crate::server_params::ServerParam;
 use crate::reader::{self, QueryableDecoder, QueryResponse, Reader};
 use crate::errors::NoResultExpected;
 
+pub use crate::features::ProtocolVersion;
+
 
 /// A single connection to the EdgeDB
 pub struct Connection {
     pub(crate) stream: ByteStream,
     pub(crate) input_buf: BytesMut,
     pub(crate) output_buf: BytesMut,
+    pub(crate) version: ProtocolVersion,
     pub(crate) params: TypeMap<dyn typemap::DebugAny + Send + Sync>,
     pub(crate) transaction_state: TransactionState,
     pub(crate) dirty: bool,
@@ -44,6 +48,7 @@ pub struct Sequence<'a> {
     pub reader: Reader<'a>,
     pub(crate) active: bool,
     dirty: &'a mut bool,
+    proto: &'a ProtocolVersion,
 }
 
 
@@ -72,9 +77,18 @@ impl<'a> Sequence<'a> {
         self.active = false;
         *self.dirty = false;
     }
+
+    fn decoder(&self) -> Decoder {
+        let mut dec = Decoder::default();
+        dec.has_implicit_tid = self.proto.has_implicit_tid();
+        return dec;
+    }
 }
 
 impl Connection {
+    pub fn protocol(&self) -> &ProtocolVersion {
+        return &self.version
+    }
     pub async fn passive_wait<T>(&mut self) -> T {
         let mut buf = [0u8; 1];
         self.stream.read(&mut buf[..]).await.ok();
@@ -112,7 +126,13 @@ impl Connection {
             outbuf: &mut self.output_buf,
             stream: &self.stream,
         };
-        Ok(Sequence { writer, reader, active: true, dirty: &mut self.dirty})
+        Ok(Sequence {
+            writer,
+            reader,
+            active: true,
+            dirty: &mut self.dirty,
+            proto: &self.version,
+        })
     }
 
     pub fn get_param<T: ServerParam>(&self)
@@ -311,9 +331,11 @@ impl Connection {
         let desc = seq._query(request, arguments, IoFormat::Binary).await?;
         match desc.root_pos() {
             Some(root_pos) => {
-                R::check_descriptor(
-                    &desc.as_queryable_context(), root_pos)?;
-                Ok(seq.response(QueryableDecoder::new()))
+                let mut ctx = desc.as_queryable_context();
+                ctx.has_implicit_tid = seq.proto.has_implicit_tid();
+                R::check_descriptor(&ctx, root_pos)?;
+                let decoder = seq.decoder();
+                Ok(seq.response(QueryableDecoder::new(decoder)))
             }
             None => {
                 let completion_message = seq._process_exec().await?;
@@ -360,9 +382,11 @@ impl Connection {
         let desc = seq._query(request, arguments, IoFormat::Json).await?;
         match desc.root_pos() {
             Some(root_pos) => {
-                String::check_descriptor(
-                    &desc.as_queryable_context(), root_pos)?;
-                Ok(seq.response(QueryableDecoder::new()))
+                let mut ctx = desc.as_queryable_context();
+                ctx.has_implicit_tid = seq.proto.has_implicit_tid();
+                String::check_descriptor(&ctx, root_pos)?;
+                let decoder = seq.decoder();
+                Ok(seq.response(QueryableDecoder::new(decoder)))
             }
             None => {
                 let completion_message = seq._process_exec().await?;
@@ -382,9 +406,11 @@ impl Connection {
             IoFormat::JsonElements).await?;
         match desc.root_pos() {
             Some(root_pos) => {
-                String::check_descriptor(
-                    &desc.as_queryable_context(), root_pos)?;
-                Ok(seq.response(QueryableDecoder::new()))
+                let mut ctx = desc.as_queryable_context();
+                ctx.has_implicit_tid = seq.proto.has_implicit_tid();
+                String::check_descriptor(&ctx, root_pos)?;
+                let decoder = seq.decoder();
+                Ok(seq.response(QueryableDecoder::new(decoder)))
             }
             None => {
                 let completion_message = seq._process_exec().await?;

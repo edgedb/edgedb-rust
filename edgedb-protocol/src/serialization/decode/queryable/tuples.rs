@@ -1,4 +1,5 @@
-use crate::queryable::{Queryable, DescriptorContext, DescriptorMismatch};
+use crate::queryable::{Queryable, DescriptorContext, Decoder};
+use crate::queryable::{DescriptorMismatch};
 use crate::errors::DecodeError;
 use crate::descriptors::{Descriptor, TypePos};
 use crate::serialization::decode::DecodeTupleLike;
@@ -6,10 +7,15 @@ use crate::serialization::decode::DecodeTupleLike;
 macro_rules! implement_tuple {
     ( $count:expr, $($name:ident,)+ ) => (
         impl<$($name:Queryable),+> Queryable for ($($name,)+) {
-            fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
+            fn decode(decoder: &Decoder, buf: &[u8])
+                -> Result<Self, DecodeError>
+            {
                 let mut elements = DecodeTupleLike::new_tuple(buf, $count)?;
                 Ok((
-                    $(elements.decode_element::<$name>()?,)+
+                    $(
+                        <$name as crate::queryable::Queryable>::
+                            decode_optional(decoder, elements.read()?)?,
+                    )+
                 ))
             }
 

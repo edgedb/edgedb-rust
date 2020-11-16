@@ -1,4 +1,5 @@
-use crate::queryable::{Queryable, DescriptorContext, DescriptorMismatch};
+use crate::queryable::{Queryable, DescriptorContext, Decoder};
+use crate::queryable::{DescriptorMismatch};
 
 use crate::errors::DecodeError;
 use crate::codec;
@@ -30,7 +31,7 @@ pub trait DecodeScalar: for<'a> RawCodec<'a> + Sized {
 }
 
 impl<T: DecodeScalar> Queryable for T {
-    fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
+    fn decode(_decoder: &Decoder, buf: &[u8]) -> Result<Self, DecodeError> {
         RawCodec::decode(buf)
     }
     fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
