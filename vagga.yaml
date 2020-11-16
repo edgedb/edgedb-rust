@@ -7,11 +7,6 @@ commands:
       cargo build --workspace --exclude=edgeql-pytest
       cargo build -p edgeql-pytest
 
-  make-static: !Command
-    description: Build executable
-    container: ubuntu
-    run: [cargo, build, --target=x86_64-unknown-linux-musl, -p, edgedb-repl]
-
   cargo: !Command
     description: Run arbitrary cargo command
     symlink-name: cargo
@@ -50,13 +45,6 @@ commands:
     description: Run `bulk` command (for version bookkeeping)
     container: ubuntu
     run: [bulk]
-
-  repl: !Command
-    description: Run edgedb repl
-    container: ubuntu
-    run: [cargo, run, --bin, edgedb, '--']
-    environ:
-      EDGEDB_HOST: /work/tmp/run
 
   server: !Command
     description: Run edgedb server
@@ -106,7 +94,6 @@ containers:
       - git
       - build-essential
       - vim
-      - less  # as pager for repl
       - musl-tools
       # for cargo geiger
       - libssl-dev
