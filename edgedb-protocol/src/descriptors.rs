@@ -177,7 +177,7 @@ impl Decode for Descriptor {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
         use Descriptor as D;
         ensure!(buf.remaining() >= 1, errors::Underflow);
-        match buf.bytes()[0] {
+        match buf.chunk()[0] {
             0 => SetDescriptor::decode(buf).map(D::Set),
             1 => ObjectShapeDescriptor::decode(buf).map(D::ObjectShape),
             2 => BaseScalarTypeDescriptor::decode(buf).map(D::BaseScalar),

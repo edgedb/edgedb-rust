@@ -11,7 +11,7 @@ snafu = {version="0.6.0", features=["backtraces"]}
 anyhow = "1.0.23"
 async-std = "1.6"
 async-listen = "0.2.0"
-bytes = "0.5.3"
+bytes = "1.0.1"
 scram = "0.5.0"
 typemap = "0.3.3"
 serde = "1.0"
