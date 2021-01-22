@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::u32;
-use std::str;
 use std::convert::TryFrom;
 use std::io::Cursor;
 
@@ -69,10 +68,11 @@ impl Decode for String {
         let len = buf.get_u32() as usize;
         // TODO(tailhook) ensure size < i32::MAX
         ensure!(buf.remaining() >= len, errors::Underflow);
-        let result = str::from_utf8(&buf.bytes()[..len])
-            .map(String::from)
+        let mut data = vec![0u8; len];
+        buf.copy_to_slice(&mut data[..]);
+        let result = String::from_utf8(data)
+            .map_err(|e| e.utf8_error())
             .context(errors::InvalidUtf8);
-        buf.advance(len);
         return result;
     }
 }
@@ -93,9 +93,10 @@ impl Decode for Bytes {
 impl Decode for Uuid {
     fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 16, errors::Underflow);
-        let result = Uuid::from_slice(&buf.bytes()[..16])
+        let mut bytes = [0u8; 16];
+        buf.copy_to_slice(&mut bytes[..]);
+        let result = Uuid::from_slice(&bytes)
             .context(errors::InvalidUuid)?;
-        buf.advance(16);
         Ok(result)
     }
 }

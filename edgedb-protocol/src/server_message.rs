@@ -174,7 +174,7 @@ impl CommandDataDescription {
     pub fn output(&self) -> Result<OutputTypedesc, DecodeError> {
         let mut cur = Cursor::new(self.output_typedesc.clone());
         let mut descriptors = Vec::new();
-        while cur.bytes() != b"" {
+        while cur.remaining() > 0 {
             match Descriptor::decode(&mut cur)? {
                 Descriptor::TypeAnnotation(_) => {}
                 item => descriptors.push(item),
@@ -195,7 +195,7 @@ impl CommandDataDescription {
     pub fn input(&self) -> Result<InputTypedesc, DecodeError> {
         let mut cur = Cursor::new(self.input_typedesc.clone());
         let mut descriptors = Vec::new();
-        while cur.bytes() != b"" {
+        while cur.remaining() > 0 {
             match Descriptor::decode(&mut cur)? {
                 Descriptor::TypeAnnotation(_) => {}
                 item => descriptors.push(item),
@@ -544,8 +544,7 @@ impl Decode for ServerKeyData {
     {
         ensure!(buf.remaining() >= 32, errors::Underflow);
         let mut data = [0u8; 32];
-        data.copy_from_slice(&buf.bytes()[..32]);
-        buf.advance(32);
+        buf.copy_to_slice(&mut data[..]);
         Ok(ServerKeyData { data })
     }
 }

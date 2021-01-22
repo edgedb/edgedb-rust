@@ -15,10 +15,10 @@ fn decode(bytes: &[u8]) -> Result<Vec<Descriptor>, DecodeError> {
     let bytes = Bytes::copy_from_slice(bytes);
     let mut cur = Cursor::new(bytes);
     let mut result = Vec::new();
-    while cur.bytes() != b"" {
+    while cur.remaining() > 0 {
         result.push(Descriptor::decode(&mut cur)?);
     }
-    assert!(cur.bytes() == b"");
+    assert!(cur.remaining() == 0);
     Ok(result)
 }
 

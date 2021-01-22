@@ -3,9 +3,9 @@ use std::cmp::{min, max};
 use std::convert::TryInto;
 use std::future::{Future};
 use std::marker::PhantomData;
-use std::mem::transmute;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::slice;
 use std::task::{Poll, Context};
 
 use async_std::io::Read as AsyncRead;
@@ -146,7 +146,9 @@ impl<'r> Reader<'r> {
             unsafe {
                 // this is safe because the underlying ByteStream always
                 // initializes read bytes
-                let dest: &mut [u8] = transmute(buf.bytes_mut());
+                let chunk = buf.chunk_mut();
+                let dest: &mut [u8] = slice::from_raw_parts_mut(
+                    chunk.as_mut_ptr(), chunk.len());
                 match Pin::new(&mut *stream).poll_read(cx, dest) {
                     Poll::Ready(Ok(0)) => {
                         return Poll::Ready(Err(ReadError::Eos));

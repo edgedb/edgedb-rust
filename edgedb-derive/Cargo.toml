@@ -12,7 +12,7 @@ quote = "1.0"
 trybuild = "1.0.19"
 
 [dev-dependencies]
-bytes = "0.5.3"
+bytes = "1.0.1"
 edgedb-protocol = {path="../edgedb-protocol"}
 serde = "1.0"
 serde_json = "1.0"
