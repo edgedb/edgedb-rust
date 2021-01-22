@@ -56,7 +56,7 @@ pub async fn timeout<F, T>(dur: Duration, f: F) -> anyhow::Result<T>
 }
 
 fn sleep_duration() -> Duration {
-    Duration::from_millis(thread_rng().gen_range(10u64, 200u64))
+    Duration::from_millis(thread_rng().gen_range(10u64..200u64))
 }
 
 fn is_temporary_error(e: &anyhow::Error) -> bool {

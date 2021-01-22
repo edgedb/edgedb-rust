@@ -22,7 +22,7 @@ with-chrono = ["chrono"]
 all-types = ["with-num-bigint", "with-bigdecimal", "with-chrono"]
 
 [dev-dependencies]
-rand = "0.7"
+rand = "0.8"
 
 [lib]
 
