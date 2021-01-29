@@ -28,6 +28,7 @@ use crate::reader::ReadError;
 use crate::server_params::PostgresAddress;
 
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+pub const DEFAULT_WAIT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone)]
 enum Addr {
@@ -42,7 +43,7 @@ pub struct Builder {
     user: String,
     password: Option<String>,
     database: String,
-    wait: Option<Duration>,
+    wait: Duration,
     connect_timeout: Duration,
 }
 
@@ -96,7 +97,7 @@ impl Builder {
             password: credentials.password.clone(),
             database: credentials.database.clone()
                 .unwrap_or_else(|| "edgedb".into()),
-            wait: None,
+            wait: DEFAULT_WAIT,
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
         }
     }
@@ -132,7 +133,7 @@ impl Builder {
             password: url.password().map(|s| s.to_owned()),
             database: url.path().strip_prefix("/")
                 .unwrap_or("edgedb").to_owned(),
-            wait: None,
+            wait: DEFAULT_WAIT,
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
         })
     }
@@ -142,7 +143,7 @@ impl Builder {
             user: "edgedb".into(),
             password: None,
             database: "edgedb".into(),
-            wait: None,
+            wait: DEFAULT_WAIT,
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
         }
     }
@@ -183,7 +184,7 @@ impl Builder {
     /// Note: the whole time that connection is being established can be up to
     /// `wait_until_available + connect_timeout`
     pub fn wait_until_available(&mut self, time: Duration) -> &mut Self {
-        self.wait = Some(time);
+        self.wait = time;
         self
     }
     /// A timeout for a single connect attempt
@@ -220,15 +221,13 @@ impl Builder {
             {
                 Err(e) if is_temporary_error(&e) => {
                     log::debug!("Temporary connection error: {:#}", e);
-                    if let Some(wait) = self.wait {
-                        if wait > start.elapsed() {
-                            sleep(sleep_duration()).await;
-                            continue;
-                        } else {
-                            Err(e).context(format!("cannot establish \
-                                                    connection for {:?}",
-                                                    wait))?
-                        }
+                    if self.wait > start.elapsed() {
+                        sleep(sleep_duration()).await;
+                        continue;
+                    } else if self.wait > Duration::new(0, 0) {
+                        return Err(e).context(format!("cannot establish \
+                                                       connection for {:?}",
+                                                       self.wait))?;
                     } else {
                         return Err(e)?;
                     }
