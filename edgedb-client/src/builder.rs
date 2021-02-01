@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::io;
 use std::str;
+use std::fmt;
 use std::time::{Instant, Duration};
 use std::path::{Path, PathBuf};
 
@@ -30,8 +31,12 @@ use crate::server_params::PostgresAddress;
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub const DEFAULT_WAIT: Duration = Duration::from_secs(30);
 
+
 #[derive(Debug, Clone)]
-enum Addr {
+pub struct Addr(AddrImpl);
+
+#[derive(Debug, Clone)]
+enum AddrImpl {
     Tcp(String, u16),
     Unix(PathBuf),
 }
@@ -90,9 +95,9 @@ fn is_temporary_error(e: &anyhow::Error) -> bool {
 impl Builder {
     pub fn from_credentials(credentials: &Credentials) -> Builder {
         Builder {
-            addr: Addr::Tcp(
+            addr: Addr(AddrImpl::Tcp(
                 credentials.host.clone().unwrap_or_else(|| "127.0.0.1".into()),
-                credentials.port),
+                credentials.port)),
             user: credentials.user.clone(),
             password: credentials.password.clone(),
             database: credentials.database.clone()
@@ -121,10 +126,10 @@ impl Builder {
         let url = url::Url::parse(dsn)
             .with_context(|| format!("cannot parse DSN {:?}", dsn))?;
         Ok(Builder {
-            addr: Addr::Tcp(
+            addr: Addr(AddrImpl::Tcp(
                 url.host_str().unwrap_or("127.0.0.1").to_owned(),
                 url.port().unwrap_or(5656),
-            ),
+            )),
             user: if url.username().is_empty() {
                 "edgedb".to_owned()
             } else {
@@ -139,7 +144,7 @@ impl Builder {
     }
     pub fn new() -> Builder {
         Builder {
-            addr: Addr::Tcp("127.0.0.1".into(), 5656),
+            addr: Addr(AddrImpl::Tcp("127.0.0.1".into(), 5656)),
             user: "edgedb".into(),
             password: None,
             database: "edgedb".into(),
@@ -147,14 +152,17 @@ impl Builder {
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
         }
     }
+    pub fn get_addr(&self) -> &Addr {
+        &self.addr
+    }
     pub fn unix_addr(&mut self, path: impl Into<PathBuf>) -> &mut Self {
-        self.addr = Addr::Unix(path.into());
+        self.addr = Addr(AddrImpl::Unix(path.into()));
         self
     }
     pub fn tcp_addr(&mut self, addr: impl Into<String>, port: u16)
         -> &mut Self
     {
-        self.addr = Addr::Tcp(addr.into(), port);
+        self.addr = Addr(AddrImpl::Tcp(addr.into(), port));
         self
     }
     pub fn get_user(&self) -> &str {
@@ -207,10 +215,10 @@ impl Builder {
     }
     pub async fn connect(&self) -> anyhow::Result<Connection> {
         match &self.addr {
-            Addr::Tcp(host, port) => {
+            Addr(AddrImpl::Tcp(host, port)) => {
                 log::info!("Connecting via TCP {}:{}", host, port);
             }
-            Addr::Unix(path) => {
+            Addr(AddrImpl::Unix(path)) => {
                 log::info!("Connecting via Unix `{}`", path.display());
             }
         };
@@ -245,11 +253,11 @@ impl Builder {
         -> anyhow::Result<Connection>
     {
         let sock = match &self.addr {
-            Addr::Tcp(host, port) => {
+            Addr(AddrImpl::Tcp(host, port)) => {
                 let conn = TcpStream::connect(&(&host[..], *port)).await?;
                 ByteStream::new_tcp_detached(conn)
             }
-            Addr::Unix(path) => {
+            Addr(AddrImpl::Unix(path)) => {
                 #[cfg(windows)] {
                     anyhow::bail!("Unix socket are not supported on windows");
                 }
@@ -357,6 +365,15 @@ impl Builder {
     }
 }
 
+impl fmt::Display for Addr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Addr(AddrImpl::Tcp(host, port)) => write!(f, "{}:{}", host, port),
+            Addr(AddrImpl::Unix(path)) => write!(f, "{}", path.display()),
+        }
+    }
+}
+
 async fn scram(seq: &mut Sequence<'_>, user: &str, password: &str)
     -> anyhow::Result<()>
 {
@@ -429,17 +446,25 @@ async fn scram(seq: &mut Sequence<'_>, user: &str, password: &str)
 fn read_credentials() {
     let bld = async_std::task::block_on(
         Builder::read_credentials("tests/credentials1.json")).unwrap();
-    assert!(matches!(bld.addr, Addr::Tcp(_, x) if x == 10702));
+    assert!(matches!(bld.addr, Addr(AddrImpl::Tcp(_, x)) if x == 10702));
     assert_eq!(&bld.user, "test3n");
     assert_eq!(&bld.database, "test3n");
     assert_eq!(bld.password, Some("lZTBy1RVCfOpBAOwSCwIyBIR".into()));
 }
 
 #[test]
+fn display() {
+    let mut bld = Builder::from_dsn("edgedb://localhost:1756").unwrap();
+    assert_eq!(bld.get_addr().to_string(), "localhost:1756");
+    bld.unix_addr("/test/my.sock");
+    assert_eq!(bld.get_addr().to_string(), "/test/my.sock");
+}
+
+#[test]
 fn from_dsn() {
     let bld = Builder::from_dsn(
         "edgedb://user1:EiPhohl7@edb-0134.elb.us-east-2.amazonaws.com/db2").unwrap();
-    assert!(matches!(bld.addr, Addr::Tcp(h, p) if
+    assert!(matches!(bld.addr, Addr(AddrImpl::Tcp(h, p)) if
         h == "edb-0134.elb.us-east-2.amazonaws.com" &&
         p == 5656));
     assert_eq!(&bld.user, "user1");
@@ -448,7 +473,7 @@ fn from_dsn() {
 
     let bld = Builder::from_dsn(
         "edgedb://user2@edb-0134.elb.us-east-2.amazonaws.com:1756/db2").unwrap();
-    assert!(matches!(bld.addr, Addr::Tcp(h, p) if
+    assert!(matches!(bld.addr, Addr(AddrImpl::Tcp(h, p)) if
         h == "edb-0134.elb.us-east-2.amazonaws.com" &&
         p == 1756));
     assert_eq!(&bld.user, "user2");
@@ -457,7 +482,7 @@ fn from_dsn() {
 
     let bld = Builder::from_dsn(
         "edgedb://edb-0134.elb.us-east-2.amazonaws.com:1756").unwrap();
-    assert!(matches!(bld.addr, Addr::Tcp(h, p) if
+    assert!(matches!(bld.addr, Addr(AddrImpl::Tcp(h, p)) if
         h == "edb-0134.elb.us-east-2.amazonaws.com" &&
         p == 1756));
     assert_eq!(&bld.user, "edgedb");
