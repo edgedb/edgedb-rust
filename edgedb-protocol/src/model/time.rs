@@ -442,6 +442,36 @@ impl std::ops::Add<std::time::Duration> for Datetime {
     }
 }
 
+impl Display for Duration {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let abs = if self.micros < 0 {
+            write!(f, "-")?;
+            - self.micros
+        } else {
+            self.micros
+        };
+        let (sec, micros) = (abs / 1_000_000, abs % 1_000_000);
+        if micros != 0 {
+            let mut fract = micros;
+            let mut zeros = 0;
+            while fract % 10 == 0 {
+                zeros += 1;
+                fract /= 10;
+            }
+            write!(f, "{hours:02}:{minutes:02}:{seconds:02}.{fract:0>fsize$}",
+                hours=sec / 3600,
+                minutes=sec / 60 % 60,
+                seconds=sec % 60,
+                fract=fract,
+                fsize=6 - zeros,
+            )
+        } else {
+            write!(f, "{:02}:{:02}:{:02}",
+                sec / 3600, sec / 60 % 60, sec % 60)
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -657,6 +687,18 @@ mod test {
 
         assert_eq!("+294276-12-31 23:59:59.999999 UTC", Datetime::MAX.to_string());
         assert_eq!("+294276-12-31T23:59:59.999999Z", to_debug(Datetime::MAX));
+    }
+
+    #[test]
+    fn format_duration() {
+        fn dur_str(msec: i64) -> String {
+            Duration::from_micros(msec).to_string()
+        }
+        assert_eq!(dur_str(1_000_000), "00:00:01");
+        assert_eq!(dur_str(1), "00:00:00.000001");
+        assert_eq!(dur_str(7_015_000), "00:00:07.015");
+        assert_eq!(dur_str(10_000_000__015_000), "2777:46:40.015");
+        assert_eq!(dur_str(12_345_678__000_000), "3429:21:18");
     }
 }
 
