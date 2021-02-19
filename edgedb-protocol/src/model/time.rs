@@ -458,7 +458,7 @@ impl Display for Duration {
                 zeros += 1;
                 fract /= 10;
             }
-            write!(f, "{hours:02}:{minutes:02}:{seconds:02}.{fract:0>fsize$}",
+            write!(f, "{hours}:{minutes:02}:{seconds:02}.{fract:0>fsize$}",
                 hours=sec / 3600,
                 minutes=sec / 60 % 60,
                 seconds=sec % 60,
@@ -466,7 +466,7 @@ impl Display for Duration {
                 fsize=6 - zeros,
             )
         } else {
-            write!(f, "{:02}:{:02}:{:02}",
+            write!(f, "{}:{:02}:{:02}",
                 sec / 3600, sec / 60 % 60, sec % 60)
         }
     }
@@ -694,9 +694,9 @@ mod test {
         fn dur_str(msec: i64) -> String {
             Duration::from_micros(msec).to_string()
         }
-        assert_eq!(dur_str(1_000_000), "00:00:01");
-        assert_eq!(dur_str(1), "00:00:00.000001");
-        assert_eq!(dur_str(7_015_000), "00:00:07.015");
+        assert_eq!(dur_str(1_000_000), "0:00:01");
+        assert_eq!(dur_str(1), "0:00:00.000001");
+        assert_eq!(dur_str(7_015_000), "0:00:07.015");
         assert_eq!(dur_str(10_000_000__015_000), "2777:46:40.015");
         assert_eq!(dur_str(12_345_678__000_000), "3429:21:18");
     }
