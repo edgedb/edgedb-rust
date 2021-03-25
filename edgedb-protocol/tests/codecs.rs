@@ -754,3 +754,86 @@ fn enums() -> Result<(), Box<dyn Error>> {
         Value::Enum("x".into()));
     Ok(())
 }
+
+#[test]
+fn set_of_arrays() -> Result<(), Box<dyn Error>> {
+    let elements = vec![
+        ShapeElement {
+            flag_implicit: true,
+            flag_link_property: false,
+            flag_link: false,
+            name: String::from("__tname__"),
+            type_pos: TypePos(0),
+        },
+        ShapeElement {
+            flag_implicit: true,
+            flag_link_property: false,
+            flag_link: false,
+            name: String::from("id"),
+            type_pos: TypePos(1),
+        },
+        ShapeElement {
+            flag_implicit: false,
+            flag_link_property: false,
+            flag_link: false,
+            name: String::from("sets"),
+            type_pos: TypePos(4),
+        },
+    ];
+    let shape = ObjectShape::from(&elements[..]);
+    let elements = elements.as_slice().into();
+    let codec = build_codec(Some(TypePos(5)),
+        &[
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-000000000101".parse()?, // str
+            }),
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-000000000100".parse()?, // uuid
+            }),
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-000000000105".parse()?, // int64
+            }),
+            Descriptor::Array(ArrayTypeDescriptor {
+                id: "b0105467-a177-635f-e207-0a21867f9be0".parse()?,
+                type_pos: TypePos(2),
+                dimensions: vec![None],
+            }),
+            Descriptor::Set(SetDescriptor {
+                id: "499ffd5c-f21b-574d-af8a-1c094c9d6fb0".parse()?,
+                type_pos: TypePos(3),
+            }),
+            Descriptor::ObjectShape(ObjectShapeDescriptor {
+                id: "499ffd5c-f21b-574d-af8a-1c094c9d6fb0".parse()?,
+                elements,
+            }),
+        ]
+    )?;
+    encoding_eq!(&codec, bconcat!(
+        // TODO(tailhook) test with non-zero reserved bytes
+        b"\0\0\0\x03\0\0\0\0\0\0\0\x10schema::Function"
+        b"\0\0\0\0\0\0\0\x10\xb8\xf2\x91\x99\x8b#\x11"
+        b"\xeb\xb9EO\x882\x0e[\xd6\0\0\0\0\0\0\0\x80"
+        b"\0\0\0\x01\0\0\0\0\0\0\0\0\0\0\0\x02\0\0\0\x01\0\0\08"
+        b"\0\0\0\x01\0\0\0\0\0\0\0,\0\0\0\x01\0\0\0\0\0\0\0\0"
+        b"\0\0\0\x02\0\0\0\x01\0\0\0\x08\0\0\0\0\0\0\0\x01\0\0\0\x08"
+        b"\0\0\0\0\0\0\0\x02\0\0\0,\0\0\0\x01\0\0\0\0\0\0\0 "
+        b"\0\0\0\x01\0\0\0\0\0\0\0\0\0\0\0\x01\0\0\0\x01\0\0\0\x08"
+        b"\0\0\0\0\0\0\0\x03"),
+        Value::Object {
+            shape,
+            fields: vec![
+                Some(Value::Str("schema::Function".into())),
+                Some(Value::Uuid("b8f29199-8b23-11eb-b945-4f88320e5bd6".parse()?)),
+                Some(Value::Set(vec![
+                    Value::Array(vec![
+                        Value::Int64(1),
+                        Value::Int64(2),
+                    ]),
+                    Value::Array(vec![
+                        Value::Int64(3),
+                    ]),
+                ]))
+            ]
+        });
+    Ok(())
+}

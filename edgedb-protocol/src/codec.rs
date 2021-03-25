@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::collections::HashSet;
 use std::ops::Deref;
 
-use bytes::{BytesMut, BufMut};
+use bytes::{BytesMut, Buf, BufMut};
 use uuid::Uuid as UuidVal;
 use snafu::{ensure, OptionExt};
 
@@ -156,6 +156,9 @@ pub struct NamedTuple {
 pub struct Array {
     element: Arc<dyn Codec>,
 }
+
+#[derive(Debug)]
+pub struct ArrayAdapter(Array);
 
 #[derive(Debug)]
 pub struct Enum {
@@ -519,6 +522,34 @@ impl Codec for Object {
     }
 }
 
+impl Codec for ArrayAdapter {
+    fn decode(&self, mut buf: &[u8]) -> Result<Value, DecodeError> {
+        ensure!(buf.remaining() >= 12, errors::Underflow);
+        let count = buf.get_u32() as usize;
+        ensure!(count == 1, errors::InvalidArrayShape);
+        let _reserved = buf.get_i32() as usize;
+        let len = buf.get_i32() as usize;
+        ensure!(buf.remaining() >= len, errors::Underflow);
+        ensure!(buf.remaining() <= len, errors::ExtraData);
+        return self.0.decode(buf);
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        buf.reserve(12);
+        buf.put_u32(1);
+        buf.put_u32(0);
+        let pos = buf.len();
+        buf.put_i32(0);  // replaced after serializing a value
+        self.0.encode(buf, val)?;
+        let len = buf.len()-pos-4;
+        buf[pos..pos+4].copy_from_slice(&i32::try_from(len)
+                .ok().context(errors::ElementTooLong)?
+                .to_be_bytes());
+        Ok(())
+    }
+}
+
 impl<'a> From<&'a [descriptors::ShapeElement]> for ObjectShape {
     fn from(shape: &'a [descriptors::ShapeElement]) -> ObjectShape {
         ObjectShape(Arc::new(ObjectShapeInfo {
@@ -574,9 +605,15 @@ impl Set {
     fn build(d: &descriptors::SetDescriptor, dec: &CodecBuilder)
         -> Result<Set, CodecError>
     {
-        Ok(Set {
-            element: dec.build(d.type_pos)?,
-        })
+        let element = match dec.descriptors.get(d.type_pos.0 as usize) {
+            Some(Descriptor::Array(d)) => {
+                Arc::new(ArrayAdapter(Array {
+                    element: dec.build(d.type_pos)?,
+                }))
+            }
+            _ => dec.build(d.type_pos)?,
+        };
+        Ok(Set { element })
     }
 }
 
