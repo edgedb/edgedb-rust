@@ -101,8 +101,8 @@ pub fn error_name(code: u32) -> &'static str {
         0x_05_02_00_02 => "CardinalityViolationError",
         0x_05_02_00_03 => "MissingRequiredError",
         0x_05_03_00_00 => "TransactionError",
-        0x_05_03_00_01 => "TransactionSerializationError",
-        0x_05_03_00_02 => "TransactionDeadlockError",
+        0x_05_03_01_01 => "TransactionSerializationError",
+        0x_05_03_01_02 => "TransactionDeadlockError",
         0x_06_00_00_00 => "ConfigurationError",
         0x_07_00_00_00 => "AccessError",
         0x_07_01_00_00 => "AuthenticationError",
@@ -115,6 +115,10 @@ pub fn error_name(code: u32) -> &'static str {
         0x_FF_02_01_01 => "MissingArgumentError",
         0x_FF_02_01_02 => "UnknownArgumentError",
         0x_FF_03_00_00 => "NoDataError",
+
+        // Backwards-compatible names
+        0x_05_03_00_01 => "TransactionSerializationError",
+        0x_05_03_00_02 => "TransactionDeadlockError",
         _ => "UnknownError",
     }
 }
