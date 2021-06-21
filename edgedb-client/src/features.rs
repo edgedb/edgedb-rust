@@ -8,7 +8,7 @@ impl ProtocolVersion {
     pub fn current() -> ProtocolVersion {
         ProtocolVersion {
             major_ver: 0,
-            minor_ver: 9,
+            minor_ver: 10,
         }
     }
     fn ver(&self) -> (u16, u16) {
