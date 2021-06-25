@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::io;
 use std::str;
+use std::sync::Arc;
 use std::fmt;
 use std::time::{Instant, Duration};
 use std::path::{Path, PathBuf};
@@ -13,6 +14,7 @@ use async_std::task::sleep;
 use bytes::{Bytes, BytesMut};
 use futures_util::AsyncReadExt;
 use rand::{thread_rng, Rng};
+use rustls::ServerCertVerifier;
 use scram::ScramClient;
 use serde_json::from_slice;
 use typemap::TypeMap;
@@ -44,6 +46,24 @@ enum AddrImpl {
     Unix(PathBuf),
 }
 
+impl Addr {
+    pub fn get_tcp_addr(&self) -> Option<(&String, &u16)> {
+        if let Addr(AddrImpl::Tcp(host, port)) = self {
+            Some((host, port))
+        } else {
+            None
+        }
+    }
+
+    pub fn get_unix_addr(&self) -> Option<&PathBuf> {
+        if let Addr(AddrImpl::Unix(path)) = self {
+            Some(path)
+        } else {
+            None
+        }
+    }
+}
+
 /// A builder used to create connections
 #[derive(Debug, Clone)]
 pub struct Builder {
@@ -53,6 +73,7 @@ pub struct Builder {
     database: String,
     wait: Duration,
     connect_timeout: Duration,
+    pem: Option<String>,
     cert: rustls::RootCertStore,
     verify_hostname: Option<bool>,
 }
@@ -121,7 +142,9 @@ impl Builder {
         -> anyhow::Result<Builder>
     {
         let mut cert = rustls::RootCertStore::empty();
+        let pem;
         if let Some(cert_data) = &credentials.tls_cert_data {
+            pem = Some(cert_data.clone());
             match
                 cert.add_pem_file(&mut io::Cursor::new(cert_data.as_bytes()))
             {
@@ -134,6 +157,8 @@ impl Builder {
                                    contained in `tls_certdata`");
                 }
             }
+        } else {
+            pem = None;
         }
         Ok(Builder {
             addr: Addr(AddrImpl::Tcp(
@@ -147,6 +172,7 @@ impl Builder {
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             verify_hostname: None,
             cert,
+            pem,
         })
     }
     pub async fn read_credentials(path: impl AsRef<Path>)
@@ -184,6 +210,7 @@ impl Builder {
             wait: DEFAULT_WAIT,
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             cert: rustls::RootCertStore::empty(),
+            pem: None,
             verify_hostname: None,
         })
     }
@@ -196,8 +223,26 @@ impl Builder {
             wait: DEFAULT_WAIT,
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             cert: rustls::RootCertStore::empty(),
+            pem: None,
             verify_hostname: None,
         }
+    }
+    pub fn as_credentials(&self) -> anyhow::Result<Credentials> {
+        let (host, port) = match &self.addr {
+            Addr(AddrImpl::Tcp(host, port)) => (host, port),
+            Addr(AddrImpl::Unix(_)) => {
+                anyhow::bail!("Cannot generate credentials with UNIX socket.");
+            }
+        };
+        Ok(Credentials {
+            host: Some(host.into()),
+            port: port.clone(),
+            user: self.user.clone(),
+            password: self.password.clone(),
+            database: Some(self.database.clone()),
+            tls_cert_data: self.pem.clone(),
+            tls_verify_hostname: self.verify_hostname,
+        })
     }
     pub fn get_addr(&self) -> &Addr {
         &self.addr
@@ -262,12 +307,15 @@ impl Builder {
     }
 
     /// Set allowed certificate as pem file
-    pub fn pem_certificates(&mut self, cert_data: &mut dyn io::BufRead)
+    pub fn pem_certificates(&mut self, cert_data: &String)
         -> anyhow::Result<&mut Self>
     {
         self.cert.roots.clear();
-        self.cert.add_pem_file(cert_data).ok()
+        self.pem = None;
+        self.cert.add_pem_file(&mut io::Cursor::new(cert_data.as_bytes()))
+            .ok()
             .context("error reading certificate")?;
+        self.pem = Some(cert_data.clone());
         Ok(self)
     }
 
@@ -280,8 +328,10 @@ impl Builder {
         self
     }
 
-    pub async fn connect(&self) -> anyhow::Result<Connection> {
-        let tls = tls::connector(&self.cert, self.verify_hostname)?;
+    pub async fn connect_with_cert_verifier(
+        &self, cert_verifier: Arc<dyn ServerCertVerifier>
+    ) -> anyhow::Result<Connection> {
+        let tls = tls::connector(&self.cert, cert_verifier)?;
 
         match &self.addr {
             Addr(AddrImpl::Tcp(host, port)) => {
@@ -319,6 +369,11 @@ impl Builder {
             }
         };
         Ok(conn)
+    }
+    pub async fn connect(&self) -> anyhow::Result<Connection> {
+        self.connect_with_cert_verifier(Arc::new(tls::CertVerifier::new(
+            self.verify_hostname.unwrap_or(self.cert.is_empty())
+        ))).await
     }
     async fn _connect(&self, tls: &TlsConnectorBox, warned: &mut bool)
         -> anyhow::Result<Connection>
@@ -555,6 +610,20 @@ fn display() {
     assert_eq!(bld.get_addr().to_string(), "localhost:1756");
     bld.unix_addr("/test/my.sock");
     assert_eq!(bld.get_addr().to_string(), "/test/my.sock");
+}
+
+#[test]
+fn get_addr() {
+    let mut bld = Builder::from_dsn("edgedb://localhost:1756").unwrap();
+    let (host, port) = bld.get_addr().get_tcp_addr().unwrap();
+    assert_eq!(*host, "localhost");
+    assert_eq!(*port, 1756);
+    assert!(bld.get_addr().get_unix_addr().is_none());
+
+    bld.unix_addr("/test/my.sock");
+    let unix = bld.get_addr().get_unix_addr().unwrap().display().to_string();
+    assert_eq!(unix, "/test/my.sock");
+    assert!(bld.get_addr().get_tcp_addr().is_none());
 }
 
 #[test]
