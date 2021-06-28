@@ -6,7 +6,7 @@ use edgedb_protocol::codec::{build_codec};
 use edgedb_protocol::codec::{Codec, ObjectShape};
 use edgedb_protocol::value::{Value};
 use edgedb_protocol::model::{LocalDatetime, LocalDate, LocalTime, Duration};
-use edgedb_protocol::model::{Datetime};
+use edgedb_protocol::model::{Datetime, RelativeDuration};
 use edgedb_protocol::descriptors::{Descriptor, TypePos};
 use edgedb_protocol::descriptors::BaseScalarTypeDescriptor;
 use edgedb_protocol::descriptors::{ObjectShapeDescriptor, ShapeElement};
@@ -239,6 +239,32 @@ fn duration() -> Result<(), Box<dyn Error>> {
         decode(&codec, b"\0\0\0\0\0\0\0\0\0\0\0\x01\0\0\0\0")
             .unwrap_err().to_string(),
            "non-zero reserved bytes received in data");
+    Ok(())
+}
+
+#[test]
+fn relative_duration() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(Some(TypePos(0)),
+        &[
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-000000000111".parse()?,
+            })
+        ]
+    )?;
+
+
+    // SELECT <cal::relative_duration>
+    // '2 years 7 months 16 days 48 hours 45 minutes 7.6 seconds'
+    encoding_eq!(&codec, b"\0\0\0\x28\xdd\x11\x72\x80\0\0\0\x10\0\0\0\x1f",
+       Value::RelativeDuration(
+           RelativeDuration::from_years(2) +
+           RelativeDuration::from_months(7) +
+           RelativeDuration::from_days(16) +
+           RelativeDuration::from_hours(48) +
+           RelativeDuration::from_minutes(45) +
+           RelativeDuration::from_secs(7) +
+           RelativeDuration::from_millis(600)
+    ));
     Ok(())
 }
 

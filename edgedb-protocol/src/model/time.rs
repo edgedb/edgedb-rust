@@ -28,6 +28,13 @@ pub struct Datetime {
     pub(crate) micros: i64,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct RelativeDuration {
+    pub(crate) micros: i64,
+    pub(crate) days: i32,
+    pub(crate) months: i32,
+}
+
 const SECS_PER_DAY : u64 = 86_400;
 const MICROS_PER_DAY : u64 = SECS_PER_DAY * 1_000_000;
 
@@ -701,6 +708,142 @@ mod test {
         assert_eq!(dur_str(12_345_678__000_000), "3429:21:18");
     }
 }
+
+impl RelativeDuration {
+    pub fn try_from_years(years: i32)
+        -> Result<RelativeDuration, OutOfRangeError>
+    {
+        Ok(RelativeDuration {
+            months: years.checked_mul(12).ok_or(OutOfRangeError)?,
+            days: 0,
+            micros: 0,
+        })
+    }
+    pub fn from_years(years: i32) -> RelativeDuration {
+        RelativeDuration::try_from_years(years).unwrap()
+    }
+    pub fn try_from_months(months: i32)
+        -> Result<RelativeDuration, OutOfRangeError>
+    {
+        Ok(RelativeDuration {
+            months: months,
+            days: 0,
+            micros: 0,
+        })
+    }
+    pub fn from_months(months: i32) -> RelativeDuration {
+        RelativeDuration::try_from_months(months).unwrap()
+    }
+    pub fn try_from_days(days: i32)
+        -> Result<RelativeDuration, OutOfRangeError>
+    {
+        Ok(RelativeDuration {
+            months: 0,
+            days,
+            micros: 0,
+        })
+    }
+    pub fn from_days(days: i32) -> RelativeDuration {
+        RelativeDuration::try_from_days(days).unwrap()
+    }
+    pub fn try_from_hours(hours: i64)
+        -> Result<RelativeDuration, OutOfRangeError>
+    {
+        Ok(RelativeDuration {
+            months: 0,
+            days: 0,
+            micros: hours.checked_mul(3_600_000_000).ok_or(OutOfRangeError)?,
+        })
+    }
+    pub fn from_hours(hours: i64) -> RelativeDuration {
+        RelativeDuration::try_from_hours(hours).unwrap()
+    }
+    pub fn try_from_minutes(minutes: i64)
+        -> Result<RelativeDuration, OutOfRangeError>
+    {
+        Ok(RelativeDuration {
+            months: 0,
+            days: 0,
+            micros: minutes.checked_mul(60_000_000).ok_or(OutOfRangeError)?,
+        })
+    }
+    pub fn from_minutes(minutes: i64) -> RelativeDuration {
+        RelativeDuration::try_from_minutes(minutes).unwrap()
+    }
+    pub fn try_from_secs(secs: i64)
+        -> Result<RelativeDuration, OutOfRangeError>
+    {
+        Ok(RelativeDuration {
+            months: 0,
+            days: 0,
+            micros: secs.checked_mul(1_000_000).ok_or(OutOfRangeError)?,
+        })
+    }
+    pub fn from_secs(secs: i64) -> RelativeDuration {
+        RelativeDuration::try_from_secs(secs).unwrap()
+    }
+    pub fn try_from_millis(millis: i64)
+        -> Result<RelativeDuration, OutOfRangeError>
+    {
+        Ok(RelativeDuration {
+            months: 0,
+            days: 0,
+            micros: millis.checked_mul(1_000).ok_or(OutOfRangeError)?,
+        })
+    }
+    pub fn from_millis(millis: i64) -> RelativeDuration {
+        RelativeDuration::try_from_millis(millis).unwrap()
+    }
+    pub fn try_from_micros(micros: i64)
+        -> Result<RelativeDuration, OutOfRangeError>
+    {
+        Ok(RelativeDuration {
+            months: 0,
+            days: 0,
+            micros,
+        })
+    }
+    pub fn from_micros(micros: i64) -> RelativeDuration {
+        RelativeDuration::try_from_micros(micros).unwrap()
+    }
+    pub fn checked_add(self, other: Self) -> Option<Self> {
+        Some(RelativeDuration {
+            months: self.months.checked_add(other.months)?,
+            days: self.days.checked_add(other.days)?,
+            micros: self.micros.checked_add(other.micros)?,
+        })
+    }
+    pub fn checked_sub(self, other: Self) -> Option<Self> {
+        Some(RelativeDuration {
+            months: self.months.checked_sub(other.months)?,
+            days: self.days.checked_sub(other.days)?,
+            micros: self.micros.checked_sub(other.micros)?,
+        })
+    }
+}
+
+impl std::ops::Add for RelativeDuration {
+    type Output = Self;
+    fn add(self, other: Self) -> Self {
+        RelativeDuration {
+            months: self.months + other.months,
+            days: self.days + other.days,
+            micros: self.micros + other.micros,
+        }
+    }
+}
+
+impl std::ops::Sub for RelativeDuration {
+    type Output = Self;
+    fn sub(self, other: Self) -> Self {
+        RelativeDuration {
+            months: self.months - other.months,
+            days: self.days - other.days,
+            micros: self.micros - other.micros,
+        }
+    }
+}
+
 
 #[cfg(feature = "chrono")]
 mod chrono_interop {

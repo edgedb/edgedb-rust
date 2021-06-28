@@ -9,6 +9,7 @@ use crate::model::{Json, Uuid};
 use snafu::{ResultExt, ensure};
 use crate::model::{BigInt, Decimal};
 use crate::model::{Duration, LocalDate, LocalTime, LocalDatetime, Datetime};
+use crate::model::{RelativeDuration};
 
 
 pub trait RawCodec<'t>: Sized {
@@ -171,6 +172,16 @@ impl<'t> RawCodec<'t> for Duration {
         let months = buf.get_u32();
         ensure!(months == 0 && days == 0, errors::NonZeroReservedBytes);
         Ok(Duration { micros })
+    }
+}
+
+impl<'t> RawCodec<'t> for RelativeDuration {
+    fn decode(mut buf: &[u8]) -> Result<Self, DecodeError> {
+        ensure_exact_size(buf, 16)?;
+        let micros = buf.get_i64();
+        let days = buf.get_i32();
+        let months = buf.get_i32();
+        Ok(RelativeDuration { micros, days, months })
     }
 }
 
