@@ -14,11 +14,13 @@ use async_listen::ByteStream;
 use bytes::{Bytes, BytesMut};
 use typemap::TypeMap;
 
+use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::client_message::ClientMessage;
 use edgedb_protocol::client_message::{Prepare, IoFormat, Cardinality};
 use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
 use edgedb_protocol::client_message::{Execute, ExecuteScript};
 use edgedb_protocol::codec::Codec;
+use edgedb_protocol::encoding::Output;
 use edgedb_protocol::server_message::ServerMessage;
 use edgedb_protocol::server_message::{TransactionState};
 use edgedb_protocol::queryable::{Queryable, Decoder};
@@ -28,8 +30,6 @@ use edgedb_protocol::descriptors::OutputTypedesc;
 use crate::server_params::ServerParam;
 use crate::reader::{self, QueryableDecoder, QueryResponse, Reader};
 use crate::errors::NoResultExpected;
-
-pub use crate::features::ProtocolVersion;
 
 
 /// A single connection to the EdgeDB
@@ -54,6 +54,7 @@ pub struct Sequence<'a> {
 
 pub struct Writer<'a> {
     stream: &'a ByteStream,
+    proto: &'a ProtocolVersion,
     outbuf: &'a mut BytesMut,
 }
 
@@ -118,11 +119,13 @@ impl Connection {
         }
         self.dirty = true;
         let reader = Reader {
+            proto: &self.version,
             buf: &mut self.input_buf,
             stream: &self.stream,
             transaction_state: &mut self.transaction_state,
         };
         let writer = Writer {
+            proto: &self.version,
             outbuf: &mut self.output_buf,
             stream: &self.stream,
         };
@@ -154,7 +157,10 @@ impl<'a> Writer<'a> {
     {
         self.outbuf.truncate(0);
         for msg in msgs {
-            msg.encode(&mut self.outbuf)?;
+            msg.encode(&mut Output::new(
+                &self.proto,
+                self.outbuf,
+            ))?;
         }
         self.stream.write_all(&self.outbuf[..]).await?;
         Ok(())

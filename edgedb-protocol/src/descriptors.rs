@@ -1,11 +1,10 @@
-use std::io::Cursor;
 use std::sync::Arc;
 
-use bytes::{Bytes, Buf};
+use bytes::Buf;
 use uuid::Uuid;
 use snafu::{ensure, OptionExt};
 
-use crate::encoding::{Decode};
+use crate::encoding::{Decode, Input};
 use crate::errors::{self, DecodeError, CodecError};
 use crate::errors::{InvalidTypeDescriptor, UnexpectedTypePos};
 use crate::codec::{Codec, build_codec};
@@ -168,13 +167,13 @@ impl Descriptor {
             TypeAnnotation(i) => &i.id,
         }
     }
-    pub fn decode(buf: &mut Cursor<Bytes>) -> Result<Descriptor, DecodeError> {
+    pub fn decode(buf: &mut Input) -> Result<Descriptor, DecodeError> {
         <Descriptor as Decode>::decode(buf)
     }
 }
 
 impl Decode for Descriptor {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         use Descriptor as D;
         ensure!(buf.remaining() >= 1, errors::Underflow);
         match buf.chunk()[0] {
@@ -195,7 +194,7 @@ impl Decode for Descriptor {
 }
 
 impl Decode for SetDescriptor {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 0);
         let id = Uuid::decode(buf)?;
@@ -205,7 +204,7 @@ impl Decode for SetDescriptor {
 }
 
 impl Decode for ObjectShapeDescriptor {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 1);
         let id = Uuid::decode(buf)?;
@@ -219,7 +218,7 @@ impl Decode for ObjectShapeDescriptor {
 }
 
 impl Decode for ShapeElement {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 7, errors::Underflow);
         let flags = buf.get_u8();
         let name = String::decode(buf)?;
@@ -236,7 +235,7 @@ impl Decode for ShapeElement {
 }
 
 impl Decode for BaseScalarTypeDescriptor {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         assert!(buf.get_u8() == 2);
         let id = Uuid::decode(buf)?;
         Ok(BaseScalarTypeDescriptor { id })
@@ -245,7 +244,7 @@ impl Decode for BaseScalarTypeDescriptor {
 
 
 impl Decode for ScalarTypeDescriptor {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 3);
         let id = Uuid::decode(buf)?;
@@ -255,7 +254,7 @@ impl Decode for ScalarTypeDescriptor {
 }
 
 impl Decode for TupleTypeDescriptor {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 4);
         let id = Uuid::decode(buf)?;
@@ -270,7 +269,7 @@ impl Decode for TupleTypeDescriptor {
 }
 
 impl Decode for NamedTupleTypeDescriptor {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 5);
         let id = Uuid::decode(buf)?;
@@ -284,7 +283,7 @@ impl Decode for NamedTupleTypeDescriptor {
 }
 
 impl Decode for TupleElement {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         let name = String::decode(buf)?;
         ensure!(buf.remaining() >= 2, errors::Underflow);
         let type_pos = TypePos(buf.get_u16());
@@ -296,7 +295,7 @@ impl Decode for TupleElement {
 }
 
 impl Decode for ArrayTypeDescriptor {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 21, errors::Underflow);
         assert!(buf.get_u8() == 6);
         let id = Uuid::decode(buf)?;
@@ -316,7 +315,7 @@ impl Decode for ArrayTypeDescriptor {
 }
 
 impl Decode for EnumerationTypeDescriptor {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 7);
         let id = Uuid::decode(buf)?;
@@ -330,7 +329,7 @@ impl Decode for EnumerationTypeDescriptor {
 }
 
 impl Decode for TypeAnnotationDescriptor {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 21, errors::Underflow);
         let annotated_type = buf.get_u8();
         assert!(annotated_type >= 0x7F);

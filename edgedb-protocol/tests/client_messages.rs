@@ -3,6 +3,8 @@ use std::error::Error;
 
 use bytes::{Bytes, BytesMut};
 
+use edgedb_protocol::encoding::{Input, Output};
+use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
 use edgedb_protocol::client_message::{ExecuteScript, Execute};
 use edgedb_protocol::client_message::{Prepare, IoFormat, Cardinality};
@@ -13,16 +15,28 @@ use edgedb_protocol::client_message::Restore;
 
 mod base;
 
-macro_rules! encoding_eq {
-    ($message: expr, $bytes: expr) => {
+macro_rules! encoding_eq_ver {
+    ($major: expr, $minor: expr, $message: expr, $bytes: expr) => {
+        let proto = ProtocolVersion::new($major, $minor);
         let data: &[u8] = $bytes;
         let mut bytes = BytesMut::new();
-        $message.encode(&mut bytes)?;
+        $message.encode(&mut Output::new(&proto, &mut bytes))?;
         println!("Serialized bytes {:?}", bytes);
         let bytes = bytes.freeze();
         assert_eq!(&bytes[..], data);
-        assert_eq!(ClientMessage::decode(&Bytes::copy_from_slice(data))?,
-                   $message);
+        assert_eq!(
+            ClientMessage::decode(
+                &mut Input::new(proto, Bytes::copy_from_slice(data))
+            )?,
+            $message,
+        );
+    }
+}
+
+macro_rules! encoding_eq {
+    ($message: expr, $bytes: expr) => {
+        let (major, minor) = ProtocolVersion::current().version_tuple();
+        encoding_eq_ver!(major, minor, $message, $bytes);
     }
 }
 

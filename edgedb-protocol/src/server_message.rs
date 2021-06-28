@@ -2,14 +2,14 @@ use std::collections::HashMap;
 use std::u32;
 use std::u16;
 use std::convert::{TryFrom, TryInto};
-use std::io::Cursor;
 
-use bytes::{Bytes, BytesMut, BufMut, Buf};
+use bytes::{Bytes, BufMut, Buf};
 use uuid::Uuid;
 use snafu::{OptionExt, ensure};
 
+use crate::features::ProtocolVersion;
 use crate::errors::{self, EncodeError, DecodeError};
-use crate::encoding::{Headers, Decode, Encode};
+use crate::encoding::{Input, Output, Headers, Decode, Encode};
 use crate::descriptors::{OutputTypedesc, InputTypedesc, Descriptor, TypePos};
 pub use crate::common::Cardinality;
 
@@ -130,6 +130,7 @@ pub struct PrepareComplete {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandDataDescription {
+    pub proto: ProtocolVersion,
     pub headers: Headers,
     pub result_cardinality: Cardinality,
     pub input_typedesc_id: Uuid,
@@ -154,13 +155,13 @@ pub struct RawPacket {
     pub data: Bytes,
 }
 
-fn encode<T: Encode>(buf: &mut BytesMut, code: u8, msg: &T)
+fn encode<T: Encode>(buf: &mut Output, code: u8, msg: &T)
     -> Result<(), EncodeError>
 {
     buf.reserve(5);
     buf.put_u8(code);
     let base = buf.len();
-    buf.extend_from_slice(&[0; 4]);
+    buf.put_slice(&[0; 4]);
 
     msg.encode(buf)?;
 
@@ -172,7 +173,10 @@ fn encode<T: Encode>(buf: &mut BytesMut, code: u8, msg: &T)
 
 impl CommandDataDescription {
     pub fn output(&self) -> Result<OutputTypedesc, DecodeError> {
-        let mut cur = Cursor::new(self.output_typedesc.clone());
+        let mut cur = Input::new(
+            self.proto.clone(),
+            self.output_typedesc.clone(),
+        );
         let mut descriptors = Vec::new();
         while cur.remaining() > 0 {
             match Descriptor::decode(&mut cur)? {
@@ -193,10 +197,13 @@ impl CommandDataDescription {
         Ok(OutputTypedesc { array: descriptors, root_id, root_pos })
     }
     pub fn input(&self) -> Result<InputTypedesc, DecodeError> {
-        let mut cur = Cursor::new(self.input_typedesc.clone());
+        let ref mut cur = Input::new(
+            self.proto.clone(),
+            self.input_typedesc.clone(),
+        );
         let mut descriptors = Vec::new();
         while cur.remaining() > 0 {
-            match Descriptor::decode(&mut cur)? {
+            match Descriptor::decode(cur)? {
                 Descriptor::TypeAnnotation(_) => {}
                 item => descriptors.push(item),
             }
@@ -212,7 +219,7 @@ impl CommandDataDescription {
 }
 
 impl ServerMessage {
-    pub fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+    pub fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         use ServerMessage::*;
         match self {
             ServerHandshake(h) => encode(buf, 0x76, h),
@@ -240,34 +247,39 @@ impl ServerMessage {
     /// This expect full frame already be in the buffer. It can return
     /// arbitrary error or be silent if message is only partially present
     /// in the buffer or if extra data present.
-    pub fn decode(buf: &Bytes) -> Result<ServerMessage, DecodeError> {
+    pub fn decode(buf: &mut Input) -> Result<ServerMessage, DecodeError> {
         use self::ServerMessage as M;
-        let mut data = Cursor::new(buf.slice(5..));
+        let ref mut data = buf.slice(5..);
         match buf[0] {
-            0x76 => ServerHandshake::decode(&mut data).map(M::ServerHandshake),
-            0x45 => ErrorResponse::decode(&mut data).map(M::ErrorResponse),
-            0x4c => LogMessage::decode(&mut data).map(M::LogMessage),
-            0x52 => Authentication::decode(&mut data).map(M::Authentication),
-            0x5a => ReadyForCommand::decode(&mut data).map(M::ReadyForCommand),
-            0x4b => ServerKeyData::decode(&mut data).map(M::ServerKeyData),
-            0x53 => ParameterStatus::decode(&mut data).map(M::ParameterStatus),
-            0x43 => CommandComplete::decode(&mut data).map(M::CommandComplete),
-            0x31 => PrepareComplete::decode(&mut data).map(M::PrepareComplete),
-            0x44 => Data::decode(&mut data).map(M::Data),
-            0x2b => RestoreReady::decode(&mut data).map(M::RestoreReady),
-            0x40 => RawPacket::decode(&mut data).map(M::DumpHeader),
-            0x3d => RawPacket::decode(&mut data).map(M::DumpBlock),
+            0x76 => ServerHandshake::decode(data).map(M::ServerHandshake),
+            0x45 => ErrorResponse::decode(data).map(M::ErrorResponse),
+            0x4c => LogMessage::decode(data).map(M::LogMessage),
+            0x52 => Authentication::decode(data).map(M::Authentication),
+            0x5a => ReadyForCommand::decode(data).map(M::ReadyForCommand),
+            0x4b => ServerKeyData::decode(data).map(M::ServerKeyData),
+            0x53 => ParameterStatus::decode(data).map(M::ParameterStatus),
+            0x43 => CommandComplete::decode(data).map(M::CommandComplete),
+            0x31 => PrepareComplete::decode(data).map(M::PrepareComplete),
+            0x44 => Data::decode(data).map(M::Data),
+            0x2b => RestoreReady::decode(data).map(M::RestoreReady),
+            0x40 => RawPacket::decode(data).map(M::DumpHeader),
+            0x3d => RawPacket::decode(data).map(M::DumpBlock),
             0x54 => {
-                CommandDataDescription::decode(&mut data)
+                CommandDataDescription::decode(data)
                 .map(M::CommandDataDescription)
             }
-            code => Ok(M::UnknownMessage(code, data.into_inner())),
+            code => {
+                Ok(M::UnknownMessage(
+                    code,
+                    data.copy_to_bytes(data.remaining())
+                ))
+            }
         }
     }
 }
 
 impl Encode for ServerHandshake {
-    fn encode(&self, buf: &mut BytesMut)
+    fn encode(&self, buf: &mut Output)
         -> Result<(), EncodeError>
     {
         buf.reserve(6);
@@ -291,7 +303,7 @@ impl Encode for ServerHandshake {
 }
 
 impl Decode for ServerHandshake {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 6, errors::Underflow);
         let major_ver = buf.get_u16();
         let minor_ver = buf.get_u16();
@@ -314,7 +326,7 @@ impl Decode for ServerHandshake {
 }
 
 impl Encode for ErrorResponse {
-    fn encode(&self, buf: &mut BytesMut)
+    fn encode(&self, buf: &mut Output)
         -> Result<(), EncodeError>
     {
         buf.reserve(11);
@@ -334,7 +346,7 @@ impl Encode for ErrorResponse {
 }
 
 impl Decode for ErrorResponse {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<ErrorResponse, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<ErrorResponse, DecodeError> {
         ensure!(buf.remaining() >= 11, errors::Underflow);
         let severity = ErrorSeverity::from_u8(buf.get_u8());
         let code = buf.get_u32();
@@ -353,7 +365,7 @@ impl Decode for ErrorResponse {
 }
 
 impl Encode for LogMessage {
-    fn encode(&self, buf: &mut BytesMut)
+    fn encode(&self, buf: &mut Output)
         -> Result<(), EncodeError>
     {
         buf.reserve(11);
@@ -373,7 +385,7 @@ impl Encode for LogMessage {
 }
 
 impl Decode for LogMessage {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<LogMessage, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<LogMessage, DecodeError> {
         ensure!(buf.remaining() >= 11, errors::Underflow);
         let severity = MessageSeverity::from_u8(buf.get_u8());
         let code = buf.get_u32();
@@ -392,7 +404,7 @@ impl Decode for LogMessage {
 }
 
 impl Encode for Authentication {
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+    fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         use Authentication as A;
         buf.reserve(1);
         match self {
@@ -420,7 +432,7 @@ impl Encode for Authentication {
 }
 
 impl Decode for Authentication {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Authentication, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Authentication, DecodeError> {
         ensure!(buf.remaining() >= 4, errors::Underflow);
         match buf.get_u32() {
             0x00 => Ok(Authentication::Ok),
@@ -447,7 +459,7 @@ impl Decode for Authentication {
 }
 
 impl Encode for ReadyForCommand {
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+    fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         buf.reserve(3);
         buf.put_u16(u16::try_from(self.headers.len()).ok()
             .context(errors::TooManyHeaders)?);
@@ -462,7 +474,7 @@ impl Encode for ReadyForCommand {
     }
 }
 impl Decode for ReadyForCommand {
-    fn decode(buf: &mut Cursor<Bytes>)
+    fn decode(buf: &mut Input)
         -> Result<ReadyForCommand, DecodeError>
     {
         use TransactionState::*;
@@ -533,13 +545,13 @@ impl MessageSeverity {
 }
 
 impl Encode for ServerKeyData {
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+    fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         buf.extend(&self.data[..]);
         Ok(())
     }
 }
 impl Decode for ServerKeyData {
-    fn decode(buf: &mut Cursor<Bytes>)
+    fn decode(buf: &mut Input)
         -> Result<ServerKeyData, DecodeError>
     {
         ensure!(buf.remaining() >= 32, errors::Underflow);
@@ -550,14 +562,14 @@ impl Decode for ServerKeyData {
 }
 
 impl Encode for ParameterStatus {
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+    fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         self.name.encode(buf)?;
         self.value.encode(buf)?;
         Ok(())
     }
 }
 impl Decode for ParameterStatus {
-    fn decode(buf: &mut Cursor<Bytes>)
+    fn decode(buf: &mut Input)
         -> Result<ParameterStatus, DecodeError>
     {
         let name = Bytes::decode(buf)?;
@@ -567,7 +579,7 @@ impl Decode for ParameterStatus {
 }
 
 impl Encode for CommandComplete {
-    fn encode(&self, buf: &mut BytesMut)
+    fn encode(&self, buf: &mut Output)
         -> Result<(), EncodeError>
     {
         buf.reserve(6);
@@ -584,7 +596,7 @@ impl Encode for CommandComplete {
 }
 
 impl Decode for CommandComplete {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 6, errors::Underflow);
         let num_headers = buf.get_u16();
         let mut headers = HashMap::new();
@@ -598,7 +610,7 @@ impl Decode for CommandComplete {
 }
 
 impl Encode for PrepareComplete {
-    fn encode(&self, buf: &mut BytesMut)
+    fn encode(&self, buf: &mut Output)
         -> Result<(), EncodeError>
     {
         buf.reserve(35);
@@ -618,7 +630,7 @@ impl Encode for PrepareComplete {
 }
 
 impl Decode for PrepareComplete {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 35, errors::Underflow);
         let num_headers = buf.get_u16();
         let mut headers = HashMap::new();
@@ -645,7 +657,7 @@ impl Decode for PrepareComplete {
 }
 
 impl Encode for CommandDataDescription {
-    fn encode(&self, buf: &mut BytesMut)
+    fn encode(&self, buf: &mut Output)
         -> Result<(), EncodeError>
     {
         buf.reserve(43);
@@ -667,7 +679,7 @@ impl Encode for CommandDataDescription {
 }
 
 impl Decode for CommandDataDescription {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 43, errors::Underflow);
         let num_headers = buf.get_u16();
         let mut headers = HashMap::new();
@@ -689,6 +701,7 @@ impl Decode for CommandDataDescription {
         let output_typedesc = Bytes::decode(buf)?;
 
         Ok(CommandDataDescription {
+            proto: buf.proto().clone(),
             headers,
             result_cardinality,
             input_typedesc_id,
@@ -700,7 +713,7 @@ impl Decode for CommandDataDescription {
 }
 
 impl Encode for Data {
-    fn encode(&self, buf: &mut BytesMut)
+    fn encode(&self, buf: &mut Output)
         -> Result<(), EncodeError>
     {
         buf.reserve(2);
@@ -714,7 +727,7 @@ impl Encode for Data {
 }
 
 impl Decode for Data {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 2, errors::Underflow);
         let num_chunks = buf.get_u16() as usize;
         let mut data = Vec::with_capacity(num_chunks);
@@ -726,7 +739,7 @@ impl Decode for Data {
 }
 
 impl Encode for RestoreReady {
-    fn encode(&self, buf: &mut BytesMut)
+    fn encode(&self, buf: &mut Output)
         -> Result<(), EncodeError>
     {
         buf.reserve(4);
@@ -744,7 +757,7 @@ impl Encode for RestoreReady {
 }
 
 impl Decode for RestoreReady {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 4, errors::Underflow);
         let num_headers = buf.get_u16();
         let mut headers = HashMap::new();
@@ -759,7 +772,7 @@ impl Decode for RestoreReady {
 }
 
 impl Encode for RawPacket {
-    fn encode(&self, buf: &mut BytesMut)
+    fn encode(&self, buf: &mut Output)
         -> Result<(), EncodeError>
     {
         buf.extend(&self.data);
@@ -768,10 +781,7 @@ impl Encode for RawPacket {
 }
 
 impl Decode for RawPacket {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
-        let buf_pos = buf.position() as usize;
-        let data = buf.get_ref().slice(buf_pos..);
-        buf.advance(data.len());
-        return Ok(RawPacket { data })
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
+        return Ok(RawPacket { data: buf.copy_to_bytes(buf.remaining()) })
     }
 }

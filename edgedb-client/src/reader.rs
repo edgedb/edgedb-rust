@@ -14,11 +14,13 @@ use async_listen::ByteStream;
 use bytes::{Bytes, BytesMut, BufMut};
 use snafu::{Snafu, ResultExt, Backtrace};
 
-use edgedb_protocol::server_message::{ServerMessage, ErrorResponse};
-use edgedb_protocol::server_message::{ReadyForCommand, TransactionState};
-use edgedb_protocol::errors::{DecodeError};
-use edgedb_protocol::queryable::{Queryable, Decoder};
 use edgedb_protocol::codec::Codec;
+use edgedb_protocol::encoding::Input;
+use edgedb_protocol::errors::{DecodeError};
+use edgedb_protocol::features::ProtocolVersion;
+use edgedb_protocol::queryable::{Queryable, Decoder};
+use edgedb_protocol::server_message::{ReadyForCommand, TransactionState};
+use edgedb_protocol::server_message::{ServerMessage, ErrorResponse};
 use edgedb_protocol::value::Value;
 
 use crate::client;
@@ -28,6 +30,7 @@ const BUFFER_SIZE: usize = 8192;
 const MAX_BUFFER: usize = 1_048_576;
 
 pub struct Reader<'a> {
+    pub(crate) proto: &'a ProtocolVersion,
     pub(crate) stream: &'a ByteStream,
     pub(crate) buf: &'a mut BytesMut,
     pub(crate) transaction_state: &'a mut TransactionState,
@@ -163,7 +166,10 @@ impl<'r> Reader<'r> {
             }
         };
         let frame = buf.split_to(frame_len).freeze();
-        let result = ServerMessage::decode(&frame).context(DecodeErr)?;
+        let result = ServerMessage::decode(&mut Input::new(
+            self.proto.clone(),
+            frame,
+        )).context(DecodeErr)?;
         log::debug!(target: "edgedb::incoming::frame",
                     "Frame Contents: {:#?}", result);
         return Poll::Ready(Ok(result));
