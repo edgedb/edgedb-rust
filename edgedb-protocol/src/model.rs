@@ -3,6 +3,7 @@ mod time;
 mod json;
 
 pub use self::time::{ LocalDatetime, LocalDate, LocalTime, Duration, Datetime };
+pub use self::time::{RelativeDuration};
 pub use self::bignum:: {BigInt, Decimal};
 pub use self::json::Json;
 pub use uuid::Uuid;

@@ -31,6 +31,7 @@ pub const CAL_LOCAL_DATETIME: UuidVal = UuidVal::from_u128(0x10b);
 pub const CAL_LOCAL_DATE: UuidVal = UuidVal::from_u128(0x10c);
 pub const CAL_LOCAL_TIME: UuidVal = UuidVal::from_u128(0x10d);
 pub const STD_DURATION: UuidVal = UuidVal::from_u128(0x10e);
+pub const CAL_RELATIVE_DURATION: UuidVal = UuidVal::from_u128(0x111);
 pub const STD_JSON: UuidVal = UuidVal::from_u128(0x10f);
 pub const STD_BIGINT: UuidVal = UuidVal::from_u128(0x110);
 
@@ -98,6 +99,9 @@ pub struct Bytes;
 
 #[derive(Debug)]
 pub struct Duration;
+
+#[derive(Debug)]
+pub struct RelativeDuration;
 
 #[derive(Debug)]
 pub struct Datetime;
@@ -251,6 +255,7 @@ pub fn scalar_codec(uuid: &UuidVal) -> Result<Arc<dyn Codec>, CodecError> {
         CAL_LOCAL_DATE => Ok(Arc::new(LocalDate {})),
         CAL_LOCAL_TIME => Ok(Arc::new(LocalTime {})),
         STD_DURATION => Ok(Arc::new(Duration {})),
+        CAL_RELATIVE_DURATION => Ok(Arc::new(RelativeDuration {})),
         STD_JSON => Ok(Arc::new(Json {})),
         STD_BIGINT => Ok(Arc::new(BigInt {})),
         _ => return errors::UndefinedBaseScalar { uuid: uuid.clone() }.fail()?,
@@ -389,6 +394,25 @@ impl Codec for Duration {
         buf.put_i64(val.micros);
         buf.put_u32(0);
         buf.put_u32(0);
+        Ok(())
+    }
+}
+
+impl Codec for RelativeDuration {
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::RelativeDuration)
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        let val = match val {
+            Value::RelativeDuration(val) => val,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        buf.reserve(16);
+        buf.put_i64(val.micros);
+        buf.put_i32(val.days);
+        buf.put_i32(val.months);
         Ok(())
     }
 }
