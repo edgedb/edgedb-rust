@@ -1,7 +1,7 @@
 use crate::model::OutOfRangeError;
 use std::convert::{TryFrom, TryInto};
 use std::time::SystemTime;
-use std::fmt::{Debug, Display};
+use std::fmt::{self, Debug, Display};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Duration {
@@ -842,6 +842,78 @@ impl std::ops::Sub for RelativeDuration {
             micros: self.micros - other.micros,
         }
     }
+}
+
+impl Display for RelativeDuration {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.months == 0 && self.days == 0 && self.micros == 0 {
+            return write!(f, "PT0S");
+        }
+        write!(f, "P")?;
+        if self.months.abs() > 12 {
+            write!(f, "{}Y", self.months / 12)?;
+        }
+        if (self.months % 12).abs() > 0 {
+            write!(f, "{}M", self.months % 12)?;
+        }
+        if self.days.abs() > 0 {
+            write!(f, "{}D", self.days)?;
+        }
+        if self.micros.abs() > 0 {
+            write!(f, "T")?;
+            if self.micros.abs() > 3_600_000_000 {
+                write!(f, "{}H", self.micros / 3_600_000_000)?;
+            }
+            let minutes = self.micros % 3_600_000_000;
+            if minutes.abs() > 60_000_000 {
+                write!(f, "{}M", minutes / 60_000_000)?;
+            }
+            let seconds = minutes % 60_000_000;
+            if seconds.abs() > 1_000_000 {
+                write!(f, "{}", seconds / 1_000_000)?;
+            }
+            let micros = seconds % 1_000_000;
+            if micros.abs() > 0 {
+                let mut buf = [0u8; 6];
+                let text = {
+                    use std::io::{Write, Cursor};
+
+                    let mut cur = Cursor::new(&mut buf[..]);
+                    write!(cur, "{:06}", micros.abs()).unwrap();
+                    let mut len = buf.len();
+                    while buf[len-1] == b'0' {
+                        len -= 1;
+                    }
+                    std::str::from_utf8(&buf[..len]).unwrap()
+                };
+                write!(f, ".{}", text)?;
+            }
+            if seconds.abs() > 0 {
+                write!(f, "S")?;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[test]
+fn relative_duration_display() {
+    let dur = RelativeDuration::from_years(2) +
+            RelativeDuration::from_months(56) +
+            RelativeDuration::from_days(-16) +
+            RelativeDuration::from_hours(48) +
+            RelativeDuration::from_minutes(245) +
+            RelativeDuration::from_secs(7) +
+            RelativeDuration::from_millis(600);
+    assert_eq!(dur.to_string(), "P6Y8M-16DT52H5M7.6S");
+
+    let dur = RelativeDuration::from_years(2) +
+            RelativeDuration::from_months(-56) +
+            RelativeDuration::from_days(-16) +
+            RelativeDuration::from_minutes(-245) +
+            RelativeDuration::from_secs(7) +
+            RelativeDuration::from_millis(600);
+    assert_eq!(dur.to_string(), "P-2Y-8M-16DT-4H-4M-52.4S");
 }
 
 
