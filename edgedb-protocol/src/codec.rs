@@ -10,7 +10,7 @@ use bytes::{BytesMut, Buf, BufMut};
 use uuid::Uuid as UuidVal;
 use snafu::{ensure, OptionExt};
 
-use crate::descriptors::{self, Descriptor, TypePos};
+use crate::descriptors::{self, Descriptor, TypePos, FieldCardinality};
 use crate::errors::{self, CodecError, DecodeError, EncodeError};
 use crate::value::Value;
 use crate::model;
@@ -58,6 +58,7 @@ pub struct ShapeElement {
     pub flag_implicit: bool,
     pub flag_link_property: bool,
     pub flag_link: bool,
+    pub cardinality: Option<FieldCardinality>,
     pub name: String,
 }
 
@@ -558,6 +559,7 @@ impl<'a> From<&'a [descriptors::ShapeElement]> for ObjectShape {
                         flag_implicit,
                         flag_link_property,
                         flag_link,
+                        cardinality,
                         name,
                         type_pos: _,
                     } = e;
@@ -565,6 +567,7 @@ impl<'a> From<&'a [descriptors::ShapeElement]> for ObjectShape {
                         flag_implicit: *flag_implicit,
                         flag_link_property: *flag_link_property,
                         flag_link: *flag_link,
+                        cardinality: *cardinality,
                         name: name.clone(),
                     }
                 }).collect(),
