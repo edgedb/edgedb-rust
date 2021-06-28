@@ -1,8 +1,9 @@
 use std::error::Error;
-use std::io::Cursor;
 use bytes::{Bytes, Buf};
 
+use edgedb_protocol::encoding::Input;
 use edgedb_protocol::errors::DecodeError;
+use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::descriptors::{Descriptor, TypePos};
 use edgedb_protocol::descriptors::TupleTypeDescriptor;
 use edgedb_protocol::descriptors::{ObjectShapeDescriptor, ShapeElement};
@@ -13,12 +14,12 @@ mod base;
 
 fn decode(bytes: &[u8]) -> Result<Vec<Descriptor>, DecodeError> {
     let bytes = Bytes::copy_from_slice(bytes);
-    let mut cur = Cursor::new(bytes);
+    let mut input = Input::new(ProtocolVersion::current(), bytes);
     let mut result = Vec::new();
-    while cur.remaining() > 0 {
-        result.push(Descriptor::decode(&mut cur)?);
+    while input.remaining() > 0 {
+        result.push(Descriptor::decode(&mut input)?);
     }
-    assert!(cur.remaining() == 0);
+    assert!(input.remaining() == 0);
     Ok(result)
 }
 

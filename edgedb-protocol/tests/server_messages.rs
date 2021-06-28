@@ -5,6 +5,8 @@ use std::error::Error;
 use uuid::Uuid;
 use bytes::{Bytes, BytesMut};
 
+use edgedb_protocol::encoding::{Input, Output};
+use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::server_message::{ServerMessage};
 use edgedb_protocol::server_message::{ServerHandshake};
 use edgedb_protocol::server_message::{ErrorResponse, ErrorSeverity};
@@ -19,17 +21,28 @@ use edgedb_protocol::server_message::{RestoreReady};
 
 mod base;
 
-
-macro_rules! encoding_eq {
-    ($message: expr, $bytes: expr) => {
+macro_rules! encoding_eq_ver {
+    ($major: expr, $minor: expr, $message: expr, $bytes: expr) => {
+        let proto = ProtocolVersion::new($major, $minor);
         let data: &[u8] = $bytes;
         let mut bytes = BytesMut::new();
-        $message.encode(&mut bytes)?;
+        $message.encode(&mut Output::new(&proto, &mut bytes))?;
         println!("Serialized bytes {:?}", bytes);
         let bytes = bytes.freeze();
         assert_eq!(&bytes[..], data);
-        assert_eq!(ServerMessage::decode(&Bytes::copy_from_slice(data))?,
-                   $message);
+        assert_eq!(
+            ServerMessage::decode(
+                &mut Input::new(proto, Bytes::copy_from_slice(data))
+            )?,
+            $message,
+        );
+    }
+}
+
+macro_rules! encoding_eq {
+    ($message: expr, $bytes: expr) => {
+        let (major, minor) = ProtocolVersion::current().version_tuple();
+        encoding_eq_ver!(major, minor, $message, $bytes);
     }
 }
 
@@ -126,6 +139,7 @@ fn prepare_complete() -> Result<(), Box<dyn Error>> {
 #[test]
 fn command_data_description() -> Result<(), Box<dyn Error>> {
     encoding_eq!(ServerMessage::CommandDataDescription(CommandDataDescription {
+        proto: ProtocolVersion::current(),
         headers: HashMap::new(),
         result_cardinality: Cardinality::One,
         input_typedesc_id: Uuid::from_u128(0xFF),
@@ -142,6 +156,7 @@ fn command_data_description() -> Result<(), Box<dyn Error>> {
                  b"\0\0\0\x11"
                  b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"));
     encoding_eq!(ServerMessage::CommandDataDescription(CommandDataDescription {
+        proto: ProtocolVersion::current(),
         headers: HashMap::new(),
         result_cardinality: Cardinality::NoResult,
         input_typedesc_id: Uuid::from_u128(0xFF),

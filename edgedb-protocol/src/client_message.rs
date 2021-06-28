@@ -1,12 +1,11 @@
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::io::Cursor;
 use std::u16;
 
-use bytes::{Bytes, BytesMut, BufMut, Buf};
+use bytes::{Bytes, BufMut, Buf};
 use snafu::{OptionExt, ensure};
 
-use crate::encoding::{Encode, Decode, Headers, encode};
+use crate::encoding::{Encode, Decode, Headers, encode, Input, Output};
 use crate::errors::{self, EncodeError, DecodeError};
 pub use crate::common::Cardinality;
 
@@ -111,7 +110,7 @@ pub enum IoFormat {
 
 struct Empty;
 impl ClientMessage {
-    pub fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+    pub fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         use ClientMessage::*;
         match self {
             ClientHandshake(h) => encode(buf, 0x56, h),
@@ -139,9 +138,9 @@ impl ClientMessage {
     /// This expect full frame already be in the buffer. It can return
     /// arbitrary error or be silent if message is only partially present
     /// in the buffer or if extra data present.
-    pub fn decode(buf: &Bytes) -> Result<ClientMessage, DecodeError> {
+    pub fn decode(buf: &mut Input) -> Result<ClientMessage, DecodeError> {
         use self::ClientMessage as M;
-        let mut data = Cursor::new(buf.slice(5..));
+        let mut data = buf.slice(5..);
         match buf[0] {
             0x56 => ClientHandshake::decode(&mut data).map(M::ClientHandshake),
             0x70 => SaslInitialResponse::decode(&mut data)
@@ -161,13 +160,16 @@ impl ClientMessage {
             0x44 => {
                 DescribeStatement::decode(&mut data).map(M::DescribeStatement)
             }
-            code => Ok(M::UnknownMessage(code, data.into_inner())),
+            code => Ok(M::UnknownMessage(
+                code,
+                data.copy_to_bytes(data.remaining()),
+            )),
         }
     }
 }
 
 impl Encode for Empty {
-    fn encode(&self, _buf: &mut BytesMut)
+    fn encode(&self, _buf: &mut Output)
         -> Result<(), EncodeError>
     {
         Ok(())
@@ -175,7 +177,7 @@ impl Encode for Empty {
 }
 
 impl Encode for ClientHandshake {
-    fn encode(&self, buf: &mut BytesMut)
+    fn encode(&self, buf: &mut Output)
         -> Result<(), EncodeError>
     {
         buf.reserve(8);
@@ -206,7 +208,7 @@ impl Encode for ClientHandshake {
 }
 
 impl Decode for ClientHandshake {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 8, errors::Underflow);
         let major_ver = buf.get_u16();
         let minor_ver = buf.get_u16();
@@ -237,7 +239,7 @@ impl Decode for ClientHandshake {
 }
 
 impl Encode for SaslInitialResponse {
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+    fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         self.method.encode(buf)?;
         self.data.encode(buf)?;
         Ok(())
@@ -245,7 +247,7 @@ impl Encode for SaslInitialResponse {
 }
 
 impl Decode for SaslInitialResponse {
-    fn decode(buf: &mut Cursor<Bytes>)
+    fn decode(buf: &mut Input)
         -> Result<SaslInitialResponse, DecodeError>
     {
         let method = String::decode(buf)?;
@@ -255,21 +257,21 @@ impl Decode for SaslInitialResponse {
 }
 
 impl Encode for SaslResponse {
-    fn encode(&self, buf: &mut BytesMut) -> Result<(), EncodeError> {
+    fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         self.data.encode(buf)?;
         Ok(())
     }
 }
 
 impl Decode for SaslResponse {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<SaslResponse, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<SaslResponse, DecodeError> {
         let data = Bytes::decode(buf)?;
         Ok(SaslResponse { data })
     }
 }
 
 impl Encode for ExecuteScript {
-    fn encode(&self, buf: &mut BytesMut)
+    fn encode(&self, buf: &mut Output)
         -> Result<(), EncodeError>
     {
         buf.reserve(6);
@@ -286,7 +288,7 @@ impl Encode for ExecuteScript {
 }
 
 impl Decode for ExecuteScript {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 6, errors::Underflow);
         let num_headers = buf.get_u16();
         let mut headers = HashMap::new();
@@ -300,7 +302,7 @@ impl Decode for ExecuteScript {
 }
 
 impl Encode for Prepare {
-    fn encode(&self, buf: &mut BytesMut)
+    fn encode(&self, buf: &mut Output)
         -> Result<(), EncodeError>
     {
         buf.reserve(12);
@@ -321,7 +323,7 @@ impl Encode for Prepare {
 }
 
 impl Decode for Prepare {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 12, errors::Underflow);
         let num_headers = buf.get_u16();
         let mut headers = HashMap::new();
@@ -354,7 +356,7 @@ impl Decode for Prepare {
 }
 
 impl Encode for DescribeStatement {
-    fn encode(&self, buf: &mut BytesMut)
+    fn encode(&self, buf: &mut Output)
         -> Result<(), EncodeError>
     {
         buf.reserve(7);
@@ -368,7 +370,7 @@ impl Encode for DescribeStatement {
 }
 
 impl Decode for DescribeStatement {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 12, errors::Underflow);
         let num_headers = buf.get_u16();
         let mut headers = HashMap::new();
@@ -391,7 +393,7 @@ impl Decode for DescribeStatement {
 }
 
 impl Encode for Execute {
-    fn encode(&self, buf: &mut BytesMut)
+    fn encode(&self, buf: &mut Output)
         -> Result<(), EncodeError>
     {
         buf.reserve(10);
@@ -409,7 +411,7 @@ impl Encode for Execute {
 }
 
 impl Decode for Execute {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 12, errors::Underflow);
         let num_headers = buf.get_u16();
         let mut headers = HashMap::new();
@@ -428,7 +430,7 @@ impl Decode for Execute {
 }
 
 impl Encode for Dump {
-    fn encode(&self, buf: &mut BytesMut)
+    fn encode(&self, buf: &mut Output)
         -> Result<(), EncodeError>
     {
         buf.reserve(10);
@@ -444,7 +446,7 @@ impl Encode for Dump {
 }
 
 impl Decode for Dump {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 12, errors::Underflow);
         let num_headers = buf.get_u16();
         let mut headers = HashMap::new();
@@ -457,7 +459,7 @@ impl Decode for Dump {
 }
 
 impl Encode for Restore {
-    fn encode(&self, buf: &mut BytesMut)
+    fn encode(&self, buf: &mut Output)
         -> Result<(), EncodeError>
     {
         buf.reserve(4 + self.data.len());
@@ -475,7 +477,7 @@ impl Encode for Restore {
 }
 
 impl Decode for Restore {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 4, errors::Underflow);
 
         let num_headers = buf.get_u16();
@@ -487,15 +489,13 @@ impl Decode for Restore {
 
         let jobs = buf.get_u16();
 
-        let buf_pos = buf.position() as usize;
-        let data = buf.get_ref().slice(buf_pos..);
-        buf.advance(data.len());
+        let data = buf.copy_to_bytes(buf.remaining());
         return Ok(Restore { jobs, headers, data })
     }
 }
 
 impl Encode for RestoreBlock {
-    fn encode(&self, buf: &mut BytesMut)
+    fn encode(&self, buf: &mut Output)
         -> Result<(), EncodeError>
     {
         buf.extend(&self.data);
@@ -504,10 +504,8 @@ impl Encode for RestoreBlock {
 }
 
 impl Decode for RestoreBlock {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
-        let buf_pos = buf.position() as usize;
-        let data = buf.get_ref().slice(buf_pos..);
-        buf.advance(data.len());
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
+        let data = buf.copy_to_bytes(buf.remaining());
         return Ok(RestoreBlock { data })
     }
 }

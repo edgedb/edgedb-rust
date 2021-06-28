@@ -1,5 +1,6 @@
-mod encoding;
+pub mod encoding;
 mod common;
+pub mod features;
 pub mod serialization;
 pub mod client_message;
 pub mod server_message;

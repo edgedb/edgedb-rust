@@ -18,13 +18,13 @@ use serde_json::from_slice;
 use typemap::TypeMap;
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
+use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use edgedb_protocol::server_message::{TransactionState, ServerHandshake};
 
 use crate::client::{Connection, Sequence};
 use crate::credentials::Credentials;
 use crate::errors::PasswordRequired;
-use crate::features::ProtocolVersion;
 use crate::reader::ReadError;
 use crate::server_params::PostgresAddress;
 
@@ -283,10 +283,11 @@ impl Builder {
         params.insert(String::from("user"), self.user.clone());
         params.insert(String::from("database"), self.database.clone());
 
+        let (major_ver, minor_ver) = version.version_tuple();
         seq.send_messages(&[
             ClientMessage::ClientHandshake(ClientHandshake {
-                major_ver: version.major_ver,
-                minor_ver: version.minor_ver,
+                major_ver,
+                minor_ver,
                 params,
                 extensions: HashMap::new(),
             }),
@@ -296,7 +297,7 @@ impl Builder {
         if let ServerMessage::ServerHandshake(ServerHandshake {
             major_ver, minor_ver, extensions: _
         }) = msg {
-            version = ProtocolVersion { major_ver, minor_ver };
+            version = ProtocolVersion::new(major_ver, minor_ver);
             // TODO(tailhook) record extensions
             msg = seq.message().await?;
         }

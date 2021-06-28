@@ -1,34 +1,130 @@
 use std::collections::HashMap;
-use std::u32;
 use std::convert::TryFrom;
-use std::io::Cursor;
+use std::ops::{RangeBounds, Deref, DerefMut};
+use std::u32;
 
 use uuid::Uuid;
 use bytes::{Bytes, BytesMut, BufMut, Buf};
 use snafu::{ResultExt, OptionExt, ensure};
 
+use crate::features::ProtocolVersion;
 use crate::errors::{self, EncodeError, DecodeError};
 
 
 pub type Headers = HashMap<u16, Bytes>;
 
+pub struct Input {
+    #[allow(dead_code)]
+    proto: ProtocolVersion,
+    bytes: Bytes,
+}
+
+pub struct Output<'a> {
+    #[allow(dead_code)]
+    proto: &'a ProtocolVersion,
+    bytes: &'a mut BytesMut,
+}
+
 pub(crate) trait Encode {
-    fn encode(&self, buf: &mut BytesMut)
+    fn encode(&self, buf: &mut Output)
         -> Result<(), EncodeError>;
 }
 
 pub(crate) trait Decode: Sized {
-    fn decode(buf: &mut Cursor<Bytes>)
+    fn decode(buf: &mut Input)
         -> Result<Self, DecodeError>;
 }
 
-pub(crate) fn encode<T: Encode>(buf: &mut BytesMut, code: u8, msg: &T)
+impl Input {
+    pub fn new(proto: ProtocolVersion, bytes: Bytes) -> Input {
+        Input { proto, bytes }
+    }
+    pub fn proto(&self) -> &ProtocolVersion {
+        &self.proto
+    }
+    pub fn slice(&self, range: impl RangeBounds<usize>) -> Input {
+        Input {
+            proto: self.proto.clone(),
+            bytes: self.bytes.slice(range),
+        }
+    }
+}
+
+impl Buf for Input {
+    fn remaining(&self) -> usize {
+        self.bytes.remaining()
+    }
+
+    fn chunk(&self) -> &[u8] {
+        self.bytes.chunk()
+    }
+
+    fn advance(&mut self, cnt: usize) {
+        self.bytes.advance(cnt)
+    }
+
+    fn copy_to_bytes(&mut self, len: usize) -> Bytes {
+        self.bytes.copy_to_bytes(len)
+    }
+}
+
+impl Deref for Input {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        &self.bytes[..]
+    }
+}
+
+impl Deref for Output<'_> {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        &self.bytes[..]
+    }
+}
+
+impl DerefMut for Output<'_> {
+    fn deref_mut(&mut self) -> &mut [u8] {
+        &mut self.bytes[..]
+    }
+}
+
+impl Output<'_> {
+    pub fn new<'x>(proto: &'x ProtocolVersion, bytes: &'x mut BytesMut)
+        -> Output<'x>
+    {
+        Output {
+            proto,
+            bytes,
+        }
+    }
+    pub fn reserve(&mut self, size: usize) {
+        self.bytes.reserve(size)
+    }
+    pub fn extend(&mut self, slice: &[u8]) {
+        self.bytes.extend(slice)
+    }
+}
+
+unsafe impl BufMut for Output<'_> {
+    fn remaining_mut(&self) -> usize {
+        self.bytes.remaining_mut()
+    }
+    unsafe fn advance_mut(&mut self, cnt: usize) {
+        self.bytes.advance_mut(cnt)
+    }
+    fn chunk_mut(&mut self) -> &mut bytes::buf::UninitSlice {
+        self.bytes.chunk_mut()
+    }
+}
+
+
+pub(crate) fn encode<T: Encode>(buf: &mut Output, code: u8, msg: &T)
     -> Result<(), EncodeError>
 {
     buf.reserve(5);
     buf.put_u8(code);
     let base = buf.len();
-    buf.extend_from_slice(&[0; 4]);
+    buf.put_slice(&[0; 4]);
 
     msg.encode(buf)?;
 
@@ -39,7 +135,7 @@ pub(crate) fn encode<T: Encode>(buf: &mut BytesMut, code: u8, msg: &T)
 }
 
 impl Encode for String {
-    fn encode(&self, buf: &mut BytesMut)
+    fn encode(&self, buf: &mut Output)
         -> Result<(), EncodeError>
     {
         buf.reserve(2 + self.len());
@@ -51,7 +147,7 @@ impl Encode for String {
 }
 
 impl Encode for Bytes {
-    fn encode(&self, buf: &mut BytesMut)
+    fn encode(&self, buf: &mut Output)
         -> Result<(), EncodeError>
     {
         buf.reserve(2 + self.len());
@@ -63,7 +159,7 @@ impl Encode for Bytes {
 }
 
 impl Decode for String {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 4, errors::Underflow);
         let len = buf.get_u32() as usize;
         // TODO(tailhook) ensure size < i32::MAX
@@ -78,20 +174,17 @@ impl Decode for String {
 }
 
 impl Decode for Bytes {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 4, errors::Underflow);
         let len = buf.get_u32() as usize;
         // TODO(tailhook) ensure size < i32::MAX
         ensure!(buf.remaining() >= len, errors::Underflow);
-        let buf_pos = buf.position() as usize;
-        let result = buf.get_ref().slice(buf_pos..buf_pos + len);
-        buf.advance(len);
-        Ok(result)
+        Ok(buf.copy_to_bytes(len))
     }
 }
 
 impl Decode for Uuid {
-    fn decode(buf: &mut Cursor<Bytes>) -> Result<Self, DecodeError> {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 16, errors::Underflow);
         let mut bytes = [0u8; 16];
         buf.copy_to_slice(&mut bytes[..]);
@@ -102,7 +195,7 @@ impl Decode for Uuid {
 }
 
 impl Encode for Uuid {
-    fn encode(&self, buf: &mut BytesMut)
+    fn encode(&self, buf: &mut Output)
         -> Result<(), EncodeError>
     {
         buf.extend(self.as_bytes());
