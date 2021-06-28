@@ -63,6 +63,8 @@ pub enum DecodeError {
     DecodeValue { backtrace: Backtrace, source: Box<dyn Error + Send + Sync> },
     #[snafu(display("missing required link or property"))]
     MissingRequiredElement { backtrace: Backtrace },
+    #[snafu(display("unknown cardinality of a field"))]
+    UnknownFieldCardinality { backtrace: Backtrace },
 }
 
 #[derive(Snafu, Debug)]

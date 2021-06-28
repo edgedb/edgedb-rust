@@ -53,11 +53,20 @@ pub struct ObjectShapeDescriptor {
     pub elements: Vec<ShapeElement>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FieldCardinality {
+    AtMostOne,
+    One,
+    Many,
+    AtLeastOne,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShapeElement {
     pub flag_implicit: bool,
     pub flag_link_property: bool,
     pub flag_link: bool,
+    pub cardinality: Option<FieldCardinality>,
     pub name: String,
     pub type_pos: TypePos,
 }
@@ -220,7 +229,19 @@ impl Decode for ObjectShapeDescriptor {
 impl Decode for ShapeElement {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 7, errors::Underflow);
-        let flags = buf.get_u8();
+        let (flags, cardinality) = if buf.proto().is_at_least(0, 11) {
+            let flags = buf.get_u32();
+            let cardinality = match buf.get_u8() {
+                0 => FieldCardinality::AtMostOne,
+                1 => FieldCardinality::One,
+                2 => FieldCardinality::Many,
+                3 => FieldCardinality::AtLeastOne,
+                _ => return Err(errors::UnknownFieldCardinality.build()),
+            };
+            (flags, Some(cardinality))
+        } else {
+            (buf.get_u8() as u32, None)
+        };
         let name = String::decode(buf)?;
         ensure!(buf.remaining() >= 2, errors::Underflow);
         let type_pos = TypePos(buf.get_u16());
@@ -228,6 +249,7 @@ impl Decode for ShapeElement {
             flag_implicit: flags & 0b001 != 0,
             flag_link_property: flags & 0b010 != 0,
             flag_link: flags & 0b100 != 0,
+            cardinality,
             name,
             type_pos,
         })

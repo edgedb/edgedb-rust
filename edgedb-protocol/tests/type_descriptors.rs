@@ -23,6 +23,17 @@ fn decode(bytes: &[u8]) -> Result<Vec<Descriptor>, DecodeError> {
     Ok(result)
 }
 
+fn decode_10(bytes: &[u8]) -> Result<Vec<Descriptor>, DecodeError> {
+    let bytes = Bytes::copy_from_slice(bytes);
+    let mut input = Input::new(ProtocolVersion::new(0, 10), bytes);
+    let mut result = Vec::new();
+    while input.remaining() > 0 {
+        result.push(Descriptor::decode(&mut input)?);
+    }
+    assert!(input.remaining() == 0);
+    Ok(result)
+}
+
 #[test]
 fn empty_tuple() -> Result<(), Box<dyn Error>> {
     // `SELECT ()`
@@ -77,8 +88,8 @@ fn duration() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn object() -> Result<(), Box<dyn Error>> {
-    assert_eq!(decode(bconcat!(
+fn object_10() -> Result<(), Box<dyn Error>> {
+    assert_eq!(decode_10(bconcat!(
          b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\0\x02"
          b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x01\x01n"
          b"\xbb\xbe\xda\0P\x14\xfe\x84\xbc\x82\x15@\xb1"
@@ -98,6 +109,7 @@ fn object() -> Result<(), Box<dyn Error>> {
                         flag_implicit: true,
                         flag_link_property: false,
                         flag_link: false,
+                        cardinality: None,
                         name: String::from("__tid__"),
                         type_pos: TypePos(0),
                     },
@@ -105,6 +117,7 @@ fn object() -> Result<(), Box<dyn Error>> {
                         flag_implicit: true,
                         flag_link_property: false,
                         flag_link: false,
+                        cardinality: None,
                         name: String::from("id"),
                         type_pos: TypePos(0),
                     },
@@ -112,8 +125,65 @@ fn object() -> Result<(), Box<dyn Error>> {
                         flag_implicit: false,
                         flag_link_property: false,
                         flag_link: false,
+                        cardinality: None,
                         name: String::from("title"),
                         type_pos: TypePos(1),
+                    }
+                ]
+            })
+        ]);
+    Ok(())
+}
+
+#[test]
+fn object() -> Result<(), Box<dyn Error>> {
+    use edgedb_protocol::descriptors::FieldCardinality::*;
+    assert_eq!(decode(bconcat!(
+        // equivalent of 0.10
+        //b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x01\x02"
+        //b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\0\x01,sT"
+        //b"\xf9\x8f\xfac\xed\x10\x8d\x9c\xe4\x156\xd3\x92\0\x03"
+        //b"\x01\0\0\0\t__tname__\0\0\x01\0\0\0\x02id\0\x01\0\0\0\0\x05title\0\0"
+        b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x01\x02"
+        b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\0\x01,sT"
+        b"\xf9\x8f\xfac\xed\x10\x8d\x9c\xe4\x156\xd3\x92"
+        b"\0\x03\0\0\0\x01"
+        b"\x01\0\0\0\t__tname__\0\0\0\0\0"
+        b"\x01\x01\0\0\0\x02id\0\x01\0\0\0\0\0\0\0\0\x05title\0\0"
+        ))?,
+        vec![
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-000000000101".parse()?,
+            }),
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-000000000100".parse()?,
+            }),
+            Descriptor::ObjectShape(ObjectShapeDescriptor {
+                id: "2c7354f9-8ffa-63ed-108d-9ce41536d392".parse()?,
+                elements: vec![
+                    ShapeElement {
+                        flag_implicit: true,
+                        flag_link_property: false,
+                        flag_link: false,
+                        cardinality: Some(One),
+                        name: String::from("__tname__"),
+                        type_pos: TypePos(0),
+                    },
+                    ShapeElement {
+                        flag_implicit: true,
+                        flag_link_property: false,
+                        flag_link: false,
+                        cardinality: Some(One),
+                        name: String::from("id"),
+                        type_pos: TypePos(1),
+                    },
+                    ShapeElement {
+                        flag_implicit: false,
+                        flag_link_property: false,
+                        flag_link: false,
+                        cardinality: Some(AtMostOne),
+                        name: String::from("title"),
+                        type_pos: TypePos(0),
                     }
                 ]
             })
