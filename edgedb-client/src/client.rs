@@ -10,9 +10,10 @@ use async_std::prelude::StreamExt;
 use async_std::future::{timeout, pending};
 use async_std::io::prelude::WriteExt;
 use async_std::io::ReadExt;
-use async_listen::ByteStream;
 use bytes::{Bytes, BytesMut};
+use futures_util::io::{ReadHalf, WriteHalf};
 use typemap::TypeMap;
+use tls_api::TlsStream;
 
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::client_message::ClientMessage;
@@ -34,7 +35,8 @@ use crate::errors::NoResultExpected;
 
 /// A single connection to the EdgeDB
 pub struct Connection {
-    pub(crate) stream: ByteStream,
+    pub(crate) input: ReadHalf<TlsStream>,
+    pub(crate) output: WriteHalf<TlsStream>,
     pub(crate) input_buf: BytesMut,
     pub(crate) output_buf: BytesMut,
     pub(crate) version: ProtocolVersion,
@@ -53,7 +55,7 @@ pub struct Sequence<'a> {
 
 
 pub struct Writer<'a> {
-    stream: &'a ByteStream,
+    stream: &'a mut WriteHalf<TlsStream>,
     proto: &'a ProtocolVersion,
     outbuf: &'a mut BytesMut,
 }
@@ -92,7 +94,7 @@ impl Connection {
     }
     pub async fn passive_wait<T>(&mut self) -> T {
         let mut buf = [0u8; 1];
-        self.stream.read(&mut buf[..]).await.ok();
+        self.input.read(&mut buf[..]).await.ok();
         // any erroneous or successful read (even 0) means need reconnect
         self.dirty = true;
         pending::<()>().await;
@@ -121,13 +123,13 @@ impl Connection {
         let reader = Reader {
             proto: &self.version,
             buf: &mut self.input_buf,
-            stream: &self.stream,
+            stream: &mut self.input,
             transaction_state: &mut self.transaction_state,
         };
         let writer = Writer {
             proto: &self.version,
             outbuf: &mut self.output_buf,
-            stream: &self.stream,
+            stream: &mut self.output,
         };
         Ok(Sequence {
             writer,

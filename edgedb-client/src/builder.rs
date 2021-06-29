@@ -10,12 +10,14 @@ use async_std::fs;
 use async_std::future::Future;
 use async_std::net::TcpStream;
 use async_std::task::sleep;
-use async_listen::ByteStream;
 use bytes::{Bytes, BytesMut};
+use futures_util::AsyncReadExt;
 use rand::{thread_rng, Rng};
 use scram::ScramClient;
 use serde_json::from_slice;
 use typemap::TypeMap;
+use tls_api::{TlsConnector, TlsConnectorBuilder};
+use tls_api_not_tls::TlsConnector as PlainConnector;
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
 use edgedb_protocol::features::ProtocolVersion;
@@ -255,7 +257,8 @@ impl Builder {
         let sock = match &self.addr {
             Addr(AddrImpl::Tcp(host, port)) => {
                 let conn = TcpStream::connect(&(&host[..], *port)).await?;
-                ByteStream::new_tcp_detached(conn)
+                PlainConnector::builder()?.build()?
+                    .connect(&host[..], conn).await?
             }
             Addr(AddrImpl::Unix(path)) => {
                 #[cfg(windows)] {
@@ -264,13 +267,16 @@ impl Builder {
                 #[cfg(unix)] {
                     use async_std::os::unix::net::UnixStream;
                     let conn = UnixStream::connect(&path).await?;
-                    ByteStream::new_unix_detached(conn)
+                    PlainConnector::builder()?.build()?
+                        .connect("localhost", conn).await?
                 }
             }
         };
         let mut version = ProtocolVersion::current();
+        let (input, output) = sock.split();
         let mut conn = Connection {
-            stream: sock,
+            input,
+            output,
             input_buf: BytesMut::with_capacity(8192),
             output_buf: BytesMut::with_capacity(8192),
             params: TypeMap::custom(),
