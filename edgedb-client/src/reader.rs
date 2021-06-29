@@ -10,9 +10,10 @@ use std::task::{Poll, Context};
 
 use async_std::io::Read as AsyncRead;
 use async_std::stream::{Stream, StreamExt};
-use async_listen::ByteStream;
 use bytes::{Bytes, BytesMut, BufMut};
+use futures_util::io::ReadHalf;
 use snafu::{Snafu, ResultExt, Backtrace};
+use tls_api::TlsStream;
 
 use edgedb_protocol::codec::Codec;
 use edgedb_protocol::encoding::Input;
@@ -31,7 +32,7 @@ const MAX_BUFFER: usize = 1_048_576;
 
 pub struct Reader<'a> {
     pub(crate) proto: &'a ProtocolVersion,
-    pub(crate) stream: &'a ByteStream,
+    pub(crate) stream: &'a mut ReadHalf<TlsStream>,
     pub(crate) buf: &'a mut BytesMut,
     pub(crate) transaction_state: &'a mut TransactionState,
 }
@@ -147,7 +148,7 @@ impl<'r> Reader<'r> {
 
             buf.reserve(next_read);
             unsafe {
-                // this is safe because the underlying ByteStream always
+                // this is safe because the underlying TlsStream always
                 // initializes read bytes
                 let chunk = buf.chunk_mut();
                 let dest: &mut [u8] = slice::from_raw_parts_mut(
