@@ -16,7 +16,7 @@ use rand::{thread_rng, Rng};
 use scram::ScramClient;
 use serde_json::from_slice;
 use typemap::TypeMap;
-use tls_api::{TlsConnector, TlsConnectorBuilder};
+use tls_api::{TlsConnectorBox, TlsConnector as _, TlsConnectorBuilder as _};
 use tls_api_not_tls::TlsConnector as PlainConnector;
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
@@ -29,6 +29,7 @@ use crate::credentials::Credentials;
 use crate::errors::PasswordRequired;
 use crate::reader::ReadError;
 use crate::server_params::PostgresAddress;
+use crate::tls;
 
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub const DEFAULT_WAIT: Duration = Duration::from_secs(30);
@@ -52,6 +53,7 @@ pub struct Builder {
     database: String,
     wait: Duration,
     connect_timeout: Duration,
+    cert: rustls::RootCertStore,
 }
 
 pub async fn timeout<F, T>(dur: Duration, f: F) -> anyhow::Result<T>
@@ -94,9 +96,45 @@ fn is_temporary_error(e: &anyhow::Error) -> bool {
     return false;
 }
 
+fn as_non_plaintext_error(e: anyhow::Error) -> Option<anyhow::Error> {
+    match e.downcast::<tls_api::Error>() {
+        Ok(e) => {
+            let e = e.into_inner();
+            if let Some(e) = e.downcast_ref::<io::Error>() {
+                if let Some(e) = e.get_ref() {
+                    if let Some(e) = e.downcast_ref::<rustls::TLSError>() {
+                        if matches!(e, rustls::TLSError::CorruptMessage) {
+                            return None;
+                        }
+                    }
+                }
+            }
+            return Some(anyhow::anyhow!(e));
+        }
+        Err(e) => Some(e.into()),
+    }
+}
+
 impl Builder {
-    pub fn from_credentials(credentials: &Credentials) -> Builder {
-        Builder {
+    pub fn from_credentials(credentials: &Credentials)
+        -> anyhow::Result<Builder>
+    {
+        let mut cert = rustls::RootCertStore::empty();
+        if let Some(cert_data) = &credentials.tls_cert_data {
+            match
+                cert.add_pem_file(&mut io::Cursor::new(cert_data.as_bytes()))
+            {
+                Ok((0, 0)) => {
+                    anyhow::bail!("Empty certificate data");
+                }
+                Ok((_, 0)) => {}
+                Ok((_, _)) | Err(()) => {
+                    anyhow::bail!("Invalid certificates are \
+                                   contained in `tls_certdata`");
+                }
+            }
+        }
+        Ok(Builder {
             addr: Addr(AddrImpl::Tcp(
                 credentials.host.clone().unwrap_or_else(|| "127.0.0.1".into()),
                 credentials.port)),
@@ -106,7 +144,8 @@ impl Builder {
                 .unwrap_or_else(|| "edgedb".into()),
             wait: DEFAULT_WAIT,
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
-        }
+            cert,
+        })
     }
     pub async fn read_credentials(path: impl AsRef<Path>)
         -> anyhow::Result<Builder>
@@ -115,7 +154,7 @@ impl Builder {
         let res: anyhow::Result<Builder> = async {
             let data = fs::read(path).await?;
             let creds = serde_json::from_slice(&data)?;
-            Ok(Builder::from_credentials(&creds))
+            Ok(Builder::from_credentials(&creds)?)
         }.await;
         Ok(res.with_context(|| {
                 format!("cannot read credentials file {}", path.display())
@@ -142,6 +181,7 @@ impl Builder {
                 .unwrap_or("edgedb").to_owned(),
             wait: DEFAULT_WAIT,
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
+            cert: rustls::RootCertStore::empty(),
         })
     }
     pub fn new() -> Builder {
@@ -152,6 +192,7 @@ impl Builder {
             database: "edgedb".into(),
             wait: DEFAULT_WAIT,
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
+            cert: rustls::RootCertStore::empty(),
         }
     }
     pub fn get_addr(&self) -> &Addr {
@@ -215,7 +256,20 @@ impl Builder {
         self.connect_timeout = timeout;
         self
     }
+
+    /// Set allowed certificate as pem file
+    pub fn pem_certificates(&mut self, cert_data: &mut dyn io::BufRead)
+        -> anyhow::Result<&mut Self>
+    {
+        self.cert.roots.clear();
+        self.cert.add_pem_file(cert_data).ok()
+            .context("error reading certificate")?;
+        Ok(self)
+    }
+
     pub async fn connect(&self) -> anyhow::Result<Connection> {
+        let tls = tls::connector(&self.cert)?;
+
         match &self.addr {
             Addr(AddrImpl::Tcp(host, port)) => {
                 log::info!("Connecting via TCP {}:{}", host, port);
@@ -226,8 +280,10 @@ impl Builder {
         };
 
         let start = Instant::now();
+        let ref mut warned = false;
         let conn = loop {
-            match timeout(self.connect_timeout, self._connect()).await
+            match
+                timeout(self.connect_timeout, self._connect(&tls, warned)).await
             {
                 Err(e) if is_temporary_error(&e) => {
                     log::debug!("Temporary connection error: {:#}", e);
@@ -251,14 +307,35 @@ impl Builder {
         };
         Ok(conn)
     }
-    async fn _connect(&self)
+    async fn _connect(&self, tls: &TlsConnectorBox, warned: &mut bool)
+        -> anyhow::Result<Connection>
+    {
+        match self._connect_with(tls).await {
+            Err(e) => {
+                if let Some(e) = as_non_plaintext_error(e) {
+                    Err(e)
+                } else {
+                    if !*warned {
+                        log::warn!("TLS connection failed. \
+                            Trying plaintext...");
+                        *warned = true;
+                    }
+                    self._connect_with(
+                        &PlainConnector::builder()?.build()?.into_dyn()
+                    ).await
+                }
+            }
+            Ok(r) => Ok(r),
+        }
+    }
+
+    async fn _connect_with(&self, tls: &TlsConnectorBox)
         -> anyhow::Result<Connection>
     {
         let sock = match &self.addr {
             Addr(AddrImpl::Tcp(host, port)) => {
                 let conn = TcpStream::connect(&(&host[..], *port)).await?;
-                PlainConnector::builder()?.build()?
-                    .connect(&host[..], conn).await?
+                tls.connect(&host[..], conn).await?
             }
             Addr(AddrImpl::Unix(path)) => {
                 #[cfg(windows)] {
