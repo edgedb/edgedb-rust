@@ -23,3 +23,8 @@ url = "2.1.1"
 futures-util = "0.3.15"
 tls-api = {version="0.5.0", default-features=false, features=["runtime-async-std"]}
 tls-api-not-tls = {version="0.5.0", default-features=false, features=["runtime-async-std"]}
+tls-api-rustls = {version="0.5.0", default-features=false, features=["runtime-async-std"]}
+rustls = "0.19.1"
+rustls-native-certs = "0.5.0"
+webpki = "0.21.4"
+webpki-roots = "0.21"

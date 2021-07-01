@@ -16,6 +16,8 @@ pub struct Credentials {
     pub password: Option<String>,
     #[serde(default, skip_serializing_if="Option::is_none")]
     pub database: Option<String>,
+    #[serde(default, skip_serializing_if="Option::is_none")]
+    pub tls_cert_data: Option<String>,
 }
 
 fn default_port() -> u16 {
@@ -30,6 +32,7 @@ impl Default for Credentials {
             user: "edgedb".into(),
             password: None,
             database: None,
+            tls_cert_data: None,
         }
     }
 }
