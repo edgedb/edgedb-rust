@@ -21,7 +21,9 @@ static SIG_ALGS: &[&SignatureAlgorithm] = &[
 ];
 
 
-pub struct CertVerifier;
+pub struct CertVerifier {
+    verify_hostname: bool,
+}
 
 type CertChainAndRoots<'a, 'b> = (
     webpki::EndEntityCert<'a>,
@@ -78,11 +80,13 @@ impl ServerCertVerifier for CertVerifier {
     }
 }
 
-pub fn connector(cert: &rustls::RootCertStore)
+pub fn connector(cert: &rustls::RootCertStore, verify_hostname: Option<bool>)
     -> anyhow::Result<TlsConnectorBox>
 {
     let mut builder = TlsConnector::builder()?;
+    let verify;
     if cert.is_empty() {
+        verify = verify_hostname.unwrap_or(true);
         match rustls_native_certs::load_native_certs() {
             Ok(loaded) => {
                 builder.underlying_mut()
@@ -96,20 +100,19 @@ pub fn connector(cert: &rustls::RootCertStore)
                         .root_store.roots.extend(loaded.roots);
             }
             Err((None, e)) => {
-                log::warn!("Error while loading native TLS certificates: {}.
-                    Using bundled ones.",
-                    e);
-                builder.underlying_mut()
-                    .root_store
-                    .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
+                anyhow::bail!("Error reading root certificates: {:#}. \
+                    Cannot initialize TLS connection.", e);
             }
         }
     } else {
+        verify = verify_hostname.unwrap_or(false);
         builder.underlying_mut()
                 .root_store.roots.extend(cert.roots.iter().cloned());
     };
     builder.config.dangerous()
-        .set_certificate_verifier(Arc::new(CertVerifier));
+        .set_certificate_verifier(Arc::new(CertVerifier {
+            verify_hostname: verify,
+        }));
     builder.set_alpn_protocols(&[b"edgedb-binary"])?;
     Ok(builder.build()?.into_dyn())
 }

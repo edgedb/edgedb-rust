@@ -54,6 +54,7 @@ pub struct Builder {
     wait: Duration,
     connect_timeout: Duration,
     cert: rustls::RootCertStore,
+    verify_hostname: Option<bool>,
 }
 
 pub async fn timeout<F, T>(dur: Duration, f: F) -> anyhow::Result<T>
@@ -144,6 +145,7 @@ impl Builder {
                 .unwrap_or_else(|| "edgedb".into()),
             wait: DEFAULT_WAIT,
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
+            verify_hostname: None,
             cert,
         })
     }
@@ -182,6 +184,7 @@ impl Builder {
             wait: DEFAULT_WAIT,
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             cert: rustls::RootCertStore::empty(),
+            verify_hostname: None,
         })
     }
     pub fn new() -> Builder {
@@ -193,6 +196,7 @@ impl Builder {
             wait: DEFAULT_WAIT,
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             cert: rustls::RootCertStore::empty(),
+            verify_hostname: None,
         }
     }
     pub fn get_addr(&self) -> &Addr {
@@ -267,8 +271,17 @@ impl Builder {
         Ok(self)
     }
 
+    /// Instructs TLS code to enable or disable verification
+    ///
+    /// By default verification is disable if specific certificate are
+    /// configured and enabled if root certificates are used.
+    pub fn verify_hostname(&mut self, value: bool) -> &mut Self {
+        self.verify_hostname = Some(value);
+        self
+    }
+
     pub async fn connect(&self) -> anyhow::Result<Connection> {
-        let tls = tls::connector(&self.cert)?;
+        let tls = tls::connector(&self.cert, self.verify_hostname)?;
 
         match &self.addr {
             Addr(AddrImpl::Tcp(host, port)) => {
