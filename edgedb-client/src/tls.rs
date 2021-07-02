@@ -5,7 +5,7 @@ use rustls::{ServerCertVerifier, OwnedTrustAnchor};
 use tls_api::{TlsConnector as _, TlsConnectorBuilder as _};
 use tls_api::{TlsConnectorBox};
 use tls_api_rustls::{TlsConnector};
-use webpki::{DNSNameRef, SignatureAlgorithm};
+use webpki::{DNSNameRef, SignatureAlgorithm, EndEntityCert};
 
 
 static SIG_ALGS: &[&SignatureAlgorithm] = &[
@@ -21,7 +21,7 @@ static SIG_ALGS: &[&SignatureAlgorithm] = &[
 ];
 
 
-pub struct CertVerifier {
+struct CertVerifier {
     verify_hostname: bool,
 }
 
@@ -66,22 +66,38 @@ impl ServerCertVerifier for CertVerifier {
     fn verify_server_cert(&self,
         roots: &RootCertStore,
         presented_certs: &[Certificate],
-        _dns_name: DNSNameRef,
+        dns_name: DNSNameRef,
         _ocsp_response: &[u8],
     ) -> Result<ServerCertVerified, TLSError> {
-        let (cert, chain, trust_roots) = prepare(roots, presented_certs)?;
-        cert.verify_is_valid_tls_server_cert(
-            &SIG_ALGS,
-            &webpki::TLSServerTrustAnchors(&trust_roots),
-            &chain,
-            webpki_now()?,
-        ).map_err(TLSError::WebPKIError)?;
+        let cert = verify_server_cert(roots, presented_certs)?;
+        if self.verify_hostname {
+            cert.verify_is_valid_for_dns_name(dns_name)
+                .map_err(TLSError::WebPKIError)?;
+        };
         Ok(ServerCertVerified::assertion())
     }
 }
 
-pub fn connector(cert: &rustls::RootCertStore, verify_hostname: Option<bool>)
-    -> anyhow::Result<TlsConnectorBox>
+pub fn verify_server_cert<'a>(
+    roots: &RootCertStore,
+    presented_certs: &'a [Certificate],
+) -> Result<EndEntityCert<'a>, TLSError> {
+    let (cert, chain, trust_roots) = prepare(roots, presented_certs)?;
+    cert.verify_is_valid_tls_server_cert(
+        &SIG_ALGS,
+        &webpki::TLSServerTrustAnchors(&trust_roots),
+        &chain,
+        webpki_now()?,
+    )
+    .map_err(TLSError::WebPKIError)
+    .map(|_| cert)
+}
+
+pub fn connector(
+    cert: &rustls::RootCertStore,
+    verify_hostname: Option<bool>,
+    cert_verifier: Option<Arc<dyn ServerCertVerifier>>,
+) -> anyhow::Result<TlsConnectorBox>
 {
     let mut builder = TlsConnector::builder()?;
     let verify;
@@ -109,10 +125,11 @@ pub fn connector(cert: &rustls::RootCertStore, verify_hostname: Option<bool>)
         builder.underlying_mut()
                 .root_store.roots.extend(cert.roots.iter().cloned());
     };
-    builder.config.dangerous()
-        .set_certificate_verifier(Arc::new(CertVerifier {
+    builder.config.dangerous().set_certificate_verifier(
+        cert_verifier.unwrap_or(Arc::new(CertVerifier {
             verify_hostname: verify,
-        }));
+        }))
+    );
     builder.set_alpn_protocols(&[b"edgedb-binary"])?;
     Ok(builder.build()?.into_dyn())
 }

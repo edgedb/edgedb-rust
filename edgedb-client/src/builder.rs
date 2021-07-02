@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::io;
 use std::str;
+use std::sync::Arc;
 use std::fmt;
 use std::time::{Instant, Duration};
 use std::path::{Path, PathBuf};
@@ -13,6 +14,7 @@ use async_std::task::sleep;
 use bytes::{Bytes, BytesMut};
 use futures_util::AsyncReadExt;
 use rand::{thread_rng, Rng};
+use rustls::ServerCertVerifier;
 use scram::ScramClient;
 use serde_json::from_slice;
 use typemap::TypeMap;
@@ -297,8 +299,12 @@ impl Builder {
         self
     }
 
-    pub async fn connect(&self) -> anyhow::Result<Connection> {
-        let tls = tls::connector(&self.cert, self.verify_hostname)?;
+    pub async fn connect_with_cert_verifier(
+        &self, cert_verifier: Option<Arc<dyn ServerCertVerifier>>
+    ) -> anyhow::Result<Connection> {
+        let tls = tls::connector(
+            &self.cert, self.verify_hostname, cert_verifier
+        )?;
 
         match &self.addr {
             Addr(AddrImpl::Tcp(host, port)) => {
@@ -336,6 +342,9 @@ impl Builder {
             }
         };
         Ok(conn)
+    }
+    pub async fn connect(&self) -> anyhow::Result<Connection> {
+        self.connect_with_cert_verifier(None).await
     }
     async fn _connect(&self, tls: &TlsConnectorBox, warned: &mut bool)
         -> anyhow::Result<Connection>
