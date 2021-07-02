@@ -18,6 +18,8 @@ pub struct Credentials {
     pub database: Option<String>,
     #[serde(default, skip_serializing_if="Option::is_none")]
     pub tls_cert_data: Option<String>,
+    #[serde(default, skip_serializing_if="Option::is_none")]
+    pub tls_verify_hostname: Option<bool>,
 }
 
 fn default_port() -> u16 {
@@ -33,6 +35,7 @@ impl Default for Credentials {
             password: None,
             database: None,
             tls_cert_data: None,
+            tls_verify_hostname: None,
         }
     }
 }
