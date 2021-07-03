@@ -55,6 +55,7 @@ pub struct Builder {
     database: String,
     wait: Duration,
     connect_timeout: Duration,
+    pem: Option<String>,
     cert: rustls::RootCertStore,
     verify_hostname: Option<bool>,
 }
@@ -123,7 +124,9 @@ impl Builder {
         -> anyhow::Result<Builder>
     {
         let mut cert = rustls::RootCertStore::empty();
+        let pem;
         if let Some(cert_data) = &credentials.tls_cert_data {
+            pem = Some(cert_data.clone());
             match
                 cert.add_pem_file(&mut io::Cursor::new(cert_data.as_bytes()))
             {
@@ -136,6 +139,8 @@ impl Builder {
                                    contained in `tls_certdata`");
                 }
             }
+        } else {
+            pem = None;
         }
         Ok(Builder {
             addr: Addr(AddrImpl::Tcp(
@@ -149,6 +154,7 @@ impl Builder {
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             verify_hostname: None,
             cert,
+            pem,
         })
     }
     pub async fn read_credentials(path: impl AsRef<Path>)
@@ -186,6 +192,7 @@ impl Builder {
             wait: DEFAULT_WAIT,
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             cert: rustls::RootCertStore::empty(),
+            pem: None,
             verify_hostname: None,
         })
     }
@@ -198,6 +205,7 @@ impl Builder {
             wait: DEFAULT_WAIT,
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             cert: rustls::RootCertStore::empty(),
+            pem: None,
             verify_hostname: None,
         }
     }
@@ -214,7 +222,7 @@ impl Builder {
             user: self.user.clone(),
             password: self.password.clone(),
             database: Some(self.database.clone()),
-            tls_cert_data: None,
+            tls_cert_data: self.pem.clone(),
             tls_verify_hostname: self.verify_hostname,
         })
     }
@@ -281,12 +289,15 @@ impl Builder {
     }
 
     /// Set allowed certificate as pem file
-    pub fn pem_certificates(&mut self, cert_data: &mut dyn io::BufRead)
+    pub fn pem_certificates(&mut self, cert_data: &String)
         -> anyhow::Result<&mut Self>
     {
         self.cert.roots.clear();
-        self.cert.add_pem_file(cert_data).ok()
+        self.pem = None;
+        self.cert.add_pem_file(&mut io::Cursor::new(cert_data.as_bytes()))
+            .ok()
             .context("error reading certificate")?;
+        self.pem = Some(cert_data.clone());
         Ok(self)
     }
 
