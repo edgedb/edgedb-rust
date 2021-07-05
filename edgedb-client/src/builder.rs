@@ -46,6 +46,24 @@ enum AddrImpl {
     Unix(PathBuf),
 }
 
+impl Addr {
+    pub fn get_tcp_addr(&self) -> Option<(&String, &u16)> {
+        if let Addr(AddrImpl::Tcp(host, port)) = self {
+            Some((host, port))
+        } else {
+            None
+        }
+    }
+
+    pub fn get_unix_addr(&self) -> Option<&PathBuf> {
+        if let Addr(AddrImpl::Unix(path)) = self {
+            Some(path)
+        } else {
+            None
+        }
+    }
+}
+
 /// A builder used to create connections
 #[derive(Debug, Clone)]
 pub struct Builder {
@@ -592,6 +610,20 @@ fn display() {
     assert_eq!(bld.get_addr().to_string(), "localhost:1756");
     bld.unix_addr("/test/my.sock");
     assert_eq!(bld.get_addr().to_string(), "/test/my.sock");
+}
+
+#[test]
+fn get_addr() {
+    let mut bld = Builder::from_dsn("edgedb://localhost:1756").unwrap();
+    let (host, port) = bld.get_addr().get_tcp_addr().unwrap();
+    assert_eq!(*host, "localhost");
+    assert_eq!(*port, 1756);
+    assert!(bld.get_addr().get_unix_addr().is_none());
+
+    bld.unix_addr("/test/my.sock");
+    let unix = bld.get_addr().get_unix_addr().unwrap().display().to_string();
+    assert_eq!(unix, "/test/my.sock");
+    assert!(bld.get_addr().get_tcp_addr().is_none());
 }
 
 #[test]
