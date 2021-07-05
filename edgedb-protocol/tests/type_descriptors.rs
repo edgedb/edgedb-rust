@@ -137,7 +137,7 @@ fn object_10() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn object() -> Result<(), Box<dyn Error>> {
-    use edgedb_protocol::descriptors::FieldCardinality::*;
+    use edgedb_protocol::common::Cardinality::*;
     assert_eq!(decode(bconcat!(
         // equivalent of 0.10
         //b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x01\x02"
@@ -145,11 +145,10 @@ fn object() -> Result<(), Box<dyn Error>> {
         //b"\xf9\x8f\xfac\xed\x10\x8d\x9c\xe4\x156\xd3\x92\0\x03"
         //b"\x01\0\0\0\t__tname__\0\0\x01\0\0\0\x02id\0\x01\0\0\0\0\x05title\0\0"
         b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x01\x02"
-        b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\0\x01,sT"
-        b"\xf9\x8f\xfac\xed\x10\x8d\x9c\xe4\x156\xd3\x92"
-        b"\0\x03\0\0\0\x01"
-        b"\x01\0\0\0\t__tname__\0\0\0\0\0"
-        b"\x01\x01\0\0\0\x02id\0\x01\0\0\0\0\0\0\0\0\x05title\0\0"
+        b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\0\x01n'\xdb\xa0"
+        b"xa$\xc2\x86\xa9\x15\xa6\xf2\xe3\xfa\xf5\0\x03\0\0\0"
+        b"\x01A\0\0\0\t__tname__\0\0\0\0\0\x01A\0\0\0\x02id"
+        b"\0\x01\0\0\0\0o\0\0\0\x05title\0\0"
         ))?,
         vec![
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
@@ -159,7 +158,7 @@ fn object() -> Result<(), Box<dyn Error>> {
                 id: "00000000-0000-0000-0000-000000000100".parse()?,
             }),
             Descriptor::ObjectShape(ObjectShapeDescriptor {
-                id: "2c7354f9-8ffa-63ed-108d-9ce41536d392".parse()?,
+                id: "6e27dba0-7861-24c2-86a9-15a6f2e3faf5".parse()?,
                 elements: vec![
                     ShapeElement {
                         flag_implicit: true,

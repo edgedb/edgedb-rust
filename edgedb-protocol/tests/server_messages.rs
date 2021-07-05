@@ -123,7 +123,7 @@ fn command_complete() -> Result<(), Box<dyn Error>> {
 fn prepare_complete() -> Result<(), Box<dyn Error>> {
     encoding_eq!(ServerMessage::PrepareComplete(PrepareComplete {
         headers: HashMap::new(),
-        cardinality: Cardinality::One,
+        cardinality: Cardinality::AtMostOne,
         input_typedesc_id: Uuid::from_u128(0xFF),
         output_typedesc_id: Uuid::from_u128(0x105),
     }), b"1\0\0\0'\0\0o\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05");
@@ -141,7 +141,7 @@ fn command_data_description() -> Result<(), Box<dyn Error>> {
     encoding_eq!(ServerMessage::CommandDataDescription(CommandDataDescription {
         proto: ProtocolVersion::current(),
         headers: HashMap::new(),
-        result_cardinality: Cardinality::One,
+        result_cardinality: Cardinality::AtMostOne,
         input_typedesc_id: Uuid::from_u128(0xFF),
         input_typedesc: Bytes::from_static(
             b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0"),

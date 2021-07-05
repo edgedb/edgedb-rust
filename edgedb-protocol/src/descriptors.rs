@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::sync::Arc;
 
 use bytes::Buf;
@@ -8,6 +9,7 @@ use crate::encoding::{Decode, Input};
 use crate::errors::{self, DecodeError, CodecError};
 use crate::errors::{InvalidTypeDescriptor, UnexpectedTypePos};
 use crate::codec::{Codec, build_codec};
+use crate::common::Cardinality;
 use crate::queryable;
 
 
@@ -53,20 +55,12 @@ pub struct ObjectShapeDescriptor {
     pub elements: Vec<ShapeElement>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FieldCardinality {
-    AtMostOne,
-    One,
-    Many,
-    AtLeastOne,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShapeElement {
     pub flag_implicit: bool,
     pub flag_link_property: bool,
     pub flag_link: bool,
-    pub cardinality: Option<FieldCardinality>,
+    pub cardinality: Option<Cardinality>,
     pub name: String,
     pub type_pos: TypePos,
 }
@@ -231,13 +225,7 @@ impl Decode for ShapeElement {
         ensure!(buf.remaining() >= 7, errors::Underflow);
         let (flags, cardinality) = if buf.proto().is_at_least(0, 11) {
             let flags = buf.get_u32();
-            let cardinality = match buf.get_u8() {
-                0 => FieldCardinality::AtMostOne,
-                1 => FieldCardinality::One,
-                2 => FieldCardinality::Many,
-                3 => FieldCardinality::AtLeastOne,
-                _ => return Err(errors::UnknownFieldCardinality.build()),
-            };
+            let cardinality = TryFrom::try_from(buf.get_u8())?;
             (flags, Some(cardinality))
         } else {
             (buf.get_u8() as u32, None)

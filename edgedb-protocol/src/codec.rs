@@ -10,7 +10,8 @@ use bytes::{BytesMut, Buf, BufMut};
 use uuid::Uuid as UuidVal;
 use snafu::{ensure, OptionExt};
 
-use crate::descriptors::{self, Descriptor, TypePos, FieldCardinality};
+use crate::common::Cardinality;
+use crate::descriptors::{self, Descriptor, TypePos};
 use crate::errors::{self, CodecError, DecodeError, EncodeError};
 use crate::value::Value;
 use crate::model;
@@ -59,7 +60,7 @@ pub struct ShapeElement {
     pub flag_implicit: bool,
     pub flag_link_property: bool,
     pub flag_link: bool,
-    pub cardinality: Option<FieldCardinality>,
+    pub cardinality: Option<Cardinality>,
     pub name: String,
 }
 

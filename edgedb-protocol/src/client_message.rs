@@ -338,11 +338,7 @@ impl Decode for Prepare {
             0x4a => IoFormat::JsonElements,
             c => errors::InvalidIoFormat { io_format: c }.fail()?,
         };
-        let expected_cardinality = match buf.get_u8() {
-            0x6f => Cardinality::One,
-            0x6d => Cardinality::Many,
-            c => errors::InvalidCardinality { cardinality: c }.fail()?,
-        };
+        let expected_cardinality = TryFrom::try_from(buf.get_u8())?;
         let statement_name = Bytes::decode(buf)?;
         let command_text = String::decode(buf)?;
         Ok(Prepare {
