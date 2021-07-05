@@ -639,12 +639,7 @@ impl Decode for PrepareComplete {
             headers.insert(buf.get_u16(), Bytes::decode(buf)?);
         }
         ensure!(buf.remaining() >= 33, errors::Underflow);
-        let cardinality = match buf.get_u8() {
-            0x6e => Cardinality::NoResult,
-            0x6f => Cardinality::One,
-            0x6d => Cardinality::Many,
-            c => errors::InvalidCardinality { cardinality: c }.fail()?,
-        };
+        let cardinality = TryFrom::try_from(buf.get_u8())?;
         let input_typedesc_id = Uuid::decode(buf)?;
         let output_typedesc_id = Uuid::decode(buf)?;
         Ok(PrepareComplete {
@@ -688,13 +683,7 @@ impl Decode for CommandDataDescription {
             headers.insert(buf.get_u16(), Bytes::decode(buf)?);
         }
         ensure!(buf.remaining() >= 41, errors::Underflow);
-        let result_cardinality = match buf.get_u8() {
-            0x6e => Cardinality::NoResult,
-            0x6f => Cardinality::One,
-            0x6d => Cardinality::Many,
-            c => errors::InvalidCardinality { cardinality: c }.fail()?,
-        };
-
+        let result_cardinality = TryFrom::try_from(buf.get_u8())?;
         let input_typedesc_id = Uuid::decode(buf)?;
         let input_typedesc = Bytes::decode(buf)?;
         let output_typedesc_id = Uuid::decode(buf)?;

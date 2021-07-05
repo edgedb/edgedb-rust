@@ -65,7 +65,7 @@ fn prepare() -> Result<(), Box<dyn Error>> {
     encoding_eq!(ClientMessage::Prepare(Prepare {
         headers: HashMap::new(),
         io_format: IoFormat::Binary,
-        expected_cardinality: Cardinality::One,
+        expected_cardinality: Cardinality::AtMostOne,
         statement_name: Bytes::from_static(b"example"),
         command_text: String::from("SELECT 1;"),
     }), b"P\0\0\0 \0\0bo\0\0\0\x07example\0\0\0\tSELECT 1;");

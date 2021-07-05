@@ -1,5 +1,5 @@
 pub mod encoding;
-mod common;
+pub mod common;
 pub mod features;
 pub mod serialization;
 pub mod client_message;
@@ -11,3 +11,4 @@ pub mod value;
 pub mod codec;
 pub mod queryable;
 pub mod model;
+
