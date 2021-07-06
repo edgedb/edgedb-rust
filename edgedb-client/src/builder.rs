@@ -329,11 +329,9 @@ impl Builder {
     }
 
     pub async fn connect_with_cert_verifier(
-        &self, cert_verifier: Option<Arc<dyn ServerCertVerifier>>
+        &self, cert_verifier: Arc<dyn ServerCertVerifier>
     ) -> anyhow::Result<Connection> {
-        let tls = tls::connector(
-            &self.cert, self.verify_hostname, cert_verifier
-        )?;
+        let tls = tls::connector(&self.cert, cert_verifier)?;
 
         match &self.addr {
             Addr(AddrImpl::Tcp(host, port)) => {
@@ -373,7 +371,9 @@ impl Builder {
         Ok(conn)
     }
     pub async fn connect(&self) -> anyhow::Result<Connection> {
-        self.connect_with_cert_verifier(None).await
+        self.connect_with_cert_verifier(Arc::new(tls::CertVerifier::new(
+            self.verify_hostname.unwrap_or(self.cert.is_empty())
+        ))).await
     }
     async fn _connect(&self, tls: &TlsConnectorBox, warned: &mut bool)
         -> anyhow::Result<Connection>

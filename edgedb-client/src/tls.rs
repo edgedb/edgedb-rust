@@ -21,8 +21,16 @@ static SIG_ALGS: &[&SignatureAlgorithm] = &[
 ];
 
 
-struct CertVerifier {
+pub struct CertVerifier {
     verify_hostname: bool,
+}
+
+impl CertVerifier {
+    pub fn new(verify_hostname: bool) -> Self {
+        Self {
+            verify_hostname
+        }
+    }
 }
 
 type CertChainAndRoots<'a, 'b> = (
@@ -95,14 +103,11 @@ pub fn verify_server_cert<'a>(
 
 pub fn connector(
     cert: &rustls::RootCertStore,
-    verify_hostname: Option<bool>,
-    cert_verifier: Option<Arc<dyn ServerCertVerifier>>,
+    cert_verifier: Arc<dyn ServerCertVerifier>,
 ) -> anyhow::Result<TlsConnectorBox>
 {
     let mut builder = TlsConnector::builder()?;
-    let verify;
     if cert.is_empty() {
-        verify = verify_hostname.unwrap_or(true);
         match rustls_native_certs::load_native_certs() {
             Ok(loaded) => {
                 builder.underlying_mut()
@@ -121,15 +126,10 @@ pub fn connector(
             }
         }
     } else {
-        verify = verify_hostname.unwrap_or(false);
         builder.underlying_mut()
                 .root_store.roots.extend(cert.roots.iter().cloned());
     };
-    builder.config.dangerous().set_certificate_verifier(
-        cert_verifier.unwrap_or(Arc::new(CertVerifier {
-            verify_hostname: verify,
-        }))
-    );
+    builder.config.dangerous().set_certificate_verifier(cert_verifier);
     builder.set_alpn_protocols(&[b"edgedb-binary"])?;
     Ok(builder.build()?.into_dyn())
 }
