@@ -108,6 +108,7 @@ pub fn connector(
 {
     let mut builder = TlsConnector::builder()?;
     if cert.is_empty() {
+        log::debug!("Loading native root certificates");
         match rustls_native_certs::load_native_certs() {
             Ok(loaded) => {
                 builder.underlying_mut()
@@ -126,6 +127,8 @@ pub fn connector(
             }
         }
     } else {
+        log::debug!("Using custom root chain, {} certificates",
+            cert.roots.len());
         builder.underlying_mut()
                 .root_store.roots.extend(cert.roots.iter().cloned());
     };
