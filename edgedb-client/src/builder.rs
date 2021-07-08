@@ -95,6 +95,8 @@ fn is_temporary_error(e: &anyhow::Error) -> bool {
     use io::ErrorKind::{ConnectionRefused, TimedOut, NotFound};
     use io::ErrorKind::{ConnectionAborted, ConnectionReset};
 
+    log::trace!("Is temporary? {:#?}", e);
+
     match e.downcast_ref::<ReadError>() {
         | Some(ReadError::Eos) => return true,
         | Some(ReadError::Io { source, .. }) => {
@@ -115,10 +117,32 @@ fn is_temporary_error(e: &anyhow::Error) -> bool {
         => return true,
         _ => {},
     }
+    let mut src = e.source();
+    while let Some(cur) = src {
+        match cur.downcast_ref::<io::Error>().map(|e| e.kind()) {
+            | Some(ConnectionRefused)
+            | Some(ConnectionReset)
+            | Some(ConnectionAborted)
+            | Some(NotFound)  // For unix sockets
+            | Some(TimedOut)
+            => return true,
+            _ => {},
+        }
+        src = cur.source();
+    }
     return false;
 }
 
 fn as_non_plaintext_error(e: anyhow::Error) -> Option<anyhow::Error> {
+    const OPENSSL_WRONG_VERSION_NUMBER: u64 = 0x1408F10B;
+
+    if let Some(inn_e) = e.source()
+        .and_then(|e| e.downcast_ref::<openssl::error::ErrorStack>())
+    {
+        if inn_e.errors().iter().any(|x| x.code() == OPENSSL_WRONG_VERSION_NUMBER) {
+            return None
+        }
+    }
     match e.downcast::<tls_api::Error>() {
         Ok(e) => {
             let e = e.into_inner();
@@ -331,7 +355,7 @@ impl Builder {
     pub async fn connect_with_cert_verifier(
         &self, cert_verifier: Arc<dyn ServerCertVerifier>
     ) -> anyhow::Result<Connection> {
-        let tls = tls::connector(&self.cert, cert_verifier)?;
+        let tls = tls::connector(self.pem.as_ref().map(|p| &p[..]), cert_verifier)?;
 
         match &self.addr {
             Addr(AddrImpl::Tcp(host, port)) => {

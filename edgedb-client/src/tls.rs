@@ -102,37 +102,23 @@ pub fn verify_server_cert<'a>(
 }
 
 pub fn connector(
-    cert: &rustls::RootCertStore,
+    pem_cert: Option<&str>,
     cert_verifier: Arc<dyn ServerCertVerifier>,
 ) -> anyhow::Result<TlsConnectorBox>
 {
+    use tls_api_native_tls::TlsConnector;
+    use native_tls::Certificate;
+
     let mut builder = TlsConnector::builder()?;
-    if cert.is_empty() {
-        log::debug!("Loading native root certificates");
-        match rustls_native_certs::load_native_certs() {
-            Ok(loaded) => {
-                builder.underlying_mut()
-                        .root_store.roots.extend(loaded.roots);
-            }
-            Err((Some(loaded), e)) => {
-                log::warn!("Error while loading native TLS certificates: {}. \
-                    Using {} loaded ones.",
-                    e, loaded.roots.len());
-                builder.underlying_mut()
-                        .root_store.roots.extend(loaded.roots);
-            }
-            Err((None, e)) => {
-                anyhow::bail!("Error reading root certificates: {:#}. \
-                    Cannot initialize TLS connection.", e);
-            }
-        }
+    if let Some(pem_cert) = pem_cert {
+        log::debug!("Using custom pem cert");
+        builder.underlying_mut().disable_built_in_roots(true);
+        builder.underlying_mut().danger_accept_invalid_hostnames(true);
+        builder.underlying_mut().add_root_certificate(
+            Certificate::from_pem(pem_cert.as_bytes())?);
     } else {
-        log::debug!("Using custom root chain, {} certificates",
-            cert.roots.len());
-        builder.underlying_mut()
-                .root_store.roots.extend(cert.roots.iter().cloned());
+        log::debug!("Using native root certificates");
     };
-    builder.config.dangerous().set_certificate_verifier(cert_verifier);
     builder.set_alpn_protocols(&[b"edgedb-binary"])?;
     Ok(builder.build()?.into_dyn())
 }
