@@ -96,6 +96,7 @@ fn sleep_duration() -> Duration {
 fn is_temporary_error(e: &anyhow::Error) -> bool {
     use io::ErrorKind::{ConnectionRefused, TimedOut, NotFound};
     use io::ErrorKind::{ConnectionAborted, ConnectionReset};
+    log::debug!("Is temporary? {:#?}", e);
 
     match e.downcast_ref::<ReadError>() {
         | Some(ReadError::Eos) => return true,
@@ -117,23 +118,35 @@ fn is_temporary_error(e: &anyhow::Error) -> bool {
         => return true,
         _ => {},
     }
+    match e.downcast_ref::<Box<io::Error>>().map(|e| e.kind()) {
+        | Some(ConnectionRefused)
+        | Some(ConnectionReset)
+        | Some(ConnectionAborted)
+        | Some(NotFound)  // For unix sockets
+        | Some(TimedOut)
+        => return true,
+        _ => {},
+    }
+
     return false;
 }
 
 fn as_non_plaintext_error(e: anyhow::Error) -> Option<anyhow::Error> {
     match e.downcast::<tls_api::Error>() {
         Ok(e) => {
-            let e = e.into_inner();
-            if let Some(e) = e.downcast_ref::<io::Error>() {
-                if let Some(e) = e.get_ref() {
-                    if let Some(e) = e.downcast_ref::<rustls::TLSError>() {
-                        if matches!(e, rustls::TLSError::CorruptMessage) {
-                            return None;
+            match e.into_inner().downcast::<io::Error>() {
+                Ok(e) => {
+                    if let Some(e) = e.get_ref() {
+                        if let Some(e) = e.downcast_ref::<rustls::TLSError>() {
+                            if matches!(e, rustls::TLSError::CorruptMessage) {
+                                return None;
+                            }
                         }
                     }
+                    Some(e.into())
                 }
+                Err(e) => Some(anyhow::anyhow!(e)),
             }
-            return Some(anyhow::anyhow!(e));
         }
         Err(e) => Some(e.into()),
     }
