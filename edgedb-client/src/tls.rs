@@ -122,8 +122,9 @@ pub fn connector(
                         .root_store.roots.extend(loaded.roots);
             }
             Err((None, e)) => {
-                anyhow::bail!("Error reading root certificates: {:#}. \
-                    Cannot initialize TLS connection.", e);
+                log::warn!("Error while loading native TLS certificates: {}. \
+                    Will use built-in ones.", e);
+                // builtin certs are used by default in TLS API
             }
         }
     } else {
