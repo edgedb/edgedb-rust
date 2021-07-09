@@ -1,10 +1,12 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
-use std::io;
-use std::str;
-use std::sync::Arc;
 use std::fmt;
-use std::time::{Instant, Duration};
+use std::io;
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
+use std::str::{self, FromStr};
+use std::sync::Arc;
+use std::time::{Instant, Duration};
 
 use anyhow::{self, Context};
 use async_std::fs;
@@ -370,9 +372,12 @@ impl Builder {
         };
         Ok(conn)
     }
+    fn do_verify_hostname(&self) -> bool {
+        self.verify_hostname.unwrap_or(self.cert.is_empty())
+    }
     pub async fn connect(&self) -> anyhow::Result<Connection> {
         self.connect_with_cert_verifier(Arc::new(tls::CertVerifier::new(
-            self.verify_hostname.unwrap_or(self.cert.is_empty())
+            self.do_verify_hostname()
         ))).await
     }
     async fn _connect(&self, tls: &TlsConnectorBox, warned: &mut bool)
@@ -403,6 +408,16 @@ impl Builder {
         let sock = match &self.addr {
             Addr(AddrImpl::Tcp(host, port)) => {
                 let conn = TcpStream::connect(&(&host[..], *port)).await?;
+                let host = if IpAddr::from_str(&host).is_ok() {
+                    if self.do_verify_hostname() {
+                        anyhow::bail!("Cannot use `verify_hostname` or system \
+                            root certificates with an IP address");
+                    }
+                    Cow::from(format!("{}.host-for-ip.edgedb.net", host)
+                        .replace(":", "-"))  // for ipv6addr
+                } else {
+                    Cow::from(host)
+                };
                 tls.connect(&host[..], conn).await?
             }
             Addr(AddrImpl::Unix(path)) => {
