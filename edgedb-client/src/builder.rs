@@ -164,7 +164,7 @@ impl Builder {
         }
         Ok(Builder {
             addr: Addr(AddrImpl::Tcp(
-                credentials.host.clone().unwrap_or_else(|| "127.0.0.1".into()),
+                credentials.host.clone().unwrap_or_else(|| "localhost".into()),
                 credentials.port)),
             user: credentials.user.clone(),
             password: credentials.password.clone(),
