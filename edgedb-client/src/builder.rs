@@ -95,7 +95,7 @@ fn sleep_duration() -> Duration {
 
 fn is_temporary_error(e: &anyhow::Error) -> bool {
     use io::ErrorKind::{ConnectionRefused, TimedOut, NotFound};
-    use io::ErrorKind::{ConnectionAborted, ConnectionReset};
+    use io::ErrorKind::{ConnectionAborted, ConnectionReset, UnexpectedEof};
     log::debug!("Is temporary? {:#?}", e);
 
     match e.downcast_ref::<ReadError>() {
@@ -115,6 +115,7 @@ fn is_temporary_error(e: &anyhow::Error) -> bool {
         | Some(ConnectionAborted)
         | Some(NotFound)  // For unix sockets
         | Some(TimedOut)
+        | Some(UnexpectedEof)  // For Docker server which is starting up
         => return true,
         _ => {},
     }
@@ -143,7 +144,7 @@ fn as_non_plaintext_error(e: anyhow::Error) -> Option<anyhow::Error> {
                             }
                         }
                     }
-                    Some(e.into())
+                    Some((*e).into())
                 }
                 Err(e) => Some(anyhow::anyhow!(e)),
             }
