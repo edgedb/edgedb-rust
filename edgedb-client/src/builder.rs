@@ -21,6 +21,7 @@ use scram::ScramClient;
 use serde_json::from_slice;
 use typemap::TypeMap;
 use tls_api::{TlsConnectorBox, TlsConnector as _, TlsConnectorBuilder as _};
+use tls_api::{TlsStream, TlsStreamDyn as _};
 use tls_api_not_tls::TlsConnector as PlainConnector;
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
@@ -397,29 +398,37 @@ impl Builder {
     async fn _connect(&self, tls: &TlsConnectorBox, warned: &mut bool)
         -> anyhow::Result<Connection>
     {
-        match self._connect_with(tls).await {
+        let stream = match self._connect_stream(tls).await {
             Err(e) => {
                 if let Some(e) = as_non_plaintext_error(e) {
-                    Err(e)
+                    anyhow::bail!(e);
                 } else {
                     if !*warned {
                         log::warn!("TLS connection failed. \
                             Trying plaintext...");
                         *warned = true;
                     }
-                    self._connect_with(
+                    self._connect_stream(
                         &PlainConnector::builder()?.build()?.into_dyn()
-                    ).await
+                    ).await?
                 }
             }
-            Ok(r) => Ok(r),
-        }
+            Ok(r) => {
+                match r.get_alpn_protocol() {
+                    Ok(Some(protocol)) if protocol == b"edgedb-binary" => r,
+                    _ => anyhow::bail!(
+                        "Server does not support the EdgeDB binary protocol."
+                    ),
+                }
+            }
+        };
+        self._connect_with(stream).await
     }
 
-    async fn _connect_with(&self, tls: &TlsConnectorBox)
-        -> anyhow::Result<Connection>
+    async fn _connect_stream(&self, tls: &TlsConnectorBox)
+        -> anyhow::Result<TlsStream>
     {
-        let sock = match &self.addr {
+        match &self.addr {
             Addr(AddrImpl::Tcp(host, port)) => {
                 let conn = TcpStream::connect(&(&host[..], *port)).await?;
                 let host = if IpAddr::from_str(&host).is_ok() {
@@ -432,7 +441,7 @@ impl Builder {
                 } else {
                     Cow::from(host)
                 };
-                tls.connect(&host[..], conn).await?
+                Ok(tls.connect(&host[..], conn).await?)
             }
             Addr(AddrImpl::Unix(path)) => {
                 #[cfg(windows)] {
@@ -441,13 +450,20 @@ impl Builder {
                 #[cfg(unix)] {
                     use async_std::os::unix::net::UnixStream;
                     let conn = UnixStream::connect(&path).await?;
-                    PlainConnector::builder()?.build()?
+                    Ok(
+                        PlainConnector::builder()?.build()?
                         .connect("localhost", conn).await?
+                    )
                 }
             }
-        };
+        }
+    }
+
+    async fn _connect_with(&self, stream: TlsStream)
+        -> anyhow::Result<Connection>
+    {
         let mut version = ProtocolVersion::current();
-        let (input, output) = sock.split();
+        let (input, output) = stream.split();
         let mut conn = Connection {
             input,
             output,
