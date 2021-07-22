@@ -413,12 +413,13 @@ impl Builder {
                     ).await?
                 }
             }
-            Ok(r) => {
-                match r.get_alpn_protocol() {
-                    Ok(Some(protocol)) if protocol == b"edgedb-binary" => r,
-                    _ => anyhow::bail!(
+            Ok(r) => match r.get_alpn_protocol() {
+                Ok(Some(protocol)) if protocol == b"edgedb-binary" => r,
+                _ => match self.addr.get_tcp_addr() {
+                    Some(_) => anyhow::bail!(
                         "Server does not support the EdgeDB binary protocol."
                     ),
+                    None => r,  // don't check ALPN on UNIX stream
                 }
             }
         };
