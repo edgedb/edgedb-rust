@@ -3,5 +3,5 @@ mod kinds;
 mod error;
 
 pub use traits::ErrorKind;
-pub use error::Error;
+pub use error::{Error, Tag};
 pub use kinds::*;
