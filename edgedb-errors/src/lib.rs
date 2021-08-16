@@ -1,7 +1,8 @@
-mod traits;
-mod kinds;
 mod error;
+mod traits;
 
-pub use traits::ErrorKind;
+pub mod kinds;
+
+pub use traits::{ErrorKind, ResultExt};
 pub use error::{Error, Tag};
 pub use kinds::*;

@@ -104,7 +104,7 @@ pub fn verify_server_cert<'a>(
 pub fn connector(
     cert: &rustls::RootCertStore,
     cert_verifier: Arc<dyn ServerCertVerifier>,
-) -> anyhow::Result<TlsConnectorBox>
+) -> Result<TlsConnectorBox, tls_api::Error>
 {
     let mut builder = TlsConnector::builder()?;
     if cert.is_empty() {
@@ -135,5 +135,6 @@ pub fn connector(
     };
     builder.config.dangerous().set_certificate_verifier(cert_verifier);
     builder.set_alpn_protocols(&[b"edgedb-binary"])?;
-    Ok(builder.build()?.into_dyn())
+    let connector = builder.build()?.into_dyn();
+    Ok(connector)
 }

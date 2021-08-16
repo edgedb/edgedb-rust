@@ -136,6 +136,14 @@ pub fn error_name(code: u32) -> &'static str {
 
 impl Error for ErrorResponse {}
 
+impl Into<edgedb_errors::Error> for ErrorResponse {
+    fn into(self) -> edgedb_errors::Error {
+        edgedb_errors::Error::from_code(self.code)
+        .context(self.message)
+        .headers(self.attributes)
+    }
+}
+
 impl fmt::Display for ErrorResponse {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.display(false).fmt(f)

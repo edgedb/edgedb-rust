@@ -46,7 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             continue;
         }
         let mut parts = line.split_whitespace();
-        let code = u64::from_str_radix(
+        let code = u32::from_str_radix(
             &parts.next().expect("code always specified")
             .strip_prefix("0x").expect("code contains 0x")
             .replace("_", ""),
@@ -71,12 +71,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect::<BTreeMap<_, _>>();
 
-    let mut all_errors = BTreeMap::<u64, (_, u32)>::new();
+    let mut all_errors = BTreeMap::<u32, (_, u32)>::new();
     // propagate tags from error superclasses
     for (code, (name, mut tags)) in tmp_errors {
         for (&scode, (_, stags)) in all_errors.iter().rev() {
             let mask_bits = (scode.trailing_zeros() / 8)*8;
-            let mask = 0xFFFFFFFF_FFFFFFFF_u64 << mask_bits;
+            let mask = 0xFFFFFFFF_u32 << mask_bits;
             if code & mask == scode {
                 tags |= stags;
             }
@@ -114,7 +114,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         out.push_str(indent);
         out.push_str(&define_err
             .replace("$name", name)
-            .replace("$code", &format!("0x{:08X}u64", code))
+            .replace("$code", &format!("0x{:08X}u32", code))
             .replace("$tag_bits", &format!("0x{:08x}", tags)));
         out.push('\n');
     }
