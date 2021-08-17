@@ -143,6 +143,13 @@ define_errors![
     (struct InvalidArgumentError, 0xFF020103u32, 0x00000000),
     (struct NoDataError, 0xFF030000u32, 0x00000000),
     // </define_error>
-    (struct ProtocolTlsError, 0x030000FFu32, 0x00000000),
-    (struct PasswordRequired, 0x070100FFu32, 0x00000000),
+    (struct ProtocolTlsError, 0x03FF0000u32, 0x00000000),
+    (struct ProtocolOutOfOrderError, 0x03FE0000u32, 0x00000000),
+    (struct ProtocolEncodingError, 0x03FD0000u32, 0x00000000),
+    (struct PasswordRequired, 0x0701FF00u32, 0x00000000),
+    (struct ClientInconsistentError, 0xFFFF0000u32, 0x00000000),
+    (struct ClientEncodingError, 0xFFFE0000u32, 0x00000000),
+    (struct ClientConnectionEosError, 0xFF01FF00u32, 0x00000000),
+    (struct NoResultExpected, 0xFF02FF00u32, 0x00000000),
+    (struct DescriptorMismatch, 0xFF02FE00u32, 0x00000000),
 ];

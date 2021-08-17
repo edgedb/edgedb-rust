@@ -30,12 +30,10 @@ use edgedb_protocol::server_message::{TransactionState, ServerHandshake};
 
 use crate::client::{Connection, Sequence};
 use crate::credentials::Credentials;
-use crate::errors::{Anyhow};
 use crate::errors::{ClientConnectionError, ProtocolError, ProtocolTlsError};
 use crate::errors::{ClientConnectionFailedError, AuthenticationError};
 use crate::errors::{ClientError, ClientConnectionFailedTemporarilyError};
 use crate::errors::{Error, ErrorKind, ResultExt, PasswordRequired};
-use crate::reader::ReadError;
 use crate::server_params::PostgresAddress;
 use crate::tls;
 
@@ -149,30 +147,6 @@ fn tls_fail(e: tls_api::Error) -> Error {
             ClientConnectionError::with_source(e)
         }
         Err(e) => ClientConnectionError::with_source_box(e),
-    }
-}
-
-/// This maps error that is connection failure,
-/// which means client failed to establish connection
-/// (not arbitrary ReadError error between connection attempts).
-fn read_fail(e: ReadError) -> Error {
-    use io::ErrorKind::{ConnectionRefused, TimedOut};
-    use io::ErrorKind::{ConnectionAborted, ConnectionReset};
-
-    let temporary = match &e {
-        | ReadError::Eos => true,
-        | ReadError::Io { source, .. } => {
-            matches!(source.kind(),
-                ConnectionRefused | ConnectionReset | ConnectionAborted |
-                TimedOut
-            )
-        }
-        _ => false,
-    };
-    if temporary {
-        crate::errors::ClientConnectionFailedTemporarilyError::with_source(e)
-    } else {
-        crate::errors::ClientConnectionFailedError::with_source(e)
     }
 }
 
@@ -513,7 +487,7 @@ impl Builder {
             dirty: false,
             version: version.clone(),
         };
-        let mut seq = conn.start_sequence().await.err_kind::<ClientError>()?;
+        let mut seq = conn.start_sequence().await?;
         let mut params = HashMap::new();
         params.insert(String::from("user"), self.user.clone());
         params.insert(String::from("database"), self.database.clone());
@@ -526,15 +500,15 @@ impl Builder {
                 params,
                 extensions: HashMap::new(),
             }),
-        ]).await.err_kind::<ClientError>()?;
+        ]).await?;
 
-        let mut msg = seq.message().await.map_err(read_fail)?;
+        let mut msg = seq.message().await?;
         if let ServerMessage::ServerHandshake(ServerHandshake {
             major_ver, minor_ver, extensions: _
         }) = msg {
             version = ProtocolVersion::new(major_ver, minor_ver);
             // TODO(tailhook) record extensions
-            msg = seq.message().await.map_err(read_fail)?;
+            msg = seq.message().await?;
         }
         match msg {
             ServerMessage::Authentication(Authentication::Ok) => {}
@@ -566,7 +540,7 @@ impl Builder {
 
         let mut server_params = TypeMap::custom();
         loop {
-            let msg = seq.message().await.map_err(read_fail)?;
+            let msg = seq.message().await?;
             match msg {
                 ServerMessage::ReadyForCommand(ready) => {
                     seq.reader.consume_ready(ready);
@@ -628,8 +602,8 @@ async fn scram(seq: &mut Sequence<'_>, user: &str, password: &str)
             method: "SCRAM-SHA-256".into(),
             data: Bytes::copy_from_slice(first.as_bytes()),
         }),
-    ]).await.err_kind::<ClientError>()?;
-    let msg = seq.message().await.map_err(read_fail)?;
+    ]).await?;
+    let msg = seq.message().await?;
     let data = match msg {
         ServerMessage::Authentication(
             Authentication::SaslContinue { data }
@@ -653,8 +627,8 @@ async fn scram(seq: &mut Sequence<'_>, user: &str, password: &str)
             SaslResponse {
                 data: Bytes::copy_from_slice(data.as_bytes()),
             }),
-    ]).await.err_kind::<ClientError>()?;
-    let msg = seq.message().await.map_err(read_fail)?;
+    ]).await?;
+    let msg = seq.message().await?;
     let data = match msg {
         ServerMessage::Authentication(Authentication::SaslFinal { data })
         => data,
@@ -673,7 +647,7 @@ async fn scram(seq: &mut Sequence<'_>, user: &str, password: &str)
         .map_err(|e| AuthenticationError::with_message(format!(
             "Authentication error: {}", e)))?;
     loop {
-        let msg = seq.message().await.map_err(read_fail)?;
+        let msg = seq.message().await?;
         match msg {
             ServerMessage::Authentication(Authentication::Ok) => break,
             msg => {

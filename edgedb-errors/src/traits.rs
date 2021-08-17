@@ -9,12 +9,7 @@ use crate::error::{Error, Inner};
 /// Currently sealed, because edgedb errors will be changed in future
 pub trait ErrorKind: Sealed {
     fn with_message<S: Into<Cow<'static, str>>>(s: S) -> Error {
-        Error(Box::new(Inner {
-            code: Self::CODE,
-            messages: vec![s.into()],
-            error: None,
-            headers: HashMap::new(),
-        }))
+        Self::build().context(s)
     }
     fn with_source<E: std::error::Error+Send+Sync+'static>(src: E) -> Error {
         Error(Box::new(Inner {
@@ -29,6 +24,14 @@ pub trait ErrorKind: Sealed {
             code: Self::CODE,
             messages: Vec::new(),
             error: Some(src),
+            headers: HashMap::new(),
+        }))
+    }
+    fn build() -> Error {
+        Error(Box::new(Inner {
+            code: Self::CODE,
+            messages: Vec::new(),
+            error: None,
             headers: HashMap::new(),
         }))
     }

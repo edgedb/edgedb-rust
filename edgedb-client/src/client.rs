@@ -5,7 +5,6 @@ use std::str;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{self, Context};
 use async_std::prelude::StreamExt;
 use async_std::future::{timeout, pending};
 use async_std::io::prelude::WriteExt;
@@ -15,22 +14,28 @@ use futures_util::io::{ReadHalf, WriteHalf};
 use typemap::TypeMap;
 use tls_api::TlsStream;
 
-use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::client_message::ClientMessage;
-use edgedb_protocol::client_message::{Prepare, IoFormat, Cardinality};
 use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
 use edgedb_protocol::client_message::{Execute, ExecuteScript};
+use edgedb_protocol::client_message::{Prepare, IoFormat, Cardinality};
 use edgedb_protocol::codec::Codec;
 use edgedb_protocol::encoding::Output;
+use edgedb_protocol::features::ProtocolVersion;
+use edgedb_protocol::queryable::{Queryable, Decoder};
 use edgedb_protocol::server_message::ServerMessage;
 use edgedb_protocol::server_message::{TransactionState};
-use edgedb_protocol::queryable::{Queryable, Decoder};
 use edgedb_protocol::value::Value;
 use edgedb_protocol::descriptors::OutputTypedesc;
 
-use crate::server_params::ServerParam;
+use crate::errors::{ClientConnectionError, ProtocolError};
+use crate::errors::{ClientConnectionTimeoutError, ClientConnectionEosError};
+use crate::errors::{ClientInconsistentError, ClientEncodingError};
+use crate::errors::{DescriptorMismatch};
+use crate::errors::{Error, ErrorKind, ResultExt};
+use crate::errors::{NoResultExpected, NoDataError};
+use crate::errors::{ProtocolOutOfOrderError, ProtocolEncodingError};
 use crate::reader::{self, QueryableDecoder, QueryResponse, Reader};
-use crate::errors::NoResultExpected;
+use crate::server_params::ServerParam;
 
 
 /// A single connection to the EdgeDB
@@ -103,21 +108,22 @@ impl Connection {
     pub fn is_consistent(&self) -> bool {
         !self.dirty
     }
-    pub async fn terminate(mut self) -> anyhow::Result<()> {
+    pub async fn terminate(mut self) -> Result<(), Error> {
         let mut seq = self.start_sequence().await?;
         seq.send_messages(&[ClientMessage::Terminate]).await?;
         match seq.message().await {
-            Err(reader::ReadError::Eos) => Ok(()),
-            Err(e) => Err(e)?,
-            Ok(msg) => anyhow::bail!("unsolicited message {:?}", msg),
+            Err(e) if e.is::<ClientConnectionEosError>() => Ok(()),
+            Err(e) => Err(ClientConnectionError::with_source(e)),
+            Ok(msg) => Err(ProtocolError::with_message(format!(
+                "unsolicited message {:?}", msg))),
         }
     }
     pub async fn start_sequence<'x>(&'x mut self)
-        -> anyhow::Result<Sequence<'x>>
+        -> Result<Sequence<'x>, Error>
     {
         if self.dirty {
-            anyhow::bail!("Connection is inconsistent state. \
-                Please reconnect.");
+            return Err(ClientInconsistentError::with_message(
+                "Connection is inconsistent state. Please reconnect."));
         }
         self.dirty = true;
         let reader = Reader {
@@ -153,8 +159,7 @@ impl Connection {
 
 impl<'a> Writer<'a> {
 
-    pub async fn send_messages<'x, I>(&mut self, msgs: I)
-        -> Result<(), anyhow::Error>
+    pub async fn send_messages<'x, I>(&mut self, msgs: I) -> Result<(), Error>
         where I: IntoIterator<Item=&'x ClientMessage>
     {
         self.outbuf.truncate(0);
@@ -162,9 +167,10 @@ impl<'a> Writer<'a> {
             msg.encode(&mut Output::new(
                 &self.proto,
                 self.outbuf,
-            ))?;
+            )).map_err(ClientEncodingError::with_source)?;
         }
-        self.stream.write_all(&self.outbuf[..]).await?;
+        self.stream.write_all(&self.outbuf[..]).await
+            .map_err(ClientConnectionError::with_source)?;
         Ok(())
     }
 
@@ -173,16 +179,17 @@ impl<'a> Writer<'a> {
 
 impl<'a> Sequence<'a> {
     pub async fn send_messages<'x, I>(&mut self, msgs: I)
-        -> Result<(), anyhow::Error>
+        -> Result<(), Error>
         where I: IntoIterator<Item=&'x ClientMessage>
     {
         assert!(self.active);  // TODO(tailhook) maybe debug_assert
         self.writer.send_messages(msgs).await
     }
 
-    pub async fn expect_ready(&mut self) -> Result<(), reader::ReadError> {
+    pub async fn expect_ready(&mut self) -> Result<(), Error> {
         assert!(self.active);  // TODO(tailhook) maybe debug_assert
-        self.reader.wait_ready().await?;
+        self.reader.wait_ready().await
+            .map_err(ClientConnectionError::with_source)?;
         self.end_clean();
         Ok(())
     }
@@ -193,17 +200,20 @@ impl<'a> Sequence<'a> {
     }
 
     // TODO(tailhook) figure out if this is the best way
-    pub async fn err_sync(&mut self) -> Result<(), anyhow::Error> {
+    pub async fn err_sync(&mut self) -> Result<(), Error> {
         assert!(self.active);  // TODO(tailhook) maybe debug_assert
         self.writer.send_messages(&[ClientMessage::Sync]).await?;
-        timeout(Duration::from_secs(10), self.expect_ready()).await??;
+        timeout(Duration::from_secs(10), self.expect_ready()).await
+            .map_err(ClientConnectionTimeoutError::with_source)??;
         Ok(())
     }
 
-    pub async fn _process_exec(&mut self) -> anyhow::Result<Bytes> {
+    pub async fn _process_exec(&mut self) -> Result<Bytes, Error> {
         assert!(self.active);  // TODO(tailhook) maybe debug_assert
         let status = loop {
-            match self.reader.message().await? {
+            let msg = self.reader.message().await
+                .map_err(ClientConnectionError::with_source)?;
+            match msg {
                 ServerMessage::CommandComplete(c) => {
                     self.reader.wait_ready().await?;
                     self.end_clean();
@@ -212,7 +222,7 @@ impl<'a> Sequence<'a> {
                 ServerMessage::ErrorResponse(err) => {
                     self.reader.wait_ready().await?;
                     self.end_clean();
-                    return Err(anyhow::anyhow!(err));
+                    return Err(err.into());
                 }
                 ServerMessage::Data(_) => { }
                 msg => {
@@ -225,7 +235,7 @@ impl<'a> Sequence<'a> {
 
     async fn _query(&mut self, request: &str, arguments: &Value,
         io_format: IoFormat)
-        -> Result<OutputTypedesc, anyhow::Error >
+        -> Result<OutputTypedesc, Error>
     {
         assert!(self.active);  // TODO(tailhook) maybe debug_assert
         let statement_name = Bytes::from_static(b"");
@@ -249,11 +259,11 @@ impl<'a> Sequence<'a> {
                 }
                 ServerMessage::ErrorResponse(err) => {
                     self.err_sync().await?;
-                    return Err(anyhow::anyhow!(err));
+                    return Err(err.into());
                 }
                 _ => {
-                    return Err(anyhow::anyhow!(
-                        "Unsolicited message {:?}", msg));
+                    return Err(ProtocolOutOfOrderError::with_message(format!(
+                        "Unsolicited message {:?}", msg)));
                 }
             }
         }
@@ -275,19 +285,24 @@ impl<'a> Sequence<'a> {
                 }
                 ServerMessage::ErrorResponse(err) => {
                     self.err_sync().await?;
-                    return Err(anyhow::anyhow!(err));
+                    return Err(err.into());
                 }
                 _ => {
-                    return Err(anyhow::anyhow!(
-                        "Unsolicited message {:?}", msg));
+                    return Err(ProtocolOutOfOrderError::with_message(format!(
+                        "Unsolicited message {:?}", msg)));
                 }
             }
         };
-        let desc = data_description.output()?;
-        let incodec = data_description.input()?.build_codec()?;
+        let desc = data_description.output()
+            .map_err(ProtocolEncodingError::with_source)?;
+        let incodec = data_description.input()
+            .map_err(ProtocolEncodingError::with_source)?
+            .build_codec()
+            .map_err(ProtocolEncodingError::with_source)?;
 
         let mut arg_buf = BytesMut::with_capacity(8);
-        incodec.encode(&mut arg_buf, &arguments)?;
+        incodec.encode(&mut arg_buf, &arguments)
+            .map_err(ClientEncodingError::with_source)?;
 
         self.send_messages(&[
             ClientMessage::Execute(Execute {
@@ -303,7 +318,7 @@ impl<'a> Sequence<'a> {
 
 impl Connection {
     pub async fn execute<S>(&mut self, request: S)
-        -> Result<Bytes, anyhow::Error>
+        -> Result<Bytes, Error>
         where S: ToString,
     {
         let mut seq = self.start_sequence().await?;
@@ -321,7 +336,7 @@ impl Connection {
                 }
                 ServerMessage::ErrorResponse(err) => {
                     seq.expect_ready().await?;
-                    return Err(anyhow::anyhow!(err));
+                    return Err(err.into());
                 }
                 msg => {
                     eprintln!("WARNING: unsolicited message {:?}", msg);
@@ -332,7 +347,7 @@ impl Connection {
     }
 
     pub async fn query<R>(&mut self, request: &str, arguments: &Value)
-        -> anyhow::Result<QueryResponse<'_, QueryableDecoder<R>>>
+        -> Result<QueryResponse<'_, QueryableDecoder<R>>, Error>
         where R: Queryable,
     {
         let mut seq = self.start_sequence().await?;
@@ -341,41 +356,48 @@ impl Connection {
             Some(root_pos) => {
                 let mut ctx = desc.as_queryable_context();
                 ctx.has_implicit_tid = seq.proto.has_implicit_tid();
-                R::check_descriptor(&ctx, root_pos)?;
+                R::check_descriptor(&ctx, root_pos)
+                    .map_err(DescriptorMismatch::with_source)?;
                 let decoder = seq.decoder();
                 Ok(seq.response(QueryableDecoder::new(decoder)))
             }
             None => {
                 let completion_message = seq._process_exec().await?;
-                Err(NoResultExpected { completion_message })?
+                Err(NoResultExpected::with_message(
+                    String::from_utf8_lossy(&completion_message[..])
+                    .to_string()))?
             }
         }
     }
 
     pub async fn query_row<R>(&mut self, request: &str, arguments: &Value)
-        -> anyhow::Result<R>
+        -> Result<R, Error>
         where R: Queryable,
     {
         let mut query = self.query(request, arguments).await?;
         if let Some(result) = query.next().await.transpose()? {
             if let Some(_) = query.next().await.transpose()? {
                 query.skip_remaining().await?;
-                anyhow::bail!("extra row returned for query_row");
+                return Err(ProtocolError::with_message(
+                    "extra row returned for query_row"
+                ));
             }
             Ok(result)
         } else {
-            anyhow::bail!("no results returned")
+            return Err(NoDataError::build());
         }
     }
 
     pub async fn query_row_opt<R>(&mut self, request: &str, arguments: &Value)
-        -> anyhow::Result<Option<R>>
+        -> Result<Option<R>, Error>
         where R: Queryable,
     {
         let mut query = self.query(request, arguments).await?;
         if let Some(result) = query.next().await.transpose()? {
             if let Some(_) = query.next().await.transpose()? {
-                anyhow::bail!("extra row returned for query_row");
+                return Err(ProtocolError::with_message(
+                    "extra row returned for query_row"
+                ));
             }
             Ok(Some(result))
         } else {
@@ -384,7 +406,7 @@ impl Connection {
     }
 
     pub async fn query_json(&mut self, request: &str, arguments: &Value)
-        -> anyhow::Result<QueryResponse<'_, QueryableDecoder<String>>>
+        -> Result<QueryResponse<'_, QueryableDecoder<String>>, Error>
     {
         let mut seq = self.start_sequence().await?;
         let desc = seq._query(request, arguments, IoFormat::Json).await?;
@@ -392,22 +414,22 @@ impl Connection {
             Some(root_pos) => {
                 let mut ctx = desc.as_queryable_context();
                 ctx.has_implicit_tid = seq.proto.has_implicit_tid();
-                String::check_descriptor(&ctx, root_pos)?;
+                String::check_descriptor(&ctx, root_pos)
+                    .map_err(DescriptorMismatch::with_source)?;
                 let decoder = seq.decoder();
                 Ok(seq.response(QueryableDecoder::new(decoder)))
             }
             None => {
                 let completion_message = seq._process_exec().await?;
-                Err(NoResultExpected { completion_message })?
+                Err(NoResultExpected::with_message(
+                    String::from_utf8_lossy(&completion_message[..])
+                    .to_string()))?
             }
         }
     }
 
     pub async fn query_json_els(&mut self, request: &str, arguments: &Value)
-        -> Result<
-            QueryResponse<'_, QueryableDecoder<String>>,
-            anyhow::Error
-        >
+        -> Result<QueryResponse<'_, QueryableDecoder<String>>, Error>
     {
         let mut seq = self.start_sequence().await?;
         let desc = seq._query(request, arguments,
@@ -416,37 +438,41 @@ impl Connection {
             Some(root_pos) => {
                 let mut ctx = desc.as_queryable_context();
                 ctx.has_implicit_tid = seq.proto.has_implicit_tid();
-                String::check_descriptor(&ctx, root_pos)?;
+                String::check_descriptor(&ctx, root_pos)
+                    .map_err(DescriptorMismatch::with_source)?;
                 let decoder = seq.decoder();
                 Ok(seq.response(QueryableDecoder::new(decoder)))
             }
             None => {
                 let completion_message = seq._process_exec().await?;
-                Err(NoResultExpected { completion_message })?
+                Err(NoResultExpected::with_message(
+                    String::from_utf8_lossy(&completion_message[..])
+                    .to_string()))?
             }
         }
     }
 
     pub async fn query_dynamic(&mut self, request: &str, arguments: &Value)
-        -> anyhow::Result<QueryResponse<'_, Arc<dyn Codec>>>
+        -> Result<QueryResponse<'_, Arc<dyn Codec>>, Error>
     {
         let mut seq = self.start_sequence().await?;
         let desc = seq._query(request, arguments, IoFormat::Binary).await?;
-        let codec = desc.build_codec()?;
+        let codec = desc.build_codec()
+            .map_err(ProtocolEncodingError::with_source)?;
         Ok(seq.response(codec))
     }
 
 
     #[allow(dead_code)]
     pub async fn execute_args(&mut self, request: &str, arguments: &Value)
-        -> Result<Bytes, anyhow::Error>
+        -> Result<Bytes, Error>
     {
         let mut seq = self.start_sequence().await?;
         seq._query(request, arguments, IoFormat::Binary).await?;
         return seq._process_exec().await;
     }
 
-    pub async fn get_version(&mut self) -> Result<String, anyhow::Error> {
+    pub async fn get_version(&mut self) -> Result<String, Error> {
         self.query_row(
             "SELECT sys::get_version_as_str()",
             &Value::empty_tuple(),
