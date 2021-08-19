@@ -36,12 +36,23 @@ impl Error {
         self.0.messages.push(msg.into());
         self
     }
-    pub fn headers(mut self, headers: HashMap<u16, bytes::Bytes>) -> Error {
+    pub fn headers(&self) -> &HashMap<u16, bytes::Bytes> {
+        &self.0.headers
+    }
+    pub fn with_headers(mut self, headers: HashMap<u16, bytes::Bytes>)
+        -> Error
+    {
         self.0.headers = headers;
         self
     }
     pub fn kind_name(&self) -> &str {
         error_name(self.0.code)
+    }
+    pub fn kind_debug(&self) -> impl fmt::Display {
+        format!("{} [0x{:08X}]", error_name(self.0.code), self.0.code)
+    }
+    pub fn initial_message(&self) -> Option<&str> {
+        self.0.messages.first().map(|m| &m[..])
     }
     pub fn from_code(code: u32) -> Error {
         Error(Box::new(Inner {

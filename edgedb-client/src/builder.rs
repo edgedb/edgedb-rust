@@ -529,8 +529,7 @@ impl Builder {
                 }
             }
             ServerMessage::ErrorResponse(err) => {
-                return Err(AuthenticationError::with_message(format!(
-                    "Error authenticating: {}", err)));
+                return Err(err.into());
             }
             msg => {
                 return Err(ProtocolError::with_message(format!(
