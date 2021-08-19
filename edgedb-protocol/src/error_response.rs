@@ -83,7 +83,7 @@ impl fmt::Display for VerboseError<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let e = self.0;
         writeln!(f, "Error type: {}", e.kind_debug())?;
-        writeln!(f, "Message: {:?}", e)?;
+        writeln!(f, "Message: {:#}", e)?;
         let mut attr = e.headers().iter().collect::<BTreeMap<_, _>>();
         if let Some(hint) = attr.remove(&FIELD_HINT) {
             if let Ok(hint) = str::from_utf8(hint) {
