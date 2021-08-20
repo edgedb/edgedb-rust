@@ -8,7 +8,6 @@ use std::str::{self, FromStr};
 use std::sync::Arc;
 use std::time::{Instant, Duration};
 
-use anyhow::{self, Context};
 use async_std::fs;
 use async_std::future::Future;
 use async_std::net::TcpStream;
@@ -31,8 +30,10 @@ use edgedb_protocol::server_message::{TransactionState, ServerHandshake};
 
 use crate::client::{Connection, Sequence};
 use crate::credentials::Credentials;
-use crate::errors::PasswordRequired;
-use crate::reader::ReadError;
+use crate::errors::{ClientConnectionError, ProtocolError, ProtocolTlsError};
+use crate::errors::{ClientConnectionFailedError, AuthenticationError};
+use crate::errors::{ClientError, ClientConnectionFailedTemporarilyError};
+use crate::errors::{Error, ErrorKind, ResultExt, PasswordRequired};
 use crate::server_params::PostgresAddress;
 use crate::tls;
 
@@ -81,82 +82,77 @@ pub struct Builder {
     verify_hostname: Option<bool>,
 }
 
-pub async fn timeout<F, T>(dur: Duration, f: F) -> anyhow::Result<T>
-    where F: Future<Output = anyhow::Result<T>>,
+pub async fn timeout<F, T>(dur: Duration, f: F) -> Result<T, Error>
+    where F: Future<Output = Result<T, Error>>,
 {
     use async_std::future::timeout;
 
     timeout(dur, f).await
-    .unwrap_or_else(|_| Err(io::Error::from(io::ErrorKind::TimedOut).into()))
+    .unwrap_or_else(|_| {
+        Err(ClientConnectionFailedTemporarilyError::with_source(
+            io::Error::from(io::ErrorKind::TimedOut)
+        ))
+    })
 }
 
 fn sleep_duration() -> Duration {
     Duration::from_millis(thread_rng().gen_range(10u64..200u64))
 }
 
-fn is_temporary_error(e: &anyhow::Error) -> bool {
+/// This maps error that is connection failure,
+/// which means client failed to establish connection (not arbitrary IO error
+/// between connection attempts).
+fn io_fail(e: io::Error) -> Error {
     use io::ErrorKind::{ConnectionRefused, TimedOut, NotFound};
     use io::ErrorKind::{ConnectionAborted, ConnectionReset, UnexpectedEof};
-    log::debug!("Is temporary? {:#?}", e);
 
-    match e.downcast_ref::<ReadError>() {
-        | Some(ReadError::Eos) => return true,
-        | Some(ReadError::Io { source, .. }) => {
-            return matches!(source.kind(),
-                ConnectionRefused | ConnectionReset | ConnectionAborted |
-                TimedOut
-            );
-        }
-        Some(_) => return false,
-        _ => {},
+    let temporary = match e.kind() {
+        | ConnectionRefused
+        | ConnectionReset
+        | ConnectionAborted
+        | NotFound  // For unix sockets
+        | TimedOut
+        | UnexpectedEof  // For Docker server which is starting up
+        => true,
+        _ => false,
+    };
+    if temporary {
+        crate::errors::ClientConnectionFailedTemporarilyError::with_source(e)
+    } else {
+        crate::errors::ClientConnectionFailedError::with_source(e)
     }
-    match e.downcast_ref::<io::Error>().map(|e| e.kind()) {
-        | Some(ConnectionRefused)
-        | Some(ConnectionReset)
-        | Some(ConnectionAborted)
-        | Some(NotFound)  // For unix sockets
-        | Some(TimedOut)
-        | Some(UnexpectedEof)  // For Docker server which is starting up
-        => return true,
-        _ => {},
-    }
-    match e.downcast_ref::<Box<io::Error>>().map(|e| e.kind()) {
-        | Some(ConnectionRefused)
-        | Some(ConnectionReset)
-        | Some(ConnectionAborted)
-        | Some(NotFound)  // For unix sockets
-        | Some(TimedOut)
-        => return true,
-        _ => {},
-    }
-
-    return false;
 }
 
-fn as_non_plaintext_error(e: anyhow::Error) -> Option<anyhow::Error> {
-    match e.downcast::<tls_api::Error>() {
+/// This maps error that is connection failure,
+/// which means client failed to establish connection (not arbitrary TLS error
+/// between connection attempts).
+fn tls_fail(e: tls_api::Error) -> Error {
+    //// TODO HEREEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEe
+    match e.into_inner().downcast::<io::Error>() {
         Ok(e) => {
-            match e.into_inner().downcast::<io::Error>() {
-                Ok(e) => {
-                    if let Some(e) = e.get_ref() {
-                        if let Some(e) = e.downcast_ref::<rustls::TLSError>() {
-                            if matches!(e, rustls::TLSError::CorruptMessage) {
-                                return None;
-                            }
-                        }
+            if let Some(e) = e.get_ref() {
+                if let Some(e) = e.downcast_ref::<rustls::TLSError>() {
+                    if matches!(e, rustls::TLSError::CorruptMessage) {
+                        return ProtocolTlsError::with_message(
+                            "corrupt message, possibly server \
+                             does not support TLS connection."
+                        );
                     }
-                    Some((*e).into())
                 }
-                Err(e) => Some(anyhow::anyhow!(e)),
             }
+            // We ignore that this error is inside TLS code,
+            // when rethrowing here. But it should be fine for IO errors,
+            // as underlying reason of IO failure is more important than
+            // which operation is was running at that time.
+            ClientConnectionError::with_source(e)
         }
-        Err(e) => Some(e.into()),
+        Err(e) => ClientConnectionError::with_source_box(e),
     }
 }
 
 impl Builder {
     pub fn from_credentials(credentials: &Credentials)
-        -> anyhow::Result<Builder>
+        -> Result<Builder, Error>
     {
         let mut cert = rustls::RootCertStore::empty();
         let pem;
@@ -166,12 +162,14 @@ impl Builder {
                 cert.add_pem_file(&mut io::Cursor::new(cert_data.as_bytes()))
             {
                 Ok((0, 0)) => {
-                    anyhow::bail!("Empty certificate data");
+                    return Err(ClientError::with_message(
+                        "Empty certificate data"));
                 }
                 Ok((_, 0)) => {}
                 Ok((_, _)) | Err(()) => {
-                    anyhow::bail!("Invalid certificates are \
-                                   contained in `tls_certdata`");
+                    return Err(ClientError::with_message(
+                        "Invalid certificates are contained in `tls_certdata`"
+                    ));
                 }
             }
         } else {
@@ -193,24 +191,28 @@ impl Builder {
         })
     }
     pub async fn read_credentials(path: impl AsRef<Path>)
-        -> anyhow::Result<Builder>
+        -> Result<Builder, Error>
     {
         let path = path.as_ref();
-        let res: anyhow::Result<Builder> = async {
-            let data = fs::read(path).await?;
-            let creds = serde_json::from_slice(&data)?;
+        let res: Result<Builder, Error> = async {
+            let data = fs::read(path).await
+                .map_err(ClientError::with_source)?;
+            let creds = serde_json::from_slice(&data)
+                .map_err(ClientError::with_source)?;
             Ok(Builder::from_credentials(&creds)?)
         }.await;
         Ok(res.with_context(|| {
-                format!("cannot read credentials file {}", path.display())
+            format!("cannot read credentials file {}", path.display())
         })?)
     }
-    pub fn from_dsn(dsn: &str) -> anyhow::Result<Builder> {
+    pub fn from_dsn(dsn: &str) -> Result<Builder, Error> {
         if !dsn.starts_with("edgedb://") {
-            anyhow::bail!("String {:?} is not a valid DSN", dsn)
+            return Err(ClientError::with_message(format!(
+                "String {:?} is not a valid DSN", dsn)));
         };
         let url = url::Url::parse(dsn)
-            .with_context(|| format!("cannot parse DSN {:?}", dsn))?;
+            .map_err(|e| ClientError::with_source(e)
+                .context(format!("cannot parse DSN {:?}", dsn)))?;
         Ok(Builder {
             addr: Addr(AddrImpl::Tcp(
                 url.host_str().unwrap_or("127.0.0.1").to_owned(),
@@ -244,11 +246,12 @@ impl Builder {
             verify_hostname: None,
         }
     }
-    pub fn as_credentials(&self) -> anyhow::Result<Credentials> {
+    pub fn as_credentials(&self) -> Result<Credentials, Error> {
         let (host, port) = match &self.addr {
             Addr(AddrImpl::Tcp(host, port)) => (host, port),
             Addr(AddrImpl::Unix(_)) => {
-                anyhow::bail!("Cannot generate credentials with UNIX socket.");
+                return Err(ClientError::with_message(
+                    "Cannot generate credentials with UNIX socket."));
             }
         };
         Ok(Credentials {
@@ -325,13 +328,13 @@ impl Builder {
 
     /// Set allowed certificate as pem file
     pub fn pem_certificates(&mut self, cert_data: &String)
-        -> anyhow::Result<&mut Self>
+        -> Result<&mut Self, Error>
     {
         self.cert.roots.clear();
         self.pem = None;
         self.cert.add_pem_file(&mut io::Cursor::new(cert_data.as_bytes()))
-            .ok()
-            .context("error reading certificate")?;
+            .map_err(|()| ClientError::with_message(
+                "error reading certificate"))?;
         self.pem = Some(cert_data.clone());
         Ok(self)
     }
@@ -347,8 +350,8 @@ impl Builder {
 
     pub async fn connect_with_cert_verifier(
         &self, cert_verifier: Arc<dyn ServerCertVerifier>
-    ) -> anyhow::Result<Connection> {
-        let tls = tls::connector(&self.cert, cert_verifier)?;
+    ) -> Result<Connection, Error> {
+        let tls = tls::connector(&self.cert, cert_verifier).map_err(tls_fail)?;
 
         match &self.addr {
             Addr(AddrImpl::Tcp(host, port)) => {
@@ -365,22 +368,23 @@ impl Builder {
             match
                 timeout(self.connect_timeout, self._connect(&tls, warned)).await
             {
-                Err(e) if is_temporary_error(&e) => {
+                Err(e) if e.is::<ClientConnectionFailedTemporarilyError>() => {
                     log::debug!("Temporary connection error: {:#}", e);
                     if self.wait > start.elapsed() {
                         sleep(sleep_duration()).await;
                         continue;
                     } else if self.wait > Duration::new(0, 0) {
-                        return Err(e).context(format!("cannot establish \
-                                                       connection for {:?}",
-                                                       self.wait))?;
+                        return Err(ClientConnectionError::with_source(e)
+                            .context(format!("cannot establish \
+                                              connection for {:?}",
+                                              self.wait)));
                     } else {
-                        return Err(e)?;
+                        return Err(ClientConnectionError::with_source(e));
                     }
                 }
                 Err(e) => {
                     log::debug!("Connection error: {:#}", e);
-                    return Err(e)?;
+                    return Err(ClientConnectionError::with_source(e))?;
                 }
                 Ok(conn) => break conn,
             }
@@ -390,35 +394,35 @@ impl Builder {
     fn do_verify_hostname(&self) -> bool {
         self.verify_hostname.unwrap_or(self.cert.is_empty())
     }
-    pub async fn connect(&self) -> anyhow::Result<Connection> {
+    pub async fn connect(&self) -> Result<Connection, Error> {
         self.connect_with_cert_verifier(Arc::new(tls::CertVerifier::new(
             self.do_verify_hostname()
         ))).await
     }
     async fn _connect(&self, tls: &TlsConnectorBox, warned: &mut bool)
-        -> anyhow::Result<Connection>
+        -> Result<Connection, Error>
     {
         let stream = match self._connect_stream(tls).await {
-            Err(e) => {
-                if let Some(e) = as_non_plaintext_error(e) {
-                    anyhow::bail!(e);
-                } else {
-                    if !*warned {
-                        log::warn!("TLS connection failed. \
-                            Trying plaintext...");
-                        *warned = true;
-                    }
-                    self._connect_stream(
-                        &PlainConnector::builder()?.build()?.into_dyn()
-                    ).await?
+            Err(e) if e.is::<ProtocolTlsError>() => {
+                if !*warned {
+                    log::warn!("TLS connection failed. \
+                        Trying plaintext...");
+                    *warned = true;
                 }
+                self._connect_stream(
+                    &PlainConnector::builder()
+                        .map_err(ClientError::with_source)?
+                        .build().map_err(ClientError::with_source)?
+                        .into_dyn()
+                ).await?
             }
+            Err(e) => return Err(e),
             Ok(r) => match r.get_alpn_protocol() {
                 Ok(Some(protocol)) if protocol == b"edgedb-binary" => r,
                 _ => match self.addr.get_tcp_addr() {
-                    Some(_) => anyhow::bail!(
+                    Some(_) => Err(ClientConnectionFailedError::with_message(
                         "Server does not support the EdgeDB binary protocol."
-                    ),
+                    ))?,
                     None => r,  // don't check ALPN on UNIX stream
                 }
             }
@@ -427,33 +431,41 @@ impl Builder {
     }
 
     async fn _connect_stream(&self, tls: &TlsConnectorBox)
-        -> anyhow::Result<TlsStream>
+        -> Result<TlsStream, Error>
     {
         match &self.addr {
             Addr(AddrImpl::Tcp(host, port)) => {
-                let conn = TcpStream::connect(&(&host[..], *port)).await?;
+                let conn = TcpStream::connect(&(&host[..], *port)).await
+                    .map_err(io_fail)?;
                 let host = if IpAddr::from_str(&host).is_ok() {
                     if self.do_verify_hostname() {
-                        anyhow::bail!("Cannot use `verify_hostname` or system \
-                            root certificates with an IP address");
+                        return Err(ClientError::with_message(
+                            "Cannot use `verify_hostname` or system \
+                            root certificates with an IP address"));
                     }
                     Cow::from(format!("{}.host-for-ip.edgedb.net", host)
                         .replace(":", "-"))  // for ipv6addr
                 } else {
                     Cow::from(host)
                 };
-                Ok(tls.connect(&host[..], conn).await?)
+                Ok(tls.connect(&host[..], conn).await.map_err(tls_fail)?)
             }
             Addr(AddrImpl::Unix(path)) => {
                 #[cfg(windows)] {
-                    anyhow::bail!("Unix socket are not supported on windows");
+                    return Err(ClientError::with_message(
+                        "Unix socket are not supported on windows",
+                    ));
                 }
                 #[cfg(unix)] {
                     use async_std::os::unix::net::UnixStream;
-                    let conn = UnixStream::connect(&path).await?;
+                    let conn = UnixStream::connect(&path).await
+                        .map_err(io_fail)?;
                     Ok(
-                        PlainConnector::builder()?.build()?
-                        .connect("localhost", conn).await?
+                        PlainConnector::builder()
+                            .map_err(ClientError::with_source)?
+                            .build().map_err(ClientError::with_source)?
+                            .into_dyn()
+                        .connect("localhost", conn).await.map_err(tls_fail)?
                     )
                 }
             }
@@ -461,7 +473,7 @@ impl Builder {
     }
 
     async fn _connect_with(&self, stream: TlsStream)
-        -> anyhow::Result<Connection>
+        -> Result<Connection, Error>
     {
         let mut version = ProtocolVersion::current();
         let (input, output) = stream.split();
@@ -504,22 +516,24 @@ impl Builder {
             => {
                 if methods.iter().any(|x| x == "SCRAM-SHA-256") {
                     if let Some(password) = &self.password {
-                        scram(&mut seq, &self.user, password)
-                            .await?;
+                        scram(&mut seq, &self.user, password).await
+                            .map_err(ClientError::with_source)?;
                     } else {
-                        Err(PasswordRequired)?;
+                        return Err(PasswordRequired::with_message(
+                            "Password required for the specified user/host"));
                     }
                 } else {
-                    return Err(anyhow::anyhow!("No supported authentication \
-                        methods: {:?}", methods));
+                    return Err(AuthenticationError::with_message(format!(
+                        "No supported authentication \
+                        methods: {:?}", methods)));
                 }
             }
             ServerMessage::ErrorResponse(err) => {
-                return Err(anyhow::anyhow!("Error authenticating: {}", err));
+                return Err(err.into());
             }
             msg => {
-                return Err(anyhow::anyhow!(
-                    "Error authenticating, unexpected message {:?}", msg));
+                return Err(ProtocolError::with_message(format!(
+                    "Error authenticating, unexpected message {:?}", msg)));
             }
         }
 
@@ -573,7 +587,7 @@ impl fmt::Display for Addr {
 }
 
 async fn scram(seq: &mut Sequence<'_>, user: &str, password: &str)
-    -> anyhow::Result<()>
+    -> Result<(), Error>
 {
     use edgedb_protocol::client_message::SaslInitialResponse;
     use edgedb_protocol::client_message::SaslResponse;
@@ -597,14 +611,15 @@ async fn scram(seq: &mut Sequence<'_>, user: &str, password: &str)
             return Err(err.into());
         }
         msg => {
-            return Err(anyhow::anyhow!("Bad auth response: {:?}", msg));
+            return Err(ProtocolError::with_message(format!(
+                "Bad auth response: {:?}", msg)));
         }
     };
     let data = str::from_utf8(&data[..])
-        .map_err(|_| anyhow::anyhow!(
+        .map_err(|e| ProtocolError::with_source(e).context(
             "invalid utf-8 in SCRAM-SHA-256 auth"))?;
     let scram = scram.handle_server_first(&data)
-        .map_err(|e| anyhow::anyhow!("Authentication error: {}", e))?;
+        .map_err(AuthenticationError::with_source)?;
     let (scram, data) = scram.client_final();
     seq.send_messages(&[
         ClientMessage::AuthenticationSaslResponse(
@@ -617,17 +632,19 @@ async fn scram(seq: &mut Sequence<'_>, user: &str, password: &str)
         ServerMessage::Authentication(Authentication::SaslFinal { data })
         => data,
         ServerMessage::ErrorResponse(err) => {
-            return Err(anyhow::anyhow!(err));
+            return Err(err.into());
         }
         msg => {
-            return Err(anyhow::anyhow!("Bad auth response: {:?}", msg));
+            return Err(ProtocolError::with_message(format!(
+                "auth response: {:?}", msg)));
         }
     };
     let data = str::from_utf8(&data[..])
-        .map_err(|_| anyhow::anyhow!(
+        .map_err(|_| ProtocolError::with_message(
             "invalid utf-8 in SCRAM-SHA-256 auth"))?;
     scram.handle_server_final(&data)
-        .map_err(|e| anyhow::anyhow!("Authentication error: {}", e))?;
+        .map_err(|e| AuthenticationError::with_message(format!(
+            "Authentication error: {}", e)))?;
     loop {
         let msg = seq.message().await?;
         match msg {

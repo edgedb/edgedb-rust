@@ -1,18 +1,19 @@
-use std::io;
 use std::cmp::{min, max};
 use std::convert::TryInto;
+use std::fmt;
 use std::future::{Future};
+use std::io::{Cursor};
 use std::marker::PhantomData;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::slice;
+use std::str;
+use std::sync::Arc;
 use std::task::{Poll, Context};
 
 use async_std::io::Read as AsyncRead;
 use async_std::stream::{Stream, StreamExt};
 use bytes::{Bytes, BytesMut, BufMut};
 use futures_util::io::ReadHalf;
-use snafu::{Snafu, ResultExt, Backtrace};
 use tls_api::TlsStream;
 
 use edgedb_protocol::codec::Codec;
@@ -23,12 +24,18 @@ use edgedb_protocol::queryable::{Queryable, Decoder};
 use edgedb_protocol::server_message::{ReadyForCommand, TransactionState};
 use edgedb_protocol::server_message::{ServerMessage, ErrorResponse};
 use edgedb_protocol::value::Value;
+use edgedb_errors::{Error, ErrorKind};
+use edgedb_errors::{ClientConnectionError, ClientConnectionEosError};
+use edgedb_errors::{ProtocolOutOfOrderError, ProtocolEncodingError};
 
 use crate::client;
 
 
 const BUFFER_SIZE: usize = 8192;
 const MAX_BUFFER: usize = 1_048_576;
+
+
+struct PartialDebug<V>(V);
 
 pub struct Reader<'a> {
     pub(crate) proto: &'a ProtocolVersion,
@@ -50,21 +57,6 @@ pub struct QueryResponse<'a, D> {
     pub(crate) decoder: D,
 }
 
-#[derive(Debug, Snafu)]
-#[non_exhaustive]
-pub enum ReadError {
-    #[snafu(display("error decoding message"))]
-    DecodeErr { source: DecodeError },
-    #[snafu(display("error reading data"))]
-    Io { source: io::Error },
-    #[snafu(display("server message out of order: {:?}", message))]
-    OutOfOrder { message: ServerMessage, backtrace: Backtrace },
-    #[snafu(display("request error: {}", error))]
-    RequestError { error: ErrorResponse, backtrace: Backtrace },
-    #[snafu(display("end of stream"))]
-    Eos,
-}
-
 pub trait Decode {
     type Output;
     fn decode(&self, msg: Bytes)
@@ -78,6 +70,25 @@ pub struct QueryableDecoder<T> {
 
 unsafe impl<T> Send for QueryableDecoder<T> {}
 impl<D> Unpin for QueryResponse<'_, D> {}
+
+
+impl<V: fmt::Debug> fmt::Display for PartialDebug<V> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use std::io::Write;
+
+        let mut buf = [0u8; 32];
+        let mut cur = Cursor::new(&mut buf[..]);
+        // Suppress error, in case buffer is overflown
+        write!(&mut cur, "{:?}", self.0).ok();
+        let end = cur.position() as usize;
+        if end >= buf.len() {
+            buf[buf.len()-3] = b'.';
+            buf[buf.len()-2] = b'.';
+            buf[buf.len()-1] = b'.';
+        }
+        fmt::Write::write_str(f, str::from_utf8(&buf[..end]).unwrap())
+    }
+}
 
 impl<T> QueryableDecoder<T> {
     pub fn new(decoder: Decoder) -> QueryableDecoder<T> {
@@ -113,7 +124,7 @@ impl<'r> Reader<'r> {
     pub fn consume_ready(&mut self, ready: ReadyForCommand) {
         *self.transaction_state = ready.transaction_state;
     }
-    pub async fn wait_ready(&mut self) -> Result<(), ReadError> {
+    pub async fn wait_ready(&mut self) -> Result<(), Error> {
         loop {
             let msg = self.message().await?;
             match msg {
@@ -128,7 +139,7 @@ impl<'r> Reader<'r> {
         }
     }
     fn poll_message(&mut self, cx: &mut Context)
-        -> Poll<Result<ServerMessage, ReadError>>
+        -> Poll<Result<ServerMessage, Error>>
     {
         let Reader { ref mut buf, ref mut stream, .. } = self;
         let frame_len = loop {
@@ -155,13 +166,19 @@ impl<'r> Reader<'r> {
                     chunk.as_mut_ptr(), chunk.len());
                 match Pin::new(&mut *stream).poll_read(cx, dest) {
                     Poll::Ready(Ok(0)) => {
-                        return Poll::Ready(Err(ReadError::Eos));
+                        return Poll::Ready(
+                            Err(ClientConnectionEosError::build())
+                        );
                     }
                     Poll::Ready(Ok(bytes)) => {
                         buf.advance_mut(bytes);
                         continue;
                     }
-                    Poll::Ready(r @ Err(_)) => { r.context(Io)?; }
+                    Poll::Ready(Err(e)) => {
+                        return Poll::Ready(
+                            Err(ClientConnectionError::with_source(e))
+                        );
+                    }
                     Poll::Pending => return Poll::Pending,
                 }
             }
@@ -170,7 +187,7 @@ impl<'r> Reader<'r> {
         let result = ServerMessage::decode(&mut Input::new(
             self.proto.clone(),
             frame,
-        )).context(DecodeErr)?;
+        )).map_err(ProtocolEncodingError::with_source)?;
         log::debug!(target: "edgedb::incoming::frame",
                     "Frame Contents: {:#?}", result);
         return Poll::Ready(Ok(result));
@@ -178,7 +195,7 @@ impl<'r> Reader<'r> {
 }
 
 impl Future for MessageFuture<'_, '_> {
-    type Output = Result<ServerMessage, ReadError>;
+    type Output = Result<ServerMessage, Error>;
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         self.reader.poll_message(cx)
     }
@@ -187,11 +204,11 @@ impl Future for MessageFuture<'_, '_> {
 impl<D> QueryResponse<'_, D>
     where D: Decode,
 {
-    pub async fn skip_remaining(mut self) -> Result<(), ReadError> {
+    pub async fn skip_remaining(mut self) -> Result<(), Error> {
         while let Some(_) = self.next().await.transpose()?  {}
         Ok(())
     }
-    pub async fn get_completion(mut self) -> anyhow::Result<Bytes> {
+    pub async fn get_completion(mut self) -> Result<Bytes, Error> {
         Ok(self.seq._process_exec().await?)
     }
 }
@@ -199,7 +216,7 @@ impl<D> QueryResponse<'_, D>
 impl<D> Stream for QueryResponse<'_, D>
     where D: Decode,
 {
-    type Item = Result<D::Output, ReadError>;
+    type Item = Result<D::Output, Error>;
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context)
         -> Poll<Option<Self::Item>>
     {
@@ -216,9 +233,10 @@ impl<D> Stream for QueryResponse<'_, D>
                 Poll::Ready(Ok(ServerMessage::Data(data))) if error.is_none()
                 => {
                     if *complete {
-                        return
-                            OutOfOrder { message: ServerMessage::Data(data) }
-                            .fail()?;
+                        return Poll::Ready(Some(
+                            Err(ProtocolOutOfOrderError::with_message(format!(
+                                "unsolicited packet: {}", PartialDebug(data))))
+                        ));
                     }
                     buffer.extend(data.data.into_iter().rev());
                 }
@@ -226,7 +244,10 @@ impl<D> Stream for QueryResponse<'_, D>
                 if error.is_none()
                 => {
                     if *complete {
-                        OutOfOrder { message: m }.fail()?;
+                        return Poll::Ready(Some(
+                            Err(ProtocolOutOfOrderError::with_message(format!(
+                                "unsolicited packet: {}", PartialDebug(m))))
+                        ));
                     }
                     *complete = true;
                 }
@@ -234,13 +255,15 @@ impl<D> Stream for QueryResponse<'_, D>
                     if let Some(error) = error.take() {
                         seq.reader.consume_ready(r);
                         seq.end_clean();
-                        return Poll::Ready(Some(
-                            RequestError { error }.fail()));
+                        return Poll::Ready(Some(Err(error.into())));
                     } else {
                         if !*complete {
-                            return OutOfOrder {
-                                message: ServerMessage::ReadyForCommand(r)
-                            }.fail()?;
+                            let pkt = ServerMessage::ReadyForCommand(r);
+                            return Poll::Ready(Some(
+                                Err(ProtocolOutOfOrderError::with_message(
+                                    format!("unsolicited packet: {}",
+                                            PartialDebug(pkt))))
+                            ));
                         }
                         seq.reader.consume_ready(r);
                         seq.end_clean();
@@ -252,7 +275,10 @@ impl<D> Stream for QueryResponse<'_, D>
                     continue;
                 }
                 Poll::Ready(Ok(message)) => {
-                    OutOfOrder { message }.fail()?;
+                    return Poll::Ready(Some(
+                        Err(ProtocolOutOfOrderError::with_message(format!(
+                            "unsolicited packet: {}", PartialDebug(message))))
+                    ));
                 }
                 Poll::Ready(Err(e)) => {
                     return Poll::Ready(Some(Err(e)));
@@ -261,6 +287,7 @@ impl<D> Stream for QueryResponse<'_, D>
             }
         }
         let chunk = buffer.pop().unwrap();
-        Poll::Ready(Some(decoder.decode(chunk).context(DecodeErr)))
+        Poll::Ready(Some(decoder.decode(chunk)
+            .map_err(ProtocolEncodingError::with_source)))
     }
 }
