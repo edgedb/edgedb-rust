@@ -22,9 +22,9 @@ use edgedb_protocol::codec::Codec;
 use edgedb_protocol::encoding::Output;
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::queryable::{Queryable, Decoder};
+use edgedb_protocol::query_arg::{QueryArgs, Encoder};
 use edgedb_protocol::server_message::ServerMessage;
 use edgedb_protocol::server_message::{TransactionState};
-use edgedb_protocol::value::Value;
 use edgedb_protocol::descriptors::OutputTypedesc;
 
 use crate::errors::{ClientConnectionError, ProtocolError};
@@ -233,7 +233,7 @@ impl<'a> Sequence<'a> {
         Ok(status)
     }
 
-    async fn _query(&mut self, request: &str, arguments: &Value,
+    async fn _query<A: QueryArgs>(&mut self, request: &str, arguments: &A,
         io_format: IoFormat)
         -> Result<OutputTypedesc, Error>
     {
@@ -295,14 +295,14 @@ impl<'a> Sequence<'a> {
         };
         let desc = data_description.output()
             .map_err(ProtocolEncodingError::with_source)?;
-        let incodec = data_description.input()
-            .map_err(ProtocolEncodingError::with_source)?
-            .build_codec()
+        let inp_desc = data_description.input()
             .map_err(ProtocolEncodingError::with_source)?;
 
         let mut arg_buf = BytesMut::with_capacity(8);
-        incodec.encode(&mut arg_buf, &arguments)
-            .map_err(ClientEncodingError::with_source)?;
+        arguments.encode(&mut Encoder::new(
+            &inp_desc.as_query_arg_context(),
+            &mut arg_buf,
+        )).map_err(ClientEncodingError::with_source)?;
 
         self.send_messages(&[
             ClientMessage::Execute(Execute {
@@ -346,9 +346,10 @@ impl Connection {
         Ok(status)
     }
 
-    pub async fn query<R>(&mut self, request: &str, arguments: &Value)
+    pub async fn query<R, A>(&mut self, request: &str, arguments: &A)
         -> Result<QueryResponse<'_, QueryableDecoder<R>>, Error>
         where R: Queryable,
+              A: QueryArgs,
     {
         let mut seq = self.start_sequence().await?;
         let desc = seq._query(request, arguments, IoFormat::Binary).await?;
@@ -370,9 +371,10 @@ impl Connection {
         }
     }
 
-    pub async fn query_row<R>(&mut self, request: &str, arguments: &Value)
+    pub async fn query_row<R, A>(&mut self, request: &str, arguments: &A)
         -> Result<R, Error>
         where R: Queryable,
+              A: QueryArgs,
     {
         let mut query = self.query(request, arguments).await?;
         if let Some(result) = query.next().await.transpose()? {
@@ -388,9 +390,10 @@ impl Connection {
         }
     }
 
-    pub async fn query_row_opt<R>(&mut self, request: &str, arguments: &Value)
+    pub async fn query_row_opt<R, A>(&mut self, request: &str, arguments: &A)
         -> Result<Option<R>, Error>
         where R: Queryable,
+              A: QueryArgs,
     {
         let mut query = self.query(request, arguments).await?;
         if let Some(result) = query.next().await.transpose()? {
@@ -405,8 +408,9 @@ impl Connection {
         }
     }
 
-    pub async fn query_json(&mut self, request: &str, arguments: &Value)
+    pub async fn query_json<A>(&mut self, request: &str, arguments: &A)
         -> Result<QueryResponse<'_, QueryableDecoder<String>>, Error>
+        where A: QueryArgs,
     {
         let mut seq = self.start_sequence().await?;
         let desc = seq._query(request, arguments, IoFormat::Json).await?;
@@ -428,8 +432,9 @@ impl Connection {
         }
     }
 
-    pub async fn query_json_els(&mut self, request: &str, arguments: &Value)
+    pub async fn query_json_els<A>(&mut self, request: &str, arguments: &A)
         -> Result<QueryResponse<'_, QueryableDecoder<String>>, Error>
+        where A: QueryArgs,
     {
         let mut seq = self.start_sequence().await?;
         let desc = seq._query(request, arguments,
@@ -452,8 +457,9 @@ impl Connection {
         }
     }
 
-    pub async fn query_dynamic(&mut self, request: &str, arguments: &Value)
+    pub async fn query_dynamic<A>(&mut self, request: &str, arguments: &A)
         -> Result<QueryResponse<'_, Arc<dyn Codec>>, Error>
+        where A: QueryArgs,
     {
         let mut seq = self.start_sequence().await?;
         let desc = seq._query(request, arguments, IoFormat::Binary).await?;
@@ -464,8 +470,9 @@ impl Connection {
 
 
     #[allow(dead_code)]
-    pub async fn execute_args(&mut self, request: &str, arguments: &Value)
+    pub async fn execute_args<A>(&mut self, request: &str, arguments: &A)
         -> Result<Bytes, Error>
+        where A: QueryArgs,
     {
         let mut seq = self.start_sequence().await?;
         seq._query(request, arguments, IoFormat::Binary).await?;
@@ -473,10 +480,7 @@ impl Connection {
     }
 
     pub async fn get_version(&mut self) -> Result<String, Error> {
-        self.query_row(
-            "SELECT sys::get_version_as_str()",
-            &Value::empty_tuple(),
-        ).await
+        self.query_row("SELECT sys::get_version_as_str()", &()).await
         .context("cannot fetch database version")
     }
 }

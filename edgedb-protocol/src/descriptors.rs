@@ -5,12 +5,14 @@ use bytes::Buf;
 use uuid::Uuid;
 use snafu::{ensure, OptionExt};
 
-use crate::encoding::{Decode, Input};
-use crate::errors::{self, DecodeError, CodecError};
-use crate::errors::{InvalidTypeDescriptor, UnexpectedTypePos};
 use crate::codec::{Codec, build_codec};
 use crate::common::Cardinality;
+use crate::encoding::{Decode, Input};
+use crate::errors::{InvalidTypeDescriptor, UnexpectedTypePos};
+use crate::errors::{self, DecodeError, CodecError};
+use crate::features::ProtocolVersion;
 use crate::queryable;
+use crate::query_arg;
 
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -37,6 +39,7 @@ pub struct OutputTypedesc {
 }
 
 pub struct InputTypedesc {
+    pub(crate) proto: ProtocolVersion,
     pub(crate) array: Vec<Descriptor>,
     #[allow(dead_code)] // TODO
     pub(crate) root_id: Uuid,
@@ -130,6 +133,13 @@ impl OutputTypedesc {
 }
 
 impl InputTypedesc {
+    pub fn as_query_arg_context(&self) -> query_arg::DescriptorContext {
+        query_arg::DescriptorContext {
+            proto: &self.proto,
+            descriptors: self.descriptors(),
+            root_pos: self.root_pos,
+        }
+    }
     pub fn descriptors(&self) -> &[Descriptor] {
         &self.array
     }
