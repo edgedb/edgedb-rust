@@ -10,5 +10,6 @@ pub mod descriptors;
 pub mod value;
 pub mod codec;
 pub mod queryable;
+pub mod query_arg;
 pub mod model;
 

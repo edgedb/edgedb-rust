@@ -214,7 +214,12 @@ impl CommandDataDescription {
         let pos = idx.try_into().ok()
             .context(errors::TooManyDescriptors { index: idx })?;
         let root_pos = TypePos(pos);
-        Ok(InputTypedesc { array: descriptors, root_id, root_pos })
+        Ok(InputTypedesc {
+            array: descriptors,
+            proto: self.proto.clone(),
+            root_id,
+            root_pos,
+        })
     }
 }
 
