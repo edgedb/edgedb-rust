@@ -163,6 +163,9 @@ impl InputTypedesc {
             _ => false,
         }
     }
+    pub fn proto(&self) -> &ProtocolVersion {
+        &self.proto
+    }
 }
 
 impl Descriptor {

@@ -8,7 +8,7 @@ impl ProtocolVersion {
     pub fn current() -> ProtocolVersion {
         ProtocolVersion {
             major_ver: 0,
-            minor_ver: 11,
+            minor_ver: 12,
         }
     }
     pub fn new(major_ver: u16, minor_ver: u16) -> ProtocolVersion {
@@ -27,6 +27,11 @@ impl ProtocolVersion {
         self.version_tuple() <= (0, 8)
     }
     pub fn is_at_least(&self, major_ver: u16, minor_ver: u16) -> bool {
-        self.major_ver >= major_ver && self.minor_ver >= minor_ver
+        self.major_ver > major_ver ||
+        self.major_ver == major_ver && self.minor_ver >= minor_ver
+    }
+    pub fn is_at_most(&self, major_ver: u16, minor_ver: u16) -> bool {
+        self.major_ver < major_ver ||
+        self.major_ver == major_ver && self.minor_ver <= minor_ver
     }
 }
