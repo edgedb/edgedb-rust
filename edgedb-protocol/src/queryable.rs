@@ -1,6 +1,9 @@
+use std::sync::Arc;
 use std::default::Default;
 use snafu::{Snafu, ensure};
 
+use edgedb_errors::{Error, ErrorKind, ProtocolEncodingError};
+use crate::codec::{Codec, build_codec};
 use crate::errors::{self, DecodeError};
 use crate::descriptors::{Descriptor, TypePos};
 
@@ -61,6 +64,12 @@ impl DescriptorContext<'_> {
             has_implicit_tid: false,
             has_implicit_tname: false,
         }
+    }
+    pub fn build_codec(&self, root_pos: TypePos)
+        -> Result<Arc<dyn Codec>, Error>
+    {
+        build_codec(Some(root_pos), self.descriptors)
+            .map_err(ProtocolEncodingError::with_source)
     }
     pub fn get(&self, type_pos: TypePos)
         -> Result<&Descriptor, DescriptorMismatch>

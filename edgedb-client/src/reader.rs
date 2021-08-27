@@ -3,11 +3,9 @@ use std::convert::TryInto;
 use std::fmt;
 use std::future::{Future};
 use std::io::{Cursor};
-use std::marker::PhantomData;
 use std::pin::Pin;
 use std::slice;
 use std::str;
-use std::sync::Arc;
 use std::task::{Poll, Context};
 
 use async_std::io::Read as AsyncRead;
@@ -16,17 +14,14 @@ use bytes::{Bytes, BytesMut, BufMut};
 use futures_util::io::ReadHalf;
 use tls_api::TlsStream;
 
-use edgedb_protocol::codec::Codec;
+use edgedb_errors::{ClientConnectionError, ClientConnectionEosError};
+use edgedb_errors::{Error, ErrorKind};
+use edgedb_errors::{ProtocolOutOfOrderError, ProtocolEncodingError};
 use edgedb_protocol::encoding::Input;
-use edgedb_protocol::errors::{DecodeError};
 use edgedb_protocol::features::ProtocolVersion;
-use edgedb_protocol::queryable::{Queryable, Decoder};
 use edgedb_protocol::server_message::{ReadyForCommand, TransactionState};
 use edgedb_protocol::server_message::{ServerMessage, ErrorResponse};
-use edgedb_protocol::value::Value;
-use edgedb_errors::{Error, ErrorKind};
-use edgedb_errors::{ClientConnectionError, ClientConnectionEosError};
-use edgedb_errors::{ProtocolOutOfOrderError, ProtocolEncodingError};
+use edgedb_protocol::{QueryResult};
 
 use crate::client;
 
@@ -49,27 +44,15 @@ pub struct MessageFuture<'a, 'r: 'a> {
 }
 
 // Note: query response expects query *followed by* Sync messsage
-pub struct QueryResponse<'a, D> {
+pub struct QueryResponse<'a, T: QueryResult> {
     pub(crate) seq: client::Sequence<'a>,
     pub(crate) complete: bool,
     pub(crate) error: Option<ErrorResponse>,
     pub(crate) buffer: Vec<Bytes>,
-    pub(crate) decoder: D,
+    pub(crate) state: T::State,
 }
 
-pub trait Decode {
-    type Output;
-    fn decode(&self, msg: Bytes)
-        -> Result<Self::Output, DecodeError>;
-}
-
-pub struct QueryableDecoder<T> {
-    decoder: Decoder,
-    phantom: PhantomData<*const T>,
-}
-
-unsafe impl<T> Send for QueryableDecoder<T> {}
-impl<D> Unpin for QueryResponse<'_, D> {}
+impl<T: QueryResult> Unpin for QueryResponse<'_, T> {}
 
 
 impl<V: fmt::Debug> fmt::Display for PartialDebug<V> {
@@ -87,31 +70,6 @@ impl<V: fmt::Debug> fmt::Display for PartialDebug<V> {
             buf[buf.len()-1] = b'.';
         }
         fmt::Write::write_str(f, str::from_utf8(&buf[..end]).unwrap())
-    }
-}
-
-impl<T> QueryableDecoder<T> {
-    pub fn new(decoder: Decoder) -> QueryableDecoder<T> {
-        QueryableDecoder {
-            decoder,
-            phantom: PhantomData,
-        }
-    }
-}
-
-impl<T: Queryable> Decode for QueryableDecoder<T> {
-    type Output = T;
-    fn decode(&self, msg: Bytes) -> Result<T, DecodeError> {
-        Queryable::decode(&self.decoder, &msg)
-    }
-}
-
-impl Decode for Arc<dyn Codec> {
-    type Output = Value;
-    fn decode(&self, msg: Bytes)
-        -> Result<Self::Output, DecodeError>
-    {
-        (&**self).decode(&msg)
     }
 }
 
@@ -201,9 +159,7 @@ impl Future for MessageFuture<'_, '_> {
     }
 }
 
-impl<D> QueryResponse<'_, D>
-    where D: Decode,
-{
+impl<T: QueryResult> QueryResponse<'_, T> {
     pub async fn skip_remaining(mut self) -> Result<(), Error> {
         while let Some(_) = self.next().await.transpose()?  {}
         Ok(())
@@ -213,10 +169,8 @@ impl<D> QueryResponse<'_, D>
     }
 }
 
-impl<D> Stream for QueryResponse<'_, D>
-    where D: Decode,
-{
-    type Item = Result<D::Output, Error>;
+impl<T: QueryResult> Stream for QueryResponse<'_, T> {
+    type Item = Result<T, Error>;
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context)
         -> Poll<Option<Self::Item>>
     {
@@ -226,7 +180,7 @@ impl<D> Stream for QueryResponse<'_, D>
             ref mut complete,
             ref mut error,
             ref mut seq,
-            ref decoder,
+            ref mut state,
         } = *self;
         while buffer.len() == 0 {
             match seq.reader.poll_message(cx) {
@@ -287,7 +241,7 @@ impl<D> Stream for QueryResponse<'_, D>
             }
         }
         let chunk = buffer.pop().unwrap();
-        Poll::Ready(Some(decoder.decode(chunk)
+        Poll::Ready(Some(T::decode(state, &chunk)
             .map_err(ProtocolEncodingError::with_source)))
     }
 }
