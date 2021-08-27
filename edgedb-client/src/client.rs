@@ -1,8 +1,6 @@
 use std::collections::HashMap;
-use std::default::Default;
 use std::fmt;
 use std::str;
-use std::sync::Arc;
 use std::time::Duration;
 
 use async_std::prelude::StreamExt;
@@ -14,27 +12,26 @@ use futures_util::io::{ReadHalf, WriteHalf};
 use typemap::TypeMap;
 use tls_api::TlsStream;
 
+use edgedb_protocol::QueryResult;
 use edgedb_protocol::client_message::ClientMessage;
 use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
 use edgedb_protocol::client_message::{Execute, ExecuteScript};
 use edgedb_protocol::client_message::{Prepare, IoFormat, Cardinality};
-use edgedb_protocol::codec::Codec;
+use edgedb_protocol::descriptors::OutputTypedesc;
 use edgedb_protocol::encoding::Output;
 use edgedb_protocol::features::ProtocolVersion;
-use edgedb_protocol::queryable::{Queryable, Decoder};
 use edgedb_protocol::query_arg::{QueryArgs, Encoder};
+use edgedb_protocol::queryable::{Queryable};
 use edgedb_protocol::server_message::ServerMessage;
 use edgedb_protocol::server_message::{TransactionState};
-use edgedb_protocol::descriptors::OutputTypedesc;
 
 use crate::errors::{ClientConnectionError, ProtocolError};
 use crate::errors::{ClientConnectionTimeoutError, ClientConnectionEosError};
 use crate::errors::{ClientInconsistentError, ClientEncodingError};
-use crate::errors::{DescriptorMismatch};
 use crate::errors::{Error, ErrorKind, ResultExt};
 use crate::errors::{NoResultExpected, NoDataError};
 use crate::errors::{ProtocolOutOfOrderError, ProtocolEncodingError};
-use crate::reader::{self, QueryableDecoder, QueryResponse, Reader};
+use crate::reader::{self, QueryResponse, Reader};
 use crate::server_params::ServerParam;
 
 
@@ -68,8 +65,8 @@ pub struct Writer<'a> {
 
 impl<'a> Sequence<'a> {
 
-    pub fn response<D: reader::Decode>(self, decoder: D)
-        -> QueryResponse<'a, D>
+    pub fn response<T: QueryResult>(self, state: T::State)
+        -> QueryResponse<'a, T>
     {
         assert!(self.active);  // TODO(tailhook) maybe debug_assert
         reader::QueryResponse {
@@ -77,19 +74,13 @@ impl<'a> Sequence<'a> {
             buffer: Vec::new(),
             error: None,
             complete: false,
-            decoder,
+            state,
         }
     }
 
     pub fn end_clean(&mut self) {
         self.active = false;
         *self.dirty = false;
-    }
-
-    fn decoder(&self) -> Decoder {
-        let mut dec = Decoder::default();
-        dec.has_implicit_tid = self.proto.has_implicit_tid();
-        return dec;
     }
 }
 
@@ -347,8 +338,8 @@ impl Connection {
     }
 
     pub async fn query<R, A>(&mut self, request: &str, arguments: &A)
-        -> Result<QueryResponse<'_, QueryableDecoder<R>>, Error>
-        where R: Queryable,
+        -> Result<QueryResponse<'_, R>, Error>
+        where R: QueryResult,
               A: QueryArgs,
     {
         let mut seq = self.start_sequence().await?;
@@ -357,10 +348,8 @@ impl Connection {
             Some(root_pos) => {
                 let mut ctx = desc.as_queryable_context();
                 ctx.has_implicit_tid = seq.proto.has_implicit_tid();
-                R::check_descriptor(&ctx, root_pos)
-                    .map_err(DescriptorMismatch::with_source)?;
-                let decoder = seq.decoder();
-                Ok(seq.response(QueryableDecoder::new(decoder)))
+                let state = R::prepare(&ctx, root_pos)?;
+                Ok(seq.response(state))
             }
             None => {
                 let completion_message = seq._process_exec().await?;
@@ -409,7 +398,7 @@ impl Connection {
     }
 
     pub async fn query_json<A>(&mut self, request: &str, arguments: &A)
-        -> Result<QueryResponse<'_, QueryableDecoder<String>>, Error>
+        -> Result<QueryResponse<'_, String>, Error>
         where A: QueryArgs,
     {
         let mut seq = self.start_sequence().await?;
@@ -418,10 +407,8 @@ impl Connection {
             Some(root_pos) => {
                 let mut ctx = desc.as_queryable_context();
                 ctx.has_implicit_tid = seq.proto.has_implicit_tid();
-                String::check_descriptor(&ctx, root_pos)
-                    .map_err(DescriptorMismatch::with_source)?;
-                let decoder = seq.decoder();
-                Ok(seq.response(QueryableDecoder::new(decoder)))
+                let state = String::prepare(&ctx, root_pos)?;
+                Ok(seq.response(state))
             }
             None => {
                 let completion_message = seq._process_exec().await?;
@@ -433,7 +420,7 @@ impl Connection {
     }
 
     pub async fn query_json_els<A>(&mut self, request: &str, arguments: &A)
-        -> Result<QueryResponse<'_, QueryableDecoder<String>>, Error>
+        -> Result<QueryResponse<'_, String>, Error>
         where A: QueryArgs,
     {
         let mut seq = self.start_sequence().await?;
@@ -443,10 +430,8 @@ impl Connection {
             Some(root_pos) => {
                 let mut ctx = desc.as_queryable_context();
                 ctx.has_implicit_tid = seq.proto.has_implicit_tid();
-                String::check_descriptor(&ctx, root_pos)
-                    .map_err(DescriptorMismatch::with_source)?;
-                let decoder = seq.decoder();
-                Ok(seq.response(QueryableDecoder::new(decoder)))
+                let state = String::prepare(&ctx, root_pos)?;
+                Ok(seq.response(state))
             }
             None => {
                 let completion_message = seq._process_exec().await?;
@@ -456,18 +441,6 @@ impl Connection {
             }
         }
     }
-
-    pub async fn query_dynamic<A>(&mut self, request: &str, arguments: &A)
-        -> Result<QueryResponse<'_, Arc<dyn Codec>>, Error>
-        where A: QueryArgs,
-    {
-        let mut seq = self.start_sequence().await?;
-        let desc = seq._query(request, arguments, IoFormat::Binary).await?;
-        let codec = desc.build_codec()
-            .map_err(ProtocolEncodingError::with_source)?;
-        Ok(seq.response(codec))
-    }
-
 
     #[allow(dead_code)]
     pub async fn execute_args<A>(&mut self, request: &str, arguments: &A)

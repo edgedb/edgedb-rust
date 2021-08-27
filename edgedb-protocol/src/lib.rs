@@ -1,3 +1,5 @@
+mod query_result; // sealed trait should remain non-public
+
 pub mod encoding;
 pub mod common;
 pub mod features;
@@ -13,3 +15,5 @@ pub mod queryable;
 pub mod query_arg;
 pub mod model;
 
+
+pub use query_result::QueryResult;
