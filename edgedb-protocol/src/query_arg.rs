@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use bytes::{BytesMut, BufMut};
 use snafu::OptionExt;
+use uuid::Uuid;
 
 use edgedb_errors::{Error, ErrorKind};
 use edgedb_errors::{ClientEncodingError, ProtocolError, DescriptorMismatch};
@@ -101,8 +102,20 @@ impl QueryArgs for () {
         -> Result<(), Error>
     {
         if enc.ctx.root_pos.is_some() {
-            return Err(DescriptorMismatch::with_message(
-                "query arguments expected"));
+            if enc.ctx.proto.is_at_most(0, 11) {
+                let root = enc.ctx.root_pos.and_then(|p| enc.ctx.get(p).ok());
+                match root {
+                    Some(Descriptor::Tuple(t))
+                    if t.id == Uuid::from_u128(0xFF)
+                    && t.element_types.is_empty()
+                    => {}
+                    _ => return Err(DescriptorMismatch::with_message(
+                            "query arguments expected")),
+                };
+            } else {
+                return Err(DescriptorMismatch::with_message(
+                    "query arguments expected"));
+            }
         }
         enc.buf.reserve(4);
         enc.buf.put_u32(0);
