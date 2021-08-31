@@ -41,7 +41,7 @@ impl Into<Error> for ErrorResponse {
 impl fmt::Display for DisplayError<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let DisplayError(ref e, verbose) = self;
-        write!(f, "ERROR: {:#}", e)?;
+        write!(f, "{:#}", e)?;
         if let Some(hint) = e.headers().get(&FIELD_HINT) {
             if let Ok(hint) = str::from_utf8(hint) {
                 write!(f, "\n  Hint: {}", hint)?;
