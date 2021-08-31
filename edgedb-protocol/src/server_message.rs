@@ -209,11 +209,15 @@ impl CommandDataDescription {
             }
         }
         let root_id = self.input_typedesc_id.clone();
-        let idx = descriptors.iter().position(|x| *x.id() == root_id)
-            .context(errors::UuidNotFound { uuid: root_id })?;
-        let pos = idx.try_into().ok()
-            .context(errors::TooManyDescriptors { index: idx })?;
-        let root_pos = TypePos(pos);
+        let root_pos = if root_id == Uuid::from_u128(0) {
+            None
+        } else {
+            let idx = descriptors.iter().position(|x| *x.id() == root_id)
+                .context(errors::UuidNotFound { uuid: root_id })?;
+            let pos = idx.try_into().ok()
+                .context(errors::TooManyDescriptors { index: idx })?;
+            Some(TypePos(pos))
+        };
         Ok(InputTypedesc {
             array: descriptors,
             proto: self.proto.clone(),

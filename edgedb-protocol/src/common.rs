@@ -24,3 +24,16 @@ impl std::convert::TryFrom<u8> for Cardinality {
     }
 }
 
+impl Cardinality {
+    pub fn is_optional(&self) -> bool {
+        use Cardinality::*;
+        match self {
+            NoResult => true,
+            AtMostOne => true,
+            One => false,
+            Many => true,
+            AtLeastOne => false,
+        }
+    }
+}
+

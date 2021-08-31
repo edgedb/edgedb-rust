@@ -3,13 +3,17 @@ use std::mem::size_of;
 use std::time::SystemTime;
 
 use bytes::Buf;
-
-use crate::errors::{self, DecodeError};
-use crate::model::{Json, Uuid};
+use edgedb_errors::Error;
 use snafu::{ResultExt, ensure};
+
+use crate::descriptors::TypePos;
+use crate::errors::{self, DecodeError};
 use crate::model::{BigInt, Decimal};
 use crate::model::{Duration, LocalDate, LocalTime, LocalDatetime, Datetime};
+use crate::model::{Json, Uuid};
 use crate::model::{RelativeDuration};
+use crate::query_arg::{ScalarArg, Encoder, DescriptorContext};
+use crate::serialization::decode::queryable::scalars::DecodeScalar;
 
 
 pub trait RawCodec<'t>: Sized {
@@ -30,6 +34,52 @@ fn ensure_exact_size(buf:&[u8], expected_size: usize) -> Result<(), DecodeError>
 impl<'t> RawCodec<'t> for String {
     fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
         <&str>::decode(buf).map(|s|s.to_owned())
+    }
+}
+
+fn check_scalar(ctx: &DescriptorContext, type_pos: TypePos,
+                type_id: Uuid, name: &str)
+    -> Result<(), Error>
+{
+    use crate::descriptors::Descriptor::{Scalar, BaseScalar};
+    let desc = ctx.get(type_pos)?;
+    match desc {
+        Scalar(scalar) => {
+            return check_scalar(ctx, scalar.base_type_pos, type_id, name);
+        }
+        BaseScalar(base) if base.id == type_id => {
+            return Ok(());
+        }
+        _ => {}
+    }
+    Err(ctx.wrong_type(desc, name))
+}
+
+impl ScalarArg for String {
+    fn encode(&self, encoder: &mut Encoder)
+        -> Result<(), Error>
+    {
+        encoder.buf.extend(self.as_bytes());
+        Ok(())
+    }
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
+        -> Result<(), Error>
+    {
+        check_scalar(ctx, pos, Self::uuid(), Self::typename())
+    }
+}
+
+impl ScalarArg for &'_ str {
+    fn encode(&self, encoder: &mut Encoder)
+        -> Result<(), Error>
+    {
+        encoder.buf.extend(self.as_bytes());
+        Ok(())
+    }
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
+        -> Result<(), Error>
+    {
+        check_scalar(ctx, pos, String::uuid(), String::typename())
     }
 }
 
