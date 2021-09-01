@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::error::Error as _;
 use std::fmt;
 use std::io;
 use std::net::IpAddr;
@@ -99,35 +100,32 @@ fn sleep_duration() -> Duration {
     Duration::from_millis(thread_rng().gen_range(10u64..200u64))
 }
 
-/// This maps error that is connection failure,
-/// which means client failed to establish connection (not arbitrary IO error
-/// between connection attempts).
-fn io_fail(e: io::Error) -> Error {
+fn is_temporary(e: &Error) -> bool {
     use io::ErrorKind::{ConnectionRefused, TimedOut, NotFound};
     use io::ErrorKind::{ConnectionAborted, ConnectionReset, UnexpectedEof};
 
-    let temporary = match e.kind() {
-        | ConnectionRefused
-        | ConnectionReset
-        | ConnectionAborted
-        | NotFound  // For unix sockets
-        | TimedOut
-        | UnexpectedEof  // For Docker server which is starting up
-        => true,
-        _ => false,
-    };
-    if temporary {
-        crate::errors::ClientConnectionFailedTemporarilyError::with_source(e)
-    } else {
-        crate::errors::ClientConnectionFailedError::with_source(e)
+    if e.is::<ClientConnectionFailedTemporarilyError>() {
+        return true;
     }
+    if e.is::<ClientConnectionError>() {
+        if let Some(e) = e.source().and_then(|s| s.downcast_ref::<io::Error>())
+        {
+            match e.kind() {
+                | ConnectionRefused
+                | ConnectionReset
+                | ConnectionAborted
+                | NotFound  // For unix sockets
+                | TimedOut
+                | UnexpectedEof  // For Docker server which is starting up
+                => return true,
+                _ => {},
+            }
+        }
+    }
+    return false;
 }
 
-/// This maps error that is connection failure,
-/// which means client failed to establish connection (not arbitrary TLS error
-/// between connection attempts).
 fn tls_fail(e: tls_api::Error) -> Error {
-    //// TODO HEREEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEe
     match e.into_inner().downcast::<io::Error>() {
         Ok(e) => {
             if let Some(e) = e.get_ref() {
@@ -351,6 +349,18 @@ impl Builder {
     pub async fn connect_with_cert_verifier(
         &self, cert_verifier: Arc<dyn ServerCertVerifier>
     ) -> Result<Connection, Error> {
+        self._connect_with_cert_verifier(cert_verifier).map_err(|e| {
+            if e.is::<ClientConnectionError>() {
+                e.refine_kind::<ClientConnectionFailedError>()
+            } else {
+                e
+            }
+        })
+    }
+
+    async fn _connect_with_cert_verifier(
+        &self, cert_verifier: Arc<dyn ServerCertVerifier>
+    ) -> Result<Connection, Error> {
         let tls = tls::connector(&self.cert, cert_verifier).map_err(tls_fail)?;
 
         match &self.addr {
@@ -368,7 +378,7 @@ impl Builder {
             match
                 timeout(self.connect_timeout, self._connect(&tls, warned)).await
             {
-                Err(e) if e.is::<ClientConnectionFailedTemporarilyError>() => {
+                Err(e) if is_temporary(&e) => {
                     log::debug!("Temporary connection error: {:#}", e);
                     if self.wait > start.elapsed() {
                         sleep(sleep_duration()).await;
@@ -436,7 +446,7 @@ impl Builder {
         match &self.addr {
             Addr(AddrImpl::Tcp(host, port)) => {
                 let conn = TcpStream::connect(&(&host[..], *port)).await
-                    .map_err(io_fail)?;
+                    .map_err(ClientConnectionError::with_source)?;
                 let host = if IpAddr::from_str(&host).is_ok() {
                     if self.do_verify_hostname() {
                         return Err(ClientError::with_message(
@@ -459,7 +469,7 @@ impl Builder {
                 #[cfg(unix)] {
                     use async_std::os::unix::net::UnixStream;
                     let conn = UnixStream::connect(&path).await
-                        .map_err(io_fail)?;
+                        .map_err(ClientConnectionError::with_source)?;
                     Ok(
                         PlainConnector::builder()
                             .map_err(ClientError::with_source)?

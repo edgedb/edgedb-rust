@@ -62,6 +62,10 @@ impl Error {
             headers: HashMap::new(),
         }))
     }
+    pub fn refine_kind<T: ErrorKind>(mut self) -> Error {
+        self.0.code = T::CODE;
+        self
+    }
 }
 
 impl fmt::Display for Error {
