@@ -108,8 +108,11 @@ fn is_temporary(e: &Error) -> bool {
         return true;
     }
     if e.is::<ClientConnectionError>() {
-        if let Some(e) = e.source().and_then(|s| s.downcast_ref::<io::Error>())
-        {
+        let io_err = e.source().and_then(|src| {
+            src.downcast_ref::<io::Error>()
+            .or_else(|| src.downcast_ref::<Box<io::Error>>().map(|b| &**b))
+        });
+        if let Some(e) = io_err {
             match e.kind() {
                 | ConnectionRefused
                 | ConnectionReset
@@ -349,7 +352,7 @@ impl Builder {
     pub async fn connect_with_cert_verifier(
         &self, cert_verifier: Arc<dyn ServerCertVerifier>
     ) -> Result<Connection, Error> {
-        self._connect_with_cert_verifier(cert_verifier).map_err(|e| {
+        self._connect_with_cert_verifier(cert_verifier).await.map_err(|e| {
             if e.is::<ClientConnectionError>() {
                 e.refine_kind::<ClientConnectionFailedError>()
             } else {
@@ -384,17 +387,16 @@ impl Builder {
                         sleep(sleep_duration()).await;
                         continue;
                     } else if self.wait > Duration::new(0, 0) {
-                        return Err(ClientConnectionError::with_source(e)
-                            .context(format!("cannot establish \
-                                              connection for {:?}",
-                                              self.wait)));
+                        return Err(e.context(
+                            format!("cannot establish connection for {:?}",
+                                    self.wait)));
                     } else {
-                        return Err(ClientConnectionError::with_source(e));
+                        return Err(e);
                     }
                 }
                 Err(e) => {
                     log::debug!("Connection error: {:#}", e);
-                    return Err(ClientConnectionError::with_source(e))?;
+                    return Err(e)?;
                 }
                 Ok(conn) => break conn,
             }

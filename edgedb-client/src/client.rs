@@ -104,7 +104,7 @@ impl Connection {
         seq.send_messages(&[ClientMessage::Terminate]).await?;
         match seq.message().await {
             Err(e) if e.is::<ClientConnectionEosError>() => Ok(()),
-            Err(e) => Err(ClientConnectionError::with_source(e)),
+            Err(e) => Err(e),
             Ok(msg) => Err(ProtocolError::with_message(format!(
                 "unsolicited message {:?}", msg))),
         }
@@ -179,8 +179,7 @@ impl<'a> Sequence<'a> {
 
     pub async fn expect_ready(&mut self) -> Result<(), Error> {
         assert!(self.active);  // TODO(tailhook) maybe debug_assert
-        self.reader.wait_ready().await
-            .map_err(ClientConnectionError::with_source)?;
+        self.reader.wait_ready().await?;
         self.end_clean();
         Ok(())
     }
@@ -202,8 +201,7 @@ impl<'a> Sequence<'a> {
     pub async fn _process_exec(&mut self) -> Result<Bytes, Error> {
         assert!(self.active);  // TODO(tailhook) maybe debug_assert
         let status = loop {
-            let msg = self.reader.message().await
-                .map_err(ClientConnectionError::with_source)?;
+            let msg = self.reader.message().await?;
             match msg {
                 ServerMessage::CommandComplete(c) => {
                     self.reader.wait_ready().await?;
@@ -293,7 +291,7 @@ impl<'a> Sequence<'a> {
         arguments.encode(&mut Encoder::new(
             &inp_desc.as_query_arg_context(),
             &mut arg_buf,
-        )).map_err(ClientEncodingError::with_source)?;
+        ))?;
 
         self.send_messages(&[
             ClientMessage::Execute(Execute {
