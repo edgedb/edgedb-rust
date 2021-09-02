@@ -135,7 +135,9 @@ impl QueryArgs for Value {
 
 impl<T: ScalarArg> QueryArg for T {
     fn encode_slot(&self, enc: &mut Encoder) -> Result<(), Error> {
+        enc.buf.reserve(4);
         let pos = enc.buf.len();
+        enc.buf.put_u32(0); // will fill after encoding
         ScalarArg::encode(self, enc)?;
         let len = enc.buf.len()-pos-4;
         enc.buf[pos..pos+4].copy_from_slice(&i32::try_from(len)
@@ -156,6 +158,7 @@ impl<T: ScalarArg> QueryArg for Option<T> {
         if let Some(val) = self {
             QueryArg::encode_slot(val, enc)
         } else {
+            enc.buf.reserve(4);
             enc.buf.put_i32(-1);
             Ok(())
         }
@@ -180,7 +183,9 @@ macro_rules! implement_tuple {
                          but no arguments expected by the server"))?;
                 let desc = enc.ctx.get(root_pos)?;
                 match desc {
-                    Descriptor::ObjectShape(desc) => {
+                    Descriptor::ObjectShape(desc)
+                    if enc.ctx.proto.is_at_least(0, 12)
+                    => {
                         if desc.elements.len() != $count {
                             return Err(enc.ctx.field_number(
                                 $count, desc.elements.len()));
@@ -197,7 +202,21 @@ macro_rules! implement_tuple {
                             $name::check_descriptor(enc.ctx, el.type_pos)?;
                         )+
                     }
-                    _ => return Err(enc.ctx.wrong_type(desc, "tuple"))
+                    Descriptor::Tuple(desc) if enc.ctx.proto.is_at_most(0, 11)
+                    => {
+                        if desc.element_types.len() != $count {
+                            return Err(enc.ctx.field_number(
+                                $count, desc.element_types.len()));
+                        }
+                        let mut els = desc.element_types.iter();
+                        $(
+                            let type_pos = els.next().unwrap();
+                            $name::check_descriptor(enc.ctx, *type_pos)?;
+                        )+
+                    }
+                    _ => return Err(enc.ctx.wrong_type(desc,
+                        if enc.ctx.proto.is_at_least(0, 12) { "object" }
+                        else { "tuple" }))
                 }
 
                 enc.buf.reserve(4 + 8*$count);
