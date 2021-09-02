@@ -9,3 +9,6 @@ pub mod server_params;
 
 pub use builder::Builder;
 pub use tls::verify_server_cert;
+pub use pool::Pool;
+
+mod pool;
