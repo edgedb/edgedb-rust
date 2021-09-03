@@ -117,8 +117,10 @@ impl QueryArgs for () {
                     "query arguments expected"));
             }
         }
-        enc.buf.reserve(4);
-        enc.buf.put_u32(0);
+        if enc.ctx.proto.is_at_most(0, 11) {
+            enc.buf.reserve(4);
+            enc.buf.put_u32(0);
+        }
         Ok(())
     }
 }
