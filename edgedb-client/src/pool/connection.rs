@@ -1,10 +1,5 @@
 use std::sync::Arc;
 
-use bytes::Bytes;
-
-use async_std::channel::{Sender};
-use async_std::task::JoinHandle;
-use async_std::sync::Mutex;
 use async_std::stream::StreamExt;
 
 use edgedb_protocol::QueryResult;
@@ -12,10 +7,12 @@ use edgedb_protocol::query_arg::QueryArgs;
 
 use crate::errors::{Error, ErrorKind, NoResultExpected};
 use crate::client::{Connection, StatementBuilder};
+use crate::pool::PoolInner;
 
 
 pub(crate) struct PoolConn {
-    conn: Connection,
+    conn: Option<Connection>,
+    pool: Arc<PoolInner>,
 }
 
 impl PoolConn {
@@ -25,7 +22,7 @@ impl PoolConn {
         where A: QueryArgs,
               R: QueryResult,
     {
-        let mut seq = self.conn.start_sequence().await?;
+        let mut seq = self.conn.as_mut().unwrap().start_sequence().await?;
         let desc = seq._query(request, arguments, bld).await?;
         match desc.root_pos() {
             Some(root_pos) => {
@@ -47,5 +44,11 @@ impl PoolConn {
                     .to_string()))?
             }
         }
+    }
+}
+
+impl Drop for PoolConn {
+    fn drop(&mut self) {
+        self.pool.release(self.conn.take().unwrap());
     }
 }

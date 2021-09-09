@@ -1,4 +1,4 @@
 #[derive(Debug, Clone)]
 pub struct PoolConfig {
-    max_connections: usize,
+    pub max_connections: usize,
 }

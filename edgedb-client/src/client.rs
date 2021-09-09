@@ -35,6 +35,7 @@ use crate::reader::{self, QueryResponse, Reader};
 use crate::server_params::ServerParam;
 
 
+#[derive(Debug)]
 /// A single connection to the EdgeDB
 pub struct Connection {
     pub(crate) input: ReadHalf<TlsStream>,
@@ -79,8 +80,8 @@ impl StatementBuilder {
         self.io_format = fmt;
         self
     }
-    pub fn expect_single(&mut self) -> &mut Self {
-        self.cardinality = Cardinality::One;
+    pub fn cardinality(&mut self, card: Cardinality) -> &mut Self {
+        self.cardinality = card;
         self
     }
 }

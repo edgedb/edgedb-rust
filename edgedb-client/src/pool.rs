@@ -1,17 +1,16 @@
 use std::sync::Arc;
 
-use bytes::Bytes;
-
 use async_std::channel::{Sender};
 use async_std::task::JoinHandle;
 use async_std::sync::Mutex;
 
 use edgedb_protocol::QueryResult;
+use edgedb_protocol::client_message::{IoFormat, Cardinality};
 use edgedb_protocol::query_arg::QueryArgs;
-use edgedb_protocol::client_message::IoFormat;
+use edgedb_protocol::value::Value;
 
 use crate::client::StatementBuilder;
-use crate::errors::{Error, ErrorKind, NoDataError};
+use crate::errors::{Error, ErrorKind, NoDataError, NoResultExpected};
 
 mod command;
 mod config;
@@ -23,6 +22,7 @@ pub use config::PoolConfig;
 
 use command::Command;
 use connection::PoolConn;
+use main::PoolState;
 
 
 #[derive(Debug, Clone)]
@@ -36,11 +36,6 @@ pub(crate) struct PoolInner {
     state: Arc<PoolState>,
 }
 
-#[derive(Debug)]
-pub(crate) struct PoolState {
-    cfg: PoolConfig,
-}
-
 #[derive(Debug, Clone)]
 pub struct Pool {
     options: Arc<Options>,
@@ -49,7 +44,7 @@ pub struct Pool {
 
 #[derive(Debug, Clone)]
 pub struct ExecuteResult {
-    marker: Bytes,
+    marker: String,
 }
 
 impl PoolInner {
@@ -81,7 +76,7 @@ impl Pool {
     {
         let result = self.inner.query(request, arguments,
             StatementBuilder::new()
-            .expect_single()
+            .cardinality(Cardinality::NoResult)
         ).await?;
         result.into_iter().next()
             .ok_or_else(|| {
@@ -110,7 +105,7 @@ impl Pool {
         let result = self.inner.query(request, arguments,
             StatementBuilder::new()
             .io_format(IoFormat::Json)
-            .expect_single()
+            .cardinality(Cardinality::One)
         ).await?;
         result.into_iter().next()
             .ok_or_else(|| {
@@ -119,9 +114,23 @@ impl Pool {
     }
 
     pub async fn execute<A>(&self, request: &str, arguments: &A)
-        -> Result<ExecuteResult, Error>
+        -> Result<Option<ExecuteResult>, Error>
         where A: QueryArgs,
     {
-        todo!();
+        let result = self.inner.query::<Value, _>(request, arguments,
+                StatementBuilder::new()
+                .io_format(IoFormat::Json)
+                .cardinality(Cardinality::NoResult)
+            ).await;
+        match result {
+            Ok(_) => Ok(None),
+            Err(e) if e.is::<NoResultExpected>() => {
+                match e.initial_message() {
+                    Some(m) => Ok(Some(ExecuteResult { marker: m.into() })),
+                    None => Ok(None),
+                }
+            }
+            Err(e) => return Err(e),
+        }
     }
 }

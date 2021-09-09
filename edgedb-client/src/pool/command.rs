@@ -1,7 +1,7 @@
-use crate::pool::PoolConn;
+use crate::client::Connection;
 
 
 pub(crate) enum Command {
-    Release(PoolConn),
+    Release(Connection),
     Close,
 }

@@ -2,6 +2,7 @@ use async_std::channel::unbounded;
 use async_std::task;
 use async_std::sync::{Arc, Mutex};
 
+use crate::client::Connection;
 use crate::errors::Error;
 use crate::pool::command::Command;
 use crate::pool::config::PoolConfig;
@@ -10,9 +11,9 @@ use crate::pool::{Pool, PoolInner, PoolState, PoolConn, Options};
 
 
 impl Pool {
-    pub async fn new(cfg: PoolConfig) -> Result<Pool, Error> {
+    pub async fn new(config: PoolConfig) -> Result<Pool, Error> {
         let (chan, rcv) = unbounded();
-        let state = Arc::new(PoolState { cfg });
+        let state = Arc::new(PoolState::new(config));
         let state2 = state.clone();
         let task = Mutex::new(Some(task::spawn(main::main(state2, rcv))));
         Ok(Pool {
@@ -25,6 +26,9 @@ impl Pool {
 impl PoolInner {
     pub(crate) async fn acquire(&self) -> Result<PoolConn, Error> {
         todo!();
+    }
+    pub(crate) fn release(&self, conn: Connection) {
+        self.chan.try_send(Command::Release(conn)).ok();
     }
 }
 
