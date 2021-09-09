@@ -81,6 +81,7 @@ pub struct Builder {
     pem: Option<String>,
     cert: rustls::RootCertStore,
     verify_hostname: Option<bool>,
+    insecure_dev_mode: bool,
 }
 
 pub async fn timeout<F, T>(dur: Duration, f: F) -> Result<T, Error>
@@ -187,6 +188,7 @@ impl Builder {
             wait: DEFAULT_WAIT,
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             verify_hostname: None,
+            insecure_dev_mode: false,
             cert,
             pem,
         })
@@ -232,6 +234,7 @@ impl Builder {
             cert: rustls::RootCertStore::empty(),
             pem: None,
             verify_hostname: None,
+            insecure_dev_mode: false,
         })
     }
     pub fn new() -> Builder {
@@ -245,6 +248,7 @@ impl Builder {
             cert: rustls::RootCertStore::empty(),
             pem: None,
             verify_hostname: None,
+            insecure_dev_mode: false,
         }
     }
     pub fn as_credentials(&self) -> Result<Credentials, Error> {
@@ -349,6 +353,14 @@ impl Builder {
         self
     }
 
+    /// Enables insecure dev mode
+    ///
+    /// This disables certificate validation entirely
+    pub fn insecure_dev_mode(&mut self, value: bool) -> &mut Self {
+        self.insecure_dev_mode = value;
+        self
+    }
+
     pub async fn connect_with_cert_verifier(
         &self, cert_verifier: Arc<dyn ServerCertVerifier>
     ) -> Result<Connection, Error> {
@@ -407,9 +419,13 @@ impl Builder {
         self.verify_hostname.unwrap_or(self.cert.is_empty())
     }
     pub async fn connect(&self) -> Result<Connection, Error> {
-        self.connect_with_cert_verifier(Arc::new(tls::CertVerifier::new(
-            self.do_verify_hostname()
-        ))).await
+        if self.insecure_dev_mode {
+            self.connect_with_cert_verifier(Arc::new(tls::NullVerifier)).await
+        } else {
+            self.connect_with_cert_verifier(Arc::new(tls::CertVerifier::new(
+                self.do_verify_hostname()
+            ))).await
+        }
     }
     async fn _connect(&self, tls: &TlsConnectorBox, warned: &mut bool)
         -> Result<Connection, Error>

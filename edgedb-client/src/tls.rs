@@ -20,6 +20,7 @@ static SIG_ALGS: &[&SignatureAlgorithm] = &[
     &webpki::RSA_PKCS1_3072_8192_SHA384,
 ];
 
+pub struct NullVerifier;
 
 pub struct CertVerifier {
     verify_hostname: bool,
@@ -82,6 +83,17 @@ impl ServerCertVerifier for CertVerifier {
             cert.verify_is_valid_for_dns_name(dns_name)
                 .map_err(TLSError::WebPKIError)?;
         };
+        Ok(ServerCertVerified::assertion())
+    }
+}
+
+impl ServerCertVerifier for NullVerifier {
+    fn verify_server_cert(&self,
+        _roots: &RootCertStore,
+        _presented_certs: &[Certificate],
+        _dns_name: DNSNameRef,
+        _ocsp_response: &[u8],
+    ) -> Result<ServerCertVerified, TLSError> {
         Ok(ServerCertVerified::assertion())
     }
 }
