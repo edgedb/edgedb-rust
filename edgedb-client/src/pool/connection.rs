@@ -11,8 +11,8 @@ use crate::pool::PoolInner;
 
 
 pub(crate) struct PoolConn {
-    conn: Option<Connection>,
-    pool: Arc<PoolInner>,
+    pub conn: Option<Connection>,
+    pub pool: Arc<PoolInner>,
 }
 
 impl PoolConn {

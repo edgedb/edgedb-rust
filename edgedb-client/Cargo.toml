@@ -9,7 +9,9 @@ edition = "2018"
 edgedb-protocol = {path = "../edgedb-protocol"}
 edgedb-errors = {path = "../edgedb-errors"}
 snafu = {version="0.6.0", features=["backtraces"]}
-async-std = "1.10"
+async-std = {version="1.10", features=[
+    "unstable", # Condvar
+]}
 bytes = "1.0.1"
 scram = "0.5.0"
 typemap = "0.3.3"

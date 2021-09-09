@@ -44,6 +44,7 @@ use crate::tls;
 
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub const DEFAULT_WAIT: Duration = Duration::from_secs(30);
+pub const DEFAULT_POOL_SIZE: usize = 10;
 
 
 /// A builder used to create connections
@@ -63,6 +64,9 @@ pub struct Builder {
     wait: Duration,
     connect_timeout: Duration,
     insecure_dev_mode: bool,
+
+    // Pool configuration
+    pub(crate) max_connections: usize,
 }
 
 struct DisplayAddr<'a>(&'a Builder);
@@ -400,6 +404,8 @@ impl Builder {
             wait: self.wait,
             connect_timeout: self.connect_timeout,
             insecure_dev_mode: self.insecure_dev_mode,
+
+            max_connections: self.max_connections,
         };
         Ok(self)
     }
@@ -464,6 +470,8 @@ impl Builder {
             wait: self.wait,
             connect_timeout: self.connect_timeout,
             insecure_dev_mode: self.insecure_dev_mode,
+
+            max_connections: self.max_connections,
         };
         Ok(self)
     }
@@ -488,6 +496,8 @@ impl Builder {
             verify_hostname: None,
             initialized: false,
             insecure_dev_mode: false,
+
+            max_connections: DEFAULT_POOL_SIZE,
         }
     }
     pub fn as_credentials(&self) -> Result<Credentials, Error> {
@@ -700,6 +710,13 @@ impl Builder {
         };
         Ok(conn)
     }
+
+    /// Maximum number of underlying database connections
+    pub fn max_connections(&mut self, value: usize) -> &mut Self {
+        self.max_connections = value;
+        self
+    }
+
     fn do_verify_hostname(&self) -> bool {
         self.verify_hostname.unwrap_or(self.cert.is_empty())
     }

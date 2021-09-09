@@ -13,12 +13,9 @@ use crate::client::StatementBuilder;
 use crate::errors::{Error, ErrorKind, NoDataError, NoResultExpected};
 
 mod command;
-mod config;
 mod connection;
 mod implementation;
 mod main;
-
-pub use config::PoolConfig;
 
 use command::Command;
 use connection::PoolConn;
@@ -30,12 +27,16 @@ struct Options {
 }
 
 #[derive(Debug)]
+/// This structure is shared between Pool instances when options are changed
 pub(crate) struct PoolInner {
     chan: Sender<Command>,
     task: Mutex<Option<JoinHandle<()>>>,
     state: Arc<PoolState>,
 }
 
+// User-visible instance of connection pool. Shallowly clonable contains
+// options (clone pool to modify options). All the functionality is actually
+// in the `PoolInner`
 #[derive(Debug, Clone)]
 pub struct Pool {
     options: Arc<Options>,
@@ -48,7 +49,7 @@ pub struct ExecuteResult {
 }
 
 impl PoolInner {
-    async fn query<R, A>(&self, request: &str, arguments: &A,
+    async fn query<R, A>(self: &Arc<Self>, request: &str, arguments: &A,
         bld: &StatementBuilder)
         -> Result<Vec<R>, Error>
         where A: QueryArgs,
@@ -61,6 +62,12 @@ impl PoolInner {
 }
 
 impl Pool {
+
+    pub async fn ensure_connected(&self) -> Result<(), Error> {
+        self.inner.acquire().await?;
+        Ok(())
+    }
+
     pub async fn query<R, A>(&self, request: &str, arguments: &A)
         -> Result<Vec<R>, Error>
         where A: QueryArgs,
