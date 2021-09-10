@@ -466,7 +466,7 @@ impl Builder {
                 let conn = TcpStream::connect(&(&host[..], *port)).await
                     .map_err(ClientConnectionError::with_source)?;
                 let host = if IpAddr::from_str(&host).is_ok() {
-                    if self.do_verify_hostname() {
+                    if !self.insecure_dev_mode && self.do_verify_hostname() {
                         return Err(ClientError::with_message(
                             "Cannot use `verify_hostname` or system \
                             root certificates with an IP address"));
