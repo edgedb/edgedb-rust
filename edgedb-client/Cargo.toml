@@ -15,6 +15,7 @@ scram = "0.5.0"
 typemap = "0.3.3"
 serde = "1.0"
 serde_json = "1.0"
+sha1 = {version="0.6.0", features=["std"]}
 log = "0.4.8"
 rand = "0.8"
 url = "2.1.1"
@@ -26,3 +27,8 @@ rustls = "0.19.1"
 rustls-native-certs = "0.5.0"
 webpki = "0.21.4"
 webpki-roots = "0.21"
+dirs = "3.0.0"
+
+[features]
+default = []
+admin_socket = []

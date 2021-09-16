@@ -1,6 +1,8 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::env;
 use std::error::Error as _;
+use std::ffi::{OsString, OsStr};
 use std::fmt;
 use std::io;
 use std::net::IpAddr;
@@ -10,6 +12,7 @@ use std::sync::Arc;
 use std::time::{Instant, Duration};
 
 use async_std::fs;
+use async_std::path::{Path as AsyncPath};
 use async_std::future::Future;
 use async_std::net::TcpStream;
 use async_std::task::sleep;
@@ -34,6 +37,7 @@ use crate::credentials::Credentials;
 use crate::errors::{ClientConnectionError, ProtocolError, ProtocolTlsError};
 use crate::errors::{ClientConnectionFailedError, AuthenticationError};
 use crate::errors::{ClientError, ClientConnectionFailedTemporarilyError};
+use crate::errors::{ClientNoCredentialsError};
 use crate::errors::{Error, ErrorKind, ResultExt, PasswordRequired};
 use crate::server_params::PostgresAddress;
 use crate::tls;
@@ -42,46 +46,37 @@ pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub const DEFAULT_WAIT: Duration = Duration::from_secs(30);
 
 
-#[derive(Debug, Clone)]
-pub struct Addr(AddrImpl);
-
-#[derive(Debug, Clone)]
-enum AddrImpl {
-    Tcp(String, u16),
-    Unix(PathBuf),
-}
-
-impl Addr {
-    pub fn get_tcp_addr(&self) -> Option<(&String, &u16)> {
-        if let Addr(AddrImpl::Tcp(host, port)) = self {
-            Some((host, port))
-        } else {
-            None
-        }
-    }
-
-    pub fn get_unix_addr(&self) -> Option<&PathBuf> {
-        if let Addr(AddrImpl::Unix(path)) = self {
-            Some(path)
-        } else {
-            None
-        }
-    }
-}
-
 /// A builder used to create connections
 #[derive(Debug, Clone)]
 pub struct Builder {
-    addr: Addr,
+    host: String,
+    port: u16,
+    admin: bool,
     user: String,
     password: Option<String>,
     database: String,
-    wait: Duration,
-    connect_timeout: Duration,
     pem: Option<String>,
     cert: rustls::RootCertStore,
     verify_hostname: Option<bool>,
+
+    initialized: bool,
+    wait: Duration,
+    connect_timeout: Duration,
     insecure_dev_mode: bool,
+}
+
+struct DisplayAddr<'a>(&'a Builder);
+
+impl fmt::Display for DisplayAddr<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if !self.0.initialized {
+            write!(f, "<no address>")
+        } else if let Some(path) = self.0._get_unix_path() {
+            write!(f, "{}", path.display())
+        } else {
+            write!(f, "{}:{}", self.0.host, self.0.port)
+        }
+    }
 }
 
 pub async fn timeout<F, T>(dur: Duration, f: F) -> Result<T, Error>
@@ -152,9 +147,218 @@ fn tls_fail(e: tls_api::Error) -> Error {
     }
 }
 
+fn get_env(name: &str) -> Result<Option<String>, Error> {
+    match env::var(name) {
+        Ok(v) if v.is_empty() => Ok(None),
+        Ok(v) => Ok(Some(v)),
+        Err(env::VarError::NotPresent) => Ok(None),
+        Err(e) => {
+            Err(
+                ClientError::with_source(e)
+                .context(
+                   format!("Cannot decode environment variable {:?}", name))
+            )
+        }
+    }
+}
+
+pub async fn search_dir(base: &AsyncPath) -> Result<Option<&AsyncPath>, Error>
+{
+    let mut path = base;
+    if path.join("edgedb.toml").exists().await {
+        return Ok(Some(path.into()));
+    }
+    while let Some(parent) = path.parent() {
+        if parent.join("edgedb.toml").exists().await {
+            return Ok(Some(parent.into()));
+        }
+        path = parent;
+    }
+    Ok(None)
+}
+
+#[cfg(unix)]
+pub fn path_bytes<'x>(path: &'x Path) -> &'x [u8] {
+    use std::os::unix::ffi::OsStrExt;
+    path.as_os_str().as_bytes()
+}
+
+#[cfg(windows)]
+pub fn path_bytes<'x>(path: &'x Path) -> &'x [u8] {
+    path.to_str().expect("windows paths are always valid UTF-16").as_bytes()
+}
+
+fn hash(path: &Path) -> String {
+    sha1::Sha1::from(path_bytes(path)).hexdigest()
+}
+
+fn stash_name(path: &Path) -> OsString {
+    let hash = hash(path);
+    let base = path.file_name().unwrap_or(OsStr::new(""));
+    let mut base = base.to_os_string();
+    base.push("-");
+    base.push(&hash);
+    return base;
+}
+
+fn config_dir() -> Result<PathBuf, Error> {
+    let dir = if cfg!(windows) {
+        dirs::data_local_dir()
+            .ok_or_else(|| ClientError::with_message(
+                "cannot determine local data directory"))?
+            .join("EdgeDB")
+            .join("config")
+    } else {
+        dirs::config_dir()
+            .ok_or_else(|| ClientError::with_message(
+                "cannot determine config directory"))?
+            .join("edgedb")
+    };
+    Ok(dir)
+}
+
+fn stash_path(project_dir: &Path) -> Result<PathBuf, Error> {
+    Ok(config_dir()?.join("projects").join(stash_name(project_dir)))
+}
+
+pub fn is_valid_instance_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        _ => return false,
+    }
+    for c in chars {
+        if !c.is_ascii_alphanumeric() && c != '_' {
+            return false;
+        }
+    }
+    return true;
+}
+
 impl Builder {
-    pub fn from_credentials(credentials: &Credentials)
-        -> Result<Builder, Error>
+
+    /// Initializes Builder using project or environment variables
+    pub async fn from_env() -> Result<Builder, Error> {
+        let mut builder = Builder::uninitialized();
+
+        // optimize discovering project if defined by environment variable
+        if get_env("EDGEDB_INSTANCE")?.is_none() &&
+           get_env("EDGEDB_DSN")?.is_none() &&
+           get_env("EDGEDB_CONFIGURATION_FILE")?.is_none()
+        {
+            builder.read_project(None, false).await?;
+        }
+
+        builder.read_env_vars().await?;
+        Ok(builder)
+    }
+
+    /// Reads the project config if found
+    ///
+    /// Returns boolean value of whether project have been found
+    pub async fn read_project(&mut self,
+        override_dir: Option<&Path>, search_parents: bool)
+        -> Result<&mut Self, Error>
+    {
+        let dir = match override_dir {
+            Some(v) => Cow::Borrowed(v.as_ref()),
+            None => {
+                Cow::Owned(env::current_dir()
+                    .map_err(|e| ClientError::with_source(e)
+                        .context("failed to get current directory"))?
+                    .into())
+            }
+        };
+
+        let dir = if search_parents {
+            if let Some(ancestor) = search_dir(&dir).await? {
+                Cow::Borrowed(ancestor)
+            } else {
+                return Ok(self);
+            }
+        } else {
+            if !dir.join("edgedb.toml").exists().await {
+                return Ok(self);
+            }
+            dir
+        };
+        let canon = fs::canonicalize(&dir).await
+            .map_err(|e| ClientError::with_source(e).context(
+                format!("failed to canonicalize dir {:?}", dir)
+            ))?;
+        let stash_path = stash_path(canon.as_ref())?;
+        if AsRef::<AsyncPath>::as_ref(&stash_path).exists().await {
+            let instance =
+                fs::read_to_string(stash_path.join("instance-name")).await
+                .map_err(|e| ClientError::with_source(e).context(
+                    format!("error reading project settings {:?}", dir)
+                ))?;
+            self.read_instance(instance.trim()).await?;
+
+        }
+        Ok(self)
+    }
+    /// A displayable form for address
+    pub fn display_addr<'x>(&'x self) -> impl fmt::Display + 'x {
+        DisplayAddr(self)
+    }
+    /// Are credentials set on this builder
+    pub fn is_initialized(&self) -> bool {
+        self.initialized
+    }
+    pub async fn read_env_vars(&mut self) -> Result<&mut Self, Error> {
+        if let Some(path) = get_env("EDGEDB_CREDENTIALS_FILE")? {
+            self.read_credentials(path).await?;
+        } else if let Some(instance) = get_env("EDGEDB_INSTANCE")? {
+            self.read_instance(&instance).await?;
+        } else if let Some(dsn) = get_env("EDGEDB_DSN")? {
+            self.dsn(&dsn).map_err(|e|
+                e.context("cannot parse env var EDGEDB_DNS"))?;
+        }
+        if let Some(host) = get_env("EDGEDB_HOST")? {
+            self.host = host;
+        }
+        if let Some(port) = get_env("EDGEDB_PORT")? {
+            if let Some(pair) = port.strip_prefix("tcp://") {
+                if let Some((host, port)) = pair.split_once(":") {
+                    self.host = host.into();
+                    self.port = port.parse().map_err(|e| {
+                        ClientError::with_source(e).context(
+                            "cannot parse port in Docker URI: EDGEDB_PORT")
+                    })?;
+                } else {
+                    ClientError::with_message(
+                        "port not found in Docker URI: EDGEDB_PORT");
+                }
+            } else {
+                self.port = port.parse().map_err(|e| {
+                    ClientError::with_source(e)
+                    .context("cannot parse env var EDGEDB_PORT")
+                })?;
+            }
+        }
+        if let Some(database) = get_env("EDGEDB_DATABASE")? {
+            self.database = database;
+        }
+        if let Some(user) = get_env("EDGEDB_USER")? {
+            self.user = user;
+        }
+        if let Some(password) = get_env("EDGEDB_PASSWORD")? {
+            self.password = Some(password);
+        }
+        self.read_extra_env_vars()?;
+        Ok(self)
+    }
+    /// Read environment variables that aren't credentials
+    pub fn read_extra_env_vars(&mut self) -> Result<&mut Self, Error> {
+        if let Some(mode) = get_env("EDGEDB_INSECURE_DEV_MODE")? {
+            self.insecure_dev_mode = mode != "";
+        }
+        Ok(self)
+    }
+
+    pub fn credentials(&mut self, credentials: &Credentials)
+        -> Result<&mut Self, Error>
     {
         let mut cert = rustls::RootCertStore::empty();
         let pem;
@@ -177,50 +381,72 @@ impl Builder {
         } else {
             pem = None;
         }
-        Ok(Builder {
-            addr: Addr(AddrImpl::Tcp(
-                credentials.host.clone().unwrap_or_else(|| "localhost".into()),
-                credentials.port)),
+        *self = Builder {
+            // replace all of them
+            host: credentials.host.clone()
+                .unwrap_or_else(|| "localhost".into()),
+            port: credentials.port,
+            admin: false,
             user: credentials.user.clone(),
             password: credentials.password.clone(),
             database: credentials.database.clone()
                 .unwrap_or_else(|| "edgedb".into()),
-            wait: DEFAULT_WAIT,
-            connect_timeout: DEFAULT_CONNECT_TIMEOUT,
-            verify_hostname: None,
-            insecure_dev_mode: false,
+            verify_hostname: credentials.tls_verify_hostname,
             cert,
             pem,
-        })
+
+            initialized: true,
+            // keep old values
+            wait: self.wait,
+            connect_timeout: self.connect_timeout,
+            insecure_dev_mode: self.insecure_dev_mode,
+        };
+        Ok(self)
     }
-    pub async fn read_credentials(path: impl AsRef<Path>)
-        -> Result<Builder, Error>
+
+    pub async fn read_instance(&mut self, name: &str)
+        -> Result<&mut Self, Error>
+    {
+        if !is_valid_instance_name(name) {
+            return Err(ClientError::with_message(format!(
+                "instance name {:?} contains unsupported characters", name)));
+        }
+        self.read_credentials(
+            config_dir()?.join("credentials").join(format!("{}.json", name))
+        ).await?;
+        Ok(self)
+    }
+
+    pub async fn read_credentials(&mut self, path: impl AsRef<Path>)
+        -> Result<&mut Self, Error>
     {
         let path = path.as_ref();
-        let res: Result<Builder, Error> = async {
+        async {
             let data = fs::read(path).await
                 .map_err(ClientError::with_source)?;
             let creds = serde_json::from_slice(&data)
                 .map_err(ClientError::with_source)?;
-            Ok(Builder::from_credentials(&creds)?)
-        }.await;
-        Ok(res.with_context(|| {
+            self.credentials(&creds)?;
+            Ok(())
+        }.await.with_context(|| {
             format!("cannot read credentials file {}", path.display())
-        })?)
+        })?;
+        Ok(self)
     }
-    pub fn from_dsn(dsn: &str) -> Result<Builder, Error> {
-        if !dsn.starts_with("edgedb://") {
+    pub fn dsn(&mut self, dsn: &str) -> Result<&mut Self, Error> {
+        let admin = dsn.starts_with("edgedbadmin://");
+        if !dsn.starts_with("edgedb://") && !admin {
             return Err(ClientError::with_message(format!(
                 "String {:?} is not a valid DSN", dsn)));
         };
         let url = url::Url::parse(dsn)
             .map_err(|e| ClientError::with_source(e)
                 .context(format!("cannot parse DSN {:?}", dsn)))?;
-        Ok(Builder {
-            addr: Addr(AddrImpl::Tcp(
-                url.host_str().unwrap_or("127.0.0.1").to_owned(),
-                url.port().unwrap_or(5656),
-            )),
+        *self = Builder {
+            // replace all of them
+            host: url.host_str().unwrap_or("127.0.0.1").to_owned(),
+            port: url.port().unwrap_or(5656),
+            admin: admin,
             user: if url.username().is_empty() {
                 "edgedb".to_owned()
             } else {
@@ -229,17 +455,29 @@ impl Builder {
             password: url.password().map(|s| s.to_owned()),
             database: url.path().strip_prefix("/")
                 .unwrap_or("edgedb").to_owned(),
-            wait: DEFAULT_WAIT,
-            connect_timeout: DEFAULT_CONNECT_TIMEOUT,
+            verify_hostname: None,
             cert: rustls::RootCertStore::empty(),
             pem: None,
-            verify_hostname: None,
-            insecure_dev_mode: false,
-        })
+
+            initialized: true,
+            // keep old values
+            wait: self.wait,
+            connect_timeout: self.connect_timeout,
+            insecure_dev_mode: self.insecure_dev_mode,
+        };
+        Ok(self)
     }
-    pub fn new() -> Builder {
+    /// Creates a new builder that has to be intialized by calling some methods
+    ///
+    /// Useful only if you have connections to multiple unrelated databases,
+    /// or want to have total control on the initialization of the database.
+    ///
+    /// Usually `Builder::from_env()` should be used instead.
+    pub fn uninitialized() -> Builder {
         Builder {
-            addr: Addr(AddrImpl::Tcp("127.0.0.1".into(), 5656)),
+            host: "127.0.0.1".into(),
+            port: 5656,
+            admin: false,
             user: "edgedb".into(),
             password: None,
             database: "edgedb".into(),
@@ -248,20 +486,14 @@ impl Builder {
             cert: rustls::RootCertStore::empty(),
             pem: None,
             verify_hostname: None,
+            initialized: false,
             insecure_dev_mode: false,
         }
     }
     pub fn as_credentials(&self) -> Result<Credentials, Error> {
-        let (host, port) = match &self.addr {
-            Addr(AddrImpl::Tcp(host, port)) => (host, port),
-            Addr(AddrImpl::Unix(_)) => {
-                return Err(ClientError::with_message(
-                    "Cannot generate credentials with UNIX socket."));
-            }
-        };
         Ok(Credentials {
-            host: Some(host.into()),
-            port: port.clone(),
+            host: Some(self.host.clone()),
+            port: self.port,
             user: self.user.clone(),
             password: self.password.clone(),
             database: Some(self.database.clone()),
@@ -269,17 +501,31 @@ impl Builder {
             tls_verify_hostname: self.verify_hostname,
         })
     }
-    pub fn get_addr(&self) -> &Addr {
-        &self.addr
-    }
-    pub fn unix_addr(&mut self, path: impl Into<PathBuf>) -> &mut Self {
-        self.addr = Addr(AddrImpl::Unix(path.into()));
-        self
-    }
-    pub fn tcp_addr(&mut self, addr: impl Into<String>, port: u16)
+    #[cfg(feature="admin_socket")]
+    pub fn admin(&mut self, value: bool)
         -> &mut Self
     {
-        self.addr = Addr(AddrImpl::Tcp(addr.into(), port));
+        self.admin = value;
+        self
+    }
+    pub fn get_host(&self) -> &str {
+        &self.host
+    }
+    pub fn host(&mut self, host: impl Into<String>)
+        -> &mut Self
+    {
+        self.host = host.into();
+        self.initialized = true;
+        self
+    }
+    pub fn get_port(&self) -> u16 {
+        self.port
+    }
+    pub fn port(&mut self, port: u16)
+        -> &mut Self
+    {
+        self.port = port;
+        self.initialized = true;
         self
     }
     pub fn get_user(&self) -> &str {
@@ -364,6 +610,12 @@ impl Builder {
     pub async fn connect_with_cert_verifier(
         &self, cert_verifier: Arc<dyn ServerCertVerifier>
     ) -> Result<Connection, Error> {
+        if !self.initialized {
+            return Err(ClientNoCredentialsError::with_message(
+                "EdgeDB connection options are not initialized. \
+                Run `edgedb project init` or use environment variables \
+                to configure connection."));
+        }
         self._connect_with_cert_verifier(cert_verifier).await.map_err(|e| {
             if e.is::<ClientConnectionError>() {
                 e.refine_kind::<ClientConnectionFailedError>()
@@ -373,19 +625,45 @@ impl Builder {
         })
     }
 
+    #[cfg(feature="admin_socket")]
+    pub fn get_unix_path(&self) -> Option<PathBuf> {
+        self._get_unix_path()
+    }
+    fn _get_unix_path(&self) -> Option<PathBuf> {
+        let unix_host = self.host.contains("/");
+        if self.admin || unix_host {
+            let prefix = if unix_host {
+                &self.host
+            } else {
+                "/var/run/edgedb"
+            };
+            let path = if prefix.contains(".s.EDGEDB") {
+                // it's the full path
+                self.host.clone()
+            } else {
+                if self.admin {
+                    format!("{}/.s.EDGEDB.admin.{}", prefix, self.port)
+                } else {
+                    format!("{}/.s.EDGEDB.{}", prefix, self.port)
+                }
+            };
+            Some(path.into())
+        } else {
+            None
+        }
+    }
+
     async fn _connect_with_cert_verifier(
         &self, cert_verifier: Arc<dyn ServerCertVerifier>
     ) -> Result<Connection, Error> {
         let tls = tls::connector(&self.cert, cert_verifier).map_err(tls_fail)?;
-
-        match &self.addr {
-            Addr(AddrImpl::Tcp(host, port)) => {
-                log::info!("Connecting via TCP {}:{}", host, port);
-            }
-            Addr(AddrImpl::Unix(path)) => {
+        if log::log_enabled!(log::Level::Info) {
+            if let Some(path) = self._get_unix_path() {
                 log::info!("Connecting via Unix `{}`", path.display());
+            } else {
+                log::info!("Connecting via TCP {}:{}", self.host, self.port);
             }
-        };
+        }
 
         let start = Instant::now();
         let ref mut warned = false;
@@ -447,11 +725,11 @@ impl Builder {
             Err(e) => return Err(e),
             Ok(r) => match r.get_alpn_protocol() {
                 Ok(Some(protocol)) if protocol == b"edgedb-binary" => r,
-                _ => match self.addr.get_tcp_addr() {
-                    Some(_) => Err(ClientConnectionFailedError::with_message(
+                _ => match self._get_unix_path() {
+                    None => Err(ClientConnectionFailedError::with_message(
                         "Server does not support the EdgeDB binary protocol."
                     ))?,
-                    None => r,  // don't check ALPN on UNIX stream
+                    Some(_) => r,  // don't check ALPN on UNIX stream
                 }
             }
         };
@@ -461,24 +739,25 @@ impl Builder {
     async fn _connect_stream(&self, tls: &TlsConnectorBox)
         -> Result<TlsStream, Error>
     {
-        match &self.addr {
-            Addr(AddrImpl::Tcp(host, port)) => {
-                let conn = TcpStream::connect(&(&host[..], *port)).await
-                    .map_err(ClientConnectionError::with_source)?;
-                let host = if IpAddr::from_str(&host).is_ok() {
+        match self._get_unix_path() {
+            None => {
+                let conn = TcpStream::connect(
+                    &(&self.host[..], self.port)
+                ).await.map_err(ClientConnectionError::with_source)?;
+                let host = if IpAddr::from_str(&self.host).is_ok() {
                     if !self.insecure_dev_mode && self.do_verify_hostname() {
                         return Err(ClientError::with_message(
                             "Cannot use `verify_hostname` or system \
                             root certificates with an IP address"));
                     }
-                    Cow::from(format!("{}.host-for-ip.edgedb.net", host)
+                    Cow::from(format!("{}.host-for-ip.edgedb.net", self.host)
                         .replace(":", "-"))  // for ipv6addr
                 } else {
-                    Cow::from(host)
+                    Cow::from(&self.host[..])
                 };
                 Ok(tls.connect(&host[..], conn).await.map_err(tls_fail)?)
             }
-            Addr(AddrImpl::Unix(path)) => {
+            Some(path) => {
                 #[cfg(windows)] {
                     return Err(ClientError::with_message(
                         "Unix socket are not supported on windows",
@@ -605,15 +884,6 @@ impl Builder {
     }
 }
 
-impl fmt::Display for Addr {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Addr(AddrImpl::Tcp(host, port)) => write!(f, "{}:{}", host, port),
-            Addr(AddrImpl::Unix(path)) => write!(f, "{}", path.display()),
-        }
-    }
-}
-
 async fn scram(seq: &mut Sequence<'_>, user: &str, password: &str)
     -> Result<(), Error>
 {
@@ -687,9 +957,10 @@ async fn scram(seq: &mut Sequence<'_>, user: &str, password: &str)
 
 #[test]
 fn read_credentials() {
-    let bld = async_std::task::block_on(
-        Builder::read_credentials("tests/credentials1.json")).unwrap();
-    assert!(matches!(bld.addr, Addr(AddrImpl::Tcp(_, x)) if x == 10702));
+    let mut bld = Builder::uninitialized();
+    async_std::task::block_on(
+        bld.read_credentials("tests/credentials1.json")).unwrap();
+    assert!(matches!(bld.port, 10702));
     assert_eq!(&bld.user, "test3n");
     assert_eq!(&bld.database, "test3n");
     assert_eq!(bld.password, Some("lZTBy1RVCfOpBAOwSCwIyBIR".into()));
@@ -697,51 +968,45 @@ fn read_credentials() {
 
 #[test]
 fn display() {
-    let mut bld = Builder::from_dsn("edgedb://localhost:1756").unwrap();
-    assert_eq!(bld.get_addr().to_string(), "localhost:1756");
-    bld.unix_addr("/test/my.sock");
-    assert_eq!(bld.get_addr().to_string(), "/test/my.sock");
-}
-
-#[test]
-fn get_addr() {
-    let mut bld = Builder::from_dsn("edgedb://localhost:1756").unwrap();
-    let (host, port) = bld.get_addr().get_tcp_addr().unwrap();
-    assert_eq!(*host, "localhost");
-    assert_eq!(*port, 1756);
-    assert!(bld.get_addr().get_unix_addr().is_none());
-
-    bld.unix_addr("/test/my.sock");
-    let unix = bld.get_addr().get_unix_addr().unwrap().display().to_string();
-    assert_eq!(unix, "/test/my.sock");
-    assert!(bld.get_addr().get_tcp_addr().is_none());
+    let mut bld = Builder::uninitialized();
+    bld.dsn("edgedb://localhost:1756").unwrap();
+    assert_eq!(bld.host, "localhost");
+    assert_eq!(bld.port, 1756);
+    bld.host("/test/my.sock");
+    assert_eq!(bld._get_unix_path(),
+               Some("/test/my.sock/.s.EDGEDB.1756".into()));
+    bld.host("/test/.s.EDGEDB.8888");
+    assert_eq!(bld._get_unix_path(), Some("/test/.s.EDGEDB.8888".into()));
 }
 
 #[test]
 fn from_dsn() {
-    let bld = Builder::from_dsn(
-        "edgedb://user1:EiPhohl7@edb-0134.elb.us-east-2.amazonaws.com/db2").unwrap();
-    assert!(matches!(bld.addr, Addr(AddrImpl::Tcp(h, p)) if
-        h == "edb-0134.elb.us-east-2.amazonaws.com" &&
-        p == 5656));
+    let mut bld = Builder::uninitialized();
+    bld.dsn(
+        "edgedb://user1:EiPhohl7@edb-0134.elb.us-east-2.amazonaws.com/db2"
+    ).unwrap();
+    assert_eq!(bld.host, "edb-0134.elb.us-east-2.amazonaws.com");
+    assert_eq!(bld.port, 5656);
     assert_eq!(&bld.user, "user1");
     assert_eq!(&bld.database, "db2");
     assert_eq!(bld.password, Some("EiPhohl7".into()));
 
-    let bld = Builder::from_dsn(
-        "edgedb://user2@edb-0134.elb.us-east-2.amazonaws.com:1756/db2").unwrap();
-    assert!(matches!(bld.addr, Addr(AddrImpl::Tcp(h, p)) if
-        h == "edb-0134.elb.us-east-2.amazonaws.com" &&
-        p == 1756));
+    let mut bld = Builder::uninitialized();
+    bld.dsn(
+        "edgedb://user2@edb-0134.elb.us-east-2.amazonaws.com:1756/db2"
+    ).unwrap();
+    assert_eq!(bld.host, "edb-0134.elb.us-east-2.amazonaws.com");
+    assert_eq!(bld.port, 1756);
     assert_eq!(&bld.user, "user2");
     assert_eq!(&bld.database, "db2");
     assert_eq!(bld.password, None);
 
-    let bld = Builder::from_dsn(
-        "edgedb://edb-0134.elb.us-east-2.amazonaws.com:1756").unwrap();
-    assert!(matches!(bld.addr, Addr(AddrImpl::Tcp(h, p)) if
-        h == "edb-0134.elb.us-east-2.amazonaws.com" &&
-        p == 1756));
+    // Tests overriding
+    bld.dsn(
+        "edgedb://edb-0134.elb.us-east-2.amazonaws.com:1756"
+    ).unwrap();
+    assert_eq!(bld.host, "edb-0134.elb.us-east-2.amazonaws.com");
+    assert_eq!(bld.port, 1756);
     assert_eq!(&bld.user, "edgedb");
     assert_eq!(&bld.database, "edgedb");
     assert_eq!(bld.password, None);

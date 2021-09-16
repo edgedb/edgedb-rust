@@ -149,6 +149,7 @@ define_errors![
     (struct PasswordRequired, 0x0701FF00u32, 0x00000000),
     (struct ClientInconsistentError, 0xFFFF0000u32, 0x00000000),
     (struct ClientEncodingError, 0xFFFE0000u32, 0x00000000),
+    (struct ClientNoCredentialsError, 0xFF0101FFu32, 0x00000000),
     (struct ClientConnectionEosError, 0xFF01FF00u32, 0x00000000),
     (struct NoResultExpected, 0xFF02FF00u32, 0x00000000),
     (struct DescriptorMismatch, 0xFF02FE00u32, 0x00000000),
