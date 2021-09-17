@@ -32,3 +32,4 @@ dirs = "3.0.0"
 [features]
 default = []
 admin_socket = []
+unstable = []  # features for CLI

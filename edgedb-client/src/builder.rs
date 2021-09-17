@@ -607,7 +607,14 @@ impl Builder {
         self
     }
 
+    #[cfg(feature="unstable")]
     pub async fn connect_with_cert_verifier(
+        &self, cert_verifier: Arc<dyn ServerCertVerifier>
+    ) -> Result<Connection, Error> {
+        self._connect_with_cert_verifier(cert_verifier).await
+    }
+
+    pub async fn _connect_with_cert_verifier(
         &self, cert_verifier: Arc<dyn ServerCertVerifier>
     ) -> Result<Connection, Error> {
         if !self.initialized {
@@ -616,7 +623,7 @@ impl Builder {
                 Run `edgedb project init` or use environment variables \
                 to configure connection."));
         }
-        self._connect_with_cert_verifier(cert_verifier).await.map_err(|e| {
+        self.do_connect(cert_verifier).await.map_err(|e| {
             if e.is::<ClientConnectionError>() {
                 e.refine_kind::<ClientConnectionFailedError>()
             } else {
@@ -653,7 +660,7 @@ impl Builder {
         }
     }
 
-    async fn _connect_with_cert_verifier(
+    async fn do_connect(
         &self, cert_verifier: Arc<dyn ServerCertVerifier>
     ) -> Result<Connection, Error> {
         let tls = tls::connector(&self.cert, cert_verifier).map_err(tls_fail)?;
@@ -698,11 +705,19 @@ impl Builder {
     }
     pub async fn connect(&self) -> Result<Connection, Error> {
         if self.insecure_dev_mode {
-            self.connect_with_cert_verifier(Arc::new(tls::NullVerifier)).await
+            self._connect_with_cert_verifier(Arc::new(tls::NullVerifier)).await
         } else {
-            self.connect_with_cert_verifier(Arc::new(tls::CertVerifier::new(
-                self.do_verify_hostname()
-            ))).await
+            let verify_host = self.do_verify_hostname();
+            if verify_host && IpAddr::from_str(&self.host).is_ok() {
+                // FIXME: https://github.com/rustls/rustls/issues/184
+                // When rustls issue ix fixed we may lift this limitation
+                return Err(ClientError::with_message(
+                    "Cannot use `verify_hostname` or system \
+                    root certificates with an IP address"));
+            }
+            self._connect_with_cert_verifier(
+                Arc::new(tls::CertVerifier::new(verify_host))
+            ).await
         }
     }
     async fn _connect(&self, tls: &TlsConnectorBox, warned: &mut bool)
@@ -745,11 +760,7 @@ impl Builder {
                     &(&self.host[..], self.port)
                 ).await.map_err(ClientConnectionError::with_source)?;
                 let host = if IpAddr::from_str(&self.host).is_ok() {
-                    if !self.insecure_dev_mode && self.do_verify_hostname() {
-                        return Err(ClientError::with_message(
-                            "Cannot use `verify_hostname` or system \
-                            root certificates with an IP address"));
-                    }
+                    // FIXME: https://github.com/rustls/rustls/issues/184
                     Cow::from(format!("{}.host-for-ip.edgedb.net", self.host)
                         .replace(":", "-"))  // for ipv6addr
                 } else {
