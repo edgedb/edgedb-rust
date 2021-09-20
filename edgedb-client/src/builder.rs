@@ -316,25 +316,14 @@ impl Builder {
                 e.context("cannot parse env var EDGEDB_DNS"))?;
         }
         if let Some(host) = get_env("EDGEDB_HOST")? {
-            self.host = host;
+            self.host(host);
         }
         if let Some(port) = get_env("EDGEDB_PORT")? {
-            if let Some(pair) = port.strip_prefix("tcp://") {
-                if let Some((host, port)) = pair.split_once(":") {
-                    self.host = host.into();
-                    self.port = port.parse().map_err(|e| {
-                        ClientError::with_source(e).context(
-                            "cannot parse port in Docker URI: EDGEDB_PORT")
-                    })?;
-                } else {
-                    ClientError::with_message(
-                        "port not found in Docker URI: EDGEDB_PORT");
-                }
-            } else {
-                self.port = port.parse().map_err(|e| {
-                    ClientError::with_source(e)
-                    .context("cannot parse env var EDGEDB_PORT")
-                })?;
+            let port = port.parse().map_err(|e| {
+                log::warn!("cannot parse env var EDGEDB_PORT: {}", e)
+            }).ok();
+            if let Some(port) = port {
+                self.port(port);
             }
         }
         if let Some(database) = get_env("EDGEDB_DATABASE")? {
