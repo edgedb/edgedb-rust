@@ -35,6 +35,7 @@ use crate::reader::{self, QueryResponse, Reader};
 use crate::server_params::ServerParam;
 
 
+#[derive(Debug)]
 /// A single connection to the EdgeDB
 pub struct Connection {
     pub(crate) input: ReadHalf<TlsStream>,
@@ -51,8 +52,8 @@ pub struct Sequence<'a> {
     pub writer: Writer<'a>,
     pub reader: Reader<'a>,
     pub(crate) active: bool,
-    dirty: &'a mut bool,
-    proto: &'a ProtocolVersion,
+    pub(crate) dirty: &'a mut bool,
+    pub(crate) proto: &'a ProtocolVersion,
 }
 
 
@@ -60,6 +61,29 @@ pub struct Writer<'a> {
     stream: &'a mut WriteHalf<TlsStream>,
     proto: &'a ProtocolVersion,
     outbuf: &'a mut BytesMut,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct StatementBuilder {
+    pub io_format: IoFormat,
+    pub cardinality: Cardinality,
+}
+
+impl StatementBuilder {
+    pub fn new() -> StatementBuilder {
+        StatementBuilder {
+            io_format: IoFormat::Binary,
+            cardinality: Cardinality::Many,
+        }
+    }
+    pub fn io_format(&mut self, fmt: IoFormat) -> &mut Self {
+        self.io_format = fmt;
+        self
+    }
+    pub fn cardinality(&mut self, card: Cardinality) -> &mut Self {
+        self.cardinality = card;
+        self
+    }
 }
 
 
@@ -222,9 +246,10 @@ impl<'a> Sequence<'a> {
         Ok(status)
     }
 
-    async fn _query<A: QueryArgs>(&mut self, request: &str, arguments: &A,
-        io_format: IoFormat)
+    pub(crate)  async fn _query<A>(&mut self, request: &str, arguments: &A,
+        bld: &StatementBuilder)
         -> Result<OutputTypedesc, Error>
+        where A: QueryArgs,
     {
         assert!(self.active);  // TODO(tailhook) maybe debug_assert
         let statement_name = Bytes::from_static(b"");
@@ -232,8 +257,8 @@ impl<'a> Sequence<'a> {
         self.send_messages(&[
             ClientMessage::Prepare(Prepare {
                 headers: HashMap::new(),
-                io_format,
-                expected_cardinality: Cardinality::Many,
+                io_format: bld.io_format,
+                expected_cardinality: bld.cardinality,
                 statement_name: statement_name.clone(),
                 command_text: String::from(request),
             }),
@@ -341,7 +366,10 @@ impl Connection {
               A: QueryArgs,
     {
         let mut seq = self.start_sequence().await?;
-        let desc = seq._query(request, arguments, IoFormat::Binary).await?;
+        let desc = seq._query(
+            request, arguments,
+            &StatementBuilder::new(),
+        ).await?;
         match desc.root_pos() {
             Some(root_pos) => {
                 let mut ctx = desc.as_queryable_context();
@@ -400,7 +428,10 @@ impl Connection {
         where A: QueryArgs,
     {
         let mut seq = self.start_sequence().await?;
-        let desc = seq._query(request, arguments, IoFormat::Json).await?;
+        let desc = seq._query(
+            request, arguments,
+            &StatementBuilder::new().io_format(IoFormat::Json),
+        ).await?;
         match desc.root_pos() {
             Some(root_pos) => {
                 let mut ctx = desc.as_queryable_context();
@@ -422,8 +453,10 @@ impl Connection {
         where A: QueryArgs,
     {
         let mut seq = self.start_sequence().await?;
-        let desc = seq._query(request, arguments,
-            IoFormat::JsonElements).await?;
+        let desc = seq._query(
+            request, arguments,
+            &StatementBuilder::new().io_format(IoFormat::JsonElements),
+        ).await?;
         match desc.root_pos() {
             Some(root_pos) => {
                 let mut ctx = desc.as_queryable_context();
@@ -446,7 +479,7 @@ impl Connection {
         where A: QueryArgs,
     {
         let mut seq = self.start_sequence().await?;
-        seq._query(request, arguments, IoFormat::Binary).await?;
+        seq._query(request, arguments, &StatementBuilder::new()).await?;
         return seq._process_exec().await;
     }
 
