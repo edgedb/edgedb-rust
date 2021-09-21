@@ -45,6 +45,8 @@ use crate::tls;
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub const DEFAULT_WAIT: Duration = Duration::from_secs(30);
 pub const DEFAULT_POOL_SIZE: usize = 10;
+pub const DEFAULT_HOST: &str = "127.0.0.1";
+pub const DEFAULT_PORT: u16 = 5656;
 
 
 /// A builder used to create connections
@@ -163,6 +165,21 @@ fn get_env(name: &str) -> Result<Option<String>, Error> {
                    format!("Cannot decode environment variable {:?}", name))
             )
         }
+    }
+}
+
+fn get_host_port() -> Result<Option<(Option<String>, Option<u16>)>, Error> {
+    let host = get_env("EDGEDB_HOST")?;
+    let port = get_env("EDGEDB_PORT")?.map(|port| {
+        port.parse().map_err(|e| {
+            ClientError::with_source(e)
+                .context("cannot parse env var EDGEDB_PORT")
+        })
+    }).transpose()?;
+    if host.is_some() || port.is_some() {
+        Ok(Some((host, port)))
+    } else {
+        Ok(None)
     }
 }
 
@@ -311,24 +328,15 @@ impl Builder {
         self.initialized
     }
     pub async fn read_env_vars(&mut self) -> Result<&mut Self, Error> {
-        if let Some(path) = get_env("EDGEDB_CREDENTIALS_FILE")? {
+        if let Some((host, port)) = get_host_port()? {
+            self.host_port(host, port);
+        } else if let Some(path) = get_env("EDGEDB_CREDENTIALS_FILE")? {
             self.read_credentials(path).await?;
         } else if let Some(instance) = get_env("EDGEDB_INSTANCE")? {
             self.read_instance(&instance).await?;
         } else if let Some(dsn) = get_env("EDGEDB_DSN")? {
             self.dsn(&dsn).map_err(|e|
                 e.context("cannot parse env var EDGEDB_DNS"))?;
-        }
-        if let Some(host) = get_env("EDGEDB_HOST")? {
-            self.host(host);
-        }
-        if let Some(port) = get_env("EDGEDB_PORT")? {
-            let port = port.parse().map_err(|e| {
-                log::warn!("cannot parse env var EDGEDB_PORT: {}", e)
-            }).ok();
-            if let Some(port) = port {
-                self.port(port);
-            }
         }
         if let Some(database) = get_env("EDGEDB_DATABASE")? {
             self.database = database;
@@ -374,10 +382,11 @@ impl Builder {
         } else {
             pem = None;
         }
+        self.reset_compound();
         *self = Builder {
             // replace all of them
             host: credentials.host.clone()
-                .unwrap_or_else(|| "localhost".into()),
+                .unwrap_or_else(|| DEFAULT_HOST.into()),
             port: credentials.port,
             admin: false,
             user: credentials.user.clone(),
@@ -389,12 +398,7 @@ impl Builder {
             pem,
 
             initialized: true,
-            // keep old values
-            wait: self.wait,
-            connect_timeout: self.connect_timeout,
-            insecure_dev_mode: self.insecure_dev_mode,
-
-            max_connections: self.max_connections,
+            ..*self
         };
         Ok(self)
     }
@@ -439,8 +443,8 @@ impl Builder {
                 .context(format!("cannot parse DSN {:?}", dsn)))?;
         *self = Builder {
             // replace all of them
-            host: url.host_str().unwrap_or("127.0.0.1").to_owned(),
-            port: url.port().unwrap_or(5656),
+            host: url.host_str().unwrap_or(DEFAULT_HOST).to_owned(),
+            port: url.port().unwrap_or(DEFAULT_PORT),
             admin: admin,
             user: if url.username().is_empty() {
                 "edgedb".to_owned()
@@ -455,12 +459,7 @@ impl Builder {
             pem: None,
 
             initialized: true,
-            // keep old values
-            wait: self.wait,
-            connect_timeout: self.connect_timeout,
-            insecure_dev_mode: self.insecure_dev_mode,
-
-            max_connections: self.max_connections,
+            ..*self
         };
         Ok(self)
     }
@@ -472,22 +471,45 @@ impl Builder {
     /// Usually `Builder::from_env()` should be used instead.
     pub fn uninitialized() -> Builder {
         Builder {
-            host: "127.0.0.1".into(),
-            port: 5656,
+            host: DEFAULT_HOST.into(),
+            port: DEFAULT_PORT,
             admin: false,
             user: "edgedb".into(),
             password: None,
             database: "edgedb".into(),
-            wait: DEFAULT_WAIT,
-            connect_timeout: DEFAULT_CONNECT_TIMEOUT,
+            verify_hostname: None,
             cert: rustls::RootCertStore::empty(),
             pem: None,
-            verify_hostname: None,
+
+            wait: DEFAULT_WAIT,
+            connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             initialized: false,
             insecure_dev_mode: false,
 
             max_connections: DEFAULT_POOL_SIZE,
         }
+    }
+    fn reset_compound(&mut self) {
+        *self = Builder {
+            // replace all of them
+            host: DEFAULT_HOST.into(),
+            port: DEFAULT_PORT.into(),
+            admin: false,
+            user: "edgedb".into(),
+            password: None,
+            database: "edgedb".into(),
+            verify_hostname: None,
+            cert: rustls::RootCertStore::empty(),
+            pem: None,
+
+            initialized: false,
+            // keep old values
+            wait: self.wait,
+            connect_timeout: self.connect_timeout,
+            insecure_dev_mode: self.insecure_dev_mode,
+
+            max_connections: self.max_connections,
+        };
     }
     pub fn as_credentials(&self) -> Result<Credentials, Error> {
         Ok(Credentials {
@@ -510,20 +532,16 @@ impl Builder {
     pub fn get_host(&self) -> &str {
         &self.host
     }
-    pub fn host(&mut self, host: impl Into<String>)
-        -> &mut Self
-    {
-        self.host = host.into();
-        self.initialized = true;
-        self
-    }
     pub fn get_port(&self) -> u16 {
         self.port
     }
-    pub fn port(&mut self, port: u16)
+    pub fn host_port(&mut self,
+        host: Option<impl Into<String>>, port: Option<u16>)
         -> &mut Self
     {
-        self.port = port;
+        self.reset_compound();
+        self.host = host.map_or_else(|| DEFAULT_HOST.into(), |h| h.into());
+        self.port = port.unwrap_or(DEFAULT_PORT);
         self.initialized = true;
         self
     }
@@ -989,10 +1007,10 @@ fn display() {
     bld.dsn("edgedb://localhost:1756").unwrap();
     assert_eq!(bld.host, "localhost");
     assert_eq!(bld.port, 1756);
-    bld.host("/test/my.sock");
+    bld.host_port(Some("/test/my.sock"), None);
     assert_eq!(bld._get_unix_path(),
-               Some("/test/my.sock/.s.EDGEDB.1756".into()));
-    bld.host("/test/.s.EDGEDB.8888");
+               Some("/test/my.sock/.s.EDGEDB.5656".into()));
+    bld.host_port(Some("/test/.s.EDGEDB.8888"), None);
     assert_eq!(bld._get_unix_path(), Some("/test/.s.EDGEDB.8888".into()));
 }
 
@@ -1003,7 +1021,7 @@ fn from_dsn() {
         "edgedb://user1:EiPhohl7@edb-0134.elb.us-east-2.amazonaws.com/db2"
     ).unwrap();
     assert_eq!(bld.host, "edb-0134.elb.us-east-2.amazonaws.com");
-    assert_eq!(bld.port, 5656);
+    assert_eq!(bld.port, DEFAULT_PORT);
     assert_eq!(&bld.user, "user1");
     assert_eq!(&bld.database, "db2");
     assert_eq!(bld.password, Some("EiPhohl7".into()));
