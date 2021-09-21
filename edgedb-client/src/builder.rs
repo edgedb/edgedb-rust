@@ -45,7 +45,7 @@ use crate::tls;
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub const DEFAULT_WAIT: Duration = Duration::from_secs(30);
 pub const DEFAULT_POOL_SIZE: usize = 10;
-pub const DEFAULT_HOST: &str = "127.0.0.1";
+pub const DEFAULT_HOST: &str = "localhost";
 pub const DEFAULT_PORT: u16 = 5656;
 
 
