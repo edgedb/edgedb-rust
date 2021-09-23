@@ -168,9 +168,28 @@ fn get_env(name: &str) -> Result<Option<String>, Error> {
     }
 }
 
+fn get_port_env() -> Result<Option<String>, Error> {
+    static PORT_WARN: std::sync::Once = std::sync::Once::new();
+
+    let port = get_env("EDGEDB_PORT")?;
+    if let Some(port) = &port {
+        // ignore port if it's docker-specified string
+        if port.starts_with("tcp://") {
+
+            PORT_WARN.call_once(|| {
+                log::warn!("Environment variable `EDGEDB_PORT` contains \
+                           docker-link-like definition. Ingoring...");
+            });
+
+            return Ok(None);
+        }
+    }
+    Ok(port)
+}
+
 fn get_host_port() -> Result<Option<(Option<String>, Option<u16>)>, Error> {
     let host = get_env("EDGEDB_HOST")?;
-    let port = get_env("EDGEDB_PORT")?.map(|port| {
+    let port = get_port_env()?.map(|port| {
         port.parse().map_err(|e| {
             ClientError::with_source(e)
                 .context("cannot parse env var EDGEDB_PORT")
@@ -263,7 +282,9 @@ impl Builder {
         let mut builder = Builder::uninitialized();
 
         // optimize discovering project if defined by environment variable
-        if get_env("EDGEDB_INSTANCE")?.is_none() &&
+        if get_env("EDGEDB_HOST")?.is_none() &&
+           get_port_env()?.is_none() &&
+           get_env("EDGEDB_INSTANCE")?.is_none() &&
            get_env("EDGEDB_DSN")?.is_none() &&
            get_env("EDGEDB_CONFIGURATION_FILE")?.is_none()
         {
