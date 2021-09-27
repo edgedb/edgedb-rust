@@ -37,6 +37,23 @@ pub trait Sealed {
     async fn query_dynamic(&mut self, query: &dyn GenericQuery)
         -> Result<GenericResult, Error>;
 }
+
+/// Main trait that allows executing queries
+///
+/// Note comparing to [Pool][] this trait has `&mut self` for query methods.
+/// This is because we need to support [Executor][] for a transaction.
+/// To overcome this issue for [Pool][] you can either use inherent methods on
+/// pool rather than this trait or just clone it (cloning [Pool][] is cheap):
+///
+/// ```rust,ignore
+/// do_query(&mut global_pool_reference.clone())?;
+/// ```
+/// Note: due to limitations of Rust type system, the query methods are
+/// part of inherent implementation for `dyn Executor` itself, not in the trait
+/// itself. This should not be a problem in most cases.
+///
+/// This trait is sealed (no imlementation can be done outside of this crate),
+/// since we don't want to expose too much implementation details for now.
 pub trait Executor: Sealed {
 }
 
@@ -54,6 +71,19 @@ impl Sealed for Pool {
 impl Executor for Pool {}
 
 impl dyn Executor + '_ {
+    /// Execute a query returning a list of arguments
+    ///
+    /// Most of the times you have to specify return type for the query:
+    ///
+    /// ```rust,ignore
+    /// let greeting = pool.query::<String, _>("SELECT 'hello'", &());
+    /// // or
+    /// let greeting: Vec<String> = pool.query("SELECT 'hello'", &());
+    /// ```
+    ///
+    /// This method can be used both with static arguments, like a tuple of
+    /// scalars. And with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// Similarly dynamically typed results are also suported.
     pub async fn query<R, A>(&mut self, query: &str, arguments: &A)
         -> Result<Vec<R>, Error>
         where A: QueryArgs,

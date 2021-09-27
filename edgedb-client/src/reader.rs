@@ -1,3 +1,5 @@
+#![cfg_attr(not(feature="unstable"), allow(dead_code))]
+
 use std::cmp::{min, max};
 use std::convert::TryInto;
 use std::future::{Future};

@@ -1,3 +1,5 @@
+#![cfg_attr(not(feature="unstable"), allow(dead_code))]
+
 use std::collections::HashMap;
 use std::fmt;
 use std::str;

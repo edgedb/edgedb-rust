@@ -2,12 +2,17 @@ use async_std::channel::unbounded;
 use async_std::task;
 use async_std::sync::{Arc, Mutex, MutexGuard};
 
+use edgedb_protocol::QueryResult;
+use edgedb_protocol::client_message::{IoFormat, Cardinality};
+use edgedb_protocol::query_arg::QueryArgs;
+use edgedb_protocol::value::Value;
+
 use crate::builder::Builder;
-use crate::client::Connection;
-use crate::errors::Error;
+use crate::client::{Connection, StatementParams};
+use crate::errors::{Error, ErrorKind, NoDataError, NoResultExpected};
 use crate::pool::command::Command;
-use crate::pool::main;
 use crate::pool::{Pool, PoolInner, PoolState, PoolConn, Options};
+use crate::pool::{main, ExecuteResult};
 
 pub enum InProgressState {
     Connecting,
@@ -52,7 +57,25 @@ impl Drop for InProgress {
     }
 }
 
+impl PoolInner {
+    async fn query<R, A>(self: &Arc<Self>, request: &str, arguments: &A,
+        bld: &StatementParams)
+        -> Result<Vec<R>, Error>
+        where A: QueryArgs,
+              R: QueryResult,
+    {
+        // TODO(tailhook) retry loop
+        let mut conn = self.acquire().await?;
+        conn.query(request, arguments, bld).await
+    }
+}
+
 impl Pool {
+    /// Create a new connection pool
+    ///
+    /// Note this does not create any connection immediately.
+    /// Use [`ensure_connection()`][Pool::ensure_connected] to establish a
+    /// connection and verify that connection credentials are okay.
     pub fn new(builder: Builder) -> Pool {
         let (chan, rcv) = unbounded();
         let state = Arc::new(PoolState::new(builder));
@@ -65,6 +88,142 @@ impl Pool {
                 task,
                 state,
             }),
+        }
+    }
+
+    /// Start shutting down connection pool
+    ///
+    /// Note: this waits for all connections to be released when called on
+    /// the first call. But if multiple calls are executed concurrently only
+    /// the first one will wait (subsequent ones will exit immediately).
+    pub async fn close(&self) {
+        self.inner.chan.send(Command::Close).await.ok();
+        if let Some(task) = self.inner.task.lock().await.take() {
+            task.await;
+        }
+    }
+
+    /// Ensure that there is at least one working connection to the pool
+    ///
+    /// This is often used at the start of the application to error out on
+    /// invalid connection configuration earlier.
+    pub async fn ensure_connected(&self) -> Result<(), Error> {
+        self.inner.acquire().await?;
+        Ok(())
+    }
+
+    /// Execute a query returning a collection of results
+    ///
+    /// Most of the times you have to specify return type for the query:
+    ///
+    /// ```rust,ignore
+    /// let greeting = pool.query::<String, _>("SELECT 'hello'", &());
+    /// // or
+    /// let greeting: Vec<String> = pool.query("SELECT 'hello'", &());
+    /// ```
+    ///
+    /// This method can be used both with static arguments, like a tuple of
+    /// scalars. And with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// Similarly dynamically typed results are also suported.
+    pub async fn query<R, A>(&self, request: &str, arguments: &A)
+        -> Result<Vec<R>, Error>
+        where A: QueryArgs,
+              R: QueryResult,
+    {
+        self.inner.query(request, arguments, &StatementParams::new()).await
+    }
+
+    /// Execute a query returning a single result
+    ///
+    /// Most of the times you have to specify return type for the query:
+    ///
+    /// ```rust,ignore
+    /// let greeting = pool.query::<String, _>("SELECT 'hello'", &());
+    /// // or
+    /// let greeting: String = pool.query("SELECT 'hello'", &());
+    /// ```
+    ///
+    /// The query must return exactly one element. If the query returns more
+    /// than one element, an
+    /// [`ResultCardinalityMismatchError`][crate::errors::ResultCardinalityMismatchError]
+    /// is raised, if it returns an empty set, an
+    /// [`NoDataError`][crate::errors::NoDataError] is raised.
+    ///
+    /// This method can be used both with static arguments, like a tuple of
+    /// scalars. And with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// Similarly dynamically typed results are also suported.
+    pub async fn query_single<R, A>(&self, request: &str, arguments: &A)
+        -> Result<R, Error>
+        where A: QueryArgs,
+              R: QueryResult,
+    {
+        let result = self.inner.query(request, arguments,
+            StatementParams::new()
+            .cardinality(Cardinality::AtMostOne)
+        ).await?;
+        result.into_iter().next()
+            .ok_or_else(|| {
+                NoDataError::with_message("query row returned zero results")
+            })
+    }
+
+    /// Execute a query returning result as a JSON
+    pub async fn query_json<A>(&self, request: &str, arguments: &A)
+        -> Result<String, Error>
+        where A: QueryArgs,
+    {
+        let result = self.inner.query(request, arguments,
+            StatementParams::new()
+            .io_format(IoFormat::Json),
+        ).await?;
+        result.into_iter().next()
+            .ok_or_else(|| {
+                NoDataError::with_message("query row returned zero results")
+            })
+    }
+
+    /// Run a singleton-returning query and return its element in JSON
+    ///
+    /// The query must return exactly one element. If the query returns more
+    /// than one element, an
+    /// [`ResultCardinalityMismatchError`][crate::errors::ResultCardinalityMismatchError]
+    /// is raised, if it returns an empty set, an
+    /// [`NoDataError`][crate::errors::NoDataError] is raised.
+    pub async fn query_single_json<A>(&self, request: &str, arguments: &A)
+        -> Result<String, Error>
+        where A: QueryArgs,
+    {
+        let result = self.inner.query(request, arguments,
+            StatementParams::new()
+            .io_format(IoFormat::Json)
+            .cardinality(Cardinality::AtMostOne)
+        ).await?;
+        result.into_iter().next()
+            .ok_or_else(|| {
+                NoDataError::with_message("query row returned zero results")
+            })
+    }
+    /// Execute an EdgeQL command (or commands).
+    ///
+    /// Note: If the results of query are desired, [`query()`][Pool::query] or
+    /// [`query_single()`][Pool::query_single] should be used instead.
+    pub async fn execute<A>(&self, request: &str, arguments: &A)
+        -> Result<Option<ExecuteResult>, Error>
+        where A: QueryArgs,
+    {
+        let result = self.inner.query::<Value, _>(request, arguments,
+                StatementParams::new()
+                .cardinality(Cardinality::NoResult)
+            ).await;
+        match result {
+            Ok(_) => Ok(None),
+            Err(e) if e.is::<NoResultExpected>() => {
+                match e.initial_message() {
+                    Some(m) => Ok(Some(ExecuteResult { marker: m.into() })),
+                    None => Ok(None),
+                }
+            }
+            Err(e) => return Err(e),
         }
     }
 }
@@ -81,7 +240,7 @@ impl PoolInner {
             let in_pool = inner.in_progress + inner.acquired_conns;
             if in_pool < self.state.config.max_connections {
                 let guard = InProgress::new(inner, self);
-                let conn = self.state.config.connect().await?;
+                let conn = self.state.config.private_connect().await?;
                 // Make sure that connection is wrapped before we commit,
                 // so that connection is returned into a pool if we fail
                 // to commit because of async stuff
@@ -103,16 +262,5 @@ impl Drop for PoolInner {
         // somebody is currently waiting for pool to be closed, which is fine.
         self.task.try_lock()
             .and_then(|mut task| task.take().map(|t| t.cancel()));
-    }
-}
-
-impl Pool {
-    // TODO(tailhook) this currently awaits for close only on the first
-    // close call. Subsequent parallel calls will exit early.
-    pub async fn close(&self) {
-        self.inner.chan.send(Command::Close).await.ok();
-        if let Some(task) = self.inner.task.lock().await.take() {
-            task.await;
-        }
     }
 }
