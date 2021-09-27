@@ -9,7 +9,7 @@ use edgedb_protocol::client_message::{IoFormat, Cardinality};
 use edgedb_protocol::query_arg::QueryArgs;
 use edgedb_protocol::value::Value;
 
-use crate::client::StatementBuilder;
+use crate::client::StatementParams;
 use crate::errors::{Error, ErrorKind, NoDataError, NoResultExpected};
 
 mod command;
@@ -40,7 +40,7 @@ pub(crate) struct PoolInner {
 #[derive(Debug, Clone)]
 pub struct Pool {
     options: Arc<Options>,
-    inner: Arc<PoolInner>,
+    pub(crate) inner: Arc<PoolInner>,
 }
 
 #[derive(Debug, Clone)]
@@ -50,7 +50,7 @@ pub struct ExecuteResult {
 
 impl PoolInner {
     async fn query<R, A>(self: &Arc<Self>, request: &str, arguments: &A,
-        bld: &StatementBuilder)
+        bld: &StatementParams)
         -> Result<Vec<R>, Error>
         where A: QueryArgs,
               R: QueryResult,
@@ -73,7 +73,7 @@ impl Pool {
         where A: QueryArgs,
               R: QueryResult,
     {
-        self.inner.query(request, arguments, &StatementBuilder::new()).await
+        self.inner.query(request, arguments, &StatementParams::new()).await
     }
 
     pub async fn query_single<R, A>(&self, request: &str, arguments: &A)
@@ -82,8 +82,8 @@ impl Pool {
               R: QueryResult,
     {
         let result = self.inner.query(request, arguments,
-            StatementBuilder::new()
-            .cardinality(Cardinality::NoResult)
+            StatementParams::new()
+            .cardinality(Cardinality::AtMostOne)
         ).await?;
         result.into_iter().next()
             .ok_or_else(|| {
@@ -96,7 +96,7 @@ impl Pool {
         where A: QueryArgs,
     {
         let result = self.inner.query(request, arguments,
-            StatementBuilder::new()
+            StatementParams::new()
             .io_format(IoFormat::Json),
         ).await?;
         result.into_iter().next()
@@ -110,9 +110,9 @@ impl Pool {
         where A: QueryArgs,
     {
         let result = self.inner.query(request, arguments,
-            StatementBuilder::new()
+            StatementParams::new()
             .io_format(IoFormat::Json)
-            .cardinality(Cardinality::One)
+            .cardinality(Cardinality::AtMostOne)
         ).await?;
         result.into_iter().next()
             .ok_or_else(|| {
@@ -125,8 +125,7 @@ impl Pool {
         where A: QueryArgs,
     {
         let result = self.inner.query::<Value, _>(request, arguments,
-                StatementBuilder::new()
-                .io_format(IoFormat::Json)
+                StatementParams::new()
                 .cardinality(Cardinality::NoResult)
             ).await;
         match result {

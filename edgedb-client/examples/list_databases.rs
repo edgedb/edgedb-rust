@@ -8,7 +8,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let pool = edgedb_client::connect().await?;
         pool.query("SELECT name := sys::Database.name", &()).await
     })?;
-    println!("Databases, including builtin ones:");
+    println!("Database list:");
     for db in databases {
         println!("{}", db);
     }

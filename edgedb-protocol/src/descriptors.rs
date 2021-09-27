@@ -32,6 +32,7 @@ pub enum Descriptor {
 }
 
 pub struct OutputTypedesc {
+    pub(crate) proto: ProtocolVersion,
     pub(crate) array: Vec<Descriptor>,
     #[allow(dead_code)] // TODO
     pub(crate) root_id: Uuid,
@@ -119,7 +120,9 @@ pub struct TypeAnnotationDescriptor {
 
 impl OutputTypedesc {
     pub fn as_queryable_context(&self) -> queryable::DescriptorContext {
-        queryable::DescriptorContext::new(self.descriptors())
+        let mut ctx = queryable::DescriptorContext::new(self.descriptors());
+        ctx.has_implicit_tid = self.proto.has_implicit_tid();
+        ctx
     }
     pub fn descriptors(&self) -> &[Descriptor] {
         &self.array

@@ -194,7 +194,12 @@ impl CommandDataDescription {
                 .context(errors::TooManyDescriptors { index: idx })?;
             Some(TypePos(pos))
         };
-        Ok(OutputTypedesc { array: descriptors, root_id, root_pos })
+        Ok(OutputTypedesc {
+            proto: self.proto.clone(),
+            array: descriptors,
+            root_id,
+            root_pos,
+        })
     }
     pub fn input(&self) -> Result<InputTypedesc, DecodeError> {
         let ref mut cur = Input::new(

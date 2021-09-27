@@ -6,8 +6,9 @@ use edgedb_protocol::QueryResult;
 use edgedb_protocol::query_arg::QueryArgs;
 
 use crate::errors::{Error, ErrorKind, NoResultExpected};
-use crate::client::{Connection, StatementBuilder};
+use crate::client::{Connection, StatementParams};
 use crate::pool::PoolInner;
+use crate::traits::{GenericQuery, GenericResult};
 
 
 pub(crate) struct PoolConn {
@@ -17,7 +18,7 @@ pub(crate) struct PoolConn {
 
 impl PoolConn {
     pub async fn query<R, A>(&mut self, request: &str, arguments: &A,
-        bld: &StatementBuilder)
+        bld: &StatementParams)
         -> Result<Vec<R>, Error>
         where A: QueryArgs,
               R: QueryResult,
@@ -26,8 +27,7 @@ impl PoolConn {
         let desc = seq._query(request, arguments, bld).await?;
         match desc.root_pos() {
             Some(root_pos) => {
-                let mut ctx = desc.as_queryable_context();
-                ctx.has_implicit_tid = seq.proto.has_implicit_tid();
+                let ctx = desc.as_queryable_context();
                 let state = R::prepare(&ctx, root_pos)?;
 
                 let mut items = seq.response(state);
@@ -43,6 +43,29 @@ impl PoolConn {
                     String::from_utf8_lossy(&completion_message[..])
                     .to_string()))?
             }
+        }
+    }
+
+    pub async fn query_dynamic(&mut self, query: &dyn GenericQuery)
+        -> Result<GenericResult, Error>
+    {
+        let mut seq = self.conn.as_mut().unwrap().start_sequence().await?;
+        let desc = seq._query(query.query(),
+                              query.arguments(), query.params()).await?;
+        if desc.root_pos().is_some() {
+            let (data, completion) = seq.response_blobs().await?;
+            Ok(GenericResult {
+                descriptor: desc,
+                data,
+                completion,
+            })
+        } else {
+            let completion_message = seq._process_exec().await?;
+            Ok(GenericResult {
+                descriptor: desc,
+                data: Vec::new(),
+                completion: completion_message,
+            })
         }
     }
 }

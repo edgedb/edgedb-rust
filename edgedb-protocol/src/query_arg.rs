@@ -21,21 +21,21 @@ pub struct Encoder<'a> {
     pub(crate) buf: &'a mut BytesMut,
 }
 
-pub trait QueryArg: Sized {
+pub trait QueryArg: Send + Sync + Sized {
     fn encode_slot(&self, encoder: &mut Encoder)
         -> Result<(), Error>;
     fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
         -> Result<(), Error>;
 }
 
-pub trait ScalarArg: Sized {
+pub trait ScalarArg: Send + Sync + Sized {
     fn encode(&self, encoder: &mut Encoder)
         -> Result<(), Error>;
     fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
         -> Result<(), Error>;
 }
 
-pub trait QueryArgs: Sized {
+pub trait QueryArgs: Send + Sync {
     fn encode(&self, encoder: &mut Encoder)
         -> Result<(), Error>;
 }
