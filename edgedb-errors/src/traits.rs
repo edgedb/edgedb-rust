@@ -37,7 +37,7 @@ pub trait ErrorKind: Sealed {
     }
 }
 
-pub trait ResultExt<T, E> {
+pub trait ResultExt<T> {
     fn context<C>(self, context: C) -> Result<T, Error>
         where C: Into<Cow<'static, str>>;
     fn with_context<C, F>(self, f: F) -> Result<T, Error>
@@ -45,7 +45,7 @@ pub trait ResultExt<T, E> {
               F: FnOnce() -> C;
 }
 
-impl<T> ResultExt<T, Error> for Result<T, Error> {
+impl<T> ResultExt<T> for Result<T, Error> {
     fn context<C>(self, context: C) -> Result<T, Error>
         where C: Into<Cow<'static, str>>
     {

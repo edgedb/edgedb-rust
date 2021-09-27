@@ -38,7 +38,7 @@ use crate::errors::{ClientConnectionError, ProtocolError, ProtocolTlsError};
 use crate::errors::{ClientConnectionFailedError, AuthenticationError};
 use crate::errors::{ClientError, ClientConnectionFailedTemporarilyError};
 use crate::errors::{ClientNoCredentialsError};
-use crate::errors::{Error, ErrorKind, ResultExt, PasswordRequired};
+use crate::errors::{Error, ErrorKind, PasswordRequired};
 use crate::server_params::PostgresAddress;
 use crate::tls;
 
@@ -218,13 +218,13 @@ pub async fn search_dir(base: &AsyncPath) -> Result<Option<&AsyncPath>, Error>
 }
 
 #[cfg(unix)]
-pub fn path_bytes<'x>(path: &'x Path) -> &'x [u8] {
+fn path_bytes<'x>(path: &'x Path) -> &'x [u8] {
     use std::os::unix::ffi::OsStrExt;
     path.as_os_str().as_bytes()
 }
 
 #[cfg(windows)]
-pub fn path_bytes<'x>(path: &'x Path) -> &'x [u8] {
+fn path_bytes<'x>(path: &'x Path) -> &'x [u8] {
     path.to_str().expect("windows paths are always valid UTF-16").as_bytes()
 }
 
@@ -261,7 +261,7 @@ fn stash_path(project_dir: &Path) -> Result<PathBuf, Error> {
     Ok(config_dir()?.join("projects").join(stash_name(project_dir)))
 }
 
-pub fn is_valid_instance_name(name: &str) -> bool {
+fn is_valid_instance_name(name: &str) -> bool {
     let mut chars = name.chars();
     match chars.next() {
         Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
@@ -296,6 +296,15 @@ impl Builder {
     }
 
     /// Reads the project config if found
+    ///
+    /// Projects are initialized using command-line tool:
+    /// ```
+    /// edgedb project init
+    /// ```
+    /// Linking to already running EdgeDB is also possible:
+    /// ```
+    /// edgedb project init --link
+    /// ```
     ///
     /// Returns boolean value of whether project have been found
     pub async fn read_project(&mut self,
@@ -348,6 +357,27 @@ impl Builder {
     pub fn is_initialized(&self) -> bool {
         self.initialized
     }
+    /// Read environment variables and set respective configuration parameters
+    ///
+    /// This function initializes builder if one of the following is set:
+    ///
+    /// * `EDGEDB_CREDENTIALS_FILE`
+    /// * `EDGEDB_INSTANCE`
+    /// * `EDGEDB_DSN`
+    /// * `EDGEDB_HOST` or `EDGEDB_PORT`
+    ///
+    /// On the same ocassion it will reset all previously credentials.
+    ///
+    /// If one of the following are set:
+    ///
+    /// * `EDGEDB_DATABASE`
+    /// * `EDGEDB_USER`
+    /// * `EDGEDB_PASSWORD`
+    ///
+    /// Then this function overrides just specified parameters.
+    ///
+    /// The `insecure_dev_mode` and connection parameters are never modified by
+    /// this function for now.
     pub async fn read_env_vars(&mut self) -> Result<&mut Self, Error> {
         if let Some((host, port)) = get_host_port()? {
             self.host_port(host, port);
@@ -356,7 +386,7 @@ impl Builder {
         } else if let Some(instance) = get_env("EDGEDB_INSTANCE")? {
             self.read_instance(&instance).await?;
         } else if let Some(dsn) = get_env("EDGEDB_DSN")? {
-            self.dsn(&dsn).map_err(|e|
+            self.read_dsn(&dsn).await.map_err(|e|
                 e.context("cannot parse env var EDGEDB_DNS"))?;
         }
         if let Some(database) = get_env("EDGEDB_DATABASE")? {
@@ -379,6 +409,9 @@ impl Builder {
         Ok(self)
     }
 
+    /// Set whole credentials
+    ///
+    /// This marks builder as initialized
     pub fn credentials(&mut self, credentials: &Credentials)
         -> Result<&mut Self, Error>
     {
@@ -424,6 +457,22 @@ impl Builder {
         Ok(self)
     }
 
+    /// Read credentials from named instance
+    ///
+    /// Named instances are created using command-line tool, directly:
+    /// ```
+    /// edgedb instance create <name>
+    /// ```
+    /// or when initializing a project:
+    /// ```
+    /// edgedb project init
+    /// ```
+    /// In the latter case you should use [read_project][Builder::read_project]
+    /// instead if possible.
+    ///
+    /// This will mark builder as initialized (if reading is successful) and
+    /// overwrite all the credentials. Although, `insecure_dev_mode`, pools
+    /// sizes and timeouts are kept intact.
     pub async fn read_instance(&mut self, name: &str)
         -> Result<&mut Self, Error>
     {
@@ -437,6 +486,11 @@ impl Builder {
         Ok(self)
     }
 
+    /// Read credentials from a file
+    ///
+    /// This will mark builder as initialized (if reading is successful) and
+    /// overwrite all the credentials. Although, `insecure_dev_mode`, pools
+    /// sizes and timeouts are kept intact.
     pub async fn read_credentials(&mut self, path: impl AsRef<Path>)
         -> Result<&mut Self, Error>
     {
@@ -448,12 +502,27 @@ impl Builder {
                 .map_err(ClientError::with_source)?;
             self.credentials(&creds)?;
             Ok(())
-        }.await.with_context(|| {
+        }.await.map_err(|e: Error| e.context(
             format!("cannot read credentials file {}", path.display())
-        })?;
+        ))?;
         Ok(self)
     }
-    pub fn dsn(&mut self, dsn: &str) -> Result<&mut Self, Error> {
+
+    /// Initialize credentials using data source name (DSN)
+    ///
+    /// DSN's that EdgeDB like are URL with `egdgedb::/scheme`:
+    /// ```
+    /// edgedb://user:secret@localhost:5656/
+    /// ```
+    /// All the credentials can be specified using DSN, although ingesing
+    /// DSN may also include reading environment variables (if query arguments
+    /// of the for `*_env` are specified) and local files (for query arguments
+    /// named `*_file`).
+    ///
+    /// This will mark builder as initialized (if reading is successful) and
+    /// overwrite all the credentials. Although, `insecure_dev_mode`, pools
+    /// sizes and timeouts are kept intact.
+    pub async fn read_dsn(&mut self, dsn: &str) -> Result<&mut Self, Error> {
         let admin = dsn.starts_with("edgedbadmin://");
         if !dsn.starts_with("edgedb://") && !admin {
             return Err(ClientError::with_message(format!(
@@ -532,6 +601,7 @@ impl Builder {
             max_connections: self.max_connections,
         };
     }
+    /// Extract credentials from the [Builder] so they can be saved as JSON
     pub fn as_credentials(&self) -> Result<Credentials, Error> {
         Ok(Credentials {
             host: Some(self.host.clone()),
@@ -543,6 +613,9 @@ impl Builder {
             tls_verify_hostname: self.verify_hostname,
         })
     }
+    /// Create admin socket instead of regular
+    ///
+    /// This behavior is deprecated and only used for command-line tools
     #[cfg(feature="admin_socket")]
     pub fn admin(&mut self, value: bool)
         -> &mut Self
@@ -550,12 +623,22 @@ impl Builder {
         self.admin = value;
         self
     }
+    /// Get `host` this builder is configured to connect to
     pub fn get_host(&self) -> &str {
         &self.host
     }
+    /// Get `port` this builder is configured to connect to
     pub fn get_port(&self) -> u16 {
         self.port
     }
+    /// Initialize credentials using host/port data
+    ///
+    /// If any of host or port is `None` it is replaced with the default of
+    /// `localhost` and `5656` respectively.
+    ///
+    /// This will mark builder as initialized and overwrite all the
+    /// credentials. Although, `insecure_dev_mode`, pools sizes and timeouts
+    /// are kept intact.
     pub fn host_port(&mut self,
         host: Option<impl Into<String>>, port: Option<u16>)
         -> &mut Self
@@ -566,21 +649,26 @@ impl Builder {
         self.initialized = true;
         self
     }
+    /// Get user name for SCRAM authentication
     pub fn get_user(&self) -> &str {
         &self.user
     }
+    /// Set user name for SCRAM authentication
     pub fn user(&mut self, user: impl Into<String>) -> &mut Self {
         self.user = user.into();
         self
     }
+    /// Set password for SCRAM authentication
     pub fn password(&mut self, password: impl Into<String>) -> &mut Self {
         self.password = Some(password.into());
         self
     }
+    /// Set database name
     pub fn database(&mut self, database: impl Into<String>) -> &mut Self {
         self.database = database.into();
         self
     }
+    /// Get database name
     pub fn get_database(&self) -> &str {
         &self.database
     }
@@ -645,6 +733,9 @@ impl Builder {
         self
     }
 
+    /// Connect with custom certificate verifier
+    ///
+    /// Unstable API
     #[cfg(feature="unstable")]
     pub async fn connect_with_cert_verifier(
         &self, cert_verifier: Arc<dyn ServerCertVerifier>
@@ -652,7 +743,7 @@ impl Builder {
         self._connect_with_cert_verifier(cert_verifier).await
     }
 
-    pub async fn _connect_with_cert_verifier(
+    async fn _connect_with_cert_verifier(
         &self, cert_verifier: Arc<dyn ServerCertVerifier>
     ) -> Result<Connection, Error> {
         if !self.initialized {
@@ -661,7 +752,7 @@ impl Builder {
                 Run `edgedb project init` or use environment variables \
                 to configure connection."));
         }
-        self.do_connect(cert_verifier).await.map_err(|e| {
+        self.connect_inner(cert_verifier).await.map_err(|e| {
             if e.is::<ClientConnectionError>() {
                 e.refine_kind::<ClientConnectionFailedError>()
             } else {
@@ -670,6 +761,9 @@ impl Builder {
         })
     }
 
+    /// Get path of the Unix socket if that is configured to be used
+    ///
+    /// This is deprecated API and should only use by command-line tool
     #[cfg(feature="admin_socket")]
     pub fn get_unix_path(&self) -> Option<PathBuf> {
         self._get_unix_path()
@@ -698,7 +792,7 @@ impl Builder {
         }
     }
 
-    async fn do_connect(
+    async fn connect_inner(
         &self, cert_verifier: Arc<dyn ServerCertVerifier>
     ) -> Result<Connection, Error> {
         let tls = tls::connector(&self.cert, cert_verifier).map_err(tls_fail)?;
@@ -748,7 +842,12 @@ impl Builder {
     fn do_verify_hostname(&self) -> bool {
         self.verify_hostname.unwrap_or(self.cert.is_empty())
     }
+    /// Return single connection
+    #[cfg(feature="unstable")]
     pub async fn connect(&self) -> Result<Connection, Error> {
+        self.private_connect().await
+    }
+    pub(crate) async fn private_connect(&self) -> Result<Connection, Error> {
         if self.insecure_dev_mode {
             self._connect_with_cert_verifier(Arc::new(tls::NullVerifier)).await
         } else {
@@ -1025,7 +1124,8 @@ fn read_credentials() {
 #[test]
 fn display() {
     let mut bld = Builder::uninitialized();
-    bld.dsn("edgedb://localhost:1756").unwrap();
+    async_std::task::block_on(
+        bld.read_dsn("edgedb://localhost:1756")).unwrap();
     assert_eq!(bld.host, "localhost");
     assert_eq!(bld.port, 1756);
     bld.host_port(Some("/test/my.sock"), None);
@@ -1038,9 +1138,9 @@ fn display() {
 #[test]
 fn from_dsn() {
     let mut bld = Builder::uninitialized();
-    bld.dsn(
+    async_std::task::block_on(bld.read_dsn(
         "edgedb://user1:EiPhohl7@edb-0134.elb.us-east-2.amazonaws.com/db2"
-    ).unwrap();
+    ).unwrap());
     assert_eq!(bld.host, "edb-0134.elb.us-east-2.amazonaws.com");
     assert_eq!(bld.port, DEFAULT_PORT);
     assert_eq!(&bld.user, "user1");
@@ -1048,9 +1148,9 @@ fn from_dsn() {
     assert_eq!(bld.password, Some("EiPhohl7".into()));
 
     let mut bld = Builder::uninitialized();
-    bld.dsn(
+    async_std::task::block_on(bld.read_dsn(
         "edgedb://user2@edb-0134.elb.us-east-2.amazonaws.com:1756/db2"
-    ).unwrap();
+    ).unwrap());
     assert_eq!(bld.host, "edb-0134.elb.us-east-2.amazonaws.com");
     assert_eq!(bld.port, 1756);
     assert_eq!(&bld.user, "user2");
@@ -1058,9 +1158,9 @@ fn from_dsn() {
     assert_eq!(bld.password, None);
 
     // Tests overriding
-    bld.dsn(
+    async_std::task::block_on(bld.read_dsn(
         "edgedb://edb-0134.elb.us-east-2.amazonaws.com:1756"
-    ).unwrap();
+    ).unwrap());
     assert_eq!(bld.host, "edb-0134.elb.us-east-2.amazonaws.com");
     assert_eq!(bld.port, 1756);
     assert_eq!(&bld.user, "edgedb");
