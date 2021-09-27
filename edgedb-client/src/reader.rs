@@ -1,11 +1,8 @@
 use std::cmp::{min, max};
 use std::convert::TryInto;
-use std::fmt;
 use std::future::{Future};
-use std::io::{Cursor};
 use std::pin::Pin;
 use std::slice;
-use std::str;
 use std::task::{Poll, Context};
 
 use async_std::io::Read as AsyncRead;
@@ -24,13 +21,13 @@ use edgedb_protocol::server_message::{ServerMessage, ErrorResponse};
 use edgedb_protocol::{QueryResult};
 
 use crate::client;
+use crate::debug::PartialDebug;
 
 
 const BUFFER_SIZE: usize = 8192;
 const MAX_BUFFER: usize = 1_048_576;
 
 
-struct PartialDebug<V>(V);
 
 pub struct Reader<'a> {
     pub(crate) proto: &'a ProtocolVersion,
@@ -55,23 +52,6 @@ pub struct QueryResponse<'a, T: QueryResult> {
 impl<T: QueryResult> Unpin for QueryResponse<'_, T> {}
 
 
-impl<V: fmt::Debug> fmt::Display for PartialDebug<V> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use std::io::Write;
-
-        let mut buf = [0u8; 32];
-        let mut cur = Cursor::new(&mut buf[..]);
-        // Suppress error, in case buffer is overflown
-        write!(&mut cur, "{:?}", self.0).ok();
-        let end = cur.position() as usize;
-        if end >= buf.len() {
-            buf[buf.len()-3] = b'.';
-            buf[buf.len()-2] = b'.';
-            buf[buf.len()-1] = b'.';
-        }
-        fmt::Write::write_str(f, str::from_utf8(&buf[..end]).unwrap())
-    }
-}
 
 impl<'r> Reader<'r> {
     pub fn message(&mut self) -> MessageFuture<'_, 'r> {

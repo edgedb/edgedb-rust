@@ -1,6 +1,9 @@
 mod builder;
+mod debug;
 mod sealed;
 mod tls;
+mod traits;
+
 pub mod client;
 pub mod credentials;
 pub mod errors;
@@ -11,6 +14,7 @@ pub use builder::Builder;
 pub use tls::verify_server_cert;
 pub use pool::Pool;
 pub use errors::{Error};
+pub use traits::Executor;
 
 mod pool;
 

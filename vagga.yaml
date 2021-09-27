@@ -82,6 +82,14 @@ commands:
     container: tools
     run: [cargo, fuzz]
 
+  example: !Command
+    description: Run named example
+    container: ubuntu
+    environ:
+      EDGEDB_INSECURE_DEV_MODE: 1
+      EDGEDB_HOST: localhost
+    run: [cargo, run, --example]
+
   gen-errors: !Command
     description: Generate error codes
     container: ubuntu

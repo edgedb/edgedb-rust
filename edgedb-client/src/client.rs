@@ -25,6 +25,7 @@ use edgedb_protocol::queryable::{Queryable};
 use edgedb_protocol::server_message::ServerMessage;
 use edgedb_protocol::server_message::{TransactionState};
 
+use crate::debug::PartialDebug;
 use crate::errors::{ClientConnectionError, ProtocolError};
 use crate::errors::{ClientConnectionTimeoutError, ClientConnectionEosError};
 use crate::errors::{ClientInconsistentError, ClientEncodingError};
@@ -53,9 +54,7 @@ pub struct Sequence<'a> {
     pub reader: Reader<'a>,
     pub(crate) active: bool,
     pub(crate) dirty: &'a mut bool,
-    pub(crate) proto: &'a ProtocolVersion,
 }
-
 
 pub struct Writer<'a> {
     stream: &'a mut WriteHalf<TlsStream>,
@@ -64,14 +63,14 @@ pub struct Writer<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct StatementBuilder {
+pub struct StatementParams {
     pub io_format: IoFormat,
     pub cardinality: Cardinality,
 }
 
-impl StatementBuilder {
-    pub fn new() -> StatementBuilder {
-        StatementBuilder {
+impl StatementParams {
+    pub fn new() -> StatementParams {
+        StatementParams {
             io_format: IoFormat::Binary,
             cardinality: Cardinality::Many,
         }
@@ -99,6 +98,34 @@ impl<'a> Sequence<'a> {
             error: None,
             complete: false,
             state,
+        }
+    }
+
+    pub async fn response_blobs(mut self) -> Result<(Vec<Bytes>, Bytes), Error>
+    {
+        assert!(self.active);  // TODO(tailhook) maybe debug_assert
+        let mut data = Vec::new();
+        let complete = loop {
+            match self.reader.message().await? {
+                ServerMessage::Data(m) => data.extend(m.data),
+                ServerMessage::CommandComplete(m) => break Ok(m.status_data),
+                ServerMessage::ErrorResponse(e) => break Err(e),
+                msg => {
+                    return Err(ProtocolOutOfOrderError::with_message(format!(
+                        "unsolicited packet: {}", PartialDebug(msg))));
+                }
+            }
+        };
+        match self.reader.message().await? {
+            ServerMessage::ReadyForCommand(r) => {
+                self.reader.consume_ready(r);
+                self.end_clean();
+                return complete.map(|m| (data, m)).map_err(|e| e.into());
+            }
+            msg => {
+                return Err(ProtocolOutOfOrderError::with_message(format!(
+                    "unsolicited packet: {}", PartialDebug(msg))));
+            }
         }
     }
 
@@ -157,7 +184,6 @@ impl Connection {
             reader,
             active: true,
             dirty: &mut self.dirty,
-            proto: &self.version,
         })
     }
 
@@ -246,10 +272,10 @@ impl<'a> Sequence<'a> {
         Ok(status)
     }
 
-    pub(crate)  async fn _query<A>(&mut self, request: &str, arguments: &A,
-        bld: &StatementBuilder)
+    pub(crate) async fn _query<A>(&mut self, request: &str, arguments: &A,
+        bld: &StatementParams)
         -> Result<OutputTypedesc, Error>
-        where A: QueryArgs,
+        where A: QueryArgs + ?Sized,
     {
         assert!(self.active);  // TODO(tailhook) maybe debug_assert
         let statement_name = Bytes::from_static(b"");
@@ -368,12 +394,11 @@ impl Connection {
         let mut seq = self.start_sequence().await?;
         let desc = seq._query(
             request, arguments,
-            &StatementBuilder::new(),
+            &StatementParams::new(),
         ).await?;
         match desc.root_pos() {
             Some(root_pos) => {
-                let mut ctx = desc.as_queryable_context();
-                ctx.has_implicit_tid = seq.proto.has_implicit_tid();
+                let ctx = desc.as_queryable_context();
                 let state = R::prepare(&ctx, root_pos)?;
                 Ok(seq.response(state))
             }
@@ -430,12 +455,11 @@ impl Connection {
         let mut seq = self.start_sequence().await?;
         let desc = seq._query(
             request, arguments,
-            &StatementBuilder::new().io_format(IoFormat::Json),
+            &StatementParams::new().io_format(IoFormat::Json),
         ).await?;
         match desc.root_pos() {
             Some(root_pos) => {
-                let mut ctx = desc.as_queryable_context();
-                ctx.has_implicit_tid = seq.proto.has_implicit_tid();
+                let ctx = desc.as_queryable_context();
                 let state = String::prepare(&ctx, root_pos)?;
                 Ok(seq.response(state))
             }
@@ -455,12 +479,11 @@ impl Connection {
         let mut seq = self.start_sequence().await?;
         let desc = seq._query(
             request, arguments,
-            &StatementBuilder::new().io_format(IoFormat::JsonElements),
+            &StatementParams::new().io_format(IoFormat::JsonElements),
         ).await?;
         match desc.root_pos() {
             Some(root_pos) => {
-                let mut ctx = desc.as_queryable_context();
-                ctx.has_implicit_tid = seq.proto.has_implicit_tid();
+                let ctx = desc.as_queryable_context();
                 let state = String::prepare(&ctx, root_pos)?;
                 Ok(seq.response(state))
             }
@@ -479,7 +502,7 @@ impl Connection {
         where A: QueryArgs,
     {
         let mut seq = self.start_sequence().await?;
-        seq._query(request, arguments, &StatementBuilder::new()).await?;
+        seq._query(request, arguments, &StatementParams::new()).await?;
         return seq._process_exec().await;
     }
 
