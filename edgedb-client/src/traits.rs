@@ -3,10 +3,18 @@ use bytes::Bytes;
 use edgedb_protocol::QueryResult;
 use edgedb_protocol::query_arg::QueryArgs;
 use edgedb_protocol::descriptors::OutputTypedesc;
+use edgedb_protocol::client_message::{Cardinality, IoFormat};
 
-use crate::errors::{Error, NoResultExpected, ErrorKind};
+use crate::errors::{Error, NoResultExpected, NoDataError, ErrorKind};
 use crate::Pool;
 use crate::client::StatementParams;
+
+
+/// Result returned from [`execute()`][Executor#method.execute] call
+#[derive(Debug, Clone)]
+pub struct ExecuteResult {
+    pub(crate) marker: Bytes,
+}
 
 struct Statement<'a, A> {
     params: StatementParams,
@@ -110,6 +118,142 @@ impl dyn Executor + '_ {
                     .to_string()))?
             }
         }
+    }
+
+    /// Execute a query returning a single result
+    ///
+    /// Most of the times you have to specify return type for the query:
+    ///
+    /// ```rust,ignore
+    /// let greeting = pool.query::<String, _>("SELECT 'hello'", &());
+    /// // or
+    /// let greeting: String = pool.query("SELECT 'hello'", &());
+    /// ```
+    ///
+    /// The query must return exactly one element. If the query returns more
+    /// than one element, an
+    /// [`ResultCardinalityMismatchError`][crate::errors::ResultCardinalityMismatchError]
+    /// is raised, if it returns an empty set, an
+    /// [`NoDataError`][crate::errors::NoDataError] is raised.
+    ///
+    /// This method can be used both with static arguments, like a tuple of
+    /// scalars. And with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// Similarly dynamically typed results are also suported.
+    pub async fn query_single<R, A>(&mut self, query: &str, arguments: &A)
+        -> Result<R, Error>
+        where A: QueryArgs,
+              R: QueryResult,
+    {
+        let result = self.query_dynamic(&Statement {
+            params: StatementParams::new()
+                .cardinality(Cardinality::AtMostOne)
+                .clone(),
+            query,
+            arguments,
+        }).await?;
+        match result.descriptor.root_pos() {
+            Some(root_pos) => {
+                let ctx = result.descriptor.as_queryable_context();
+                let mut state = R::prepare(&ctx, root_pos)?;
+                if result.data.len() == 0 {
+                    return Err(NoDataError::with_message(
+                        "query_single() returned zero results"))
+                }
+                return Ok(R::decode(&mut state, &result.data[0])?)
+            }
+            None => {
+                Err(NoResultExpected::with_message(
+                    String::from_utf8_lossy(&result.completion[..])
+                    .to_string()))?
+            }
+        }
+    }
+
+    /// Execute a query returning result as a JSON
+    pub async fn query_json<A>(&mut self, query: &str, arguments: &A)
+        -> Result<String, Error>
+        where A: QueryArgs,
+    {
+        let result = self.query_dynamic(&Statement {
+            params: StatementParams::new()
+                .io_format(IoFormat::Json)
+                .clone(),
+            query,
+            arguments,
+        }).await?;
+        match result.descriptor.root_pos() {
+            Some(root_pos) => {
+                let ctx = result.descriptor.as_queryable_context();
+                let mut state = <String as QueryResult>
+                    ::prepare(&ctx, root_pos)?;
+                if result.data.len() == 0 {
+                    return Err(NoDataError::with_message(
+                        "query_json() returned zero results"))
+                }
+                return Ok(<String as QueryResult>::decode(
+                    &mut state, &result.data[0])?)
+            }
+            None => {
+                Err(NoResultExpected::with_message(
+                    String::from_utf8_lossy(&result.completion[..])
+                    .to_string()))?
+            }
+        }
+    }
+
+    /// Run a singleton-returning query and return its element in JSON
+    ///
+    /// The query must return exactly one element. If the query returns more
+    /// than one element, an
+    /// [`ResultCardinalityMismatchError`][crate::errors::ResultCardinalityMismatchError]
+    /// is raised, if it returns an empty set, an
+    /// [`NoDataError`][crate::errors::NoDataError] is raised.
+    pub async fn query_single_json<A>(&mut self, query: &str, arguments: &A)
+        -> Result<String, Error>
+        where A: QueryArgs,
+    {
+        let result = self.query_dynamic(&Statement {
+            params: StatementParams::new()
+                .io_format(IoFormat::Json)
+                .cardinality(Cardinality::AtMostOne)
+                .clone(),
+            query,
+            arguments,
+        }).await?;
+        match result.descriptor.root_pos() {
+            Some(root_pos) => {
+                let ctx = result.descriptor.as_queryable_context();
+                let mut state = <String as QueryResult>
+                    ::prepare(&ctx, root_pos)?;
+                if result.data.len() == 0 {
+                    return Err(NoDataError::with_message(
+                        "query_single_json() returned zero results"))
+                }
+                return Ok(<String as QueryResult>::decode(
+                    &mut state, &result.data[0])?)
+            }
+            None => {
+                Err(NoResultExpected::with_message(
+                    String::from_utf8_lossy(&result.completion[..])
+                    .to_string()))?
+            }
+        }
+    }
+    /// Execute an EdgeQL command (or commands).
+    ///
+    /// Note: If the results of query are desired, [`query()`][Pool::query] or
+    /// [`query_single()`][Pool::query_single] should be used instead.
+    pub async fn execute<A>(&mut self, query: &str, arguments: &A)
+        -> Result<ExecuteResult, Error>
+        where A: QueryArgs,
+    {
+        let result = self.query_dynamic(&Statement {
+            params: StatementParams::new(),
+            query,
+            arguments,
+        }).await?;
+        // Dropping the actual results
+        return Ok(ExecuteResult { marker: result.completion });
     }
 }
 

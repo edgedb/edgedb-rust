@@ -8,6 +8,7 @@ edition = "2018"
 [dependencies]
 edgedb-protocol = {path = "../edgedb-protocol"}
 edgedb-errors = {path = "../edgedb-errors"}
+edgedb-derive = {path = "../edgedb-derive", optional=true}
 snafu = {version="0.6.0", features=["backtraces"]}
 async-std = {version="1.10", features=[
     "unstable", # Condvar
@@ -36,6 +37,7 @@ async-trait = "0.1.51"
 env_logger = "0.9.0"
 
 [features]
-default = []
+default = ["derive"]
+derive = ["edgedb-derive"]
 admin_socket = []
 unstable = []  # features for CLI

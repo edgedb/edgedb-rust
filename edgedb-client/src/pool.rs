@@ -39,8 +39,3 @@ pub struct Pool {
     options: Arc<Options>,
     pub(crate) inner: Arc<PoolInner>,
 }
-
-#[derive(Debug, Clone)]
-pub struct ExecuteResult {
-    marker: String,
-}

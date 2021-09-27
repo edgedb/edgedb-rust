@@ -298,11 +298,11 @@ impl Builder {
     /// Reads the project config if found
     ///
     /// Projects are initialized using command-line tool:
-    /// ```
+    /// ```shell
     /// edgedb project init
     /// ```
     /// Linking to already running EdgeDB is also possible:
-    /// ```
+    /// ```shell
     /// edgedb project init --link
     /// ```
     ///
@@ -460,11 +460,11 @@ impl Builder {
     /// Read credentials from named instance
     ///
     /// Named instances are created using command-line tool, directly:
-    /// ```
+    /// ```shell
     /// edgedb instance create <name>
     /// ```
     /// or when initializing a project:
-    /// ```
+    /// ```shell
     /// edgedb project init
     /// ```
     /// In the latter case you should use [read_project][Builder::read_project]
@@ -511,7 +511,7 @@ impl Builder {
     /// Initialize credentials using data source name (DSN)
     ///
     /// DSN's that EdgeDB like are URL with `egdgedb::/scheme`:
-    /// ```
+    /// ```text
     /// edgedb://user:secret@localhost:5656/
     /// ```
     /// All the credentials can be specified using DSN, although ingesing
@@ -1140,7 +1140,7 @@ fn from_dsn() {
     let mut bld = Builder::uninitialized();
     async_std::task::block_on(bld.read_dsn(
         "edgedb://user1:EiPhohl7@edb-0134.elb.us-east-2.amazonaws.com/db2"
-    ).unwrap());
+    )).unwrap();
     assert_eq!(bld.host, "edb-0134.elb.us-east-2.amazonaws.com");
     assert_eq!(bld.port, DEFAULT_PORT);
     assert_eq!(&bld.user, "user1");
@@ -1150,7 +1150,7 @@ fn from_dsn() {
     let mut bld = Builder::uninitialized();
     async_std::task::block_on(bld.read_dsn(
         "edgedb://user2@edb-0134.elb.us-east-2.amazonaws.com:1756/db2"
-    ).unwrap());
+    )).unwrap();
     assert_eq!(bld.host, "edb-0134.elb.us-east-2.amazonaws.com");
     assert_eq!(bld.port, 1756);
     assert_eq!(&bld.user, "user2");
@@ -1160,7 +1160,7 @@ fn from_dsn() {
     // Tests overriding
     async_std::task::block_on(bld.read_dsn(
         "edgedb://edb-0134.elb.us-east-2.amazonaws.com:1756"
-    ).unwrap());
+    )).unwrap();
     assert_eq!(bld.host, "edb-0134.elb.us-east-2.amazonaws.com");
     assert_eq!(bld.port, 1756);
     assert_eq!(&bld.user, "edgedb");

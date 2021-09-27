@@ -13,6 +13,11 @@ use crate::value::Value;
 
 pub trait Sealed: Sized {}
 
+/// A trait represents single result from a query
+///
+/// This is implemented for scalars and tuples. To receive a shape from EdgeDB
+/// derive `Queryable` for a structure, it will automatically implement
+/// `QueryResult`  for you.
 pub trait QueryResult: Sealed {
     type State;
     fn prepare(ctx: &DescriptorContext, root_pos: TypePos)

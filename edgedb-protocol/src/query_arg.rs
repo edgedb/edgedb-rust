@@ -21,6 +21,7 @@ pub struct Encoder<'a> {
     pub(crate) buf: &'a mut BytesMut,
 }
 
+/// Single argument for a query
 pub trait QueryArg: Send + Sync + Sized {
     fn encode_slot(&self, encoder: &mut Encoder)
         -> Result<(), Error>;
@@ -35,6 +36,11 @@ pub trait ScalarArg: Send + Sync + Sized {
         -> Result<(), Error>;
 }
 
+/// A tuple of query arguments
+///
+/// This trait is implemented for tuples of sizes up to twelve.  And you can
+/// derive it for a structure in this case it's treated as a named tuple (i.e.
+/// query should include named arguments rather than numerical ones).
 pub trait QueryArgs: Send + Sync {
     fn encode(&self, encoder: &mut Encoder)
         -> Result<(), Error>;

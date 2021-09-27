@@ -35,7 +35,14 @@ pub mod errors;
 pub use builder::Builder;
 pub use pool::Pool;
 pub use errors::{Error};
-pub use traits::Executor;
+pub use traits::{Executor, ExecuteResult};
+
+pub use edgedb_protocol::model;
+pub use edgedb_protocol::query_arg::{QueryArg, QueryArgs};
+pub use edgedb_protocol::{QueryResult};
+
+#[cfg(feature="derive")]
+pub use edgedb_derive::Queryable;
 
 mod pool;
 
