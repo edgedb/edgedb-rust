@@ -2,17 +2,20 @@ use async_std::channel::unbounded;
 use async_std::task;
 use async_std::sync::{Arc, Mutex, MutexGuard};
 
+use bytes::Bytes;
+
 use edgedb_protocol::QueryResult;
 use edgedb_protocol::client_message::{IoFormat, Cardinality};
 use edgedb_protocol::query_arg::QueryArgs;
 use edgedb_protocol::value::Value;
 
+use crate::ExecuteResult;
 use crate::builder::Builder;
 use crate::client::{Connection, StatementParams};
 use crate::errors::{Error, ErrorKind, NoDataError, NoResultExpected};
 use crate::pool::command::Command;
+use crate::pool::main;
 use crate::pool::{Pool, PoolInner, PoolState, PoolConn, Options};
-use crate::pool::{main, ExecuteResult};
 
 pub enum InProgressState {
     Connecting,
@@ -163,7 +166,8 @@ impl Pool {
         ).await?;
         result.into_iter().next()
             .ok_or_else(|| {
-                NoDataError::with_message("query row returned zero results")
+                NoDataError::with_message(
+                    "query_single() returned zero results")
             })
     }
 
@@ -177,6 +181,8 @@ impl Pool {
             .io_format(IoFormat::Json),
         ).await?;
         result.into_iter().next()
+            // we trust database to produce valid json
+            .map(|v| unsafe { Json::new_unchecked(v) })
             .ok_or_else(|| {
                 NoDataError::with_message("query row returned zero results")
             })
@@ -199,6 +205,8 @@ impl Pool {
             .cardinality(Cardinality::AtMostOne)
         ).await?;
         result.into_iter().next()
+            // we trust database to produce valid json
+            .map(|v| unsafe { Json::new_unchecked(v) })
             .ok_or_else(|| {
                 NoDataError::with_message("query row returned zero results")
             })
@@ -208,19 +216,28 @@ impl Pool {
     /// Note: If the results of query are desired, [`query()`][Pool::query] or
     /// [`query_single()`][Pool::query_single] should be used instead.
     pub async fn execute<A>(&self, request: &str, arguments: &A)
-        -> Result<Option<ExecuteResult>, Error>
+        -> Result<ExecuteResult, Error>
         where A: QueryArgs,
     {
         let result = self.inner.query::<Value, _>(request, arguments,
                 StatementParams::new()
-                .cardinality(Cardinality::NoResult)
+                .cardinality(Cardinality::Many) // TODO: NoResult
             ).await;
         match result {
-            Ok(_) => Ok(None),
+            // TODO(tailhook) propagate better rather than returning nothing
+            Ok(_) => Ok(ExecuteResult { marker: Bytes::from_static(b"") }),
             Err(e) if e.is::<NoResultExpected>() => {
+                // TODO(tailhook) propagate better rather than parsing a
+                // message
                 match e.initial_message() {
-                    Some(m) => Ok(Some(ExecuteResult { marker: m.into() })),
-                    None => Ok(None),
+                    Some(m) => {
+                        Ok(ExecuteResult {
+                            marker: Bytes::from(m.as_bytes().to_vec()),
+                        })
+                    }
+                    None => {
+                        Ok(ExecuteResult { marker: Bytes::from_static(b"") })
+                    }
                 }
             }
             Err(e) => return Err(e),
