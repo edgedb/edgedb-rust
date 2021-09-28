@@ -8,6 +8,7 @@ use edgedb_protocol::client_message::{Cardinality, IoFormat};
 use crate::errors::{Error, NoResultExpected, NoDataError, ErrorKind};
 use crate::Pool;
 use crate::client::StatementParams;
+use crate::model::Json;
 
 
 /// Result returned from [`execute()`][Executor#method.execute] call
@@ -171,7 +172,7 @@ impl dyn Executor + '_ {
 
     /// Execute a query returning result as a JSON
     pub async fn query_json<A>(&mut self, query: &str, arguments: &A)
-        -> Result<String, Error>
+        -> Result<Json, Error>
         where A: QueryArgs,
     {
         let result = self.query_dynamic(&Statement {
@@ -190,8 +191,11 @@ impl dyn Executor + '_ {
                     return Err(NoDataError::with_message(
                         "query_json() returned zero results"))
                 }
-                return Ok(<String as QueryResult>::decode(
-                    &mut state, &result.data[0])?)
+                let data = <String as QueryResult>::decode(
+                    &mut state, &result.data[0])?;
+                // trust database to produce valid JSON
+                let json = unsafe { Json::new_unchecked(data) };
+                return Ok(json)
             }
             None => {
                 Err(NoResultExpected::with_message(
@@ -209,7 +213,7 @@ impl dyn Executor + '_ {
     /// is raised, if it returns an empty set, an
     /// [`NoDataError`][crate::errors::NoDataError] is raised.
     pub async fn query_single_json<A>(&mut self, query: &str, arguments: &A)
-        -> Result<String, Error>
+        -> Result<Json, Error>
         where A: QueryArgs,
     {
         let result = self.query_dynamic(&Statement {
@@ -229,8 +233,11 @@ impl dyn Executor + '_ {
                     return Err(NoDataError::with_message(
                         "query_single_json() returned zero results"))
                 }
-                return Ok(<String as QueryResult>::decode(
-                    &mut state, &result.data[0])?)
+                let data = <String as QueryResult>::decode(
+                    &mut state, &result.data[0])?;
+                // trust database to produce valid JSON
+                let json = unsafe { Json::new_unchecked(data) };
+                return Ok(json)
             }
             None => {
                 Err(NoResultExpected::with_message(

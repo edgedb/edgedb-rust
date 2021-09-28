@@ -1,8 +1,16 @@
+/// A newtype for JSON received from the database
 #[derive(Debug, Clone)]
 pub struct Json(String);
 
 impl Json {
-	pub(crate) fn new_unchecked(value: String) -> Json {
+	pub(crate) fn _new_unchecked(value: String) -> Json {
+		Json(value)
+	}
+    /// Create JSON value without checking the contents
+    ///
+    /// This is used to construct values from the data received from the
+    /// database (we trust database to produce valid JSON).
+	pub unsafe fn new_unchecked(value: String) -> Json {
 		Json(value)
 	}
 }
