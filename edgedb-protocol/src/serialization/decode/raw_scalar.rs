@@ -98,7 +98,7 @@ impl<'t> RawCodec<'t> for Json {
         let val = str::from_utf8(buf)
             .context(errors::InvalidUtf8)?
             .to_owned();
-        Ok(Json::new_unchecked(val))
+        Ok(Json::_new_unchecked(val))
     }
 }
 

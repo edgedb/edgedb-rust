@@ -10,6 +10,7 @@ use edgedb_protocol::query_arg::QueryArgs;
 use edgedb_protocol::value::Value;
 
 use crate::ExecuteResult;
+use crate::model::Json;
 use crate::builder::Builder;
 use crate::client::{Connection, StatementParams};
 use crate::errors::{Error, ErrorKind, NoDataError, NoResultExpected};
@@ -173,7 +174,7 @@ impl Pool {
 
     /// Execute a query returning result as a JSON
     pub async fn query_json<A>(&self, request: &str, arguments: &A)
-        -> Result<String, Error>
+        -> Result<Json, Error>
         where A: QueryArgs,
     {
         let result = self.inner.query(request, arguments,
@@ -196,7 +197,7 @@ impl Pool {
     /// is raised, if it returns an empty set, an
     /// [`NoDataError`][crate::errors::NoDataError] is raised.
     pub async fn query_single_json<A>(&self, request: &str, arguments: &A)
-        -> Result<String, Error>
+        -> Result<Json, Error>
         where A: QueryArgs,
     {
         let result = self.inner.query(request, arguments,
