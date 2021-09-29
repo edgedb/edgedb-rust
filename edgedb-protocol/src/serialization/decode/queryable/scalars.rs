@@ -98,7 +98,19 @@ impl DecodeScalar for BigInt {
     fn typename() -> &'static str { "std::bigint" }
 }
 
+#[cfg(feature="num-bigint")]
+impl DecodeScalar for num_bigint::BigInt {
+    fn uuid() -> Uuid { codec::STD_BIGINT }
+    fn typename() -> &'static str { "std::bigint" }
+}
+
 impl DecodeScalar for Decimal {
+    fn uuid() -> Uuid { codec::STD_DECIMAL }
+    fn typename() -> &'static str { "std::decimal" }
+}
+
+#[cfg(feature="bigdecimal")]
+impl DecodeScalar for bigdecimal::BigDecimal {
     fn uuid() -> Uuid { codec::STD_DECIMAL }
     fn typename() -> &'static str { "std::decimal" }
 }

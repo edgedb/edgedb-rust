@@ -697,17 +697,23 @@ impl Codec for Decimal {
             Value::Decimal(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
-        buf.reserve(8 + val.digits.len()*2);
-        buf.put_u16(val.digits.len().try_into().ok()
-                .context(errors::BigIntTooLong)?);
-        buf.put_i16(val.weight);
-        buf.put_u16(if val.negative { 0x4000 } else { 0x0000 });
-        buf.put_u16(val.decimal_digits);
-        for &dig in &val.digits {
-            buf.put_u16(dig);
-        }
-        Ok(())
+        encode_decimal(buf, val)
     }
+}
+
+pub(crate) fn encode_decimal(buf: &mut BytesMut, val: &model::Decimal)
+    -> Result<(), EncodeError>
+{
+    buf.reserve(8 + val.digits.len()*2);
+    buf.put_u16(val.digits.len().try_into().ok()
+            .context(errors::BigIntTooLong)?);
+    buf.put_i16(val.weight);
+    buf.put_u16(if val.negative { 0x4000 } else { 0x0000 });
+    buf.put_u16(val.decimal_digits);
+    for &dig in &val.digits {
+        buf.put_u16(dig);
+    }
+    Ok(())
 }
 
 impl Codec for BigInt {
@@ -721,17 +727,24 @@ impl Codec for BigInt {
             Value::BigInt(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
-        buf.reserve(8 + val.digits.len()*2);
-        buf.put_u16(val.digits.len().try_into().ok()
-                .context(errors::BigIntTooLong)?);
-        buf.put_i16(val.weight);
-        buf.put_u16(if val.negative { 0x4000 } else { 0x0000 });
-        buf.put_u16(0);
-        for &dig in &val.digits {
-            buf.put_u16(dig);
-        }
-        Ok(())
+        encode_big_int(buf, val)
     }
+}
+
+
+pub(crate) fn encode_big_int(buf: &mut BytesMut, val: &model::BigInt)
+    -> Result<(), EncodeError>
+{
+    buf.reserve(8 + val.digits.len()*2);
+    buf.put_u16(val.digits.len().try_into().ok()
+            .context(errors::BigIntTooLong)?);
+    buf.put_i16(val.weight);
+    buf.put_u16(if val.negative { 0x4000 } else { 0x0000 });
+    buf.put_u16(0);
+    for &dig in &val.digits {
+        buf.put_u16(dig);
+    }
+    Ok(())
 }
 
 impl Codec for Bool {
