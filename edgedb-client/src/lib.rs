@@ -33,7 +33,7 @@ mod server_params;
 pub mod errors;
 
 pub use builder::Builder;
-pub use pool::Pool;
+pub use pool::Client;
 pub use errors::{Error};
 pub use traits::{Executor, ExecuteResult};
 
@@ -55,10 +55,10 @@ mod pool;
 /// This method tries to esablish single connection immediately to
 /// ensure that configuration is valid and will error out otherwise.
 ///
-/// For more fine-grained setup see [`Pool`] and [`Builder`] documentation and
-/// the source of this function.
-pub async fn connect() -> Result<Pool, Error> {
-    let pool = Pool::new(Builder::from_env().await?);
+/// For more fine-grained setup see [`Client`] and [`Builder`] documentation
+/// and the source of this function.
+pub async fn connect() -> Result<Client, Error> {
+    let pool = Client::new(Builder::from_env().await?);
     pool.ensure_connected().await?;
     Ok(pool)
 }
