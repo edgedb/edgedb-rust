@@ -35,7 +35,7 @@ pub(crate) struct PoolInner {
 // options (clone pool to modify options). All the functionality is actually
 // in the `PoolInner`
 #[derive(Debug, Clone)]
-pub struct Pool {
+pub struct Client {
     options: Arc<Options>,
     pub(crate) inner: Arc<PoolInner>,
 }

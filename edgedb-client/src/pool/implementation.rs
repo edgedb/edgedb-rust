@@ -16,7 +16,7 @@ use crate::client::{Connection, StatementParams};
 use crate::errors::{Error, ErrorKind, NoDataError, NoResultExpected};
 use crate::pool::command::Command;
 use crate::pool::main;
-use crate::pool::{Pool, PoolInner, PoolState, PoolConn, Options};
+use crate::pool::{Client, PoolInner, PoolState, PoolConn, Options};
 
 pub enum InProgressState {
     Connecting,
@@ -74,18 +74,18 @@ impl PoolInner {
     }
 }
 
-impl Pool {
+impl Client {
     /// Create a new connection pool
     ///
     /// Note this does not create any connection immediately.
-    /// Use [`ensure_connection()`][Pool::ensure_connected] to establish a
+    /// Use [`ensure_connection()`][Client::ensure_connected] to establish a
     /// connection and verify that connection credentials are okay.
-    pub fn new(builder: Builder) -> Pool {
+    pub fn new(builder: Builder) -> Client {
         let (chan, rcv) = unbounded();
         let state = Arc::new(PoolState::new(builder));
         let state2 = state.clone();
         let task = Mutex::new(Some(task::spawn(main::main(state2, rcv))));
-        Pool {
+        Client {
             options: Arc::new(Options {}),
             inner: Arc::new(PoolInner {
                 chan,
@@ -214,8 +214,8 @@ impl Pool {
     }
     /// Execute an EdgeQL command (or commands).
     ///
-    /// Note: If the results of query are desired, [`query()`][Pool::query] or
-    /// [`query_single()`][Pool::query_single] should be used instead.
+    /// Note: If the results of query are desired, [`query()`][Client::query] or
+    /// [`query_single()`][Client::query_single] should be used instead.
     pub async fn execute<A>(&self, request: &str, arguments: &A)
         -> Result<ExecuteResult, Error>
         where A: QueryArgs,

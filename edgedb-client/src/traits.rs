@@ -6,7 +6,7 @@ use edgedb_protocol::descriptors::OutputTypedesc;
 use edgedb_protocol::client_message::{Cardinality, IoFormat};
 
 use crate::errors::{Error, NoResultExpected, NoDataError, ErrorKind};
-use crate::Pool;
+use crate::Client;
 use crate::client::StatementParams;
 use crate::model::Json;
 
@@ -49,10 +49,10 @@ pub trait Sealed {
 
 /// Main trait that allows executing queries
 ///
-/// Note comparing to [Pool][] this trait has `&mut self` for query methods.
-/// This is because we need to support [Executor][] for a transaction.
-/// To overcome this issue for [Pool][] you can either use inherent methods on
-/// pool rather than this trait or just clone it (cloning [Pool][] is cheap):
+/// Note comparing to [Client] this trait has `&mut self` for query methods.
+/// This is because we need to support [Executor] for a transaction.
+/// To overcome this issue for [Client] you can either use inherent methods on
+/// pool rather than this trait or just clone it (cloning [Client] is cheap):
 ///
 /// ```rust,ignore
 /// do_query(&mut global_pool_reference.clone())?;
@@ -67,7 +67,7 @@ pub trait Executor: Sealed {
 }
 
 #[async_trait::async_trait]
-impl Sealed for Pool {
+impl Sealed for Client {
     async fn query_dynamic(&mut self, query: &dyn GenericQuery)
         -> Result<GenericResult, Error>
     {
@@ -77,7 +77,7 @@ impl Sealed for Pool {
     }
 }
 
-impl Executor for Pool {}
+impl Executor for Client {}
 
 impl dyn Executor + '_ {
     /// Execute a query returning a list of arguments
@@ -248,8 +248,8 @@ impl dyn Executor + '_ {
     }
     /// Execute an EdgeQL command (or commands).
     ///
-    /// Note: If the results of query are desired, [`query()`][Pool::query] or
-    /// [`query_single()`][Pool::query_single] should be used instead.
+    /// Note: If the results of query are desired, [`query()`][Client::query] or
+    /// [`query_single()`][Client::query_single] should be used instead.
     pub async fn execute<A>(&mut self, query: &str, arguments: &A)
         -> Result<ExecuteResult, Error>
         where A: QueryArgs,
