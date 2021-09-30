@@ -21,9 +21,10 @@ jobs:
           command: test
           args: --all-features
       - run: |
+          set -x
           cargo_version="$(cargo metadata --format-version 1 \
             | jq -r '.packages[] | select(.name=="edgedb-derive") | .version')"
-          tag_version="${GITHUB_REF#releases/edgedb-derive/v}"
+          tag_version="${GITHUB_REF#refs/tags/releases/edgedb-derive/v}"
           test "$cargo_version" = "$tag_version"
 
       - working-directory: ./edgedb-derive
