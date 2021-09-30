@@ -1,4 +1,4 @@
-on: [push, pull_request]
+on: [pull_request]
 
 name: CI
 
@@ -6,12 +6,15 @@ jobs:
   build_and_test:
     name: Rust project
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust_version: [1.53, stable, beta]
     steps:
       - uses: actions/checkout@master
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: stable
+          toolchain: ${{ matrix.rust_version }}
           default: true
       - uses: actions-rs/cargo@v1
         with:
