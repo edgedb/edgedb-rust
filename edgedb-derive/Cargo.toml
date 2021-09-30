@@ -4,6 +4,9 @@ license = "MIT/Apache-2.0"
 version = "0.1.0"
 authors = ["MagicStack Inc. <hello@magic.io>"]
 edition = "2018"
+description = """
+    Derive macros for EdgeDB database client.
+"""
 
 [dependencies]
 syn = {version="1.0", features=["full"]}
