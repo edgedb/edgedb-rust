@@ -49,7 +49,7 @@ pub const DEFAULT_HOST: &str = "localhost";
 pub const DEFAULT_PORT: u16 = 5656;
 
 
-/// A builder used to create connections
+/// A builder used to create connections.
 #[derive(Debug, Clone)]
 pub struct Builder {
     host: String,
@@ -277,7 +277,7 @@ fn is_valid_instance_name(name: &str) -> bool {
 
 impl Builder {
 
-    /// Initializes Builder using project or environment variables
+    /// Initializes a Builder using environment variables or project config.
     pub async fn from_env() -> Result<Builder, Error> {
         let mut builder = Builder::uninitialized();
 
@@ -295,18 +295,18 @@ impl Builder {
         Ok(builder)
     }
 
-    /// Reads the project config if found
+    /// Reads the project config if it exists.
     ///
-    /// Projects are initialized using command-line tool:
+    /// Projects are initialized using the command-line tool:
     /// ```shell
     /// edgedb project init
     /// ```
-    /// Linking to already running EdgeDB is also possible:
+    /// Linking to an already running EdgeDB is also possible:
     /// ```shell
     /// edgedb project init --link
     /// ```
     ///
-    /// Returns boolean value of whether project have been found
+    /// Returns a boolean value indicating whether the project was found.
     pub async fn read_project(&mut self,
         override_dir: Option<&Path>, search_parents: bool)
         -> Result<&mut Self, Error>
@@ -349,24 +349,25 @@ impl Builder {
         }
         Ok(self)
     }
-    /// A displayable form for address
+    /// A displayable form for an address.
     pub fn display_addr<'x>(&'x self) -> impl fmt::Display + 'x {
         DisplayAddr(self)
     }
-    /// Are credentials set on this builder
+    /// Indicates whether credentials are set for this builder.
     pub fn is_initialized(&self) -> bool {
         self.initialized
     }
-    /// Read environment variables and set respective configuration parameters
+    /// Read environment variables and set respective configuration parameters.
     ///
-    /// This function initializes builder if one of the following is set:
+    /// This function initializes the builder if one of the following is set:
     ///
     /// * `EDGEDB_CREDENTIALS_FILE`
     /// * `EDGEDB_INSTANCE`
     /// * `EDGEDB_DSN`
     /// * `EDGEDB_HOST` or `EDGEDB_PORT`
     ///
-    /// On the same ocassion it will reset all previously credentials.
+    /// If it finds one of these then it will reset all previously set
+    /// credentials.
     ///
     /// If one of the following are set:
     ///
@@ -374,7 +375,8 @@ impl Builder {
     /// * `EDGEDB_USER`
     /// * `EDGEDB_PASSWORD`
     ///
-    /// Then this function overrides just specified parameters.
+    /// Then the value of that environment variable will be used to set just
+    /// the parameter matching that environment variable.
     ///
     /// The `insecure_dev_mode` and connection parameters are never modified by
     /// this function for now.
@@ -409,9 +411,9 @@ impl Builder {
         Ok(self)
     }
 
-    /// Set whole credentials
+    /// Set all credentials.
     ///
-    /// This marks builder as initialized
+    /// This marks the builder as initialized.
     pub fn credentials(&mut self, credentials: &Credentials)
         -> Result<&mut Self, Error>
     {
@@ -457,9 +459,10 @@ impl Builder {
         Ok(self)
     }
 
-    /// Read credentials from named instance
+    /// Read credentials from the named instance.
     ///
-    /// Named instances are created using command-line tool, directly:
+    /// Named instances are created using the command-line tool, either
+    /// directly:
     /// ```shell
     /// edgedb instance create <name>
     /// ```
@@ -467,12 +470,12 @@ impl Builder {
     /// ```shell
     /// edgedb project init
     /// ```
-    /// In the latter case you should use [read_project][Builder::read_project]
+    /// In the latter case you should use [`read_project()`][Builder::read_project]
     /// instead if possible.
     ///
-    /// This will mark builder as initialized (if reading is successful) and
-    /// overwrite all the credentials. Although, `insecure_dev_mode`, pools
-    /// sizes and timeouts are kept intact.
+    /// This will mark the builder as initialized (if reading is successful)
+    /// and overwrite all credentials. However, `insecure_dev_mode`, pools
+    /// sizes, and timeouts are kept intact.
     pub async fn read_instance(&mut self, name: &str)
         -> Result<&mut Self, Error>
     {
@@ -486,11 +489,11 @@ impl Builder {
         Ok(self)
     }
 
-    /// Read credentials from a file
+    /// Read credentials from a file.
     ///
-    /// This will mark builder as initialized (if reading is successful) and
-    /// overwrite all the credentials. Although, `insecure_dev_mode`, pools
-    /// sizes and timeouts are kept intact.
+    /// This will mark the builder as initialized (if reading is successful)
+    /// and overwrite all credentials. However, `insecure_dev_mode`, pools
+    /// sizes, and timeouts are kept intact.
     pub async fn read_credentials(&mut self, path: impl AsRef<Path>)
         -> Result<&mut Self, Error>
     {
@@ -508,20 +511,20 @@ impl Builder {
         Ok(self)
     }
 
-    /// Initialize credentials using data source name (DSN)
+    /// Initialize credentials using data source name (DSN).
     ///
     /// DSN's that EdgeDB like are URL with `egdgedb::/scheme`:
     /// ```text
     /// edgedb://user:secret@localhost:5656/
     /// ```
-    /// All the credentials can be specified using DSN, although ingesing
-    /// DSN may also include reading environment variables (if query arguments
-    /// of the for `*_env` are specified) and local files (for query arguments
-    /// named `*_file`).
+    /// All the credentials can be specified using a DSN, although parsing a
+    /// DSN may also lead to reading of environment variables (if query
+    /// arguments of the for `*_env` are specified) and local files (for query
+    /// arguments named `*_file`).
     ///
-    /// This will mark builder as initialized (if reading is successful) and
-    /// overwrite all the credentials. Although, `insecure_dev_mode`, pools
-    /// sizes and timeouts are kept intact.
+    /// This will mark the builder as initialized (if reading is successful)
+    /// and overwrite all the credentials. However, `insecure_dev_mode`, pools
+    /// sizes, and timeouts are kept intact.
     pub async fn read_dsn(&mut self, dsn: &str) -> Result<&mut Self, Error> {
         let admin = dsn.starts_with("edgedbadmin://");
         if !dsn.starts_with("edgedb://") && !admin {
@@ -553,12 +556,13 @@ impl Builder {
         };
         Ok(self)
     }
-    /// Creates a new builder that has to be intialized by calling some methods
+    /// Creates a new builder that has to be intialized by calling some methods.
     ///
-    /// Useful only if you have connections to multiple unrelated databases,
-    /// or want to have total control on the initialization of the database.
+    /// This is only useful if you have connections to multiple unrelated
+    /// databases, or you want to have total control of the database
+    /// initialization process.
     ///
-    /// Usually `Builder::from_env()` should be used instead.
+    /// Usually, `Builder::from_env()` should be used instead.
     pub fn uninitialized() -> Builder {
         Builder {
             host: DEFAULT_HOST.into(),
@@ -601,7 +605,7 @@ impl Builder {
             max_connections: self.max_connections,
         };
     }
-    /// Extract credentials from the [Builder] so they can be saved as JSON
+    /// Extract credentials from the [Builder] so they can be saved as JSON.
     pub fn as_credentials(&self) -> Result<Credentials, Error> {
         Ok(Credentials {
             host: Some(self.host.clone()),
@@ -613,9 +617,9 @@ impl Builder {
             tls_verify_hostname: self.verify_hostname,
         })
     }
-    /// Create admin socket instead of regular
+    /// Create an admin socket instead of a regular one.
     ///
-    /// This behavior is deprecated and only used for command-line tools
+    /// This behavior is deprecated and is only used for command-line tools.
     #[cfg(feature="admin_socket")]
     pub fn admin(&mut self, value: bool)
         -> &mut Self
@@ -623,21 +627,21 @@ impl Builder {
         self.admin = value;
         self
     }
-    /// Get `host` this builder is configured to connect to
+    /// Get the `host` this builder is configured to connect to.
     pub fn get_host(&self) -> &str {
         &self.host
     }
-    /// Get `port` this builder is configured to connect to
+    /// Get the `port` this builder is configured to connect to.
     pub fn get_port(&self) -> u16 {
         self.port
     }
-    /// Initialize credentials using host/port data
+    /// Initialize credentials using host/port data.
     ///
-    /// If any of host or port is `None` it is replaced with the default of
-    /// `localhost` and `5656` respectively.
+    /// If either of host or port is `None`, they are replaced with the
+    /// default of `localhost` and `5656` respectively.
     ///
-    /// This will mark builder as initialized and overwrite all the
-    /// credentials. Although, `insecure_dev_mode`, pools sizes and timeouts
+    /// This will mark the builder as initialized and overwrite all the
+    /// credentials. However, `insecure_dev_mode`, pools sizes, and timeouts
     /// are kept intact.
     pub fn host_port(&mut self,
         host: Option<impl Into<String>>, port: Option<u16>)
@@ -649,61 +653,63 @@ impl Builder {
         self.initialized = true;
         self
     }
-    /// Get user name for SCRAM authentication
+    /// Get the user name for SCRAM authentication.
     pub fn get_user(&self) -> &str {
         &self.user
     }
-    /// Set user name for SCRAM authentication
+    /// Set the user name for SCRAM authentication.
     pub fn user(&mut self, user: impl Into<String>) -> &mut Self {
         self.user = user.into();
         self
     }
-    /// Set password for SCRAM authentication
+    /// Set the password for SCRAM authentication.
     pub fn password(&mut self, password: impl Into<String>) -> &mut Self {
         self.password = Some(password.into());
         self
     }
-    /// Set database name
+    /// Set the database name.
     pub fn database(&mut self, database: impl Into<String>) -> &mut Self {
         self.database = database.into();
         self
     }
-    /// Get database name
+    /// Get the database name.
     pub fn get_database(&self) -> &str {
         &self.database
     }
-    /// Time to wait for database server to become available
+    /// Set the time to wait for the database server to become available.
     ///
-    /// This works by ignoring certain errors known to happen while database is
-    /// starting up or restarting (e.g. "connecction refused" or early
-    /// "connection reset")
+    /// This works by ignoring certain errors known to happen while the
+    /// database is starting up or restarting (e.g. "connection refused" or
+    /// early "connection reset").
     ///
-    /// Note: the whole time that connection is being established can be up to
-    /// `wait_until_available + connect_timeout`
+    /// Note: the amount of time establishing a connection can take is the sum
+    /// of `wait_until_available` plus `connect_timeout`
     pub fn wait_until_available(&mut self, time: Duration) -> &mut Self {
         self.wait = time;
         self
     }
-    /// A timeout for a single connect attempt
+    /// A timeout for a single connect attempt.
     ///
-    /// Default is 10 seconds. Subsecond timeout should be fine for most
-    /// networks, but since this timeout includes authentication, and currently
-    /// that means:
-    /// * Checking a password (slow by design)
-    /// * Creating a compiler process (slow now, may be optimized later)
+    /// The default is 10 seconds. A subsecond timeout should be fine for most
+    /// networks. However, in some cases this can be much slower. That's
+    /// because this timeout includes authentication, during which:
+    /// * The password is checked (slow by design).
+    /// * A compiler process is launched (slow now, may be optimized later).
     ///
-    /// So in concurrent case on slower VM (such as CI with parallel tests)
-    /// 10 seconds is more reasonable default.
+    /// So in a concurrent case on slower VMs (such as CI with parallel
+    /// tests), 10 seconds is more reasonable default.
     ///
-    /// The `wait_until_available` should be larger than this value to allow
-    /// multiple attempts. And also the whole time that connection is being
-    /// established can be up to `wait_until_available + connect_timeout`
+    /// The `wait_until_available` setting should be larger than this value to
+    /// allow multiple attempts.
+    ///
+    /// Note: the amount of time establishing a connection can take is the sum
+    /// of `wait_until_available` plus `connect_timeout`
     pub fn connect_timeout(&mut self, timeout: Duration) -> &mut Self {
         self.connect_timeout = timeout;
         self
     }
 
-    /// Set allowed certificate as pem file
+    /// Set the allowed certificate as a PEM file.
     pub fn pem_certificates(&mut self, cert_data: &String)
         -> Result<&mut Self, Error>
     {
@@ -716,24 +722,24 @@ impl Builder {
         Ok(self)
     }
 
-    /// Instructs TLS code to enable or disable verification
+    /// Instructs the TLS code to enable or disable verification.
     ///
-    /// By default verification is disable if specific certificate are
-    /// configured and enabled if root certificates are used.
+    /// By default, verification is disabled if a configured to use only a
+    /// specific certificate, and enabled if root certificates are used.
     pub fn verify_hostname(&mut self, value: bool) -> &mut Self {
         self.verify_hostname = Some(value);
         self
     }
 
-    /// Enables insecure dev mode
+    /// Enables insecure dev mode.
     ///
-    /// This disables certificate validation entirely
+    /// This disables certificate validation entirely.
     pub fn insecure_dev_mode(&mut self, value: bool) -> &mut Self {
         self.insecure_dev_mode = value;
         self
     }
 
-    /// Connect with custom certificate verifier
+    /// Connect with a custom certificate verifier.
     ///
     /// Unstable API
     #[cfg(feature="unstable")]
@@ -761,9 +767,10 @@ impl Builder {
         })
     }
 
-    /// Get path of the Unix socket if that is configured to be used
+    /// Get the path of the Unix socket if that is configured to be used.
     ///
-    /// This is deprecated API and should only use by command-line tool
+    /// This is a deprecated API and should only be used by the command-line
+    /// tool.
     #[cfg(feature="admin_socket")]
     pub fn get_unix_path(&self) -> Option<PathBuf> {
         self._get_unix_path()
@@ -833,7 +840,7 @@ impl Builder {
         Ok(conn)
     }
 
-    /// Maximum number of underlying database connections
+    /// Set the maximum number of underlying database connections.
     pub fn max_connections(&mut self, value: usize) -> &mut Self {
         self.max_connections = value;
         self
@@ -842,7 +849,7 @@ impl Builder {
     fn do_verify_hostname(&self) -> bool {
         self.verify_hostname.unwrap_or(self.cert.is_empty())
     }
-    /// Return single connection
+    /// Return a single connection.
     #[cfg(feature="unstable")]
     pub async fn connect(&self) -> Result<Connection, Error> {
         self.private_connect().await

@@ -4,7 +4,7 @@ mod num_bigint_interop;
 #[cfg(feature = "bigdecimal")]
 mod bigdecimal_interop;
 
-/// Virtually unlimited precision integer
+/// Virtually unlimited precision integer.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BigInt {
     pub(crate) negative: bool,
@@ -12,7 +12,7 @@ pub struct BigInt {
     pub(crate) digits: Vec<u16>,
 }
 
-/// High-precision decimal number
+/// High-precision decimal number.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Decimal {
     pub(crate) negative: bool,

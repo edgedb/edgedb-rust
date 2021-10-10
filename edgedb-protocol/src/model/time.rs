@@ -3,7 +3,7 @@ use std::convert::{TryFrom, TryInto};
 use std::time::SystemTime;
 use std::fmt::{self, Debug, Display};
 
-/// A span of time
+/// A span of time.
 ///
 /// Precision: microseconds.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -11,19 +11,19 @@ pub struct Duration {
     pub(crate) micros: i64,
 }
 
-/// A combination [`LocalDate`] and [`LocalTime`]
+/// A combination [`LocalDate`] and [`LocalTime`].
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct LocalDatetime {
     pub(crate) micros: i64,
 }
 
-/// Naive date without timezone
+/// Naive date without a timezone.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct LocalDate {
     pub(crate) days: i32,
 }
 
-/// Naive time without timezone
+/// Naive time without a timezone.
 ///
 /// Can't be more than 24 hours.
 ///
@@ -33,13 +33,13 @@ pub struct LocalTime {
     pub(crate) micros: u64,
 }
 
-/// An UTC date and time
+/// A UTC date and time.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Datetime {
     pub(crate) micros: i64,
 }
 
-/// A type that can represent human-fiendly duration like 1 month or two days
+/// A type that can represent a human-friendly duration like 1 month or two days.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct RelativeDuration {
     pub(crate) micros: i64,

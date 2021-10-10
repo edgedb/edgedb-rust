@@ -19,17 +19,19 @@ struct Options {
 }
 
 #[derive(Debug)]
-/// This structure is shared between Pool instances when options are changed
+/// This structure is shared between Pool instances when options are changed.
 pub(crate) struct PoolInner {
     chan: Sender<Command>,
     task: Mutex<Option<JoinHandle<()>>>,
     state: Arc<PoolState>,
 }
 
-/// A database connection pool
+/// A database connection client.
 ///
-/// This is main way how to interact with the database. Usually it's created
-/// using [connect](crate::connect) function.
+/// This is the struct used to interact with the database. Typically, you will
+/// use the [`connect()`](crate::connect) function to create this struct, or
+/// with a [`Builder`](crate::Builder) that you pass to
+/// [`Client::new()`](crate::Client::new).
 ///
 // User-visible instance of connection pool. Shallowly clonable contains
 // options (clone pool to modify options). All the functionality is actually

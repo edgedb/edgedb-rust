@@ -256,11 +256,11 @@ impl ServerMessage {
             }
         }
     }
-    /// Decode exactly one frame from the buffer
+    /// Decode exactly one frame from the buffer.
     ///
-    /// This expect full frame already be in the buffer. It can return
-    /// arbitrary error or be silent if message is only partially present
-    /// in the buffer or if extra data present.
+    /// This expects a full frame to already be in the buffer. It can return
+    /// an arbitrary error or be silent if a message is only partially present
+    /// in the buffer or if extra data is present.
     pub fn decode(buf: &mut Input) -> Result<ServerMessage, DecodeError> {
         use self::ServerMessage as M;
         let ref mut data = buf.slice(5..);

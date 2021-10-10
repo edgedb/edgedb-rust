@@ -3,7 +3,7 @@ use std::default::Default;
 use serde::{Serialize, Deserialize};
 
 
-/// A structure that represents contents of the credentials file
+/// A structure that represents the contents of the credentials file.
 #[derive(Serialize, Deserialize, Debug)]
 #[non_exhaustive]
 pub struct Credentials {

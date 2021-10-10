@@ -12,7 +12,7 @@ pub use uuid::Uuid;
 
 use std::fmt;
 
-/// Error converting out of range value to/from EdgeDB type
+/// Error converting an out of range value to/from EdgeDB type.
 #[derive(Debug, PartialEq)]
 pub struct OutOfRangeError;
 

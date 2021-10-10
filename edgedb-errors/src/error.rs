@@ -7,13 +7,13 @@ use crate::kinds::{tag_check, error_name};
 use crate::traits::ErrorKind;
 
 
-/// Error object returned from any EdgeDB call
+/// Error type returned from any EdgeDB call.
 // This includes boxed error, because propagating through call chain is
 // faster when error is just one pointer
 #[derive(Debug)]
 pub struct Error(pub(crate) Box<Inner>);
 
-/// Tag that is used to group simiar errors
+/// Tag that is used to group similar errors.
 pub struct Tag { pub(crate)  bit: u32 }
 
 #[derive(Debug)]

@@ -4,9 +4,9 @@ use std::collections::HashMap;
 use crate::error::{Error, Inner};
 
 
-/// Trait that marks EdgeDB errors
+/// Trait that marks EdgeDB errors.
 ///
-/// Currently sealed, because edgedb errors will be changed in future
+/// This is currently sealed because EdgeDB errors will be changed in future.
 pub trait ErrorKind: Sealed {
     fn with_message<S: Into<Cow<'static, str>>>(s: S) -> Error {
         Self::build().context(s)
