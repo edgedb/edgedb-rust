@@ -78,7 +78,7 @@ impl Client {
     /// Create a new connection pool
     ///
     /// Note this does not create any connection immediately.
-    /// Use [`ensure_connection()`][Client::ensure_connected] to establish a
+    /// Use [`ensure_connected()`][Client::ensure_connected] to establish a
     /// connection and verify that connection credentials are okay.
     pub fn new(builder: Builder) -> Client {
         let (chan, rcv) = unbounded();
@@ -121,14 +121,14 @@ impl Client {
     /// Most of the times you have to specify return type for the query:
     ///
     /// ```rust,ignore
-    /// let greeting = pool.query::<String, _>("SELECT 'hello'", &());
+    /// let greeting = pool.query::<Vec<String>, _>("SELECT 'hello'", &());
     /// // or
     /// let greeting: Vec<String> = pool.query("SELECT 'hello'", &());
     /// ```
     ///
     /// This method can be used both with static arguments, like a tuple of
-    /// scalars. And with dynamic arguments [`edgedb_protocol::value::Value`].
-    /// Similarly dynamically typed results are also suported.
+    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// Similarly, dynamically typed results are also supported.
     pub async fn query<R, A>(&self, request: &str, arguments: &A)
         -> Result<Vec<R>, Error>
         where A: QueryArgs,
@@ -142,9 +142,9 @@ impl Client {
     /// Most of the times you have to specify return type for the query:
     ///
     /// ```rust,ignore
-    /// let greeting = pool.query::<String, _>("SELECT 'hello'", &());
+    /// let greeting = pool.query_single::<String, _>("SELECT 'hello'", &());
     /// // or
-    /// let greeting: String = pool.query("SELECT 'hello'", &());
+    /// let greeting: String = pool.query_single("SELECT 'hello'", &());
     /// ```
     ///
     /// The query must return exactly one element. If the query returns more
@@ -154,8 +154,8 @@ impl Client {
     /// [`NoDataError`][crate::errors::NoDataError] is raised.
     ///
     /// This method can be used both with static arguments, like a tuple of
-    /// scalars. And with dynamic arguments [`edgedb_protocol::value::Value`].
-    /// Similarly dynamically typed results are also suported.
+    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// Similarly, dynamically typed results are also supported.
     pub async fn query_single<R, A>(&self, request: &str, arguments: &A)
         -> Result<R, Error>
         where A: QueryArgs,
