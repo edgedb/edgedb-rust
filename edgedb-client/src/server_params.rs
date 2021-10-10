@@ -7,7 +7,7 @@ use typemap::Key;
 use crate::sealed::SealedParam;
 
 
-/// Address of the underlying postgress, available only in dev mode
+/// Address of the underlying postgres, available only in dev mode.
 #[derive(Deserialize, Debug, Serialize)]
 pub struct PostgresAddress {
     pub host: String,
@@ -18,7 +18,7 @@ pub struct PostgresAddress {
     pub server_settings: HashMap<String, String>,
 }
 
-/// A trait that represents param sent from server
+/// A trait that represents a param sent from the server.
 pub trait ServerParam: SealedParam
     + typemap::Key + typemap::DebugAny + Send + Sync
 {}

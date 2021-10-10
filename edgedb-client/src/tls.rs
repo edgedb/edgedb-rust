@@ -98,7 +98,7 @@ impl ServerCertVerifier for NullVerifier {
     }
 }
 
-/// A helper function to verify server certificate
+/// A helper function to verify a server certificate.
 pub fn verify_server_cert<'a>(
     roots: &RootCertStore,
     presented_certs: &'a [Certificate],

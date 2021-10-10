@@ -75,11 +75,11 @@ impl PoolInner {
 }
 
 impl Client {
-    /// Create a new connection pool
+    /// Create a new connection pool.
     ///
-    /// Note this does not create any connection immediately.
-    /// Use [`ensure_connection()`][Client::ensure_connected] to establish a
-    /// connection and verify that connection credentials are okay.
+    /// Note this does not create a connection immediately.
+    /// Use [`ensure_connected()`][Client::ensure_connected] to establish a
+    /// connection and verify that the connection is usable.
     pub fn new(builder: Builder) -> Client {
         let (chan, rcv) = unbounded();
         let state = Arc::new(PoolState::new(builder));
@@ -95,11 +95,12 @@ impl Client {
         }
     }
 
-    /// Start shutting down connection pool
+    /// Start shutting down the connection pool.
     ///
-    /// Note: this waits for all connections to be released when called on
-    /// the first call. But if multiple calls are executed concurrently only
-    /// the first one will wait (subsequent ones will exit immediately).
+    /// Note that this waits for all connections to be released when called
+    /// for the first time. But if it is called multiple times concurrently,
+    /// only the first call will wait and subsequent call will exit
+    /// immediately.
     pub async fn close(&self) {
         self.inner.chan.send(Command::Close).await.ok();
         if let Some(task) = self.inner.task.lock().await.take() {
@@ -107,18 +108,18 @@ impl Client {
         }
     }
 
-    /// Ensure that there is at least one working connection to the pool
+    /// Ensure that there is at least one working connection to the pool.
     ///
-    /// This is often used at the start of the application to error out on
-    /// invalid connection configuration earlier.
+    /// This can be used at application startup to ensure that you have a
+    /// working connection.
     pub async fn ensure_connected(&self) -> Result<(), Error> {
         self.inner.acquire().await?;
         Ok(())
     }
 
-    /// Execute a query returning a collection of results
+    /// Execute a query and return a collection of results.
     ///
-    /// Most of the times you have to specify return type for the query:
+    /// You will usually have to specify the return type for the query:
     ///
     /// ```rust,ignore
     /// let greeting = pool.query::<String, _>("SELECT 'hello'", &());
@@ -126,9 +127,9 @@ impl Client {
     /// let greeting: Vec<String> = pool.query("SELECT 'hello'", &());
     /// ```
     ///
-    /// This method can be used both with static arguments, like a tuple of
-    /// scalars. And with dynamic arguments [`edgedb_protocol::value::Value`].
-    /// Similarly dynamically typed results are also suported.
+    /// This method can be used with both static arguments, like a tuple of
+    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// Similarly, dynamically typed results are also supported.
     pub async fn query<R, A>(&self, request: &str, arguments: &A)
         -> Result<Vec<R>, Error>
         where A: QueryArgs,
@@ -137,25 +138,25 @@ impl Client {
         self.inner.query(request, arguments, &StatementParams::new()).await
     }
 
-    /// Execute a query returning a single result
+    /// Execute a query and return a single result.
     ///
-    /// Most of the times you have to specify return type for the query:
+    /// You will usually have to specify the return type for the query:
     ///
     /// ```rust,ignore
-    /// let greeting = pool.query::<String, _>("SELECT 'hello'", &());
+    /// let greeting = pool.query_single::<String, _>("SELECT 'hello'", &());
     /// // or
-    /// let greeting: String = pool.query("SELECT 'hello'", &());
+    /// let greeting: String = pool.query_single("SELECT 'hello'", &());
     /// ```
     ///
     /// The query must return exactly one element. If the query returns more
-    /// than one element, an
+    /// than one element, a
     /// [`ResultCardinalityMismatchError`][crate::errors::ResultCardinalityMismatchError]
-    /// is raised, if it returns an empty set, an
+    /// is raised. If the query returns an empty set, a
     /// [`NoDataError`][crate::errors::NoDataError] is raised.
     ///
-    /// This method can be used both with static arguments, like a tuple of
-    /// scalars. And with dynamic arguments [`edgedb_protocol::value::Value`].
-    /// Similarly dynamically typed results are also suported.
+    /// This method can be used with both static arguments, like a tuple of
+    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// Similarly, dynamically typed results are also supported.
     pub async fn query_single<R, A>(&self, request: &str, arguments: &A)
         -> Result<R, Error>
         where A: QueryArgs,
@@ -172,7 +173,7 @@ impl Client {
             })
     }
 
-    /// Execute a query returning result as a JSON
+    /// Execute a query and return the result as JSON.
     pub async fn query_json<A>(&self, request: &str, arguments: &A)
         -> Result<Json, Error>
         where A: QueryArgs,
@@ -189,12 +190,12 @@ impl Client {
             })
     }
 
-    /// Run a singleton-returning query and return its element in JSON
+    /// Execute a query and return a single result as JSON.
     ///
     /// The query must return exactly one element. If the query returns more
-    /// than one element, an
+    /// than one element, a
     /// [`ResultCardinalityMismatchError`][crate::errors::ResultCardinalityMismatchError]
-    /// is raised, if it returns an empty set, an
+    /// is raised. If the query returns an empty set, a
     /// [`NoDataError`][crate::errors::NoDataError] is raised.
     pub async fn query_single_json<A>(&self, request: &str, arguments: &A)
         -> Result<Json, Error>
@@ -212,10 +213,11 @@ impl Client {
                 NoDataError::with_message("query row returned zero results")
             })
     }
-    /// Execute an EdgeQL command (or commands).
+    /// Execute one or more EdgeQL commands.
     ///
-    /// Note: If the results of query are desired, [`query()`][Client::query] or
-    /// [`query_single()`][Client::query_single] should be used instead.
+    /// Note that if you want the results of query, use
+    /// [`query()`][Client::query] or [`query_single()`][Client::query_single]
+    /// instead.
     pub async fn execute<A>(&self, request: &str, arguments: &A)
         -> Result<ExecuteResult, Error>
         where A: QueryArgs,

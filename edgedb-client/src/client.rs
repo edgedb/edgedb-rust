@@ -39,7 +39,7 @@ use crate::server_params::ServerParam;
 
 
 #[derive(Debug)]
-/// A single connection to the EdgeDB
+/// A single connection to the EdgeDB server.
 pub struct Connection {
     pub(crate) input: ReadHalf<TlsStream>,
     pub(crate) output: WriteHalf<TlsStream>,

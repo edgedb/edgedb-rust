@@ -8,7 +8,8 @@ mod json;
 mod shape;
 
 
-/// Derive macro to allow structs and enums be queried from the database
+/// Derive macro that allows structs and enums to be populated by database
+/// queries.
 ///
 /// This derive can be used on structures with named fields (which correspond
 /// to "shapes" in EdgeDB).
@@ -25,10 +26,10 @@ mod shape;
 ///
 /// ## JSON
 ///
-/// The `#[edgedb(json)]` decodes a field using `serde_json` instead of EdgeDB
-/// binary protocol. Useful if some data is stored in the database as JSON, but
-/// you need to process it.  The underlying type must implement
-/// `serde::Deserialize`.
+/// The `#[edgedb(json)]` attribute decodes a field using `serde_json` instead
+/// of the EdgeDB binary protocol. This is useful if some data is stored in
+/// the database as JSON, but you need to process it. The underlying type must
+/// implement `serde::Deserialize`.
 ///
 /// ```rust
 /// # use std::collections::HashMap;
@@ -44,8 +45,9 @@ mod shape;
 ///
 /// ## JSON
 ///
-/// The `#[edgedb(json)]` can be used to unpack the structure from the JSON.
-/// The underlying type must implement `serde::Deserialize`
+/// The `#[edgedb(json)]` attribute can be used to unpack the structure from
+/// the returned JSON.  The underlying type must implement
+/// `serde::Deserialize`.
 ///
 /// ```rust
 /// #[derive(edgedb_client::Queryable, serde::Deserialize)]

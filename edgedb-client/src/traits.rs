@@ -11,7 +11,7 @@ use crate::client::StatementParams;
 use crate::model::Json;
 
 
-/// Result returned from [`execute()`][Executor#method.execute] call
+/// Result returned from an [`execute()`][Executor#method.execute] call.
 #[derive(Debug, Clone)]
 pub struct ExecuteResult {
     pub(crate) marker: Bytes,
@@ -47,22 +47,22 @@ pub trait Sealed {
         -> Result<GenericResult, Error>;
 }
 
-/// Main trait that allows executing queries
+/// The main trait that allows query execution.
 ///
-/// Note comparing to [Client] this trait has `&mut self` for query methods.
+/// Note that compared to [Client] this trait has `&mut self` for query methods.
 /// This is because we need to support [Executor] for a transaction.
 /// To overcome this issue for [Client] you can either use inherent methods on
-/// pool rather than this trait or just clone it (cloning [Client] is cheap):
+/// the pool rather than this trait or just clone it (cloning [Client] is cheap):
 ///
 /// ```rust,ignore
 /// do_query(&mut global_pool_reference.clone())?;
 /// ```
-/// Note: due to limitations of Rust type system, the query methods are
-/// part of inherent implementation for `dyn Executor` itself, not in the trait
+/// Due to limitations of the Rust type system, the query methods are part of
+/// the inherent implementation for `dyn Executor`, not in the trait
 /// itself. This should not be a problem in most cases.
 ///
 /// This trait is sealed (no imlementation can be done outside of this crate),
-/// since we don't want to expose too much implementation details for now.
+/// since we don't want to expose too many implementation details for now.
 pub trait Executor: Sealed {
 }
 
@@ -80,9 +80,9 @@ impl Sealed for Client {
 impl Executor for Client {}
 
 impl dyn Executor + '_ {
-    /// Execute a query returning a list of arguments
+    /// Execute a query and return a collection of results.
     ///
-    /// Most of the times you have to specify return type for the query:
+    /// You will usually have to specify the return type for the query:
     ///
     /// ```rust,ignore
     /// let greeting = pool.query::<String, _>("SELECT 'hello'", &());
@@ -90,9 +90,9 @@ impl dyn Executor + '_ {
     /// let greeting: Vec<String> = pool.query("SELECT 'hello'", &());
     /// ```
     ///
-    /// This method can be used both with static arguments, like a tuple of
-    /// scalars. And with dynamic arguments [`edgedb_protocol::value::Value`].
-    /// Similarly dynamically typed results are also suported.
+    /// This method can be used with both static arguments, like a tuple of
+    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// Similarly, dynamically typed results are also supported.
     pub async fn query<R, A>(&mut self, query: &str, arguments: &A)
         -> Result<Vec<R>, Error>
         where A: QueryArgs,
@@ -121,25 +121,25 @@ impl dyn Executor + '_ {
         }
     }
 
-    /// Execute a query returning a single result
+    /// Execute a query and return a single result.
     ///
-    /// Most of the times you have to specify return type for the query:
+    /// You will usually have to specify the return type for the query:
     ///
     /// ```rust,ignore
-    /// let greeting = pool.query::<String, _>("SELECT 'hello'", &());
+    /// let greeting = pool.query_single::<String, _>("SELECT 'hello'", &());
     /// // or
-    /// let greeting: String = pool.query("SELECT 'hello'", &());
+    /// let greeting: String = pool.query_single("SELECT 'hello'", &());
     /// ```
     ///
     /// The query must return exactly one element. If the query returns more
-    /// than one element, an
+    /// than one element, a
     /// [`ResultCardinalityMismatchError`][crate::errors::ResultCardinalityMismatchError]
-    /// is raised, if it returns an empty set, an
+    /// is raised. If the query returns an empty set, a
     /// [`NoDataError`][crate::errors::NoDataError] is raised.
     ///
-    /// This method can be used both with static arguments, like a tuple of
-    /// scalars. And with dynamic arguments [`edgedb_protocol::value::Value`].
-    /// Similarly dynamically typed results are also suported.
+    /// This method can be used with both static arguments, like a tuple of
+    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// Similarly, dynamically typed results are also supported.
     pub async fn query_single<R, A>(&mut self, query: &str, arguments: &A)
         -> Result<R, Error>
         where A: QueryArgs,
@@ -170,7 +170,7 @@ impl dyn Executor + '_ {
         }
     }
 
-    /// Execute a query returning result as a JSON
+    /// Execute a query and return the result as JSON.
     pub async fn query_json<A>(&mut self, query: &str, arguments: &A)
         -> Result<Json, Error>
         where A: QueryArgs,
@@ -205,12 +205,12 @@ impl dyn Executor + '_ {
         }
     }
 
-    /// Run a singleton-returning query and return its element in JSON
+    /// Execute a query and return a single result as JSON.
     ///
     /// The query must return exactly one element. If the query returns more
-    /// than one element, an
+    /// than one element, a
     /// [`ResultCardinalityMismatchError`][crate::errors::ResultCardinalityMismatchError]
-    /// is raised, if it returns an empty set, an
+    /// is raised. If the query returns an empty set, a
     /// [`NoDataError`][crate::errors::NoDataError] is raised.
     pub async fn query_single_json<A>(&mut self, query: &str, arguments: &A)
         -> Result<Json, Error>
@@ -246,10 +246,11 @@ impl dyn Executor + '_ {
             }
         }
     }
-    /// Execute an EdgeQL command (or commands).
+    /// Execute one or more EdgeQL commands.
     ///
-    /// Note: If the results of query are desired, [`query()`][Client::query] or
-    /// [`query_single()`][Client::query_single] should be used instead.
+    /// Note that if you want the results of query, use
+    /// [`query()`][Client::query] or [`query_single()`][Client::query_single]
+    /// instead.
     pub async fn execute<A>(&mut self, query: &str, arguments: &A)
         -> Result<ExecuteResult, Error>
         where A: QueryArgs,

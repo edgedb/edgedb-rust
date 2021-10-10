@@ -46,17 +46,18 @@ pub use edgedb_derive::Queryable;
 
 mod pool;
 
-/// Create a connection to the database with default parameters
+/// Create a connection to the database with default parameters.
 ///
-/// It's expected that connection parameters are set up using environment
-/// (either environment variables or project configuration in `edgedb.toml`)
+/// It's expected that connection parameters are set using the environment
+/// (either environment variables or project configuration in `edgedb.toml`),
 /// so no configuration is specified here.
 ///
-/// This method tries to esablish single connection immediately to
-/// ensure that configuration is valid and will error out otherwise.
+/// This method tries to establish a single connection immediately to ensure
+/// that the configuration is valid. It will return an error if it cannot do
+/// so.
 ///
-/// For more fine-grained setup see [`Client`] and [`Builder`] documentation
-/// and the source of this function.
+/// For more fine-grained setup see the [`Client`] and [`Builder`]
+/// documentation and the source of this function.
 pub async fn connect() -> Result<Client, Error> {
     let pool = Client::new(Builder::from_env().await?);
     pool.ensure_connected().await?;
