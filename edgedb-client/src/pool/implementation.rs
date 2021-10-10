@@ -78,7 +78,7 @@ impl Client {
     /// Create a new connection pool
     ///
     /// Note this does not create any connection immediately.
-    /// Use [`ensure_connection()`][Client::ensure_connected] to establish a
+    /// Use [`ensure_connected()`][Client::ensure_connected] to establish a
     /// connection and verify that connection credentials are okay.
     pub fn new(builder: Builder) -> Client {
         let (chan, rcv) = unbounded();
