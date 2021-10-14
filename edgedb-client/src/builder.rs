@@ -38,7 +38,7 @@ use crate::errors::{ClientConnectionError, ProtocolError, ProtocolTlsError};
 use crate::errors::{ClientConnectionFailedError, AuthenticationError};
 use crate::errors::{ClientError, ClientConnectionFailedTemporarilyError};
 use crate::errors::{ClientNoCredentialsError};
-use crate::errors::{Error, ErrorKind, PasswordRequired};
+use crate::errors::{Error, ErrorKind, PasswordRequired, ResultExt};
 use crate::server_params::PostgresAddress;
 use crate::tls;
 
@@ -61,6 +61,7 @@ pub struct Builder {
     pem: Option<String>,
     cert: rustls::RootCertStore,
     verify_hostname: Option<bool>,
+    instance_name: Option<String>,
 
     initialized: bool,
     wait: Duration,
@@ -77,7 +78,7 @@ impl fmt::Display for DisplayAddr<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if !self.0.initialized {
             write!(f, "<no address>")
-        } else if let Some(path) = self.0._get_unix_path() {
+        } else if let Some(path) = self.0._get_unix_path().unwrap_or(None) {
             write!(f, "{}", path.display())
         } else {
             write!(f, "{}:{}", self.0.host, self.0.port)
@@ -255,6 +256,39 @@ fn config_dir() -> Result<PathBuf, Error> {
             .join("edgedb")
     };
     Ok(dir)
+}
+
+#[allow(dead_code)]
+#[cfg(target_os="linux")]
+fn default_runtime_base() -> Result<PathBuf, Error> {
+    extern "C" {
+        fn geteuid() -> u32;
+    }
+    Ok(Path::new("/run/user").join(unsafe { geteuid() }.to_string()))
+}
+
+#[allow(dead_code)]
+#[cfg(not(target_os="linux"))]
+fn default_runtime_base() -> Result<PathBuf, Error> {
+    Err(ClientError::with_message("no default runtime dir for the platform"))
+}
+
+fn runtime_dir(name: &str) -> Result<PathBuf, Error> {
+    if cfg!(target_os="macos") {
+        Ok(dirs::cache_dir()
+            .ok_or_else(|| ClientError::with_message(
+                "cannot determine cache directory"))?
+            .join("edgedb")
+            .join("run")
+            .join(name))
+    } else if cfg!(windows) {
+        Err(ClientError::with_message(
+            "unix sockets are not supported on Windows"))
+    } else {
+        Ok(dirs::runtime_dir().ok_or(())
+           .or_else(|()| default_runtime_base())?
+           .join(format!("edgedb-{}", name)))
+    }
 }
 
 fn stash_path(project_dir: &Path) -> Result<PathBuf, Error> {
@@ -439,23 +473,18 @@ impl Builder {
             pem = None;
         }
         self.reset_compound();
-        *self = Builder {
-            // replace all of them
-            host: credentials.host.clone()
-                .unwrap_or_else(|| DEFAULT_HOST.into()),
-            port: credentials.port,
-            admin: false,
-            user: credentials.user.clone(),
-            password: credentials.password.clone(),
-            database: credentials.database.clone()
-                .unwrap_or_else(|| "edgedb".into()),
-            verify_hostname: credentials.tls_verify_hostname,
-            cert,
-            pem,
-
-            initialized: true,
-            ..*self
-        };
+        self.host = credentials.host.clone()
+                .unwrap_or_else(|| DEFAULT_HOST.into());
+        self.port = credentials.port;
+        self.admin = false;
+        self.user = credentials.user.clone();
+        self.password = credentials.password.clone();
+        self.database = credentials.database.clone()
+                .unwrap_or_else(|| "edgedb".into());
+        self.verify_hostname = credentials.tls_verify_hostname;
+        self.cert = cert;
+        self.pem = pem;
+        self.initialized = true;
         Ok(self)
     }
 
@@ -486,6 +515,7 @@ impl Builder {
         self.read_credentials(
             config_dir()?.join("credentials").join(format!("{}.json", name))
         ).await?;
+        self.instance_name = Some(name.into());
         Ok(self)
     }
 
@@ -534,26 +564,19 @@ impl Builder {
         let url = url::Url::parse(dsn)
             .map_err(|e| ClientError::with_source(e)
                 .context(format!("cannot parse DSN {:?}", dsn)))?;
-        *self = Builder {
-            // replace all of them
-            host: url.host_str().unwrap_or(DEFAULT_HOST).to_owned(),
-            port: url.port().unwrap_or(DEFAULT_PORT),
-            admin: admin,
-            user: if url.username().is_empty() {
-                "edgedb".to_owned()
-            } else {
-                url.username().to_owned()
-            },
-            password: url.password().map(|s| s.to_owned()),
-            database: url.path().strip_prefix("/")
-                .unwrap_or("edgedb").to_owned(),
-            verify_hostname: None,
-            cert: rustls::RootCertStore::empty(),
-            pem: None,
-
-            initialized: true,
-            ..*self
+        self.reset_compound();
+        self.host = url.host_str().unwrap_or(DEFAULT_HOST).to_owned();
+        self.port = url.port().unwrap_or(DEFAULT_PORT);
+        self.admin = admin;
+        self.user = if url.username().is_empty() {
+            "edgedb".to_owned()
+        } else {
+            url.username().to_owned()
         };
+        self.password = url.password().map(|s| s.to_owned());
+        self.database = url.path().strip_prefix("/")
+                .unwrap_or("edgedb").to_owned();
+        self.initialized = true;
         Ok(self)
     }
     /// Creates a new builder that has to be intialized by calling some methods.
@@ -574,6 +597,7 @@ impl Builder {
             verify_hostname: None,
             cert: rustls::RootCertStore::empty(),
             pem: None,
+            instance_name: None,
 
             wait: DEFAULT_WAIT,
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
@@ -595,6 +619,7 @@ impl Builder {
             verify_hostname: None,
             cert: rustls::RootCertStore::empty(),
             pem: None,
+            instance_name: None,
 
             initialized: false,
             // keep old values
@@ -773,29 +798,43 @@ impl Builder {
     /// tool.
     #[cfg(feature="admin_socket")]
     pub fn get_unix_path(&self) -> Option<PathBuf> {
-        self._get_unix_path()
+        self._get_unix_path().unwrap_or(None)
     }
-    fn _get_unix_path(&self) -> Option<PathBuf> {
+    fn _get_unix_path(&self) -> Result<Option<PathBuf>, Error> {
         let unix_host = self.host.contains("/");
         if self.admin || unix_host {
             let prefix = if unix_host {
-                &self.host
+                self.host.clone().into()
             } else {
-                "/var/run/edgedb"
-            };
-            let path = if prefix.contains(".s.EDGEDB") {
-                // it's the full path
-                self.host.clone()
-            } else {
-                if self.admin {
-                    format!("{}/.s.EDGEDB.admin.{}", prefix, self.port)
+                if let Some(instance) = &self.instance_name {
+                    runtime_dir(instance)
+                        .context("cannot find admin socket")?
                 } else {
-                    format!("{}/.s.EDGEDB.{}", prefix, self.port)
+                    if cfg!(target_os="macos") {
+                        "/var/run/edgedb".into()
+                    } else {
+                        "/run/edgedb".into()
+                    }
                 }
             };
-            Some(path.into())
+            let has_socket_name = prefix.file_name()
+                .and_then(|x| x.to_str())
+                .map(|x| x.contains(".s.EDGEDB"))
+                .unwrap_or(false);
+            let path = if has_socket_name {
+                // it's the full path
+                prefix
+            } else {
+                let socket_name = if self.admin {
+                    format!(".s.EDGEDB.admin.{}", self.port)
+                } else {
+                    format!(".s.EDGEDB.{}", self.port)
+                };
+                prefix.join(socket_name)
+            };
+            Ok(Some(path.into()))
         } else {
-            None
+            Ok(None)
         }
     }
 
@@ -804,7 +843,7 @@ impl Builder {
     ) -> Result<Connection, Error> {
         let tls = tls::connector(&self.cert, cert_verifier).map_err(tls_fail)?;
         if log::log_enabled!(log::Level::Info) {
-            if let Some(path) = self._get_unix_path() {
+            if let Some(path) = self._get_unix_path()? {
                 log::info!("Connecting via Unix `{}`", path.display());
             } else {
                 log::info!("Connecting via TCP {}:{}", self.host, self.port);
@@ -891,7 +930,7 @@ impl Builder {
             Err(e) => return Err(e),
             Ok(r) => match r.get_alpn_protocol() {
                 Ok(Some(protocol)) if protocol == b"edgedb-binary" => r,
-                _ => match self._get_unix_path() {
+                _ => match self._get_unix_path()? {
                     None => Err(ClientConnectionFailedError::with_message(
                         "Server does not support the EdgeDB binary protocol."
                     ))?,
@@ -905,7 +944,7 @@ impl Builder {
     async fn _connect_stream(&self, tls: &TlsConnectorBox)
         -> Result<TlsStream, Error>
     {
-        match self._get_unix_path() {
+        match self._get_unix_path()? {
             None => {
                 let conn = TcpStream::connect(
                     &(&self.host[..], self.port)
@@ -1136,10 +1175,11 @@ fn display() {
     assert_eq!(bld.host, "localhost");
     assert_eq!(bld.port, 1756);
     bld.host_port(Some("/test/my.sock"), None);
-    assert_eq!(bld._get_unix_path(),
+    assert_eq!(bld._get_unix_path().unwrap(),
                Some("/test/my.sock/.s.EDGEDB.5656".into()));
     bld.host_port(Some("/test/.s.EDGEDB.8888"), None);
-    assert_eq!(bld._get_unix_path(), Some("/test/.s.EDGEDB.8888".into()));
+    assert_eq!(bld._get_unix_path().unwrap(),
+               Some("/test/.s.EDGEDB.8888".into()));
 }
 
 #[test]
