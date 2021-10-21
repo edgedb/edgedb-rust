@@ -48,6 +48,13 @@ pub const DEFAULT_POOL_SIZE: usize = 10;
 pub const DEFAULT_HOST: &str = "localhost";
 pub const DEFAULT_PORT: u16 = 5656;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum TlsClientSecurity {
+    Insecure,
+    NoHostVerification,
+    Strict,
+    Default,
+}
 
 /// A builder used to create connections.
 #[derive(Debug, Clone)]
@@ -60,7 +67,7 @@ pub struct Builder {
     database: String,
     pem: Option<String>,
     cert: rustls::RootCertStore,
-    verify_hostname: Option<bool>,
+    client_security: TlsClientSecurity,
     instance_name: Option<String>,
 
     initialized: bool,
@@ -434,13 +441,41 @@ impl Builder {
         if let Some(password) = get_env("EDGEDB_PASSWORD")? {
             self.password = Some(password);
         }
+        if let Some(sec) = get_env("EDGEDB_TLS_CLIENT_SECURITY")? {
+            self.client_security = match &sec[..] {
+                "default" => TlsClientSecurity::Default,
+                "insecure" => TlsClientSecurity::Insecure,
+                "no_host_verification" => TlsClientSecurity::NoHostVerification,
+                "strict" => TlsClientSecurity::Strict,
+                _ => {
+                    return Err(ClientError::with_message(
+                        format!("Invalid value {:?} for env var \
+                                EDGEDB_TLS_CLIENT_SECURITY. \
+                                Options: default, insecure, \
+                                no_host_verification, strict.",
+                                sec)
+                    ));
+                }
+            };
+        }
         self.read_extra_env_vars()?;
         Ok(self)
     }
     /// Read environment variables that aren't credentials
     pub fn read_extra_env_vars(&mut self) -> Result<&mut Self, Error> {
-        if let Some(mode) = get_env("EDGEDB_INSECURE_DEV_MODE")? {
-            self.insecure_dev_mode = mode != "";
+        if let Some(mode) = get_env("EDGEDB_CLIENT_SECURITY")? {
+            self.insecure_dev_mode = match &mode[..] {
+                "default" => false,
+                "insecure_dev_mode" => true,
+                _ => {
+                    return Err(ClientError::with_message(
+                        format!("Invalid value {:?} for env var \
+                                EDGEDB_CLIENT_SECURITY. \
+                                Options: default, insecure_dev_mode.",
+                                mode)
+                    ));
+                }
+            };
         }
         Ok(self)
     }
@@ -481,7 +516,11 @@ impl Builder {
         self.password = credentials.password.clone();
         self.database = credentials.database.clone()
                 .unwrap_or_else(|| "edgedb".into());
-        self.verify_hostname = credentials.tls_verify_hostname;
+        self.client_security = match credentials.tls_verify_hostname {
+            None => TlsClientSecurity::Default,
+            Some(true) => TlsClientSecurity::Strict,
+            Some(false) => TlsClientSecurity::NoHostVerification,
+        };
         self.cert = cert;
         self.pem = pem;
         self.initialized = true;
@@ -594,7 +633,7 @@ impl Builder {
             user: "edgedb".into(),
             password: None,
             database: "edgedb".into(),
-            verify_hostname: None,
+            client_security: TlsClientSecurity::Default,
             cert: rustls::RootCertStore::empty(),
             pem: None,
             instance_name: None,
@@ -616,7 +655,7 @@ impl Builder {
             user: "edgedb".into(),
             password: None,
             database: "edgedb".into(),
-            verify_hostname: None,
+            client_security: TlsClientSecurity::Default,
             cert: rustls::RootCertStore::empty(),
             pem: None,
             instance_name: None,
@@ -639,7 +678,12 @@ impl Builder {
             password: self.password.clone(),
             database: Some(self.database.clone()),
             tls_cert_data: self.pem.clone(),
-            tls_verify_hostname: self.verify_hostname,
+            tls_verify_hostname: match self.client_security {
+                TlsClientSecurity::Default => None,
+                TlsClientSecurity::Insecure => Some(false),
+                TlsClientSecurity::NoHostVerification => Some(false),
+                TlsClientSecurity::Strict => Some(true),
+            },
         })
     }
     /// Create an admin socket instead of a regular one.
@@ -752,7 +796,11 @@ impl Builder {
     /// By default, verification is disabled if a configured to use only a
     /// specific certificate, and enabled if root certificates are used.
     pub fn verify_hostname(&mut self, value: bool) -> &mut Self {
-        self.verify_hostname = Some(value);
+        self.client_security = if value {
+            TlsClientSecurity::Strict
+        } else {
+            TlsClientSecurity::NoHostVerification
+        };
         self
     }
 
@@ -886,15 +934,28 @@ impl Builder {
     }
 
     fn do_verify_hostname(&self) -> bool {
-        self.verify_hostname.unwrap_or(self.cert.is_empty())
+        use TlsClientSecurity::*;
+        if self.insecure_dev_mode {
+            return false;
+        }
+        match self.client_security {
+            Insecure => false,
+            NoHostVerification => false,
+            Strict => true,
+            Default => self.cert.is_empty(),
+        }
     }
     /// Return a single connection.
     #[cfg(feature="unstable")]
     pub async fn connect(&self) -> Result<Connection, Error> {
         self.private_connect().await
     }
+    fn insecure(&self) -> bool {
+        use TlsClientSecurity::Insecure;
+        self.insecure_dev_mode || self.client_security == Insecure
+    }
     pub(crate) async fn private_connect(&self) -> Result<Connection, Error> {
-        if self.insecure_dev_mode {
+        if self.insecure() {
             self._connect_with_cert_verifier(Arc::new(tls::NullVerifier)).await
         } else {
             let verify_host = self.do_verify_hostname();
