@@ -33,7 +33,7 @@ use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use edgedb_protocol::server_message::{TransactionState, ServerHandshake};
 
 use crate::client::{Connection, Sequence};
-use crate::credentials::Credentials;
+use crate::credentials::{Credentials, TlsSecurity};
 use crate::errors::{ClientConnectionError, ProtocolError, ProtocolTlsError};
 use crate::errors::{ClientConnectionFailedError, AuthenticationError};
 use crate::errors::{ClientError, ClientConnectionFailedTemporarilyError};
@@ -48,13 +48,6 @@ pub const DEFAULT_POOL_SIZE: usize = 10;
 pub const DEFAULT_HOST: &str = "localhost";
 pub const DEFAULT_PORT: u16 = 5656;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum TlsClientSecurity {
-    Insecure,
-    NoHostVerification,
-    Strict,
-    Default,
-}
 
 /// A builder used to create connections.
 #[derive(Debug, Clone)]
@@ -67,13 +60,14 @@ pub struct Builder {
     database: String,
     pem: Option<String>,
     cert: rustls::RootCertStore,
-    client_security: TlsClientSecurity,
+    client_security: TlsSecurity,
     instance_name: Option<String>,
 
     initialized: bool,
     wait: Duration,
     connect_timeout: Duration,
     insecure_dev_mode: bool,
+    creds_file_outdated: bool,
 
     // Pool configuration
     pub(crate) max_connections: usize,
@@ -443,10 +437,10 @@ impl Builder {
         }
         if let Some(sec) = get_env("EDGEDB_CLIENT_TLS_SECURITY")? {
             self.client_security = match &sec[..] {
-                "default" => TlsClientSecurity::Default,
-                "insecure" => TlsClientSecurity::Insecure,
-                "no_host_verification" => TlsClientSecurity::NoHostVerification,
-                "strict" => TlsClientSecurity::Strict,
+                "default" => TlsSecurity::Default,
+                "insecure" => TlsSecurity::Insecure,
+                "no_host_verification" => TlsSecurity::NoHostVerification,
+                "strict" => TlsSecurity::Strict,
                 _ => {
                     return Err(ClientError::with_message(
                         format!("Invalid value {:?} for env var \
@@ -516,15 +510,18 @@ impl Builder {
         self.password = credentials.password.clone();
         self.database = credentials.database.clone()
                 .unwrap_or_else(|| "edgedb".into());
-        self.client_security = match credentials.tls_verify_hostname {
-            None => TlsClientSecurity::Default,
-            Some(true) => TlsClientSecurity::Strict,
-            Some(false) => TlsClientSecurity::NoHostVerification,
-        };
+        self.creds_file_outdated = credentials.file_outdated;
+        self.client_security = credentials.tls_security;
         self.cert = cert;
         self.pem = pem;
         self.initialized = true;
         Ok(self)
+    }
+
+    /// Returns if the credentials file should be updated.
+    #[cfg(feature="unstable")]
+    pub fn should_update_credential_file(&self) -> bool {
+        self.creds_file_outdated
     }
 
     /// Read credentials from the named instance.
@@ -633,7 +630,7 @@ impl Builder {
             user: "edgedb".into(),
             password: None,
             database: "edgedb".into(),
-            client_security: TlsClientSecurity::Default,
+            client_security: TlsSecurity::Default,
             cert: rustls::RootCertStore::empty(),
             pem: None,
             instance_name: None,
@@ -642,6 +639,7 @@ impl Builder {
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             initialized: false,
             insecure_dev_mode: false,
+            creds_file_outdated: false,
 
             max_connections: DEFAULT_POOL_SIZE,
         }
@@ -655,7 +653,7 @@ impl Builder {
             user: "edgedb".into(),
             password: None,
             database: "edgedb".into(),
-            client_security: TlsClientSecurity::Default,
+            client_security: TlsSecurity::Default,
             cert: rustls::RootCertStore::empty(),
             pem: None,
             instance_name: None,
@@ -665,26 +663,22 @@ impl Builder {
             wait: self.wait,
             connect_timeout: self.connect_timeout,
             insecure_dev_mode: self.insecure_dev_mode,
+            creds_file_outdated: false,
 
             max_connections: self.max_connections,
         };
     }
     /// Extract credentials from the [Builder] so they can be saved as JSON.
     pub fn as_credentials(&self) -> Result<Credentials, Error> {
-        Ok(Credentials {
-            host: Some(self.host.clone()),
-            port: self.port,
-            user: self.user.clone(),
-            password: self.password.clone(),
-            database: Some(self.database.clone()),
-            tls_cert_data: self.pem.clone(),
-            tls_verify_hostname: match self.client_security {
-                TlsClientSecurity::Default => None,
-                TlsClientSecurity::Insecure => Some(false),
-                TlsClientSecurity::NoHostVerification => Some(false),
-                TlsClientSecurity::Strict => Some(true),
-            },
-        })
+        Ok(Credentials::new(
+            Some(self.host.clone()),
+            self.port,
+            self.user.clone(),
+            self.password.clone(),
+            Some(self.database.clone()),
+            self.pem.clone(),
+            self.client_security,
+        ))
     }
     /// Create an admin socket instead of a regular one.
     ///
@@ -791,16 +785,13 @@ impl Builder {
         Ok(self)
     }
 
-    /// Instructs the TLS code to enable or disable verification.
+    /// Updates the client TLS security mode.
     ///
-    /// By default, verification is disabled if a configured to use only a
+    /// By default, the certificate chain is always verified; but hostname
+    /// verification is disabled if configured to use only a
     /// specific certificate, and enabled if root certificates are used.
-    pub fn verify_hostname(&mut self, value: bool) -> &mut Self {
-        self.client_security = if value {
-            TlsClientSecurity::Strict
-        } else {
-            TlsClientSecurity::NoHostVerification
-        };
+    pub fn tls_security(&mut self, value: TlsSecurity) -> &mut Self {
+        self.client_security = value;
         self
     }
 
@@ -934,7 +925,7 @@ impl Builder {
     }
 
     fn do_verify_hostname(&self) -> bool {
-        use TlsClientSecurity::*;
+        use TlsSecurity::*;
         if self.insecure_dev_mode {
             return false;
         }
@@ -951,7 +942,7 @@ impl Builder {
         self.private_connect().await
     }
     fn insecure(&self) -> bool {
-        use TlsClientSecurity::Insecure;
+        use TlsSecurity::Insecure;
         self.insecure_dev_mode || self.client_security == Insecure
     }
     pub(crate) async fn private_connect(&self) -> Result<Connection, Error> {
