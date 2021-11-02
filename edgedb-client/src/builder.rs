@@ -441,7 +441,7 @@ impl Builder {
         if let Some(password) = get_env("EDGEDB_PASSWORD")? {
             self.password = Some(password);
         }
-        if let Some(sec) = get_env("EDGEDB_TLS_CLIENT_SECURITY")? {
+        if let Some(sec) = get_env("EDGEDB_CLIENT_TLS_SECURITY")? {
             self.client_security = match &sec[..] {
                 "default" => TlsClientSecurity::Default,
                 "insecure" => TlsClientSecurity::Insecure,
@@ -450,7 +450,7 @@ impl Builder {
                 _ => {
                     return Err(ClientError::with_message(
                         format!("Invalid value {:?} for env var \
-                                EDGEDB_TLS_CLIENT_SECURITY. \
+                                EDGEDB_CLIENT_TLS_SECURITY. \
                                 Options: default, insecure, \
                                 no_host_verification, strict.",
                                 sec)
