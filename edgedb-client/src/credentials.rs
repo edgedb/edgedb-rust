@@ -1,5 +1,4 @@
 //! Credentials file handling routines
-use std::borrow::Cow;
 use std::default::Default;
 
 use serde::{de, Serialize, Deserialize};
@@ -31,7 +30,7 @@ pub struct Credentials {
     #[serde(default, skip_serializing_if="Option::is_none")]
     pub tls_cert_data: Option<String>,
     #[serde(default, skip_serializing_if="Option::is_none")]
-    tls_verify_hostname: Option<bool>, // deprecated
+    pub(crate) tls_verify_hostname: Option<bool>, // deprecated
     pub tls_security: TlsSecurity,
     #[serde(skip)]
     pub(crate) file_outdated: bool,
@@ -39,14 +38,14 @@ pub struct Credentials {
 
 
 #[derive(Deserialize)]
-struct CredentialsCompat<'a> {
-    host: Option<Cow<'a, str>>,
+struct CredentialsCompat {
+    host: Option<String>,
     #[serde(default="default_port")]
     port: u16,
-    user: Cow<'a, str>,
-    password: Option<Cow<'a, str>>,
-    database: Option<Cow<'a, str>>,
-    tls_cert_data: Option<Cow<'a, str>>,
+    user: String,
+    password: Option<String>,
+    database: Option<String>,
+    tls_cert_data: Option<String>,
     tls_verify_hostname: Option<bool>,
     tls_security: Option<TlsSecurity>,
 }
@@ -54,36 +53,6 @@ struct CredentialsCompat<'a> {
 
 fn default_port() -> u16 {
     5656
-}
-
-
-impl Credentials {
-    pub fn new(
-        host: Option<String>,
-        port: u16,
-        user: String,
-        password: Option<String>,
-        database: Option<String>,
-        tls_cert_data: Option<String>,
-        tls_security: TlsSecurity,
-    ) -> Self {
-        Self {
-            host,
-            port,
-            user,
-            password,
-            database,
-            tls_cert_data,
-            tls_verify_hostname: match tls_security {
-                TlsSecurity::Default => None,
-                TlsSecurity::Insecure => None,
-                TlsSecurity::NoHostVerification => Some(false),
-                TlsSecurity::Strict => Some(true),
-            },
-            tls_security,
-            file_outdated: false
-        }
-    }
 }
 
 
@@ -129,12 +98,12 @@ impl<'de> Deserialize<'de> for Credentials {
             )))
         } else {
             Ok(Credentials {
-                host: creds.host.map(|s| s.into()),
+                host: creds.host,
                 port: creds.port,
-                user: creds.user.into(),
-                password: creds.password.map(|s| s.into()),
-                database: creds.database.map(|s| s.into()),
-                tls_cert_data: creds.tls_cert_data.map(|s| s.into()),
+                user: creds.user,
+                password: creds.password,
+                database: creds.database,
+                tls_cert_data: creds.tls_cert_data,
                 tls_verify_hostname: None,
                 tls_security: creds.tls_security.unwrap_or(
                     match creds.tls_verify_hostname {

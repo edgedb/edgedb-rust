@@ -60,7 +60,7 @@ pub struct Builder {
     database: String,
     pem: Option<String>,
     cert: rustls::RootCertStore,
-    client_security: TlsSecurity,
+    tls_security: TlsSecurity,
     instance_name: Option<String>,
 
     initialized: bool,
@@ -436,7 +436,7 @@ impl Builder {
             self.password = Some(password);
         }
         if let Some(sec) = get_env("EDGEDB_CLIENT_TLS_SECURITY")? {
-            self.client_security = match &sec[..] {
+            self.tls_security = match &sec[..] {
                 "default" => TlsSecurity::Default,
                 "insecure" => TlsSecurity::Insecure,
                 "no_host_verification" => TlsSecurity::NoHostVerification,
@@ -511,7 +511,7 @@ impl Builder {
         self.database = credentials.database.clone()
                 .unwrap_or_else(|| "edgedb".into());
         self.creds_file_outdated = credentials.file_outdated;
-        self.client_security = credentials.tls_security;
+        self.tls_security = credentials.tls_security;
         self.cert = cert;
         self.pem = pem;
         self.initialized = true;
@@ -630,7 +630,7 @@ impl Builder {
             user: "edgedb".into(),
             password: None,
             database: "edgedb".into(),
-            client_security: TlsSecurity::Default,
+            tls_security: TlsSecurity::Default,
             cert: rustls::RootCertStore::empty(),
             pem: None,
             instance_name: None,
@@ -653,7 +653,7 @@ impl Builder {
             user: "edgedb".into(),
             password: None,
             database: "edgedb".into(),
-            client_security: TlsSecurity::Default,
+            tls_security: TlsSecurity::Default,
             cert: rustls::RootCertStore::empty(),
             pem: None,
             instance_name: None,
@@ -670,15 +670,22 @@ impl Builder {
     }
     /// Extract credentials from the [Builder] so they can be saved as JSON.
     pub fn as_credentials(&self) -> Result<Credentials, Error> {
-        Ok(Credentials::new(
-            Some(self.host.clone()),
-            self.port,
-            self.user.clone(),
-            self.password.clone(),
-            Some(self.database.clone()),
-            self.pem.clone(),
-            self.client_security,
-        ))
+        Ok(Credentials {
+            host: Some(self.host.clone()),
+            port: self.port,
+            user: self.user.clone(),
+            password: self.password.clone(),
+            database: Some( self.database.clone()),
+            tls_cert_data: self.pem.clone(),
+            tls_verify_hostname: match self.tls_security {
+                TlsSecurity::Default => None,
+                TlsSecurity::Insecure => None,
+                TlsSecurity::NoHostVerification => Some(false),
+                TlsSecurity::Strict => Some(true),
+            },
+            tls_security: self.tls_security,
+            file_outdated: false
+        })
     }
     /// Create an admin socket instead of a regular one.
     ///
@@ -791,7 +798,7 @@ impl Builder {
     /// verification is disabled if configured to use only a
     /// specific certificate, and enabled if root certificates are used.
     pub fn tls_security(&mut self, value: TlsSecurity) -> &mut Self {
-        self.client_security = value;
+        self.tls_security = value;
         self
     }
 
@@ -929,7 +936,7 @@ impl Builder {
         if self.insecure_dev_mode {
             return false;
         }
-        match self.client_security {
+        match self.tls_security {
             Insecure => false,
             NoHostVerification => false,
             Strict => true,
@@ -943,7 +950,7 @@ impl Builder {
     }
     fn insecure(&self) -> bool {
         use TlsSecurity::Insecure;
-        self.insecure_dev_mode || self.client_security == Insecure
+        self.insecure_dev_mode || self.tls_security == Insecure
     }
     pub(crate) async fn private_connect(&self) -> Result<Connection, Error> {
         if self.insecure() {
