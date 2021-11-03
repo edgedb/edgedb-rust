@@ -1,7 +1,7 @@
 use crate::codec::{NamedTupleShape, ObjectShape, EnumValue};
 use crate::model::{ LocalDatetime, LocalDate, LocalTime, Duration, Datetime};
 use crate::model::{RelativeDuration};
-use crate::model::{ BigInt, Decimal, Uuid };
+use crate::model::{ BigInt, Decimal, Uuid, ConfigMemory };
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
@@ -15,6 +15,7 @@ pub enum Value {
     Float32(f32),
     Float64(f64),
     BigInt(BigInt),
+    ConfigMemory(ConfigMemory),
     Decimal(Decimal),
     Bool(bool),
     Datetime(Datetime),
@@ -46,6 +47,7 @@ impl Value {
             Float32(..) => "float32",
             Float64(..) => "float64",
             BigInt(..) => "bigint",
+            ConfigMemory(..) => "cfg::memory",
             Decimal(..) => "decimal",
             Bool(..) => "bool",
             Datetime(..) => "datetime",
