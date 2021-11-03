@@ -33,7 +33,7 @@ use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use edgedb_protocol::server_message::{TransactionState, ServerHandshake};
 
 use crate::client::{Connection, Sequence};
-use crate::credentials::Credentials;
+use crate::credentials::{Credentials, TlsSecurity};
 use crate::errors::{ClientConnectionError, ProtocolError, ProtocolTlsError};
 use crate::errors::{ClientConnectionFailedError, AuthenticationError};
 use crate::errors::{ClientError, ClientConnectionFailedTemporarilyError};
@@ -60,13 +60,14 @@ pub struct Builder {
     database: String,
     pem: Option<String>,
     cert: rustls::RootCertStore,
-    verify_hostname: Option<bool>,
+    tls_security: TlsSecurity,
     instance_name: Option<String>,
 
     initialized: bool,
     wait: Duration,
     connect_timeout: Duration,
     insecure_dev_mode: bool,
+    creds_file_outdated: bool,
 
     // Pool configuration
     pub(crate) max_connections: usize,
@@ -434,13 +435,41 @@ impl Builder {
         if let Some(password) = get_env("EDGEDB_PASSWORD")? {
             self.password = Some(password);
         }
+        if let Some(sec) = get_env("EDGEDB_CLIENT_TLS_SECURITY")? {
+            self.tls_security = match &sec[..] {
+                "default" => TlsSecurity::Default,
+                "insecure" => TlsSecurity::Insecure,
+                "no_host_verification" => TlsSecurity::NoHostVerification,
+                "strict" => TlsSecurity::Strict,
+                _ => {
+                    return Err(ClientError::with_message(
+                        format!("Invalid value {:?} for env var \
+                                EDGEDB_CLIENT_TLS_SECURITY. \
+                                Options: default, insecure, \
+                                no_host_verification, strict.",
+                                sec)
+                    ));
+                }
+            };
+        }
         self.read_extra_env_vars()?;
         Ok(self)
     }
     /// Read environment variables that aren't credentials
     pub fn read_extra_env_vars(&mut self) -> Result<&mut Self, Error> {
-        if let Some(mode) = get_env("EDGEDB_INSECURE_DEV_MODE")? {
-            self.insecure_dev_mode = mode != "";
+        if let Some(mode) = get_env("EDGEDB_CLIENT_SECURITY")? {
+            self.insecure_dev_mode = match &mode[..] {
+                "default" => false,
+                "insecure_dev_mode" => true,
+                _ => {
+                    return Err(ClientError::with_message(
+                        format!("Invalid value {:?} for env var \
+                                EDGEDB_CLIENT_SECURITY. \
+                                Options: default, insecure_dev_mode.",
+                                mode)
+                    ));
+                }
+            };
         }
         Ok(self)
     }
@@ -481,11 +510,18 @@ impl Builder {
         self.password = credentials.password.clone();
         self.database = credentials.database.clone()
                 .unwrap_or_else(|| "edgedb".into());
-        self.verify_hostname = credentials.tls_verify_hostname;
+        self.creds_file_outdated = credentials.file_outdated;
+        self.tls_security = credentials.tls_security;
         self.cert = cert;
         self.pem = pem;
         self.initialized = true;
         Ok(self)
+    }
+
+    /// Returns if the credentials file should be updated.
+    #[cfg(feature="unstable")]
+    pub fn should_update_credential_file(&self) -> bool {
+        self.creds_file_outdated
     }
 
     /// Read credentials from the named instance.
@@ -594,7 +630,7 @@ impl Builder {
             user: "edgedb".into(),
             password: None,
             database: "edgedb".into(),
-            verify_hostname: None,
+            tls_security: TlsSecurity::Default,
             cert: rustls::RootCertStore::empty(),
             pem: None,
             instance_name: None,
@@ -603,6 +639,7 @@ impl Builder {
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             initialized: false,
             insecure_dev_mode: false,
+            creds_file_outdated: false,
 
             max_connections: DEFAULT_POOL_SIZE,
         }
@@ -616,7 +653,7 @@ impl Builder {
             user: "edgedb".into(),
             password: None,
             database: "edgedb".into(),
-            verify_hostname: None,
+            tls_security: TlsSecurity::Default,
             cert: rustls::RootCertStore::empty(),
             pem: None,
             instance_name: None,
@@ -626,6 +663,7 @@ impl Builder {
             wait: self.wait,
             connect_timeout: self.connect_timeout,
             insecure_dev_mode: self.insecure_dev_mode,
+            creds_file_outdated: false,
 
             max_connections: self.max_connections,
         };
@@ -637,9 +675,16 @@ impl Builder {
             port: self.port,
             user: self.user.clone(),
             password: self.password.clone(),
-            database: Some(self.database.clone()),
+            database: Some( self.database.clone()),
             tls_cert_data: self.pem.clone(),
-            tls_verify_hostname: self.verify_hostname,
+            tls_verify_hostname: match self.tls_security {
+                TlsSecurity::Default => None,
+                TlsSecurity::Insecure => None,
+                TlsSecurity::NoHostVerification => Some(false),
+                TlsSecurity::Strict => Some(true),
+            },
+            tls_security: self.tls_security,
+            file_outdated: false
         })
     }
     /// Create an admin socket instead of a regular one.
@@ -747,12 +792,13 @@ impl Builder {
         Ok(self)
     }
 
-    /// Instructs the TLS code to enable or disable verification.
+    /// Updates the client TLS security mode.
     ///
-    /// By default, verification is disabled if a configured to use only a
+    /// By default, the certificate chain is always verified; but hostname
+    /// verification is disabled if configured to use only a
     /// specific certificate, and enabled if root certificates are used.
-    pub fn verify_hostname(&mut self, value: bool) -> &mut Self {
-        self.verify_hostname = Some(value);
+    pub fn tls_security(&mut self, value: TlsSecurity) -> &mut Self {
+        self.tls_security = value;
         self
     }
 
@@ -886,15 +932,28 @@ impl Builder {
     }
 
     fn do_verify_hostname(&self) -> bool {
-        self.verify_hostname.unwrap_or(self.cert.is_empty())
+        use TlsSecurity::*;
+        if self.insecure_dev_mode {
+            return false;
+        }
+        match self.tls_security {
+            Insecure => false,
+            NoHostVerification => false,
+            Strict => true,
+            Default => self.cert.is_empty(),
+        }
     }
     /// Return a single connection.
     #[cfg(feature="unstable")]
     pub async fn connect(&self) -> Result<Connection, Error> {
         self.private_connect().await
     }
+    fn insecure(&self) -> bool {
+        use TlsSecurity::Insecure;
+        self.insecure_dev_mode || self.tls_security == Insecure
+    }
     pub(crate) async fn private_connect(&self) -> Result<Connection, Error> {
-        if self.insecure_dev_mode {
+        if self.insecure() {
             self._connect_with_cert_verifier(Arc::new(tls::NullVerifier)).await
         } else {
             let verify_host = self.do_verify_hostname();
