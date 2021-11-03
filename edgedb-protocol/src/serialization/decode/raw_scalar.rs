@@ -12,6 +12,7 @@ use crate::errors::{self, DecodeError};
 use crate::model::{BigInt, Decimal};
 use crate::model::{Duration, LocalDate, LocalTime, LocalDatetime, Datetime};
 use crate::model::{Json, Uuid};
+use crate::model::{ConfigMemory};
 use crate::model::{RelativeDuration};
 use crate::query_arg::{ScalarArg, Encoder, DescriptorContext};
 use crate::serialization::decode::queryable::scalars::DecodeScalar;
@@ -220,6 +221,13 @@ impl<'t> RawCodec<'t> for i64 {
     fn decode(mut buf: &[u8]) -> Result<Self, DecodeError> {
         ensure_exact_size(buf, size_of::<Self>())?;
         return Ok(buf.get_i64());
+    }
+}
+
+impl<'t> RawCodec<'t> for ConfigMemory {
+    fn decode(mut buf: &[u8]) -> Result<Self, DecodeError> {
+        ensure_exact_size(buf, size_of::<Self>())?;
+        return Ok(ConfigMemory(buf.get_i64()));
     }
 }
 

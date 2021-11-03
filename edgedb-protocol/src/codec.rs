@@ -35,6 +35,7 @@ pub const STD_DURATION: UuidVal = UuidVal::from_u128(0x10e);
 pub const CAL_RELATIVE_DURATION: UuidVal = UuidVal::from_u128(0x111);
 pub const STD_JSON: UuidVal = UuidVal::from_u128(0x10f);
 pub const STD_BIGINT: UuidVal = UuidVal::from_u128(0x110);
+pub const CFG_MEMORY: UuidVal = UuidVal::from_u128(0x130);
 
 
 pub trait Codec: fmt::Debug + Send + Sync + 'static {
@@ -121,6 +122,9 @@ pub struct Decimal;
 
 #[derive(Debug)]
 pub struct BigInt;
+
+#[derive(Debug)]
+pub struct ConfigMemory;
 
 #[derive(Debug)]
 pub struct Bool;
@@ -259,6 +263,7 @@ pub fn scalar_codec(uuid: &UuidVal) -> Result<Arc<dyn Codec>, CodecError> {
         CAL_RELATIVE_DURATION => Ok(Arc::new(RelativeDuration {})),
         STD_JSON => Ok(Arc::new(Json {})),
         STD_BIGINT => Ok(Arc::new(BigInt {})),
+        CFG_MEMORY => Ok(Arc::new(ConfigMemory {})),
         _ => return errors::UndefinedBaseScalar { uuid: uuid.clone() }.fail()?,
     }
 }
@@ -310,6 +315,23 @@ impl Codec for Int64 {
         };
         buf.reserve(8);
         buf.put_i64(val);
+        Ok(())
+    }
+}
+
+impl Codec for ConfigMemory {
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::ConfigMemory)
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        let &val = match val {
+            Value::ConfigMemory(val) => val,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        buf.reserve(8);
+        buf.put_i64(val.0);
         Ok(())
     }
 }
