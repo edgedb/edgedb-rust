@@ -518,10 +518,14 @@ impl Builder {
         Ok(self)
     }
 
-    /// Returns if the credentials file should be updated.
+    /// Returns the instance name if any when the credentials file is outdated.
     #[cfg(feature="unstable")]
-    pub fn should_update_credential_file(&self) -> bool {
-        self.creds_file_outdated
+    pub fn get_instance_name_for_creds_update(&self) -> Option<&str> {
+        if self.creds_file_outdated {
+            self.instance_name.as_deref()
+        } else {
+            None
+        }
     }
 
     /// Read credentials from the named instance.
