@@ -8,7 +8,6 @@ use std::time::Duration;
 use async_std::prelude::StreamExt;
 use async_std::future::{timeout, pending};
 use async_std::io::prelude::WriteExt;
-use async_std::io::ReadExt;
 use bytes::{Bytes, BytesMut};
 use futures_util::io::{ReadHalf, WriteHalf};
 use typemap::TypeMap;
@@ -37,10 +36,18 @@ use crate::errors::{ProtocolOutOfOrderError, ProtocolEncodingError};
 use crate::reader::{self, QueryResponse, Reader};
 use crate::server_params::ServerParam;
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub(crate) enum State {
+    Normal,
+    Dirty,
+    AwaitingPing,
+}
+
 
 #[derive(Debug)]
 /// A single connection to the EdgeDB server.
 pub struct Connection {
+    pub(crate) ping_interval: Duration,
     pub(crate) input: ReadHalf<TlsStream>,
     pub(crate) output: WriteHalf<TlsStream>,
     pub(crate) input_buf: BytesMut,
@@ -48,14 +55,14 @@ pub struct Connection {
     pub(crate) version: ProtocolVersion,
     pub(crate) params: TypeMap<dyn typemap::DebugAny + Send + Sync>,
     pub(crate) transaction_state: TransactionState,
-    pub(crate) dirty: bool,
+    pub(crate) state: State,
 }
 
 pub struct Sequence<'a> {
     pub writer: Writer<'a>,
     pub reader: Reader<'a>,
     pub(crate) active: bool,
-    pub(crate) dirty: &'a mut bool,
+    pub(crate) state: &'a mut State,
 }
 
 pub struct Writer<'a> {
@@ -133,7 +140,7 @@ impl<'a> Sequence<'a> {
 
     pub fn end_clean(&mut self) {
         self.active = false;
-        *self.dirty = false;
+        *self.state = State::Normal;
     }
 }
 
@@ -142,15 +149,62 @@ impl Connection {
         return &self.version
     }
     pub async fn passive_wait<T>(&mut self) -> T {
-        let mut buf = [0u8; 1];
-        self.input.read(&mut buf[..]).await.ok();
+        let (_, mut reader, _) = self.split();
+        reader.passive_wait().await.ok();
         // any erroneous or successful read (even 0) means need reconnect
-        self.dirty = true;
+        self.state = State::Dirty;
         pending::<()>().await;
         unreachable!();
     }
+    async fn do_pings(&mut self) -> Result<(), Error> {
+        use async_std::io;
+
+        let ivl = self.ping_interval;
+        let (mut writer, mut reader, state) = self.split();
+
+        while *state == State::Normal {
+
+            *state = State::Dirty;
+            writer.send_messages(&[ClientMessage::Sync]).await?;
+            *state = State::AwaitingPing;
+            reader.wait_ready().await?;
+            *state = State::Normal;
+
+            match io::timeout(ivl, reader.passive_wait()).await {
+                Err(e) if e.kind() == io::ErrorKind::TimedOut => continue,
+                Err(e) => {
+                    *state = State::Dirty;
+                    return Err(ClientConnectionError::with_source(e))?;
+                }
+                Ok(_) => unreachable!(),
+            }
+        }
+        Ok(())
+    }
+    #[cfg(feature="unstable")]
+    pub async fn background_pings<T>(&mut self) -> T {
+        self.do_pings().await
+            .map_err(|e| {
+                log::info!("Connection error during background pings: {}", e)
+            })
+            .ok();
+        debug_assert_eq!(self.state, State::Dirty);
+        pending::<()>().await;
+        unreachable!();
+    }
+    #[cfg(feature="unstable")]
+    pub async fn synchronize_ping(&mut self) {
+        if self.state == State::AwaitingPing {
+                let (_, mut reader, _) = self.split();
+            if reader.wait_ready().await.is_err() {
+                self.state = State::Dirty;
+            } else {
+                self.state = State::Normal;
+            }
+        }
+    }
     pub fn is_consistent(&self) -> bool {
-        !self.dirty
+        self.state == State::Normal
     }
     pub async fn terminate(mut self) -> Result<(), Error> {
         let mut seq = self.start_sequence().await?;
@@ -165,27 +219,17 @@ impl Connection {
     pub async fn start_sequence<'x>(&'x mut self)
         -> Result<Sequence<'x>, Error>
     {
-        if self.dirty {
+        let (writer, reader, state) = self.split();
+        if *state != State::Normal {
             return Err(ClientInconsistentError::with_message(
                 "Connection is inconsistent state. Please reconnect."));
         }
-        self.dirty = true;
-        let reader = Reader {
-            proto: &self.version,
-            buf: &mut self.input_buf,
-            stream: &mut self.input,
-            transaction_state: &mut self.transaction_state,
-        };
-        let writer = Writer {
-            proto: &self.version,
-            outbuf: &mut self.output_buf,
-            stream: &mut self.output,
-        };
+        *state = State::Dirty;
         Ok(Sequence {
             writer,
             reader,
+            state,
             active: true,
-            dirty: &mut self.dirty,
         })
     }
 
@@ -197,6 +241,20 @@ impl Connection {
     }
     pub fn transaction_state(&self) -> TransactionState {
         self.transaction_state
+    }
+    fn split(&mut self) -> (Writer, Reader, &mut State) {
+        let reader = Reader {
+            proto: &self.version,
+            buf: &mut self.input_buf,
+            stream: &mut self.input,
+            transaction_state: &mut self.transaction_state,
+        };
+        let writer = Writer {
+            proto: &self.version,
+            outbuf: &mut self.output_buf,
+            stream: &mut self.output,
+        };
+        (writer, reader, &mut self.state)
     }
 }
 

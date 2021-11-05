@@ -32,7 +32,7 @@ use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use edgedb_protocol::server_message::{TransactionState, ServerHandshake};
 
-use crate::client::{Connection, Sequence};
+use crate::client::{Connection, Sequence, State};
 use crate::credentials::{Credentials, TlsSecurity};
 use crate::errors::{ClientConnectionError, ProtocolError, ProtocolTlsError};
 use crate::errors::{ClientConnectionFailedError, AuthenticationError};
@@ -1049,13 +1049,14 @@ impl Builder {
         let mut version = ProtocolVersion::current();
         let (input, output) = stream.split();
         let mut conn = Connection {
+            ping_interval: Duration::from_secs(50),
             input,
             output,
             input_buf: BytesMut::with_capacity(8192),
             output_buf: BytesMut::with_capacity(8192),
             params: TypeMap::custom(),
             transaction_state: TransactionState::NotInTransaction,
-            dirty: false,
+            state: State::Normal,
             version: version.clone(),
         };
         let mut seq = conn.start_sequence().await?;

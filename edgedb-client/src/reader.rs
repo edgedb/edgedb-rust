@@ -7,7 +7,7 @@ use std::pin::Pin;
 use std::slice;
 use std::task::{Poll, Context};
 
-use async_std::io::Read as AsyncRead;
+use async_std::io::{self, Read as AsyncRead, ReadExt};
 use async_std::stream::{Stream, StreamExt};
 use bytes::{Bytes, BytesMut, BufMut};
 use futures_util::io::ReadHalf;
@@ -63,6 +63,14 @@ impl<'r> Reader<'r> {
     }
     pub fn consume_ready(&mut self, ready: ReadyForCommand) {
         *self.transaction_state = ready.transaction_state;
+    }
+    pub async fn passive_wait(&mut self) -> io::Result<()> {
+        if !self.buf.is_empty() {
+            return Err(io::ErrorKind::InvalidData)?;
+        }
+        let mut buf = [0u8; 1];
+        self.stream.read(&mut buf[..]).await?;
+        return Err(io::ErrorKind::InvalidData)?;
     }
     pub async fn wait_ready(&mut self) -> Result<(), Error> {
         loop {
