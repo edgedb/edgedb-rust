@@ -53,7 +53,7 @@ pub(crate) enum State {
 #[derive(Debug)]
 /// A single connection to the EdgeDB server.
 pub struct Connection {
-    pub(crate) ping_interval: Duration,
+    pub(crate) ping_interval: Option<Duration>,
     pub(crate) input: ReadHalf<TlsStream>,
     pub(crate) output: WriteHalf<TlsStream>,
     pub(crate) input_buf: BytesMut,
@@ -166,10 +166,9 @@ impl Connection {
         unreachable!();
     }
     #[cfg(feature="unstable")]
-    async fn do_pings(&mut self) -> Result<(), Error> {
+    async fn do_pings(&mut self, interval: Duration) -> Result<(), Error> {
         use async_std::io;
 
-        let ivl = self.ping_interval;
         let (mut writer, mut reader, state) = self.split();
 
         if *state == State::AwaitingPing {
@@ -178,7 +177,7 @@ impl Connection {
 
         while let State::Normal { idle_since: last_pong } = *state {
             match io::timeout(
-                ivl.saturating_sub(Instant::now() - last_pong),
+                interval.saturating_sub(Instant::now() - last_pong),
                 reader.passive_wait()
             ).await {
                 Err(e) if e.kind() == io::ErrorKind::TimedOut => (),
@@ -197,8 +196,8 @@ impl Connection {
         Ok(())
     }
     #[cfg(feature="unstable")]
-    async fn background_pings<T>(&mut self) -> T {
-        self.do_pings().await
+    async fn background_pings<T>(&mut self, interval: Duration) -> T {
+        self.do_pings(interval).await
             .map_err(|e| {
                 log::info!("Connection error during background pings: {}", e)
             })
@@ -224,12 +223,16 @@ impl Connection {
     pub async fn ping_while<T, F>(&mut self, other: F) -> T
         where F: Future<Output = T>
     {
-        let rv = other.race(self.background_pings()).await;
-        if self.state == State::AwaitingPing {
-            let (_, ref mut reader, state) = self.split();
-            Self::synchronize_ping(reader, state).await.ok();
+        if let Some(interval) = self.ping_interval {
+            let rv = other.race(self.background_pings(interval)).await;
+            if self.state == State::AwaitingPing {
+                let (_, ref mut reader, state) = self.split();
+                Self::synchronize_ping(reader, state).await.ok();
+            }
+            rv
+        } else {
+            other.await
         }
-        rv
     }
     pub fn is_consistent(&self) -> bool {
         matches!(self.state, State::Normal {

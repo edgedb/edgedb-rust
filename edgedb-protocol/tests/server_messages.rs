@@ -104,6 +104,7 @@ fn server_key_data() -> Result<(), Box<dyn Error>> {
 #[test]
 fn parameter_status() -> Result<(), Box<dyn Error>> {
     encoding_eq!(ServerMessage::ParameterStatus(ParameterStatus {
+        proto: ProtocolVersion::current(),
         name: Bytes::from_static(b"pgaddr"),
         value: Bytes::from_static(b"/work/tmp/db/.s.PGSQL.60128"),
     }), &fs::read("tests/parameter_status.bin")?[..]);
