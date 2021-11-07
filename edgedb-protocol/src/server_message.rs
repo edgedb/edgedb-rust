@@ -25,6 +25,7 @@ pub enum ServerMessage {
     ReadyForCommand(ReadyForCommand),
     ServerKeyData(ServerKeyData),
     ParameterStatus(ParameterStatus),
+    ParameterStatusSystemConfig(ParameterStatusSystemConfig),
     CommandComplete(CommandComplete),
     PrepareComplete(PrepareComplete),
     CommandDataDescription(CommandDataDescription),
@@ -115,6 +116,13 @@ pub struct ParameterStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParameterStatusSystemConfig {
+    pub proto: ProtocolVersion,
+    pub typedesc: Bytes,
+    pub data: Bytes,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandComplete {
     pub headers: Headers,
     pub status_data: Bytes,
@@ -173,33 +181,11 @@ fn encode<T: Encode>(buf: &mut Output, code: u8, msg: &T)
 
 impl CommandDataDescription {
     pub fn output(&self) -> Result<OutputTypedesc, DecodeError> {
-        let mut cur = Input::new(
+        let ref mut cur = Input::new(
             self.proto.clone(),
             self.output_typedesc.clone(),
         );
-        let mut descriptors = Vec::new();
-        while cur.remaining() > 0 {
-            match Descriptor::decode(&mut cur)? {
-                Descriptor::TypeAnnotation(_) => {}
-                item => descriptors.push(item),
-            }
-        }
-        let root_id = self.output_typedesc_id.clone();
-        let root_pos = if root_id == Uuid::from_u128(0) {
-            None
-        } else {
-            let idx = descriptors.iter().position(|x| *x.id() == root_id)
-                .context(errors::UuidNotFound { uuid: root_id })?;
-            let pos = idx.try_into().ok()
-                .context(errors::TooManyDescriptors { index: idx })?;
-            Some(TypePos(pos))
-        };
-        Ok(OutputTypedesc {
-            proto: self.proto.clone(),
-            array: descriptors,
-            root_id,
-            root_pos,
-        })
+        OutputTypedesc::decode_with_id(self.output_typedesc_id.clone(), cur)
     }
     pub fn input(&self) -> Result<InputTypedesc, DecodeError> {
         let ref mut cur = Input::new(
@@ -232,6 +218,17 @@ impl CommandDataDescription {
     }
 }
 
+impl ParameterStatusSystemConfig {
+    pub fn output(&self) -> Result<OutputTypedesc, DecodeError> {
+        let ref mut typedesc_buf = Input::new(
+            self.proto.clone(),
+            self.typedesc.clone(),
+        );
+        let typedesc_id = Uuid::decode(typedesc_buf)?;
+        OutputTypedesc::decode_with_id(typedesc_id, typedesc_buf)
+    }
+}
+
 impl ServerMessage {
     pub fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         use ServerMessage::*;
@@ -251,7 +248,7 @@ impl ServerMessage {
             DumpHeader(h) => encode(buf, 0x40, h),
             DumpBlock(h) => encode(buf, 0x3d, h),
 
-            UnknownMessage(_, _) => {
+            ParameterStatusSystemConfig(_) | UnknownMessage(_, _) => {
                 errors::UnknownMessageCantBeEncoded.fail()?
             }
         }
@@ -271,7 +268,15 @@ impl ServerMessage {
             0x52 => Authentication::decode(data).map(M::Authentication),
             0x5a => ReadyForCommand::decode(data).map(M::ReadyForCommand),
             0x4b => ServerKeyData::decode(data).map(M::ServerKeyData),
-            0x53 => ParameterStatus::decode(data).map(M::ParameterStatus),
+            0x53 => {
+                if &Bytes::decode(data)?[..] == b"system_config" {
+                    ParameterStatusSystemConfig::decode(&mut data.slice(4..))
+                        .map(M::ParameterStatusSystemConfig)
+                } else {
+                    ParameterStatus::decode(&mut buf.slice(5..))
+                        .map(M::ParameterStatus)
+                }
+            },
             0x43 => CommandComplete::decode(data).map(M::CommandComplete),
             0x31 => PrepareComplete::decode(data).map(M::PrepareComplete),
             0x44 => Data::decode(data).map(M::Data),
@@ -589,6 +594,18 @@ impl Decode for ParameterStatus {
         let name = Bytes::decode(buf)?;
         let value = Bytes::decode(buf)?;
         Ok(ParameterStatus { name, value })
+    }
+}
+
+impl Decode for ParameterStatusSystemConfig {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
+        let typedesc = Bytes::decode(buf)?;
+        let data = Bytes::decode(buf)?;
+        Ok(Self {
+            proto: buf.proto().clone(),
+            typedesc,
+            data,
+        })
     }
 }
 

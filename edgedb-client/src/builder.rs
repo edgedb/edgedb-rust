@@ -31,13 +31,14 @@ use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use edgedb_protocol::server_message::{TransactionState, ServerHandshake};
+use edgedb_protocol::value::Value;
 
 use crate::client::{Connection, Sequence, State};
 use crate::credentials::{Credentials, TlsSecurity};
 use crate::errors::{ClientConnectionError, ProtocolError, ProtocolTlsError};
 use crate::errors::{ClientConnectionFailedError, AuthenticationError};
 use crate::errors::{ClientError, ClientConnectionFailedTemporarilyError};
-use crate::errors::{ClientNoCredentialsError};
+use crate::errors::{ClientNoCredentialsError, ProtocolEncodingError};
 use crate::errors::{Error, ErrorKind, PasswordRequired, ResultExt};
 use crate::server_params::PostgresAddress;
 use crate::tls;
@@ -1110,6 +1111,7 @@ impl Builder {
         }
 
         let mut server_params = TypeMap::custom();
+        let mut ping_interval = Duration::from_secs(50);
         loop {
             let msg = seq.message().await?;
             match msg {
@@ -1138,11 +1140,37 @@ impl Builder {
                         _ => {}
                     }
                 }
+                ServerMessage::ParameterStatusSystemConfig(config) => {
+                    let output = config.output()
+                        .map_err(ProtocolEncodingError::with_source)?;
+                    let codec = output.build_codec()
+                        .map_err(ProtocolEncodingError::with_source)?;
+                    let data = codec.decode(config.data.as_ref())
+                        .map_err(ProtocolEncodingError::with_source)?;
+                    if let Value::Object { shape, fields } = data {
+                        for (el, field) in shape.elements.iter().zip(fields) {
+                            if el.name == "session_idle_timeout" {
+                                match field {
+                                    Some(Value::Duration(timeout))
+                                    if timeout.is_positive() => {
+                                        ping_interval = timeout.abs_duration();
+                                        println!(
+                                            "setting ping_interval to {:?}",
+                                            ping_interval,
+                                        );
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                }
                 _ => {
                     log::warn!("unsolicited message {:?}", msg);
                 }
             }
         }
+        conn.ping_interval = ping_interval;
         conn.version = version;
         conn.params = server_params;
         Ok(conn)
