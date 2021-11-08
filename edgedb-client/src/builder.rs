@@ -22,7 +22,7 @@ use rand::{thread_rng, Rng};
 use rustls::ServerCertVerifier;
 use scram::ScramClient;
 use serde_json::from_slice;
-use typemap::TypeMap;
+use typemap::{TypeMap, DebugAny};
 use tls_api::{TlsConnectorBox, TlsConnector as _, TlsConnectorBuilder as _};
 use tls_api::{TlsStream, TlsStreamDyn as _};
 use tls_api_not_tls::TlsConnector as PlainConnector;
@@ -31,6 +31,7 @@ use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use edgedb_protocol::server_message::{TransactionState, ServerHandshake};
+use edgedb_protocol::server_message::ParameterStatus;
 use edgedb_protocol::value::Value;
 
 use crate::client::{Connection, Sequence, State};
@@ -40,11 +41,12 @@ use crate::errors::{ClientConnectionFailedError, AuthenticationError};
 use crate::errors::{ClientError, ClientConnectionFailedTemporarilyError};
 use crate::errors::{ClientNoCredentialsError, ProtocolEncodingError};
 use crate::errors::{Error, ErrorKind, PasswordRequired, ResultExt};
-use crate::server_params::PostgresAddress;
+use crate::server_params::{PostgresAddress, SystemConfig};
 use crate::tls;
 
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub const DEFAULT_WAIT: Duration = Duration::from_secs(30);
+pub const DEFAULT_PING_ROUNDTRIP_CAP: Duration = Duration::from_secs(2);
 pub const DEFAULT_POOL_SIZE: usize = 10;
 pub const DEFAULT_HOST: &str = "localhost";
 pub const DEFAULT_PORT: u16 = 5656;
@@ -69,6 +71,7 @@ pub struct Builder {
     connect_timeout: Duration,
     insecure_dev_mode: bool,
     creds_file_outdated: bool,
+    ping_roundtrip_cap: Duration,
 
     // Pool configuration
     pub(crate) max_connections: usize,
@@ -645,6 +648,7 @@ impl Builder {
             initialized: false,
             insecure_dev_mode: false,
             creds_file_outdated: false,
+            ping_roundtrip_cap: DEFAULT_PING_ROUNDTRIP_CAP,
 
             max_connections: DEFAULT_POOL_SIZE,
         }
@@ -669,6 +673,7 @@ impl Builder {
             connect_timeout: self.connect_timeout,
             insecure_dev_mode: self.insecure_dev_mode,
             creds_file_outdated: false,
+            ping_roundtrip_cap: self.ping_roundtrip_cap,
 
             max_connections: self.max_connections,
         };
@@ -1050,7 +1055,6 @@ impl Builder {
         let mut version = ProtocolVersion::current();
         let (input, output) = stream.split();
         let mut conn = Connection {
-            ping_interval: Duration::from_secs(50),
             input,
             output,
             input_buf: BytesMut::with_capacity(8192),
@@ -1059,6 +1063,7 @@ impl Builder {
             transaction_state: TransactionState::NotInTransaction,
             state: State::Normal,
             version: version.clone(),
+            ping_roundtrip_cap: self.ping_roundtrip_cap,
         };
         let mut seq = conn.start_sequence().await?;
         let mut params = HashMap::new();
@@ -1111,7 +1116,6 @@ impl Builder {
         }
 
         let mut server_params = TypeMap::custom();
-        let mut ping_interval = Duration::from_secs(50);
         loop {
             let msg = seq.message().await?;
             match msg {
@@ -1137,32 +1141,10 @@ impl Builder {
                             };
                             server_params.insert::<PostgresAddress>(pgaddr);
                         }
-                        _ => {}
-                    }
-                }
-                ServerMessage::ParameterStatusSystemConfig(config) => {
-                    let output = config.output()
-                        .map_err(ProtocolEncodingError::with_source)?;
-                    let codec = output.build_codec()
-                        .map_err(ProtocolEncodingError::with_source)?;
-                    let data = codec.decode(config.data.as_ref())
-                        .map_err(ProtocolEncodingError::with_source)?;
-                    if let Value::Object { shape, fields } = data {
-                        for (el, field) in shape.elements.iter().zip(fields) {
-                            if el.name == "session_idle_timeout" {
-                                match field {
-                                    Some(Value::Duration(timeout))
-                                    if timeout.is_positive() => {
-                                        ping_interval = timeout.abs_duration();
-                                        println!(
-                                            "setting ping_interval to {:?}",
-                                            ping_interval,
-                                        );
-                                    }
-                                    _ => {}
-                                }
-                            }
+                        b"system_config" => {
+                            self.handle_system_config(par, &mut server_params)?;
                         }
+                        _ => {}
                     }
                 }
                 _ => {
@@ -1170,10 +1152,72 @@ impl Builder {
                 }
             }
         }
-        conn.ping_interval = ping_interval;
         conn.version = version;
         conn.params = server_params;
         Ok(conn)
+    }
+
+    fn handle_system_config(
+        &self,
+        param_status: ParameterStatus,
+        server_params: &mut TypeMap<dyn DebugAny + Send + Sync>
+    ) -> Result<(), Error> {
+        let (typedesc, data) = param_status.parse_system_config()
+            .map_err(ProtocolEncodingError::with_source)?;
+        let codec = typedesc.build_codec()
+            .map_err(ProtocolEncodingError::with_source)?;
+        let system_config = codec.decode(data.as_ref())
+            .map_err(ProtocolEncodingError::with_source)?;
+        let mut config = SystemConfig {
+            session_idle_timeout: None,
+        };
+        if let Value::Object { shape, fields } = system_config {
+            for (el, field) in shape.elements.iter().zip(fields) {
+                match el.name.as_str() {
+                    "id" => {},
+                    "session_idle_timeout" => {
+                        config.session_idle_timeout = self.get_idle_timeout(
+                            &el.name, field
+                        );
+                    }
+                    name => {
+                        log::debug!(
+                            "Unhandled system config: {}={:?}", name, field
+                        );
+                    }
+                }
+            }
+            server_params.insert::<SystemConfig>(config);
+        } else {
+            log::warn!("Received empty system config message.");
+        }
+        Ok(())
+    }
+
+    fn get_idle_timeout(
+        &self, name: &str, field: Option<Value>
+    ) -> Option<Duration> {
+        if let Some(Value::Duration(timeout)) = field {
+            let timeout = timeout.abs_duration();
+            let interval = timeout.saturating_sub(self.ping_roundtrip_cap);
+            if !timeout.is_zero() {
+                if interval.is_zero() {
+                    log::warn!(
+                        "{}={:?} is too short for ping_roundtrip_cap={:?}",
+                        name, timeout, self.ping_roundtrip_cap,
+                    );
+                } else {
+                    log::info!(
+                        "Setting ping interval to {:?} as {}={:?}",
+                        interval, name, timeout,
+                    );
+                }
+            }
+            Some(timeout)
+        } else {
+            log::warn!("Wrong protocol: {}={:?}", name, field);
+            None
+        }
     }
 }
 

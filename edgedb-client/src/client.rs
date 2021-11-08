@@ -47,7 +47,7 @@ pub(crate) enum State {
 #[derive(Debug)]
 /// A single connection to the EdgeDB server.
 pub struct Connection {
-    pub(crate) ping_interval: Duration,
+    pub(crate) ping_roundtrip_cap: Duration,
     pub(crate) input: ReadHalf<TlsStream>,
     pub(crate) output: WriteHalf<TlsStream>,
     pub(crate) input_buf: BytesMut,
@@ -156,10 +156,9 @@ impl Connection {
         pending::<()>().await;
         unreachable!();
     }
-    async fn do_pings(&mut self) -> Result<(), Error> {
+    async fn do_pings(&mut self, interval: Duration) -> Result<(), Error> {
         use async_std::io;
 
-        let ivl = self.ping_interval;
         let (mut writer, mut reader, state) = self.split();
 
         while *state == State::Normal {
@@ -170,7 +169,7 @@ impl Connection {
             reader.wait_ready().await?;
             *state = State::Normal;
 
-            match io::timeout(ivl, reader.passive_wait()).await {
+            match io::timeout(interval, reader.passive_wait()).await {
                 Err(e) if e.kind() == io::ErrorKind::TimedOut => continue,
                 Err(e) => {
                     *state = State::Dirty;
@@ -183,12 +182,22 @@ impl Connection {
     }
     #[cfg(feature="unstable")]
     pub async fn background_pings<T>(&mut self) -> T {
-        self.do_pings().await
-            .map_err(|e| {
-                log::info!("Connection error during background pings: {}", e)
-            })
-            .ok();
-        debug_assert_eq!(self.state, State::Dirty);
+        use crate::server_params::SystemConfig;
+        if let Some(config) = self.params.get::<SystemConfig>() {
+            if let Some(timeout) = config.session_idle_timeout {
+                if !timeout.is_zero() {
+                    self.do_pings(
+                        timeout.saturating_sub(self.ping_roundtrip_cap)
+                    ).await.map_err(|e| {
+                        log::info!(
+                            "Connection error during background pings: {}", e
+                        )
+                    })
+                    .ok();
+                    debug_assert_eq!(self.state, State::Dirty);
+                }
+            }
+        }
         pending::<()>().await;
         unreachable!();
     }

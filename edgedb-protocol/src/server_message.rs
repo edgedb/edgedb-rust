@@ -25,7 +25,6 @@ pub enum ServerMessage {
     ReadyForCommand(ReadyForCommand),
     ServerKeyData(ServerKeyData),
     ParameterStatus(ParameterStatus),
-    ParameterStatusSystemConfig(ParameterStatusSystemConfig),
     CommandComplete(CommandComplete),
     PrepareComplete(PrepareComplete),
     CommandDataDescription(CommandDataDescription),
@@ -111,15 +110,9 @@ pub struct ServerKeyData {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParameterStatus {
+    pub proto: ProtocolVersion,
     pub name: Bytes,
     pub value: Bytes,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ParameterStatusSystemConfig {
-    pub proto: ProtocolVersion,
-    pub typedesc: Bytes,
-    pub data: Bytes,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -218,14 +211,22 @@ impl CommandDataDescription {
     }
 }
 
-impl ParameterStatusSystemConfig {
-    pub fn output(&self) -> Result<OutputTypedesc, DecodeError> {
-        let ref mut typedesc_buf = Input::new(
+impl ParameterStatus {
+    pub fn parse_system_config(self) -> Result<(OutputTypedesc, Bytes), DecodeError> {
+        let ref mut cur = Input::new(
             self.proto.clone(),
-            self.typedesc.clone(),
+            self.value,
+        );
+        let typedesc_data = Bytes::decode(cur)?;
+        let data = Bytes::decode(cur)?;
+
+        let ref mut typedesc_buf = Input::new(
+            self.proto,
+            typedesc_data,
         );
         let typedesc_id = Uuid::decode(typedesc_buf)?;
-        OutputTypedesc::decode_with_id(typedesc_id, typedesc_buf)
+        let typedesc = OutputTypedesc::decode_with_id(typedesc_id, typedesc_buf)?;
+        Ok((typedesc, data))
     }
 }
 
@@ -248,7 +249,7 @@ impl ServerMessage {
             DumpHeader(h) => encode(buf, 0x40, h),
             DumpBlock(h) => encode(buf, 0x3d, h),
 
-            ParameterStatusSystemConfig(_) | UnknownMessage(_, _) => {
+            UnknownMessage(_, _) => {
                 errors::UnknownMessageCantBeEncoded.fail()?
             }
         }
@@ -268,15 +269,7 @@ impl ServerMessage {
             0x52 => Authentication::decode(data).map(M::Authentication),
             0x5a => ReadyForCommand::decode(data).map(M::ReadyForCommand),
             0x4b => ServerKeyData::decode(data).map(M::ServerKeyData),
-            0x53 => {
-                if &Bytes::decode(data)?[..] == b"system_config" {
-                    ParameterStatusSystemConfig::decode(&mut data.slice(4..))
-                        .map(M::ParameterStatusSystemConfig)
-                } else {
-                    ParameterStatus::decode(&mut buf.slice(5..))
-                        .map(M::ParameterStatus)
-                }
-            },
+            0x53 => ParameterStatus::decode(data).map(M::ParameterStatus),
             0x43 => CommandComplete::decode(data).map(M::CommandComplete),
             0x31 => PrepareComplete::decode(data).map(M::PrepareComplete),
             0x44 => Data::decode(data).map(M::Data),
@@ -593,19 +586,7 @@ impl Decode for ParameterStatus {
     {
         let name = Bytes::decode(buf)?;
         let value = Bytes::decode(buf)?;
-        Ok(ParameterStatus { name, value })
-    }
-}
-
-impl Decode for ParameterStatusSystemConfig {
-    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
-        let typedesc = Bytes::decode(buf)?;
-        let data = Bytes::decode(buf)?;
-        Ok(Self {
-            proto: buf.proto().clone(),
-            typedesc,
-            data,
-        })
+        Ok(ParameterStatus { proto: buf.proto().clone(), name, value })
     }
 }
 
