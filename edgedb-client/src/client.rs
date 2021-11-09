@@ -1,13 +1,12 @@
-#![cfg_attr(not(feature="unstable"), allow(dead_code))]
+#![cfg_attr(not(feature="unstable"), allow(dead_code, unused_imports))]
 
-#[cfg(feature="unstable")] use core::future::Future;
+use core::future::Future;
 use std::collections::HashMap;
 use std::fmt;
 use std::str;
-use std::time::Duration;
-#[cfg(feature="unstable")] use std::time::Instant;
+use std::time::{Duration, Instant};
 
-#[cfg(feature="unstable")] use async_std::prelude::FutureExt;
+use async_std::prelude::FutureExt;
 use async_std::prelude::StreamExt;
 use async_std::future::{timeout, pending};
 use async_std::io::prelude::WriteExt;
@@ -37,12 +36,11 @@ use crate::errors::{Error, ErrorKind, ResultExt};
 use crate::errors::{NoResultExpected, NoDataError};
 use crate::errors::{ProtocolOutOfOrderError, ProtocolEncodingError};
 use crate::reader::{self, QueryResponse, Reader};
-use crate::server_params::ServerParam;
+use crate::server_params::{ServerParam, SystemConfig};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum State {
     Normal {
-        #[cfg(feature="unstable")]
         idle_since: Instant,
     },
     Dirty,
@@ -50,10 +48,19 @@ pub(crate) enum State {
 }
 
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub(crate) enum PingInterval {
+    Unknown,
+    Disabled,
+    Interval { interval: Duration },
+}
+
+
 #[derive(Debug)]
 /// A single connection to the EdgeDB server.
 pub struct Connection {
-    pub(crate) ping_interval: Option<Duration>,
+    pub(crate) ping_interval: PingInterval,
+    pub(crate) ping_roundtrip_cap: Duration,
     pub(crate) input: ReadHalf<TlsStream>,
     pub(crate) output: WriteHalf<TlsStream>,
     pub(crate) input_buf: BytesMut,
@@ -147,7 +154,6 @@ impl<'a> Sequence<'a> {
     pub fn end_clean(&mut self) {
         self.active = false;
         *self.state = State::Normal {
-            #[cfg(feature="unstable")]
             idle_since: Instant::now(),
         };
     }
@@ -165,7 +171,6 @@ impl Connection {
         pending::<()>().await;
         unreachable!();
     }
-    #[cfg(feature="unstable")]
     async fn do_pings(&mut self, interval: Duration) -> Result<(), Error> {
         use async_std::io;
 
@@ -195,7 +200,6 @@ impl Connection {
         }
         Ok(())
     }
-    #[cfg(feature="unstable")]
     async fn background_pings<T>(&mut self, interval: Duration) -> T {
         self.do_pings(interval).await
             .map_err(|e| {
@@ -206,7 +210,6 @@ impl Connection {
         pending::<()>().await;
         unreachable!();
     }
-    #[cfg(feature="unstable")]
     async fn synchronize_ping<'a>(
         reader: &mut Reader<'a>, state: &mut State
     ) -> Result<(), Error> {
@@ -219,11 +222,50 @@ impl Connection {
             Ok(())
         }
     }
+    fn init_ping_interval(&self) -> PingInterval {
+        if let Some(config) = self.params.get::<SystemConfig>() {
+            if let Some(timeout) = config.session_idle_timeout {
+                if timeout.is_zero() {
+                    log::info!(
+                        "Server disabled session_idle_timeout; \
+                         pings are disabled."
+                    );
+                    PingInterval::Disabled
+                } else {
+                    let interval = timeout.saturating_sub(
+                        self.ping_roundtrip_cap
+                    );
+                    if interval.is_zero() {
+                        log::warn!(
+                            "session_idle_timeout={:?} is too short for \
+                             ping_roundtrip_cap={:?}; pings are disabled.",
+                            timeout, self.ping_roundtrip_cap,
+                        );
+                        PingInterval::Disabled
+                    } else {
+                        log::info!(
+                            "Setting ping interval to {:?} as \
+                             session_idle_timeout={:?}",
+                            interval, timeout,
+                        );
+                        PingInterval::Interval { interval }
+                    }
+                }
+            } else {
+                PingInterval::Unknown
+            }
+        } else {
+            PingInterval::Unknown
+        }
+    }
     #[cfg(feature="unstable")]
     pub async fn ping_while<T, F>(&mut self, other: F) -> T
         where F: Future<Output = T>
     {
-        if let Some(interval) = self.ping_interval {
+        if self.ping_interval == PingInterval::Unknown {
+            self.init_ping_interval();
+        }
+        if let PingInterval::Interval { interval } = self.ping_interval {
             let rv = other.race(self.background_pings(interval)).await;
             if self.state == State::AwaitingPing {
                 let (_, ref mut reader, state) = self.split();
@@ -236,7 +278,6 @@ impl Connection {
     }
     pub fn is_consistent(&self) -> bool {
         matches!(self.state, State::Normal {
-            #[cfg(feature="unstable")]
             idle_since: _,
         })
     }
@@ -255,7 +296,6 @@ impl Connection {
     {
         let (writer, reader, state) = self.split();
         if !matches!(*state, State::Normal {
-            #[cfg(feature="unstable")]
             idle_since: _,
         }) {
             return Err(ClientInconsistentError::with_message(

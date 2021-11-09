@@ -34,7 +34,7 @@ use edgedb_protocol::server_message::{TransactionState, ServerHandshake};
 use edgedb_protocol::server_message::ParameterStatus;
 use edgedb_protocol::value::Value;
 
-use crate::client::{Connection, Sequence, State};
+use crate::client::{Connection, Sequence, State, PingInterval};
 use crate::credentials::{Credentials, TlsSecurity};
 use crate::errors::{ClientConnectionError, ProtocolError, ProtocolTlsError};
 use crate::errors::{ClientConnectionFailedError, AuthenticationError};
@@ -1055,7 +1055,8 @@ impl Builder {
         let mut version = ProtocolVersion::current();
         let (input, output) = stream.split();
         let mut conn = Connection {
-            ping_interval: None,
+            ping_interval: PingInterval::Unknown,
+            ping_roundtrip_cap: self.ping_roundtrip_cap,
             input,
             output,
             input_buf: BytesMut::with_capacity(8192),
@@ -1063,7 +1064,6 @@ impl Builder {
             params: TypeMap::custom(),
             transaction_state: TransactionState::NotInTransaction,
             state: State::Normal {
-                #[cfg(feature="unstable")]
                 idle_since: Instant::now(),
             },
             version: version.clone(),
@@ -1155,37 +1155,9 @@ impl Builder {
                 }
             }
         }
-        #[cfg(feature="unstable")]
-        if let Some(config) = server_params.get::<SystemConfig>() {
-            if let Some(timeout) = config.session_idle_timeout {
-                if timeout.is_zero() {
-                    log::info!(
-                        "Server disabled session_idle_timeout; \
-                         pings are disabled."
-                    );
-                } else {
-                    let interval = timeout.saturating_sub(self.ping_roundtrip_cap);
-                    if interval.is_zero() {
-                        log::warn!(
-                            "session_idle_timeout={:?} is too short for \
-                             ping_roundtrip_cap={:?}; pings are disabled.",
-                            timeout, self.ping_roundtrip_cap,
-                        );
-                    } else {
-                        conn.ping_interval = Some(interval);
-                        log::info!(
-                            "Setting ping interval to {:?} as \
-                             session_idle_timeout={:?}",
-                            interval, timeout,
-                        );
-                    }
-                }
-            }
-        }
         conn.version = version;
         conn.params = server_params;
         conn.state = State::Normal {
-            #[cfg(feature="unstable")]
             idle_since: Instant::now()
         };
         Ok(conn)
