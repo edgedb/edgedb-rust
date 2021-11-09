@@ -1056,7 +1056,10 @@ impl Builder {
             output_buf: BytesMut::with_capacity(8192),
             params: TypeMap::custom(),
             transaction_state: TransactionState::NotInTransaction,
-            state: State::Normal,
+            state: State::Normal {
+                #[cfg(feature="unstable")]
+                idle_since: Instant::now(),
+            },
             version: version.clone(),
         };
         let mut seq = conn.start_sequence().await?;
@@ -1145,6 +1148,10 @@ impl Builder {
         }
         conn.version = version;
         conn.params = server_params;
+        conn.state = State::Normal {
+            #[cfg(feature="unstable")]
+            idle_since: Instant::now()
+        };
         Ok(conn)
     }
 }

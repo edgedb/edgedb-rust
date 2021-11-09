@@ -1,10 +1,13 @@
 #![cfg_attr(not(feature="unstable"), allow(dead_code))]
 
+#[cfg(feature="unstable")] use core::future::Future;
 use std::collections::HashMap;
 use std::fmt;
 use std::str;
 use std::time::Duration;
+#[cfg(feature="unstable")] use std::time::Instant;
 
+#[cfg(feature="unstable")] use async_std::prelude::FutureExt;
 use async_std::prelude::StreamExt;
 use async_std::future::{timeout, pending};
 use async_std::io::prelude::WriteExt;
@@ -38,7 +41,10 @@ use crate::server_params::ServerParam;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum State {
-    Normal,
+    Normal {
+        #[cfg(feature="unstable")]
+        idle_since: Instant,
+    },
     Dirty,
     AwaitingPing,
 }
@@ -140,7 +146,10 @@ impl<'a> Sequence<'a> {
 
     pub fn end_clean(&mut self) {
         self.active = false;
-        *self.state = State::Normal;
+        *self.state = State::Normal {
+            #[cfg(feature="unstable")]
+            idle_since: Instant::now(),
+        };
     }
 }
 
@@ -156,33 +165,39 @@ impl Connection {
         pending::<()>().await;
         unreachable!();
     }
+    #[cfg(feature="unstable")]
     async fn do_pings(&mut self) -> Result<(), Error> {
         use async_std::io;
 
         let ivl = self.ping_interval;
         let (mut writer, mut reader, state) = self.split();
 
-        while *state == State::Normal {
+        if *state == State::AwaitingPing {
+            Self::synchronize_ping(&mut reader, state).await?;
+        }
 
-            *state = State::Dirty;
-            writer.send_messages(&[ClientMessage::Sync]).await?;
-            *state = State::AwaitingPing;
-            reader.wait_ready().await?;
-            *state = State::Normal;
-
-            match io::timeout(ivl, reader.passive_wait()).await {
-                Err(e) if e.kind() == io::ErrorKind::TimedOut => continue,
+        while let State::Normal { idle_since: last_pong } = *state {
+            match io::timeout(
+                ivl.saturating_sub(Instant::now() - last_pong),
+                reader.passive_wait()
+            ).await {
+                Err(e) if e.kind() == io::ErrorKind::TimedOut => (),
                 Err(e) => {
                     *state = State::Dirty;
                     return Err(ClientConnectionError::with_source(e))?;
                 }
                 Ok(_) => unreachable!(),
             }
+
+            *state = State::Dirty;
+            writer.send_messages(&[ClientMessage::Sync]).await?;
+            *state = State::AwaitingPing;
+            Self::synchronize_ping(&mut reader, state).await?;
         }
         Ok(())
     }
     #[cfg(feature="unstable")]
-    pub async fn background_pings<T>(&mut self) -> T {
+    async fn background_pings<T>(&mut self) -> T {
         self.do_pings().await
             .map_err(|e| {
                 log::info!("Connection error during background pings: {}", e)
@@ -193,18 +208,34 @@ impl Connection {
         unreachable!();
     }
     #[cfg(feature="unstable")]
-    pub async fn synchronize_ping(&mut self) {
-        if self.state == State::AwaitingPing {
-                let (_, mut reader, _) = self.split();
-            if reader.wait_ready().await.is_err() {
-                self.state = State::Dirty;
-            } else {
-                self.state = State::Normal;
-            }
+    async fn synchronize_ping<'a>(
+        reader: &mut Reader<'a>, state: &mut State
+    ) -> Result<(), Error> {
+        debug_assert_eq!(*state, State::AwaitingPing);
+        if let Err(e) = reader.wait_ready().await {
+            *state = State::Dirty;
+            Err(e)
+        } else {
+            *state = State::Normal { idle_since: Instant::now() };
+            Ok(())
         }
     }
+    #[cfg(feature="unstable")]
+    pub async fn ping_while<T, F>(&mut self, other: F) -> T
+        where F: Future<Output = T>
+    {
+        let rv = other.race(self.background_pings()).await;
+        if self.state == State::AwaitingPing {
+            let (_, ref mut reader, state) = self.split();
+            Self::synchronize_ping(reader, state).await.ok();
+        }
+        rv
+    }
     pub fn is_consistent(&self) -> bool {
-        self.state == State::Normal
+        matches!(self.state, State::Normal {
+            #[cfg(feature="unstable")]
+            idle_since: _,
+        })
     }
     pub async fn terminate(mut self) -> Result<(), Error> {
         let mut seq = self.start_sequence().await?;
@@ -220,7 +251,10 @@ impl Connection {
         -> Result<Sequence<'x>, Error>
     {
         let (writer, reader, state) = self.split();
-        if *state != State::Normal {
+        if !matches!(*state, State::Normal {
+            #[cfg(feature="unstable")]
+            idle_since: _,
+        }) {
             return Err(ClientInconsistentError::with_message(
                 "Connection is inconsistent state. Please reconnect."));
         }
