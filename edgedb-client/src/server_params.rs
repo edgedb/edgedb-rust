@@ -1,5 +1,6 @@
 //! Parameters returned by the server on initial handshake
 use std::collections::HashMap;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use typemap::Key;
@@ -30,3 +31,17 @@ impl Key for PostgresAddress {
 
 impl SealedParam for PostgresAddress { }
 impl ServerParam for PostgresAddress { }
+
+
+/// ParameterStatus_SystemConfig
+#[derive(Debug)]
+pub struct SystemConfig {
+    pub session_idle_timeout: Option<Duration>,
+}
+
+impl Key for SystemConfig {
+    type Value = SystemConfig;
+}
+
+impl SealedParam for SystemConfig { }
+impl ServerParam for SystemConfig { }

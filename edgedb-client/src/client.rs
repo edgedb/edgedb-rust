@@ -1,14 +1,15 @@
-#![cfg_attr(not(feature="unstable"), allow(dead_code))]
+#![cfg_attr(not(feature="unstable"), allow(dead_code, unused_imports))]
 
+use core::future::Future;
 use std::collections::HashMap;
 use std::fmt;
 use std::str;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+use async_std::prelude::FutureExt;
 use async_std::prelude::StreamExt;
 use async_std::future::{timeout, pending};
 use async_std::io::prelude::WriteExt;
-use async_std::io::ReadExt;
 use bytes::{Bytes, BytesMut};
 use futures_util::io::{ReadHalf, WriteHalf};
 use typemap::TypeMap;
@@ -35,12 +36,31 @@ use crate::errors::{Error, ErrorKind, ResultExt};
 use crate::errors::{NoResultExpected, NoDataError};
 use crate::errors::{ProtocolOutOfOrderError, ProtocolEncodingError};
 use crate::reader::{self, QueryResponse, Reader};
-use crate::server_params::ServerParam;
+use crate::server_params::{ServerParam, SystemConfig};
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub(crate) enum State {
+    Normal {
+        idle_since: Instant,
+    },
+    Dirty,
+    AwaitingPing,
+}
+
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub(crate) enum PingInterval {
+    Unknown,
+    Disabled,
+    Interval { interval: Duration },
+}
 
 
 #[derive(Debug)]
 /// A single connection to the EdgeDB server.
 pub struct Connection {
+    pub(crate) ping_interval: PingInterval,
+    pub(crate) ping_roundtrip_cap: Duration,
     pub(crate) input: ReadHalf<TlsStream>,
     pub(crate) output: WriteHalf<TlsStream>,
     pub(crate) input_buf: BytesMut,
@@ -48,14 +68,14 @@ pub struct Connection {
     pub(crate) version: ProtocolVersion,
     pub(crate) params: TypeMap<dyn typemap::DebugAny + Send + Sync>,
     pub(crate) transaction_state: TransactionState,
-    pub(crate) dirty: bool,
+    pub(crate) state: State,
 }
 
 pub struct Sequence<'a> {
     pub writer: Writer<'a>,
     pub reader: Reader<'a>,
     pub(crate) active: bool,
-    pub(crate) dirty: &'a mut bool,
+    pub(crate) state: &'a mut State,
 }
 
 pub struct Writer<'a> {
@@ -133,7 +153,9 @@ impl<'a> Sequence<'a> {
 
     pub fn end_clean(&mut self) {
         self.active = false;
-        *self.dirty = false;
+        *self.state = State::Normal {
+            idle_since: Instant::now(),
+        };
     }
 }
 
@@ -142,15 +164,122 @@ impl Connection {
         return &self.version
     }
     pub async fn passive_wait<T>(&mut self) -> T {
-        let mut buf = [0u8; 1];
-        self.input.read(&mut buf[..]).await.ok();
+        let (_, mut reader, _) = self.split();
+        reader.passive_wait().await.ok();
         // any erroneous or successful read (even 0) means need reconnect
-        self.dirty = true;
+        self.state = State::Dirty;
         pending::<()>().await;
         unreachable!();
     }
+    async fn do_pings(&mut self, interval: Duration) -> Result<(), Error> {
+        use async_std::io;
+
+        let (mut writer, mut reader, state) = self.split();
+
+        if *state == State::AwaitingPing {
+            Self::synchronize_ping(&mut reader, state).await?;
+        }
+
+        while let State::Normal { idle_since: last_pong } = *state {
+            match io::timeout(
+                interval.saturating_sub(Instant::now() - last_pong),
+                reader.passive_wait()
+            ).await {
+                Err(e) if e.kind() == io::ErrorKind::TimedOut => (),
+                Err(e) => {
+                    *state = State::Dirty;
+                    return Err(ClientConnectionError::with_source(e))?;
+                }
+                Ok(_) => unreachable!(),
+            }
+
+            *state = State::Dirty;
+            writer.send_messages(&[ClientMessage::Sync]).await?;
+            *state = State::AwaitingPing;
+            Self::synchronize_ping(&mut reader, state).await?;
+        }
+        Ok(())
+    }
+    async fn background_pings<T>(&mut self, interval: Duration) -> T {
+        self.do_pings(interval).await
+            .map_err(|e| {
+                log::info!("Connection error during background pings: {}", e)
+            })
+            .ok();
+        debug_assert_eq!(self.state, State::Dirty);
+        pending::<()>().await;
+        unreachable!();
+    }
+    async fn synchronize_ping<'a>(
+        reader: &mut Reader<'a>, state: &mut State
+    ) -> Result<(), Error> {
+        debug_assert_eq!(*state, State::AwaitingPing);
+        if let Err(e) = reader.wait_ready().await {
+            *state = State::Dirty;
+            Err(e)
+        } else {
+            *state = State::Normal { idle_since: Instant::now() };
+            Ok(())
+        }
+    }
+    fn init_ping_interval(&self) -> PingInterval {
+        if let Some(config) = self.params.get::<SystemConfig>() {
+            if let Some(timeout) = config.session_idle_timeout {
+                if timeout.is_zero() {
+                    log::info!(
+                        "Server disabled session_idle_timeout; \
+                         pings are disabled."
+                    );
+                    PingInterval::Disabled
+                } else {
+                    let interval = timeout.saturating_sub(
+                        self.ping_roundtrip_cap
+                    );
+                    if interval.is_zero() {
+                        log::warn!(
+                            "session_idle_timeout={:?} is too short for \
+                             ping_roundtrip_cap={:?}; pings are disabled.",
+                            timeout, self.ping_roundtrip_cap,
+                        );
+                        PingInterval::Disabled
+                    } else {
+                        log::info!(
+                            "Setting ping interval to {:?} as \
+                             session_idle_timeout={:?}",
+                            interval, timeout,
+                        );
+                        PingInterval::Interval { interval }
+                    }
+                }
+            } else {
+                PingInterval::Unknown
+            }
+        } else {
+            PingInterval::Unknown
+        }
+    }
+    #[cfg(feature="unstable")]
+    pub async fn ping_while<T, F>(&mut self, other: F) -> T
+        where F: Future<Output = T>
+    {
+        if self.ping_interval == PingInterval::Unknown {
+            self.init_ping_interval();
+        }
+        if let PingInterval::Interval { interval } = self.ping_interval {
+            let rv = other.race(self.background_pings(interval)).await;
+            if self.state == State::AwaitingPing {
+                let (_, ref mut reader, state) = self.split();
+                Self::synchronize_ping(reader, state).await.ok();
+            }
+            rv
+        } else {
+            other.await
+        }
+    }
     pub fn is_consistent(&self) -> bool {
-        !self.dirty
+        matches!(self.state, State::Normal {
+            idle_since: _,
+        })
     }
     pub async fn terminate(mut self) -> Result<(), Error> {
         let mut seq = self.start_sequence().await?;
@@ -165,27 +294,19 @@ impl Connection {
     pub async fn start_sequence<'x>(&'x mut self)
         -> Result<Sequence<'x>, Error>
     {
-        if self.dirty {
+        let (writer, reader, state) = self.split();
+        if !matches!(*state, State::Normal {
+            idle_since: _,
+        }) {
             return Err(ClientInconsistentError::with_message(
                 "Connection is inconsistent state. Please reconnect."));
         }
-        self.dirty = true;
-        let reader = Reader {
-            proto: &self.version,
-            buf: &mut self.input_buf,
-            stream: &mut self.input,
-            transaction_state: &mut self.transaction_state,
-        };
-        let writer = Writer {
-            proto: &self.version,
-            outbuf: &mut self.output_buf,
-            stream: &mut self.output,
-        };
+        *state = State::Dirty;
         Ok(Sequence {
             writer,
             reader,
+            state,
             active: true,
-            dirty: &mut self.dirty,
         })
     }
 
@@ -197,6 +318,20 @@ impl Connection {
     }
     pub fn transaction_state(&self) -> TransactionState {
         self.transaction_state
+    }
+    fn split(&mut self) -> (Writer, Reader, &mut State) {
+        let reader = Reader {
+            proto: &self.version,
+            buf: &mut self.input_buf,
+            stream: &mut self.input,
+            transaction_state: &mut self.transaction_state,
+        };
+        let writer = Writer {
+            proto: &self.version,
+            outbuf: &mut self.output_buf,
+            stream: &mut self.output,
+        };
+        (writer, reader, &mut self.state)
     }
 }
 

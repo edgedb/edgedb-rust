@@ -1,4 +1,4 @@
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use std::sync::Arc;
 
 use bytes::Buf;
@@ -133,7 +133,32 @@ impl OutputTypedesc {
     pub fn root_pos(&self) -> Option<TypePos> {
         self.root_pos
     }
+    pub fn decode_with_id(root_id: Uuid, buf: &mut Input) -> Result<Self, DecodeError> {
+        let mut descriptors = Vec::new();
+        while buf.remaining() > 0 {
+            match Descriptor::decode(buf)? {
+                Descriptor::TypeAnnotation(_) => {}
+                item => descriptors.push(item),
+            }
+        }
+        let root_pos = if root_id == Uuid::from_u128(0) {
+            None
+        } else {
+            let idx = descriptors.iter().position(|x| *x.id() == root_id)
+                .context(errors::UuidNotFound { uuid: root_id })?;
+            let pos = idx.try_into().ok()
+                .context(errors::TooManyDescriptors { index: idx })?;
+            Some(TypePos(pos))
+        };
+        Ok(OutputTypedesc {
+            proto: buf.proto().clone(),
+            array: descriptors,
+            root_id,
+            root_pos,
+        })
+    }
 }
+
 
 impl InputTypedesc {
     pub fn as_query_arg_context(&self) -> query_arg::DescriptorContext {

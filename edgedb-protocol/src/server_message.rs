@@ -110,6 +110,7 @@ pub struct ServerKeyData {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParameterStatus {
+    pub proto: ProtocolVersion,
     pub name: Bytes,
     pub value: Bytes,
 }
@@ -173,33 +174,11 @@ fn encode<T: Encode>(buf: &mut Output, code: u8, msg: &T)
 
 impl CommandDataDescription {
     pub fn output(&self) -> Result<OutputTypedesc, DecodeError> {
-        let mut cur = Input::new(
+        let ref mut cur = Input::new(
             self.proto.clone(),
             self.output_typedesc.clone(),
         );
-        let mut descriptors = Vec::new();
-        while cur.remaining() > 0 {
-            match Descriptor::decode(&mut cur)? {
-                Descriptor::TypeAnnotation(_) => {}
-                item => descriptors.push(item),
-            }
-        }
-        let root_id = self.output_typedesc_id.clone();
-        let root_pos = if root_id == Uuid::from_u128(0) {
-            None
-        } else {
-            let idx = descriptors.iter().position(|x| *x.id() == root_id)
-                .context(errors::UuidNotFound { uuid: root_id })?;
-            let pos = idx.try_into().ok()
-                .context(errors::TooManyDescriptors { index: idx })?;
-            Some(TypePos(pos))
-        };
-        Ok(OutputTypedesc {
-            proto: self.proto.clone(),
-            array: descriptors,
-            root_id,
-            root_pos,
-        })
+        OutputTypedesc::decode_with_id(self.output_typedesc_id.clone(), cur)
     }
     pub fn input(&self) -> Result<InputTypedesc, DecodeError> {
         let ref mut cur = Input::new(
@@ -229,6 +208,25 @@ impl CommandDataDescription {
             root_id,
             root_pos,
         })
+    }
+}
+
+impl ParameterStatus {
+    pub fn parse_system_config(self) -> Result<(OutputTypedesc, Bytes), DecodeError> {
+        let ref mut cur = Input::new(
+            self.proto.clone(),
+            self.value,
+        );
+        let typedesc_data = Bytes::decode(cur)?;
+        let data = Bytes::decode(cur)?;
+
+        let ref mut typedesc_buf = Input::new(
+            self.proto,
+            typedesc_data,
+        );
+        let typedesc_id = Uuid::decode(typedesc_buf)?;
+        let typedesc = OutputTypedesc::decode_with_id(typedesc_id, typedesc_buf)?;
+        Ok((typedesc, data))
     }
 }
 
@@ -588,7 +586,7 @@ impl Decode for ParameterStatus {
     {
         let name = Bytes::decode(buf)?;
         let value = Bytes::decode(buf)?;
-        Ok(ParameterStatus { name, value })
+        Ok(ParameterStatus { proto: buf.proto().clone(), name, value })
     }
 }
 

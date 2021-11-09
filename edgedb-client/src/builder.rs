@@ -22,7 +22,7 @@ use rand::{thread_rng, Rng};
 use rustls::ServerCertVerifier;
 use scram::ScramClient;
 use serde_json::from_slice;
-use typemap::TypeMap;
+use typemap::{TypeMap, DebugAny};
 use tls_api::{TlsConnectorBox, TlsConnector as _, TlsConnectorBuilder as _};
 use tls_api::{TlsStream, TlsStreamDyn as _};
 use tls_api_not_tls::TlsConnector as PlainConnector;
@@ -31,19 +31,22 @@ use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use edgedb_protocol::server_message::{TransactionState, ServerHandshake};
+use edgedb_protocol::server_message::ParameterStatus;
+use edgedb_protocol::value::Value;
 
-use crate::client::{Connection, Sequence};
+use crate::client::{Connection, Sequence, State, PingInterval};
 use crate::credentials::{Credentials, TlsSecurity};
 use crate::errors::{ClientConnectionError, ProtocolError, ProtocolTlsError};
 use crate::errors::{ClientConnectionFailedError, AuthenticationError};
 use crate::errors::{ClientError, ClientConnectionFailedTemporarilyError};
-use crate::errors::{ClientNoCredentialsError};
+use crate::errors::{ClientNoCredentialsError, ProtocolEncodingError};
 use crate::errors::{Error, ErrorKind, PasswordRequired, ResultExt};
-use crate::server_params::PostgresAddress;
+use crate::server_params::{PostgresAddress, SystemConfig};
 use crate::tls;
 
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub const DEFAULT_WAIT: Duration = Duration::from_secs(30);
+pub const DEFAULT_PING_ROUNDTRIP_CAP: Duration = Duration::from_secs(2);
 pub const DEFAULT_POOL_SIZE: usize = 10;
 pub const DEFAULT_HOST: &str = "localhost";
 pub const DEFAULT_PORT: u16 = 5656;
@@ -68,6 +71,7 @@ pub struct Builder {
     connect_timeout: Duration,
     insecure_dev_mode: bool,
     creds_file_outdated: bool,
+    ping_roundtrip_cap: Duration,
 
     // Pool configuration
     pub(crate) max_connections: usize,
@@ -644,6 +648,7 @@ impl Builder {
             initialized: false,
             insecure_dev_mode: false,
             creds_file_outdated: false,
+            ping_roundtrip_cap: DEFAULT_PING_ROUNDTRIP_CAP,
 
             max_connections: DEFAULT_POOL_SIZE,
         }
@@ -668,6 +673,7 @@ impl Builder {
             connect_timeout: self.connect_timeout,
             insecure_dev_mode: self.insecure_dev_mode,
             creds_file_outdated: false,
+            ping_roundtrip_cap: self.ping_roundtrip_cap,
 
             max_connections: self.max_connections,
         };
@@ -1049,13 +1055,17 @@ impl Builder {
         let mut version = ProtocolVersion::current();
         let (input, output) = stream.split();
         let mut conn = Connection {
+            ping_interval: PingInterval::Unknown,
+            ping_roundtrip_cap: self.ping_roundtrip_cap,
             input,
             output,
             input_buf: BytesMut::with_capacity(8192),
             output_buf: BytesMut::with_capacity(8192),
             params: TypeMap::custom(),
             transaction_state: TransactionState::NotInTransaction,
-            dirty: false,
+            state: State::Normal {
+                idle_since: Instant::now(),
+            },
             version: version.clone(),
         };
         let mut seq = conn.start_sequence().await?;
@@ -1134,6 +1144,9 @@ impl Builder {
                             };
                             server_params.insert::<PostgresAddress>(pgaddr);
                         }
+                        b"system_config" => {
+                            self.handle_system_config(par, &mut server_params)?;
+                        }
                         _ => {}
                     }
                 }
@@ -1144,7 +1157,54 @@ impl Builder {
         }
         conn.version = version;
         conn.params = server_params;
+        conn.state = State::Normal {
+            idle_since: Instant::now()
+        };
         Ok(conn)
+    }
+
+    fn handle_system_config(
+        &self,
+        param_status: ParameterStatus,
+        server_params: &mut TypeMap<dyn DebugAny + Send + Sync>
+    ) -> Result<(), Error> {
+        let (typedesc, data) = param_status.parse_system_config()
+            .map_err(ProtocolEncodingError::with_source)?;
+        let codec = typedesc.build_codec()
+            .map_err(ProtocolEncodingError::with_source)?;
+        let system_config = codec.decode(data.as_ref())
+            .map_err(ProtocolEncodingError::with_source)?;
+        let mut config = SystemConfig {
+            session_idle_timeout: None,
+        };
+        if let Value::Object { shape, fields } = system_config {
+            for (el, field) in shape.elements.iter().zip(fields) {
+                match el.name.as_str() {
+                    "id" => {},
+                    "session_idle_timeout" => {
+                        config.session_idle_timeout = match field {
+                            Some(Value::Duration(timeout)) =>
+                                Some(timeout.abs_duration()),
+                            _ => {
+                                log::warn!(
+                                    "Wrong protocol: {}={:?}", el.name, field
+                                );
+                                None
+                            },
+                        };
+                    }
+                    name => {
+                        log::debug!(
+                            "Unhandled system config: {}={:?}", name, field
+                        );
+                    }
+                }
+            }
+            server_params.insert::<SystemConfig>(config);
+        } else {
+            log::warn!("Received empty system config message.");
+        }
+        Ok(())
     }
 }
 
