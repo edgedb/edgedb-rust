@@ -263,7 +263,7 @@ impl Connection {
         where F: Future<Output = T>
     {
         if self.ping_interval == PingInterval::Unknown {
-            self.init_ping_interval();
+            self.ping_interval = self.init_ping_interval();
         }
         if let PingInterval::Interval { interval } = self.ping_interval {
             let rv = other.race(self.background_pings(interval)).await;
