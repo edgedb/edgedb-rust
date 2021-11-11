@@ -52,7 +52,7 @@ pub(crate) enum State {
 pub(crate) enum PingInterval {
     Unknown,
     Disabled,
-    Interval { interval: Duration },
+    Interval(Duration),
 }
 
 
@@ -60,7 +60,6 @@ pub(crate) enum PingInterval {
 /// A single connection to the EdgeDB server.
 pub struct Connection {
     pub(crate) ping_interval: PingInterval,
-    pub(crate) ping_roundtrip_cap: Duration,
     pub(crate) input: ReadHalf<TlsStream>,
     pub(crate) output: WriteHalf<TlsStream>,
     pub(crate) input_buf: BytesMut,
@@ -222,7 +221,7 @@ impl Connection {
             Ok(())
         }
     }
-    fn init_ping_interval(&self) -> PingInterval {
+    fn calc_ping_interval(&self) -> PingInterval {
         if let Some(config) = self.params.get::<SystemConfig>() {
             if let Some(timeout) = config.session_idle_timeout {
                 if timeout.is_zero() {
@@ -232,14 +231,18 @@ impl Connection {
                     );
                     PingInterval::Disabled
                 } else {
-                    let interval = timeout.saturating_sub(
-                        self.ping_roundtrip_cap
+                    let interval = Duration::from_secs(
+                        (
+                            timeout.saturating_sub(
+                                Duration::from_secs(1)
+                            ).as_secs_f32() * 0.9
+                        ).ceil() as u64
                     );
                     if interval.is_zero() {
                         log::warn!(
-                            "session_idle_timeout={:?} is too short for \
-                             ping_roundtrip_cap={:?}; pings are disabled.",
-                            timeout, self.ping_roundtrip_cap,
+                            "session_idle_timeout={:?} is too short; \
+                             pings are disabled.",
+                            timeout,
                         );
                         PingInterval::Disabled
                     } else {
@@ -248,7 +251,7 @@ impl Connection {
                              session_idle_timeout={:?}",
                             interval, timeout,
                         );
-                        PingInterval::Interval { interval }
+                        PingInterval::Interval(interval)
                     }
                 }
             } else {
@@ -263,9 +266,9 @@ impl Connection {
         where F: Future<Output = T>
     {
         if self.ping_interval == PingInterval::Unknown {
-            self.ping_interval = self.init_ping_interval();
+            self.ping_interval = self.calc_ping_interval();
         }
-        if let PingInterval::Interval { interval } = self.ping_interval {
+        if let PingInterval::Interval(interval) = self.ping_interval {
             let rv = other.race(self.background_pings(interval)).await;
             if self.state == State::AwaitingPing {
                 let (_, ref mut reader, state) = self.split();
