@@ -235,7 +235,7 @@ impl Connection {
                         (
                             timeout.saturating_sub(
                                 Duration::from_secs(1)
-                            ).as_secs_f32() * 0.9
+                            ).as_secs_f64() * 0.9
                         ).ceil() as u64
                     );
                     if interval.is_zero() {
