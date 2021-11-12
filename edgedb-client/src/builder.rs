@@ -46,7 +46,6 @@ use crate::tls;
 
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub const DEFAULT_WAIT: Duration = Duration::from_secs(30);
-pub const DEFAULT_PING_ROUNDTRIP_CAP: Duration = Duration::from_secs(2);
 pub const DEFAULT_POOL_SIZE: usize = 10;
 pub const DEFAULT_HOST: &str = "localhost";
 pub const DEFAULT_PORT: u16 = 5656;
@@ -71,7 +70,6 @@ pub struct Builder {
     connect_timeout: Duration,
     insecure_dev_mode: bool,
     creds_file_outdated: bool,
-    ping_roundtrip_cap: Duration,
 
     // Pool configuration
     pub(crate) max_connections: usize,
@@ -648,7 +646,6 @@ impl Builder {
             initialized: false,
             insecure_dev_mode: false,
             creds_file_outdated: false,
-            ping_roundtrip_cap: DEFAULT_PING_ROUNDTRIP_CAP,
 
             max_connections: DEFAULT_POOL_SIZE,
         }
@@ -673,7 +670,6 @@ impl Builder {
             connect_timeout: self.connect_timeout,
             insecure_dev_mode: self.insecure_dev_mode,
             creds_file_outdated: false,
-            ping_roundtrip_cap: self.ping_roundtrip_cap,
 
             max_connections: self.max_connections,
         };
@@ -1056,7 +1052,6 @@ impl Builder {
         let (input, output) = stream.split();
         let mut conn = Connection {
             ping_interval: PingInterval::Unknown,
-            ping_roundtrip_cap: self.ping_roundtrip_cap,
             input,
             output,
             input_buf: BytesMut::with_capacity(8192),
