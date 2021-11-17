@@ -111,6 +111,7 @@ fn sleep_duration() -> Duration {
 fn is_temporary(e: &Error) -> bool {
     use io::ErrorKind::{ConnectionRefused, TimedOut, NotFound};
     use io::ErrorKind::{ConnectionAborted, ConnectionReset, UnexpectedEof};
+    use io::ErrorKind::{AddrNotAvailable};
 
     if e.is::<ClientConnectionFailedTemporarilyError>() {
         return true;
@@ -127,7 +128,8 @@ fn is_temporary(e: &Error) -> bool {
                 | ConnectionAborted
                 | NotFound  // For unix sockets
                 | TimedOut
-                | UnexpectedEof  // For Docker server which is starting up
+                | UnexpectedEof     // For Docker server which is starting up
+                | AddrNotAvailable  // Docker exposed ports not yet bound
                 => return true,
                 _ => {},
             }
