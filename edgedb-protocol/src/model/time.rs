@@ -285,6 +285,21 @@ impl Duration {
         }
     }
 
+    fn get_pg_format_value(
+        input: &str, start: usize, end: usize
+    ) -> Result<i64, ParseDurationError> {
+        if let Some(val) = input.get(start..end) {
+            match val.parse::<i32>() {
+                Ok(v) => Ok(v as i64),
+                Err(e) => Err(
+                    ParseDurationError::from(e).pos(end.saturating_sub(1))
+                ),
+            }
+        } else {
+            Err(ParseDurationError::new("expecting value").pos(end))
+        }
+    }
+
     fn try_from_pg_format(input: &str) -> Result<Self, ParseDurationError> {
         enum Expect {
             Numeric { begin: usize },
@@ -292,18 +307,6 @@ impl Duration {
             Whitespace { numeric: Option<i64> }
         }
         let mut seen = Vec::new();
-        let get_value = |start: usize, end: usize| input
-            .get(start..end)
-            .ok_or_else(||
-                ParseDurationError::new("expecting value").pos(end)
-            )
-            .and_then(|v| v
-                .parse::<i32>()
-                .map(|v| v as i64)
-                .map_err(|e| ParseDurationError::from(e)
-                    .pos(end.saturating_sub(1))
-                )
-            );
         let mut get_unit = |start: usize, end: usize, default: Option<&str>| {
             input
                 .get(start..end)
@@ -345,7 +348,9 @@ impl Duration {
             }
             match state {
                 Expect::Numeric { begin } if !is_numeric => {
-                    let numeric = get_value(begin, pos)?;
+                    let numeric = Self::get_pg_format_value(
+                        input, begin, pos
+                    )?;
                     if is_alphabetic {
                         state = Expect::Alphabetic {
                             begin: pos,
@@ -391,7 +396,9 @@ impl Duration {
         }
         match state {
             Expect::Numeric { begin } => {
-                result += get_value(begin, input.len())? * MICROS_PER_SECOND;
+                result += Self::get_pg_format_value(
+                    input, begin, input.len()
+                )? * MICROS_PER_SECOND;
             }
             Expect::Alphabetic { begin, numeric } => {
                 result += numeric * get_unit(begin, input.len(), Some("s"))?;
