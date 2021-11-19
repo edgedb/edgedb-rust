@@ -5,8 +5,9 @@ use std::error::Error as _;
 use std::ffi::{OsString, OsStr};
 use std::fmt;
 use std::io;
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
-use std::str;
+use std::str::{self, FromStr};
 use std::sync::Arc;
 use std::time::{Instant, Duration};
 
@@ -970,9 +971,7 @@ impl Builder {
             self._connect_with_cert_verifier(Arc::new(tls::NullVerifier)).await
         } else {
             let verify_host = self.do_verify_hostname();
-            if verify_host && DNSNameRef::try_from_ascii_str(
-                &self.host
-            ).is_err() {
+            if verify_host && IpAddr::from_str(&self.host).is_ok() {
                 // FIXME: https://github.com/rustls/rustls/issues/184
                 // When rustls issue ix fixed we may lift this limitation
                 return Err(ClientError::with_message(
@@ -1023,10 +1022,13 @@ impl Builder {
                 let conn = TcpStream::connect(
                     &(&self.host[..], self.port)
                 ).await.map_err(ClientConnectionError::with_source)?;
-                let host = if DNSNameRef::try_from_ascii_str(
+                let is_valid_dns_name = DNSNameRef::try_from_ascii_str(
                     &self.host
-                ).is_err() {
+                ).is_ok();
+                let host = if !is_valid_dns_name {
                     // FIXME: https://github.com/rustls/rustls/issues/184
+                    // If self.host is neither an IP address nor a valid DNS
+                    // name, the hacks below won't make it valid anyways.
                     let host = format!("{}.host-for-ip.edgedb.net", self.host);
                     // for ipv6addr
                     let host = host.replace(":", "-").replace("%", "-");
