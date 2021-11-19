@@ -26,6 +26,7 @@ use typemap::{TypeMap, DebugAny};
 use tls_api::{TlsConnectorBox, TlsConnector as _, TlsConnectorBuilder as _};
 use tls_api::{TlsStream, TlsStreamDyn as _};
 use tls_api_not_tls::TlsConnector as PlainConnector;
+use webpki::DNSNameRef;
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
 use edgedb_protocol::features::ProtocolVersion;
@@ -609,7 +610,12 @@ impl Builder {
             .map_err(|e| ClientError::with_source(e)
                 .context(format!("cannot parse DSN {:?}", dsn)))?;
         self.reset_compound();
-        self.host = url.host_str().unwrap_or(DEFAULT_HOST).to_owned();
+        if let Some(url::Host::Ipv6(host)) = url.host() {
+            // async-std uses raw IPv6 address without "[]"
+            self.host = host.to_string();
+        } else {
+            self.host = url.host_str().unwrap_or(DEFAULT_HOST).to_owned();
+        }
         self.port = url.port().unwrap_or(DEFAULT_PORT);
         self.admin = admin;
         self.user = if url.username().is_empty() {
@@ -1016,10 +1022,21 @@ impl Builder {
                 let conn = TcpStream::connect(
                     &(&self.host[..], self.port)
                 ).await.map_err(ClientConnectionError::with_source)?;
-                let host = if IpAddr::from_str(&self.host).is_ok() {
+                let is_valid_dns_name = DNSNameRef::try_from_ascii_str(
+                    &self.host
+                ).is_ok();
+                let host = if !is_valid_dns_name {
                     // FIXME: https://github.com/rustls/rustls/issues/184
-                    Cow::from(format!("{}.host-for-ip.edgedb.net", self.host)
-                        .replace(":", "-"))  // for ipv6addr
+                    // If self.host is neither an IP address nor a valid DNS
+                    // name, the hacks below won't make it valid anyways.
+                    let host = format!("{}.host-for-ip.edgedb.net", self.host);
+                    // for ipv6addr
+                    let host = host.replace(":", "-").replace("%", "-");
+                    if host.starts_with("-") {
+                        Cow::from(format!("i{}", host))
+                    } else {
+                        Cow::from(host)
+                    }
                 } else {
                     Cow::from(&self.host[..])
                 };
@@ -1332,5 +1349,28 @@ fn from_dsn() {
     assert_eq!(bld.port, 1756);
     assert_eq!(&bld.user, "edgedb");
     assert_eq!(&bld.database, "edgedb");
+    assert_eq!(bld.password, None);
+
+    async_std::task::block_on(bld.read_dsn(
+        "edgedb://user3:123123@[::1]:5555/abcdef"
+    )).unwrap();
+    assert_eq!(bld.host, "::1");
+    assert_eq!(bld.port, 5555);
+    assert_eq!(&bld.user, "user3");
+    assert_eq!(&bld.database, "abcdef");
+    assert_eq!(bld.password, Some("123123".into()));
+}
+
+#[test]
+#[should_panic]  // servo/rust-url#424
+fn from_dsn_ipv6_scoped_address() {
+    let mut bld = Builder::uninitialized();
+    async_std::task::block_on(bld.read_dsn(
+        "edgedb://user3@[fe80::1ff:fe23:4567:890a%25eth0]:3000/ab"
+    )).unwrap();
+    assert_eq!(bld.host, "fe80::1ff:fe23:4567:890a%eth0");
+    assert_eq!(bld.port, 3000);
+    assert_eq!(&bld.user, "user3");
+    assert_eq!(&bld.database, "ab");
     assert_eq!(bld.password, None);
 }
