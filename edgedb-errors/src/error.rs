@@ -2,13 +2,21 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt;
-use std::slice::Iter;
 use std::str;
 
-use crate::display;
 use crate::kinds::{tag_check, error_name};
 use crate::traits::ErrorKind;
 
+
+const FIELD_HINT: u16 = 0x_00_01;
+const FIELD_DETAILS: u16 = 0x_00_02;
+const FIELD_SERVER_TRACEBACK: u16 = 0x_01_01;
+
+// TODO(tailhook) these might be deprecated?
+const FIELD_POSITION_START: u16 = 0x_FF_F1;
+const FIELD_POSITION_END: u16 = 0x_FF_F2;
+const FIELD_LINE: u16 = 0x_FF_F3;
+const FIELD_COLUMN: u16 = 0x_FF_F4;
 
 /// Error type returned from any EdgeDB call.
 // This includes boxed error, because propagating through call chain is
@@ -57,8 +65,54 @@ impl Error {
     pub fn initial_message(&self) -> Option<&str> {
         self.0.messages.first().map(|m| &m[..])
     }
-    pub fn contexts(&self) -> impl Iterator<Item=&str> {
-        self.0.messages[1..].iter()
+    pub fn contexts(&self) -> impl DoubleEndedIterator<Item=&str> {
+        self.0.messages[1..].iter().map(|m| &m[..])
+    }
+    fn header(&self, field: u16) -> Option<&str> {
+        if let Some(value) = self.headers().get(&field) {
+            if let Ok(value) = str::from_utf8(value) {
+                return Some(value);
+            }
+        }
+        None
+    }
+    fn usize_header(&self, field: u16) -> Option<usize> {
+        self.header(field)
+            .and_then(|x| x.parse::<u32>().ok())
+            .map(|x| x as usize)
+    }
+    pub fn hint(&self) -> Option<&str> {
+        self.header( FIELD_HINT)
+    }
+    pub fn details(&self) -> Option<&str> {
+        self.header(FIELD_DETAILS)
+    }
+    pub fn server_traceback(&self) -> Option<&str> {
+        self.header(FIELD_SERVER_TRACEBACK)
+    }
+    pub fn position_start(&self) -> Option<usize> {
+        self.usize_header(FIELD_POSITION_START)
+    }
+    pub fn position_end(&self) -> Option<usize> {
+        self.usize_header(FIELD_POSITION_END)
+    }
+    pub fn line(&self) -> Option<usize> {
+        self.usize_header(FIELD_LINE)
+    }
+    pub fn column(&self) -> Option<usize> {
+        self.usize_header(FIELD_COLUMN)
+    }
+    pub(crate) fn unknown_headers(&self)
+        -> impl Iterator<Item=(&u16, &bytes::Bytes)>
+    {
+        self.headers().iter().filter(|(key, _)| {
+            **key != FIELD_HINT &&
+                **key != FIELD_DETAILS &&
+                **key != FIELD_POSITION_START &&
+                **key != FIELD_POSITION_END &&
+                **key != FIELD_LINE &&
+                **key != FIELD_COLUMN
+        })
     }
     pub fn from_code(code: u32) -> Error {
         Error(Box::new(Inner {
@@ -97,15 +151,11 @@ impl fmt::Display for Error {
                 write!(f, "{}", kind)?;
             }
         }
-        if let Some(hint) = self.headers().get(&display::FIELD_HINT) {
-            if let Ok(hint) = str::from_utf8(hint) {
-                write!(f, "\n  Hint: {}", hint)?;
-            }
+        if let Some(hint) = self.hint() {
+            write!(f, "\n  Hint: {}", hint)?;
         }
-        if let Some(detail) = self.headers().get(&display::FIELD_DETAILS) {
-            if let Ok(detail) = str::from_utf8(detail) {
-                write!(f, "\n  Detail: {}", detail)?;
-            }
+        if let Some(detail) = self.details() {
+            write!(f, "\n  Detail: {}", detail)?;
         }
         Ok(())
     }
