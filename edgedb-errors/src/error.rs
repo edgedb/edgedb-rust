@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt;
+use std::slice::Iter;
 use std::str;
 
 use crate::display;
@@ -55,6 +56,9 @@ impl Error {
     }
     pub fn initial_message(&self) -> Option<&str> {
         self.0.messages.first().map(|m| &m[..])
+    }
+    pub fn contexts(&self) -> Iter<Cow<'static, str>> {
+        self.0.messages[1..].iter()
     }
     pub fn from_code(code: u32) -> Error {
         Error(Box::new(Inner {
