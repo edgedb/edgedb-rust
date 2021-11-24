@@ -57,7 +57,7 @@ impl Error {
     pub fn initial_message(&self) -> Option<&str> {
         self.0.messages.first().map(|m| &m[..])
     }
-    pub fn contexts(&self) -> Iter<Cow<'static, str>> {
+    pub fn contexts(&self) -> impl Iterator<Item=&str> {
         self.0.messages[1..].iter()
     }
     pub fn from_code(code: u32) -> Error {
