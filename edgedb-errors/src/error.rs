@@ -2,7 +2,9 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt;
+use std::str;
 
+use crate::display;
 use crate::kinds::{tag_check, error_name};
 use crate::traits::ErrorKind;
 
@@ -89,6 +91,16 @@ impl fmt::Display for Error {
                 write!(f, "{}: {}", kind, last)?;
             } else {
                 write!(f, "{}", kind)?;
+            }
+        }
+        if let Some(hint) = self.headers().get(&display::FIELD_HINT) {
+            if let Ok(hint) = str::from_utf8(hint) {
+                write!(f, "\n  Hint: {}", hint)?;
+            }
+        }
+        if let Some(detail) = self.headers().get(&display::FIELD_DETAILS) {
+            if let Ok(detail) = str::from_utf8(detail) {
+                write!(f, "\n  Detail: {}", detail)?;
             }
         }
         Ok(())
