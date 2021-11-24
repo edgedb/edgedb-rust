@@ -4,9 +4,8 @@ use std::collections::BTreeMap;
 
 use bytes::Bytes;
 
-use edgedb_errors::{Error, InternalServerError};
+use crate::{Error, InternalServerError};
 
-pub use crate::server_message::{ErrorSeverity, ErrorResponse};
 
 pub const FIELD_HINT: u16 = 0x_00_01;
 pub const FIELD_DETAILS: u16 = 0x_00_02;
@@ -30,28 +29,10 @@ pub fn display_error_verbose(e: &Error) -> VerboseError {
     VerboseError(e)
 }
 
-impl Into<Error> for ErrorResponse {
-    fn into(self) -> Error {
-        Error::from_code(self.code)
-        .context(self.message)
-        .with_headers(self.attributes)
-    }
-}
-
 impl fmt::Display for DisplayError<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let DisplayError(ref e, verbose) = self;
         write!(f, "{:#}", e)?;
-        if let Some(hint) = e.headers().get(&FIELD_HINT) {
-            if let Ok(hint) = str::from_utf8(hint) {
-                write!(f, "\n  Hint: {}", hint)?;
-            }
-        }
-        if let Some(detail) = e.headers().get(&FIELD_DETAILS) {
-            if let Ok(detail) = str::from_utf8(detail) {
-                write!(f, "\n  Detail: {}", detail)?;
-            }
-        }
         if e.is::<InternalServerError>() || *verbose {
             let tb = e.headers().get(&FIELD_SERVER_TRACEBACK);
             if let Some(traceback) = tb {
@@ -85,21 +66,8 @@ impl fmt::Display for VerboseError<'_> {
         writeln!(f, "Error type: {}", e.kind_debug())?;
         writeln!(f, "Message: {:#}", e)?;
         let mut attr = e.headers().iter().collect::<BTreeMap<_, _>>();
-        if let Some(hint) = attr.remove(&FIELD_HINT) {
-            if let Ok(hint) = str::from_utf8(hint) {
-                writeln!(f, "Hint: {}", hint)?;
-            }
-        }
-        if let Some(detail) = attr.remove(&FIELD_DETAILS) {
-            if let Ok(detail) = str::from_utf8(detail) {
-                writeln!(f, "Detail: {}", detail)?;
-            }
-        }
-        if let Some(hint) = attr.remove(&FIELD_HINT) {
-            if let Ok(hint) = str::from_utf8(hint) {
-                writeln!(f, "Hint: {}", hint)?;
-            }
-        }
+        attr.remove(&FIELD_HINT).take();
+        attr.remove(&FIELD_DETAILS).take();
         let pstart = attr.remove(&FIELD_POSITION_START);
         let pend = attr.remove(&FIELD_POSITION_END);
         let line = attr.remove(&FIELD_LINE);
