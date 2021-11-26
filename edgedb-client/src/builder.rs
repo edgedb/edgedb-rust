@@ -280,20 +280,18 @@ fn default_runtime_base() -> Result<PathBuf, Error> {
 }
 
 fn runtime_dir(name: &str) -> Result<PathBuf, Error> {
-    if cfg!(target_os="macos") {
+    if cfg!(windows) {
+        Err(ClientError::with_message(
+            "unix sockets are not supported on Windows"))
+    } else if let Some(dir) = dirs::runtime_dir() {
+        Ok(dir.join(format!("edgedb-{}", name)))
+    } else {
         Ok(dirs::cache_dir()
             .ok_or_else(|| ClientError::with_message(
                 "cannot determine cache directory"))?
             .join("edgedb")
             .join("run")
             .join(name))
-    } else if cfg!(windows) {
-        Err(ClientError::with_message(
-            "unix sockets are not supported on Windows"))
-    } else {
-        Ok(dirs::runtime_dir().ok_or(())
-           .or_else(|()| default_runtime_base())?
-           .join(format!("edgedb-{}", name)))
     }
 }
 
