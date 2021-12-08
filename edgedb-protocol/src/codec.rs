@@ -413,12 +413,18 @@ impl Codec for Duration {
             Value::Duration(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
-        buf.reserve(16);
-        buf.put_i64(val.micros);
-        buf.put_u32(0);
-        buf.put_u32(0);
-        Ok(())
+        encode_duration(buf, val)
     }
+}
+
+pub(crate) fn encode_duration(buf: &mut BytesMut, val: &model::Duration)
+    -> Result<(), EncodeError>
+{
+    buf.reserve(16);
+    buf.put_i64(val.micros);
+    buf.put_u32(0);
+    buf.put_u32(0);
+    Ok(())
 }
 
 impl Codec for RelativeDuration {
@@ -432,12 +438,19 @@ impl Codec for RelativeDuration {
             Value::RelativeDuration(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
-        buf.reserve(16);
-        buf.put_i64(val.micros);
-        buf.put_i32(val.days);
-        buf.put_i32(val.months);
-        Ok(())
+        encode_relative_duration(buf, val)
     }
+}
+
+pub(crate) fn encode_relative_duration(buf: &mut BytesMut,
+                                       val: &model::RelativeDuration)
+    -> Result<(), EncodeError>
+{
+    buf.reserve(16);
+    buf.put_i64(val.micros);
+    buf.put_i32(val.days);
+    buf.put_i32(val.months);
+    Ok(())
 }
 
 impl Codec for Uuid {
@@ -800,10 +813,16 @@ impl Codec for Datetime {
             Value::Datetime(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
-        buf.reserve(8);
-        buf.put_i64(val.micros);
-        Ok(())
+        encode_datetime(buf, val)
     }
+}
+
+pub(crate) fn encode_datetime(buf: &mut BytesMut, val: &model::Datetime)
+    -> Result<(), EncodeError>
+{
+    buf.reserve(8);
+    buf.put_i64(val.micros);
+    Ok(())
 }
 
 impl Codec for LocalDatetime {
@@ -817,10 +836,17 @@ impl Codec for LocalDatetime {
             Value::LocalDatetime(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
-        buf.reserve(8);
-        buf.put_i64(val.micros);
-        Ok(())
+        encode_local_datetime(buf, val)
     }
+}
+
+pub(crate) fn encode_local_datetime(buf: &mut BytesMut,
+                                    val: &model::LocalDatetime)
+    -> Result<(), EncodeError>
+{
+    buf.reserve(8);
+    buf.put_i64(val.micros);
+    Ok(())
 }
 
 impl Codec for LocalDate {
@@ -834,10 +860,16 @@ impl Codec for LocalDate {
             Value::LocalDate(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
-        buf.reserve(4);
-        buf.put_i32(val.days);
-        Ok(())
+        encode_local_date(buf, val)
     }
+}
+
+pub(crate) fn encode_local_date(buf: &mut BytesMut, val: &model::LocalDate)
+    -> Result<(), EncodeError>
+{
+    buf.reserve(4);
+    buf.put_i32(val.days);
+    Ok(())
 }
 
 impl Codec for LocalTime {
@@ -851,10 +883,16 @@ impl Codec for LocalTime {
             Value::LocalTime(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
-        buf.reserve(8);
-        buf.put_i64(val.micros as i64);
-        Ok(())
+        encode_local_time(buf, val)
     }
+}
+
+pub(crate) fn encode_local_time(buf: &mut BytesMut, val: &model::LocalTime)
+    -> Result<(), EncodeError>
+{
+    buf.reserve(8);
+    buf.put_i64(val.micros as i64);
+    Ok(())
 }
 
 impl Codec for Json {

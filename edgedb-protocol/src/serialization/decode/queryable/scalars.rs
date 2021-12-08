@@ -5,7 +5,7 @@ use crate::errors::DecodeError;
 use crate::codec;
 use crate::descriptors::TypePos;
 use crate::model::{Duration, LocalDate, LocalTime, LocalDatetime, Datetime};
-use crate::model::{Json, Uuid, BigInt, Decimal};
+use crate::model::{Json, Uuid, BigInt, Decimal, RelativeDuration};
 use crate::serialization::decode::RawCodec;
 use std::time::SystemTime;
 
@@ -133,6 +133,11 @@ impl DecodeScalar for LocalTime {
 impl DecodeScalar for Duration {
     fn uuid() -> Uuid { codec::STD_DURATION }
     fn typename() -> &'static str { "std::duration" }
+}
+
+impl DecodeScalar for RelativeDuration {
+    fn uuid() -> Uuid { codec::CAL_RELATIVE_DURATION }
+    fn typename() -> &'static str { "cal::relative_duration" }
 }
 
 impl DecodeScalar for SystemTime {
