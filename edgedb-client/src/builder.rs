@@ -485,7 +485,7 @@ impl Builder {
     {
         let mut cert = rustls::RootCertStore::empty();
         let pem;
-        if let Some(cert_data) = &credentials.tls_cert_data {
+        if let Some(cert_data) = &credentials.tls_ca {
             pem = Some(cert_data.clone());
             match
                 cert.add_pem_file(&mut io::Cursor::new(cert_data.as_bytes()))
@@ -497,7 +497,7 @@ impl Builder {
                 Ok((_, 0)) => {}
                 Ok((_, _)) | Err(()) => {
                     return Err(ClientError::with_message(
-                        "Invalid certificates are contained in `tls_certdata`"
+                        "Invalid certificates are contained in `tls_ca`"
                     ));
                 }
             }
@@ -688,13 +688,7 @@ impl Builder {
             user: self.user.clone(),
             password: self.password.clone(),
             database: Some( self.database.clone()),
-            tls_cert_data: self.pem.clone(),
-            tls_verify_hostname: match self.tls_security {
-                TlsSecurity::Default => None,
-                TlsSecurity::Insecure => None,
-                TlsSecurity::NoHostVerification => Some(false),
-                TlsSecurity::Strict => Some(true),
-            },
+            tls_ca: self.pem.clone(),
             tls_security: self.tls_security,
             file_outdated: false
         })
