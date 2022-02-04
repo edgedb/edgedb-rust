@@ -8,9 +8,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        rust_version: [1.53, stable, beta]
+        rust_version: [1.58, stable, beta]
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@master
+      - uses: edgedb/setup-edgedb@v1.2.2
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
@@ -19,6 +21,23 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: test
+          args: --all-features
+      - uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --no-default-features
+      - uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --features=fs
+      - uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --features=env
+      - uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --all-features
       - working-directory: ./edgedb-protocol
         run: |
           cargo test --no-default-features

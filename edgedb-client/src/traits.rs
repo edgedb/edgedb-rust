@@ -14,6 +14,7 @@ use crate::model::Json;
 /// Result returned from an [`execute()`][Executor#method.execute] call.
 #[derive(Debug, Clone)]
 pub struct ExecuteResult {
+    #[allow(dead_code)] // TODO
     pub(crate) marker: Bytes,
 }
 

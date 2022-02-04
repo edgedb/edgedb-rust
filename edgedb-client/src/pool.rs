@@ -38,6 +38,7 @@ pub(crate) struct PoolInner {
 // in the `PoolInner`
 #[derive(Debug, Clone)]
 pub struct Client {
+    #[allow(dead_code)] // TODO
     options: Arc<Options>,
     pub(crate) inner: Arc<PoolInner>,
 }
