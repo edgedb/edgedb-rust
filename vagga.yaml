@@ -21,7 +21,7 @@ commands:
   test-rust: !Command
     description: Run tests
     container: ubuntu
-    run: [cargo, test]
+    run: [cargo, test, --all-features]
 
   test-all-types: !Command
     description: Run tests
@@ -102,7 +102,7 @@ containers:
 
   ubuntu:
     setup:
-    - !Ubuntu xenial
+    - !Ubuntu focal
     - !UbuntuPPA deadsnakes/ppa
     - !AptTrust keys: [BA6932366A755776]
     - !Install
@@ -114,20 +114,17 @@ containers:
       # for cargo geiger
       - libssl-dev
       - pkg-config
-      # for edgeql-python
-      - python3.8
-      - python3.8-dev
       # for \psql
       - postgresql-client
       # for gen-errors
       - curl
 
     - !TarInstall
-      url: "https://static.rust-lang.org/dist/rust-1.53.0-x86_64-unknown-linux-gnu.tar.gz"
+      url: "https://static.rust-lang.org/dist/rust-1.58.1-x86_64-unknown-linux-gnu.tar.gz"
       script: "./install.sh --prefix=/usr \
                 --components=rustc,rust-std-x86_64-unknown-linux-gnu,cargo"
     - !TarInstall
-      url: "https://static.rust-lang.org/dist/rust-std-1.53.0-x86_64-unknown-linux-musl.tar.gz"
+      url: "https://static.rust-lang.org/dist/rust-std-1.58.1-x86_64-unknown-linux-musl.tar.gz"
       script: "./install.sh --prefix=/musl \
                --components=rust-std-x86_64-unknown-linux-musl"
     - !Env RUSTFLAGS: -g
@@ -136,15 +133,33 @@ containers:
       url: "https://github.com/tailhook/bulk/releases/download/v0.4.10/bulk-v0.4.10.tar.gz"
       sha256: 481513f8a0306a9857d045497fb5b50b50a51e9ff748909ecf7d2bda1de275ab
       path: /
+    - !Sh 'cargo install cargo-nextest --root=/usr'
+
+    # edgedb itself for tests
+    - !Sh |
+        addgroup --system --gid 200 postgres
+        adduser --uid 200 --system --home /data --no-create-home \
+            --shell /bin/bash --group --gecos "PostgreSQL administrator" \
+            postgres
+    - !UbuntuRepo
+      url: https://packages.edgedb.com/apt
+      suite: focal
+      components: [main]
+      trusted: true
+    - !Install [edgedb-1]
 
     environ: &environ
       HOME: /work/target
       CARGO_HOME: /work/target
       RUST_BACKTRACE: 1
       PYTHON_SYS_EXECUTABLE: /usr/bin/python3.8
+      EDGEDB_MAJOR_VERSION: 1
       # needed for musl build
       PATH: /musl/bin:/usr/local/bin:/usr/bin:/bin
       LD_LIBRARY_PATH: /musl/lib/rustlib/x86_64-unknown-linux-musl/lib
+    volumes:
+      /tmp: !Tmpfs
+        size: 1G
 
   tools:
     setup:

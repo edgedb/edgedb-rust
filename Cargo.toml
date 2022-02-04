@@ -3,7 +3,8 @@ members = [
     "edgedb-errors",
     "edgedb-derive",
     "edgedb-protocol",
-    "edgedb-client"
+    "edgedb-client",
+    "edgedb-tokio",
 ]
 
 [profile.release]
