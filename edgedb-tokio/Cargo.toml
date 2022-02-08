@@ -22,14 +22,18 @@ sha1 = {version="0.6.0", features=["std"]}
 log = "0.4.8"
 rand = "0.8"
 url = "2.1.1"
-tls-api = {version="0.5.0", default-features=false, features=["runtime-tokio"]}
-tls-api-not-tls = {version="0.5.0", default-features=false, features=["runtime-tokio"]}
-tls-api-rustls = {version="0.5.0", default-features=false, features=["runtime-tokio"]}
-rustls = "0.20.2"
+tls-api = {version="0.7.0", default-features=false, features=["runtime-tokio"]}
+tls-api-not-tls = {version="0.7.0", default-features=false, features=["runtime-tokio"]}
+tls-api-rustls = {version="0.7.0", default-features=false, features=["runtime-tokio"]}
+rustls = {version="0.20.2", features=[
+    "dangerous_configuration",  # this allows insecure mode
+]}
 rustls-native-certs = "0.6.1"
+rustls-pemfile = "0.3.0"
 webpki = "0.22.0"
 webpki-roots = "0.22.2"
 async-trait = "0.1.52"
+anyhow = "1.0.53"  # needed for tls-api
 
 [dev-dependencies]
 

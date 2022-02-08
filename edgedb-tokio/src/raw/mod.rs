@@ -7,14 +7,14 @@ use tokio::sync::{self, Semaphore};
 use tokio::task::{JoinHandle, spawn};
 
 use crate::errors::{Error, ErrorKind, ClientError};
-use crate::builder::Builder;
+use crate::builder::Config;
 
 #[derive(Clone, Debug)]
 pub struct Pool(Arc<PoolInner>);
 
 #[derive(Debug)]
 struct PoolInner {
-    pub config: Builder,
+    pub config: Config,
     pub semaphore: Arc<Semaphore>,
     pub queue: BlockingMutex<VecDeque<ConnInner>>,
 }
@@ -30,11 +30,11 @@ pub struct ConnInner {
 }
 
 impl Pool {
-    pub fn new(config: Builder) -> Pool {
+    pub fn new(config: Config) -> Pool {
         Pool(Arc::new(PoolInner {
-            semaphore: Arc::new(Semaphore::new(config.max_connections)),
+            semaphore: Arc::new(Semaphore::new(config.0.max_connections)),
             queue: BlockingMutex::new(
-                VecDeque::with_capacity(config.max_connections)),
+                VecDeque::with_capacity(config.0.max_connections)),
             config,
         }))
     }

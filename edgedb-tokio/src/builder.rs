@@ -5,9 +5,11 @@ use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::str;
+use std::sync::Arc;
 use std::time::{Duration};
 
 use rand::{thread_rng, Rng};
+use rustls::client::ServerCertVerifier;
 use typemap::{TypeMap, DebugAny};
 
 use edgedb_protocol::server_message::ParameterStatus;
@@ -15,9 +17,10 @@ use edgedb_protocol::value::Value;
 
 use crate::errors::{ClientConnectionError};
 use crate::errors::{ClientError, ClientConnectionFailedTemporarilyError};
-use crate::errors::{ProtocolEncodingError};
-use crate::errors::{Error, ErrorKind};
+use crate::errors::{Error, ErrorKind, ResultExt};
+use crate::errors::{ProtocolEncodingError, ClientNoCredentialsError};
 use crate::server_params::{SystemConfig};
+use crate::tls;
 
 use crate::credentials::{Credentials, TlsSecurity};
 
@@ -26,6 +29,8 @@ pub const DEFAULT_WAIT: Duration = Duration::from_secs(30);
 pub const DEFAULT_POOL_SIZE: usize = 10;
 pub const DEFAULT_HOST: &str = "localhost";
 pub const DEFAULT_PORT: u16 = 5656;
+
+type Verifier = Arc<dyn ServerCertVerifier>;
 
 
 /// A builder used to create connections.
@@ -38,7 +43,6 @@ pub struct Builder {
     password: Option<String>,
     database: String,
     pem: Option<String>,
-    cert: rustls::RootCertStore,
     tls_security: TlsSecurity,
     instance_name: Option<String>,
 
@@ -50,6 +54,31 @@ pub struct Builder {
 
     // Pool configuration
     pub(crate) max_connections: usize,
+}
+
+#[derive(Debug)]
+pub(crate) enum Address {
+    Tcp((String, u16)),
+    Unix(PathBuf),
+}
+
+#[derive(Clone)]
+pub struct Config(pub(crate) Arc<ConfigInner>);
+
+pub(crate) struct ConfigInner {
+    pub address: Address,
+    pub admin: bool,
+    pub user: String,
+    pub password: Option<String>,
+    pub database: String,
+    pub verifier: Arc<dyn ServerCertVerifier>,
+    pub instance_name: Option<String>,
+    pub wait: Duration,
+    pub connect_timeout: Duration,
+    pub insecure_dev_mode: bool,
+
+    // Pool configuration
+    pub max_connections: usize,
 }
 
 struct DisplayAddr<'a>(&'a Builder);
@@ -220,24 +249,9 @@ impl Builder {
     pub fn credentials(&mut self, credentials: &Credentials)
         -> Result<&mut Self, Error>
     {
-        let mut cert = rustls::RootCertStore::empty();
-        let pem;
         if let Some(cert_data) = &credentials.tls_ca {
-            pem = Some(cert_data.clone());
-            match cert.add_parsable_certificates(&[cert_data.clone().into()]) {
-                (0, 0) => {
-                    return Err(ClientError::with_message(
-                        "Empty certificate data"));
-                }
-                (_, 0) => {}
-                (_, _) => {
-                    return Err(ClientError::with_message(
-                        "Invalid certificates are contained in `tls_ca`"
-                    ));
-                }
-            }
-        } else {
-            pem = None;
+            validate_certs(&cert_data)
+                .context("invalid certificates in `tls_ca`")?;
         }
         self.reset_compound();
         self.host = credentials.host.clone()
@@ -250,8 +264,7 @@ impl Builder {
                 .unwrap_or_else(|| "edgedb".into());
         self.creds_file_outdated = credentials.file_outdated;
         self.tls_security = credentials.tls_security;
-        self.cert = cert;
-        self.pem = pem;
+        self.pem = credentials.tls_ca.clone();
         self.initialized = true;
         Ok(self)
     }
@@ -325,7 +338,6 @@ impl Builder {
             password: None,
             database: "edgedb".into(),
             tls_security: TlsSecurity::Default,
-            cert: rustls::RootCertStore::empty(),
             pem: None,
             instance_name: None,
 
@@ -348,7 +360,6 @@ impl Builder {
             password: None,
             database: "edgedb".into(),
             tls_security: TlsSecurity::Default,
-            cert: rustls::RootCertStore::empty(),
             pem: None,
             instance_name: None,
 
@@ -471,18 +482,7 @@ impl Builder {
     pub fn pem_certificates(&mut self, cert_data: &String)
         -> Result<&mut Self, Error>
     {
-        self.cert.roots.clear();
-        self.pem = None;
-        let (ok, err) =
-            self.cert.add_parsable_certificates(&[cert_data.clone().into()]);
-        if err != 0 {
-            return Err(ClientError::with_message(
-                    "data contains invalid certificates"));
-        }
-        if ok == 0 {
-            return Err(ClientError::with_message(
-                    "data contains no certificates"));
-        }
+        validate_certs(cert_data).context("invalid PEM certificate")?;
         self.pem = Some(cert_data.clone());
         Ok(self)
     }
@@ -520,7 +520,7 @@ impl Builder {
             Insecure => false,
             NoHostVerification => false,
             Strict => true,
-            Default => self.cert.is_empty(),
+            Default => self.pem.is_none(),
         }
     }
     fn insecure(&self) -> bool {
@@ -570,5 +570,85 @@ impl Builder {
             log::warn!("Received empty system config message.");
         }
         Ok(())
+    }
+    pub fn build(&self) -> Result<Config, Error> {
+        use TlsSecurity::*;
+
+        if !self.initialized {
+            return Err(ClientNoCredentialsError::with_message(
+                "EdgeDB connection options are not initialized. \
+                Run `edgedb project init` or use environment variables \
+                to configure connection."));
+        }
+        let address = Address::Tcp((self.host.clone(), self.port));
+        let verifier = match self.tls_security {
+            _ if self.insecure() => Arc::new(tls::NullVerifier) as Verifier,
+            Insecure => Arc::new(tls::NullVerifier) as Verifier,
+            NoHostVerification => Arc::new(tls::NoHostnameVerifier) as Verifier,
+            Strict => Arc::new(rustls::client::WebPkiVerifier::new(
+                    todo!(), None)) as Verifier,
+            Default => match self.pem {
+                Some(_) => Arc::new(tls::NoHostnameVerifier) as Verifier,
+                None => Arc::new(rustls::client::WebPkiVerifier::new(
+                    todo!(), None)) as Verifier,
+            },
+        };
+
+        Ok(Config(Arc::new(ConfigInner {
+            address,
+            admin: self.admin,
+            user: self.user.clone(),
+            password: self.password.clone(),
+            database: self.database.clone(),
+            verifier,
+            instance_name: self.instance_name.clone(),
+            wait: self.wait,
+            connect_timeout: self.connect_timeout,
+            insecure_dev_mode: self.insecure_dev_mode,
+
+            // Pool configuration
+            max_connections: self.max_connections,
+        })))
+    }
+}
+
+fn validate_certs(data: &String) -> Result<(), Error> {
+    let mut cert = 0;
+    let open_data = rustls_pemfile::read_all(&mut io::Cursor::new(data))
+            .map_err(|e| ClientError::with_source(e)
+                .context("error reading PEM data"))?;
+    for item in open_data {
+        match item {
+            rustls_pemfile::Item::X509Certificate(data) => {
+                cert += 1;
+                webpki::TrustAnchor::try_from_cert_der(&data)
+                    .map_err(|e| ClientError::with_source(e)
+                        .context("certificate data found, \
+                                  but trust anchor is invalid"))?;
+            }
+            | rustls_pemfile::Item::RSAKey(_)
+            | rustls_pemfile::Item::PKCS8Key(_)
+            | rustls_pemfile::Item::ECKey(_)
+            => {
+                log::debug!("Skipping private key in cert data");
+            }
+            _ => {
+                log::debug!("Skipping unknown item cert data");
+            }
+        }
+    }
+    if cert == 0 {
+        return Err(ClientError::with_message(
+                "PEM data contains no certificate"));
+    }
+    Ok(())
+}
+
+impl fmt::Debug for Config {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Config")
+            .field("address", &self.0.address)
+            .field("max_connections", &self.0.max_connections)
+            .finish()
     }
 }

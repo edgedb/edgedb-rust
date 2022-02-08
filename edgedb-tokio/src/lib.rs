@@ -1,10 +1,11 @@
 pub mod raw;
 
 mod builder;
-mod errors;
-mod server_params;
-mod sealed;
 mod credentials;
+mod errors;
+mod sealed;
+mod server_params;
+mod tls;
 
-pub use builder::Builder;
+pub use builder::{Builder, Config};
 pub use errors::Error;
