@@ -7,7 +7,7 @@ use snafu::{OptionExt, ensure};
 
 use crate::encoding::{Encode, Decode, Headers, encode, Input, Output};
 use crate::errors::{self, EncodeError, DecodeError};
-pub use crate::common::Cardinality;
+pub use crate::common::{Cardinality, CompilationFlags};
 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -503,5 +503,32 @@ impl Decode for RestoreBlock {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         let data = buf.copy_to_bytes(buf.remaining());
         return Ok(RestoreBlock { data })
+    }
+}
+
+impl Prepare {
+    pub fn new(flags: &CompilationFlags, query: &str) -> Prepare {
+        let mut headers = Headers::new();
+        if let Some(limit) = flags.implicit_limit {
+            headers.insert(0xFF01, Bytes::from(limit.to_string()));
+        }
+        if flags.implicit_typenames {
+            headers.insert(0xFF02, "true".into());
+        }
+        if flags.implicit_typeids {
+            headers.insert(0xFF03, "true".into());
+        }
+        let caps = flags.allow_capabilities.bits().to_le_bytes();
+        headers.insert(0xFF04, caps[..].to_vec().into());
+        if flags.explicit_objectids {
+            headers.insert(0xFF03, "true".into());
+        }
+        Prepare {
+            headers,
+            io_format: flags.io_format,
+            expected_cardinality: flags.expected_cardinality,
+            statement_name: Bytes::from(""),
+            command_text: query.into(),
+        }
     }
 }
