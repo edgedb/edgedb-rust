@@ -12,6 +12,7 @@ use crate::errors::{self, EncodeError, DecodeError};
 use crate::encoding::{Input, Output, Headers, Decode, Encode};
 use crate::descriptors::{OutputTypedesc, InputTypedesc, Descriptor, TypePos};
 pub use crate::common::Cardinality;
+use crate::common::Capabilities;
 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -784,5 +785,19 @@ impl Encode for RawPacket {
 impl Decode for RawPacket {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         return Ok(RawPacket { data: buf.copy_to_bytes(buf.remaining()) })
+    }
+}
+
+impl PrepareComplete {
+    pub fn get_capabilities(&self) -> Option<Capabilities> {
+        self.headers.get(&0x1001).and_then(|bytes| {
+            if bytes.len() == 8 {
+                let mut array = [0u8; 8];
+                array.copy_from_slice(bytes);
+                Capabilities::from_bits(u64::from_be_bytes(array))
+            } else {
+                None
+            }
+        })
     }
 }

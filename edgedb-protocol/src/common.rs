@@ -1,5 +1,7 @@
 use crate::errors;
 
+pub use crate::client_message::IoFormat;
+
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Cardinality {
@@ -8,6 +10,26 @@ pub enum Cardinality {
     One = 0x41,
     Many = 0x6d,
     AtLeastOne = 0x4d,
+}
+
+bitflags::bitflags! {
+    pub struct Capabilities: u64 {
+        const MODIFICATIONS =       0b00000001;
+        const SESSION_CONFIG =      0b00000010;
+        const TRANSACTION =         0b00000100;
+        const DDL =                 0b00001000;
+        const PERSISTENT_CONFIG =   0b00010000;
+    }
+}
+
+pub struct CompilationFlags {
+    pub implicit_limit: Option<u64>,
+    pub implicit_typenames: bool,
+    pub implicit_typeids: bool,
+    pub allow_capabilities: Capabilities,
+    pub explicit_objectids: bool,
+    pub io_format: IoFormat,
+    pub expected_cardinality: Cardinality,
 }
 
 impl std::convert::TryFrom<u8> for Cardinality {
@@ -36,4 +58,3 @@ impl Cardinality {
         }
     }
 }
-
