@@ -6,6 +6,8 @@ use std::collections::VecDeque;
 use tokio::sync::{self, Semaphore};
 use tokio::task::{JoinHandle, spawn};
 
+use edgedb_protocol::features::ProtocolVersion;
+
 use crate::errors::{Error, ErrorKind, ClientError};
 use crate::builder::Config;
 
@@ -27,6 +29,9 @@ pub struct Connection {
 
 #[derive(Debug)]
 pub struct ConnInner {
+    version: ProtocolVersion,
+    params: typemap::TypeMap<dyn typemap::DebugAny + Send + Sync>,
+    state: connection::State,
 }
 
 impl Pool {
