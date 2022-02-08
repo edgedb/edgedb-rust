@@ -27,14 +27,24 @@ pub struct Error(pub(crate) Box<Inner>);
 /// Tag that is used to group similar errors.
 pub struct Tag { pub(crate)  bit: u32 }
 
+pub(crate) enum Source {
+    Box(Box<dyn StdError + Send + Sync + 'static>),
+    Ref(Box<
+        dyn AsRef<dyn StdError + Send + Sync + 'static>
+        + Send + Sync + 'static
+    >),
+}
+
 #[derive(Debug)]
 pub(crate) struct Inner {
     pub code: u32,
     pub messages: Vec<Cow<'static, str>>,
-    pub error: Option<Box<dyn StdError + Send + Sync + 'static>>,
+    pub error: Option<Source>,
     pub headers: HashMap<u16, bytes::Bytes>,
 }
 
+trait Assert: Send + Sync + 'static {}
+impl Assert for Error {}
 
 impl Error {
     pub fn is<T: ErrorKind>(&self) -> bool {
@@ -163,6 +173,18 @@ impl fmt::Display for Error {
 
 impl StdError for Error {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        self.0.error.as_ref().map(|b| b.as_ref() as &dyn std::error::Error)
+        self.0.error.as_ref().map(|s| match s {
+            Source::Box(b) => b.as_ref() as &dyn std::error::Error,
+            Source::Ref(b) => (**b).as_ref() as &dyn std::error::Error,
+        })
+    }
+}
+
+impl fmt::Debug for Source {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Source::Box(b) => fmt::Debug::fmt(b.as_ref(), f),
+            Source::Ref(b) => fmt::Debug::fmt((**b).as_ref(), f),
+        }
     }
 }
