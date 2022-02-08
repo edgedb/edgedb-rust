@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 
-use crate::error::{Error, Inner};
+use crate::error::{Error, Inner, Source};
 
 
 /// Trait that marks EdgeDB errors.
@@ -15,7 +15,7 @@ pub trait ErrorKind: Sealed {
         Error(Box::new(Inner {
             code: Self::CODE,
             messages: Vec::new(),
-            error: Some(src.into()),
+            error: Some(Source::Box(src.into())),
             headers: HashMap::new(),
         }))
     }
@@ -23,7 +23,18 @@ pub trait ErrorKind: Sealed {
         Error(Box::new(Inner {
             code: Self::CODE,
             messages: Vec::new(),
-            error: Some(src),
+            error: Some(Source::Box(src)),
+            headers: HashMap::new(),
+        }))
+    }
+    fn with_source_ref<T>(src: T) -> Error
+        where T: AsRef<dyn std::error::Error + Send + Sync>,
+              T: Send + Sync + 'static,
+    {
+        Error(Box::new(Inner {
+            code: Self::CODE,
+            messages: Vec::new(),
+            error: Some(Source::Ref(Box::new(src))),
             headers: HashMap::new(),
         }))
     }
