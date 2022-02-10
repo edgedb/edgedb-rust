@@ -132,6 +132,9 @@ impl Error {
             headers: HashMap::new(),
         }))
     }
+    pub fn code(&self) -> u32 {
+        self.0.code
+    }
     pub fn refine_kind<T: ErrorKind>(mut self) -> Error {
         self.0.code = T::CODE;
         self
