@@ -518,7 +518,7 @@ impl Prepare {
         if flags.implicit_typeids {
             headers.insert(0xFF03, "true".into());
         }
-        let caps = flags.allow_capabilities.bits().to_le_bytes();
+        let caps = flags.allow_capabilities.bits().to_be_bytes();
         headers.insert(0xFF04, caps[..].to_vec().into());
         if flags.explicit_objectids {
             headers.insert(0xFF03, "true".into());
