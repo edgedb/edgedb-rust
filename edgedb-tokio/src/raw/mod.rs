@@ -1,8 +1,12 @@
+mod queries;
 mod connection;
 
 use std::sync::{Arc, Mutex as BlockingMutex};
 use std::collections::VecDeque;
 
+use bytes::BytesMut;
+use tls_api::{TlsStream};
+use tokio::io::{WriteHalf, ReadHalf};
 use tokio::sync::{self, Semaphore};
 use tokio::task::{JoinHandle, spawn};
 
@@ -21,6 +25,7 @@ struct PoolInner {
     pub queue: BlockingMutex<VecDeque<ConnInner>>,
 }
 
+#[derive(Debug)]
 pub struct Connection {
     inner: Option<ConnInner>,
     permit: sync::OwnedSemaphorePermit,
@@ -29,10 +34,16 @@ pub struct Connection {
 
 #[derive(Debug)]
 pub struct ConnInner {
-    version: ProtocolVersion,
+    proto: ProtocolVersion,
     params: typemap::TypeMap<dyn typemap::DebugAny + Send + Sync>,
     state: connection::State,
+    in_buf: BytesMut,
+    out_buf: BytesMut,
+    stream: TlsStream,
 }
+
+trait Assert: Send + 'static {}
+impl Assert for Connection {}
 
 impl Pool {
     pub fn new(config: Config) -> Pool {

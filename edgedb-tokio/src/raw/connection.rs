@@ -20,12 +20,12 @@ use typemap::{TypeMap, DebugAny};
 use webpki::DnsNameRef;
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
+use edgedb_protocol::encoding::{Input, Output};
 use edgedb_protocol::features::ProtocolVersion;
+use edgedb_protocol::server_message::ParameterStatus;
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use edgedb_protocol::server_message::{TransactionState, ServerHandshake};
-use edgedb_protocol::server_message::ParameterStatus;
 use edgedb_protocol::value::Value;
-use edgedb_protocol::encoding::{Input, Output};
 
 use crate::raw::ConnInner;
 use crate::tls;
@@ -61,6 +61,16 @@ impl ConnInner {
                 e
             }
         })
+    }
+    pub async fn send_messages<'x>(&mut self,
+        msgs: impl IntoIterator<Item=&'x ClientMessage>)
+        -> Result<(), Error>
+    {
+        send_messages(&mut self.stream, &mut self.out_buf, &self.proto, msgs)
+            .await
+    }
+    pub async fn message(&mut self) -> Result<ServerMessage, Error> {
+        wait_message(&mut self.stream, &mut self.in_buf, &self.proto).await
     }
 }
 
@@ -185,9 +195,10 @@ async fn connect3(cfg: &Config, tls: &TlsConnectorBox)
     }
 }
 
-async fn connect4(cfg: &Config, stream: TlsStream) -> Result<ConnInner, Error> {
+async fn connect4(cfg: &Config, mut stream: TlsStream)
+    -> Result<ConnInner, Error>
+{
     let mut proto = ProtocolVersion::current();
-    let (mut input, mut output) = split(stream);
     let mut out_buf = BytesMut::with_capacity(8192);
     let mut in_buf = BytesMut::with_capacity(8192);
 
@@ -195,7 +206,7 @@ async fn connect4(cfg: &Config, stream: TlsStream) -> Result<ConnInner, Error> {
     params.insert(String::from("user"), cfg.0.user.clone());
     params.insert(String::from("database"), cfg.0.database.clone());
     let (major_ver, minor_ver) = proto.version_tuple();
-    send_messages(&mut output, &mut out_buf, &proto, &[
+    send_messages(&mut stream, &mut out_buf, &proto, &[
         ClientMessage::ClientHandshake(ClientHandshake {
             major_ver,
             minor_ver,
@@ -204,13 +215,13 @@ async fn connect4(cfg: &Config, stream: TlsStream) -> Result<ConnInner, Error> {
         }),
     ]).await?;
 
-    let mut msg = wait_message(&mut input, &mut in_buf, &proto).await?;
+    let mut msg = wait_message(&mut stream, &mut in_buf, &proto).await?;
     if let ServerMessage::ServerHandshake(ServerHandshake {
         major_ver, minor_ver, extensions: _
     }) = msg {
         proto = ProtocolVersion::new(major_ver, minor_ver);
         // TODO(tailhook) record extensions
-        msg = wait_message(&mut input, &mut in_buf, &proto).await?;
+        msg = wait_message(&mut stream, &mut in_buf, &proto).await?;
     }
     match msg {
         ServerMessage::Authentication(Authentication::Ok) => {}
@@ -218,11 +229,8 @@ async fn connect4(cfg: &Config, stream: TlsStream) -> Result<ConnInner, Error> {
         => {
             if methods.iter().any(|x| x == "SCRAM-SHA-256") {
                 if let Some(password) = &cfg.0.password {
-                    scram(&mut input, &mut in_buf,
-                          &mut output, &mut out_buf,
-                          &proto,
-                          &cfg.0.user, password,
-                    ).await?;
+                    scram(&mut stream, &mut in_buf, &mut out_buf, &proto,
+                          &cfg.0.user, password).await?;
                 } else {
                     return Err(PasswordRequired::with_message(
                         "Password required for the specified user/host"));
@@ -244,7 +252,7 @@ async fn connect4(cfg: &Config, stream: TlsStream) -> Result<ConnInner, Error> {
 
     let mut server_params = TypeMap::custom();
     loop {
-        let msg = wait_message(&mut input, &mut in_buf, &proto).await?;
+        let msg = wait_message(&mut stream, &mut in_buf, &proto).await?;
         match msg {
             ServerMessage::ReadyForCommand(_) => {
                 break;
@@ -278,15 +286,17 @@ async fn connect4(cfg: &Config, stream: TlsStream) -> Result<ConnInner, Error> {
         }
     }
     Ok(ConnInner {
-        version: proto,
+        proto,
         params: server_params,
         state: State::Normal { idle_since: Instant::now() },
+        in_buf,
+        out_buf,
+        stream,
     })
 }
 
 async fn scram(
-    input: &mut ReadHalf<TlsStream>, in_buf: &mut BytesMut,
-    output: &mut WriteHalf<TlsStream>, out_buf: &mut BytesMut,
+    stream: &mut TlsStream, in_buf: &mut BytesMut, out_buf: &mut BytesMut,
     proto: &ProtocolVersion,
     user: &str, password: &str)
     -> Result<(), Error>
@@ -297,14 +307,14 @@ async fn scram(
     let scram = ScramClient::new(&user, &password, None);
 
     let (scram, first) = scram.client_first();
-    send_messages(output, out_buf, &proto, &[
+    send_messages(stream, out_buf, &proto, &[
         ClientMessage::AuthenticationSaslInitialResponse(
             SaslInitialResponse {
             method: "SCRAM-SHA-256".into(),
             data: Bytes::copy_from_slice(first.as_bytes()),
         }),
     ]).await?;
-    let msg = wait_message(input, in_buf, &proto).await?;
+    let msg = wait_message(stream, in_buf, &proto).await?;
     let data = match msg {
         ServerMessage::Authentication(
             Authentication::SaslContinue { data }
@@ -323,13 +333,13 @@ async fn scram(
     let scram = scram.handle_server_first(&data)
         .map_err(AuthenticationError::with_source)?;
     let (scram, data) = scram.client_final();
-    send_messages(output, out_buf, &proto, &[
+    send_messages(stream, out_buf, &proto, &[
         ClientMessage::AuthenticationSaslResponse(
             SaslResponse {
                 data: Bytes::copy_from_slice(data.as_bytes()),
             }),
     ]).await?;
-    let msg = wait_message(input, in_buf, &proto).await?;
+    let msg = wait_message(stream, in_buf, &proto).await?;
     let data = match msg {
         ServerMessage::Authentication(Authentication::SaslFinal { data })
         => data,
@@ -348,7 +358,7 @@ async fn scram(
         .map_err(|e| AuthenticationError::with_message(format!(
             "Authentication error: {}", e)))?;
     loop {
-        let msg = wait_message(input, in_buf, &proto).await?;
+        let msg = wait_message(stream, in_buf, &proto).await?;
         match msg {
             ServerMessage::Authentication(Authentication::Ok) => break,
             msg => {
@@ -403,7 +413,7 @@ fn handle_system_config(
 }
 
 async fn send_messages<'x>(
-    stream: &mut WriteHalf<TlsStream>,
+    stream: &mut TlsStream,
     buf: &mut BytesMut,
     proto: &ProtocolVersion,
     messages: impl IntoIterator<Item=&'x ClientMessage>
@@ -422,7 +432,7 @@ fn conn_err(err: io::Error) -> Error {
     ClientConnectionError::with_source(err)
 }
 
-async fn wait_message<'x>(stream: &mut ReadHalf<TlsStream>,
+async fn wait_message<'x>(stream: &mut TlsStream,
                           buf: &mut BytesMut, proto: &ProtocolVersion)
     -> Result<ServerMessage, Error>
 {
