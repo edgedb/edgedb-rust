@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::Instant;
 
 use bytes::Bytes;
 
@@ -10,15 +11,32 @@ use edgedb_protocol::server_message::{ServerMessage, Data};
 use edgedb_protocol::server_message::{PrepareComplete, CommandDataDescription};
 
 use crate::errors::{Error, ClientError, ErrorKind};
-use crate::errors::{ProtocolOutOfOrderError};
+use crate::errors::{ProtocolOutOfOrderError, ClientInconsistentError};
 use crate::raw::{ConnInner, Connection};
+use crate::raw::connection::State;
+
+struct Guard;
 
 impl ConnInner {
-    async fn expect_ready(&mut self) -> Result<(), Error> {
+    fn begin_request(&mut self) -> Result<Guard, Error> {
+        match self.state {
+            State::Normal { .. } => {
+                self.state = State::Dirty;
+                Ok(Guard)
+            }
+            State::Dirty => Err(ClientInconsistentError::build()),
+            // TODO(tailhook) technically we could just wait ping here
+            State::AwaitingPing => Err(ClientInconsistentError
+                                       ::with_message("interrupted ping")),
+        }
+    }
+    async fn expect_ready(&mut self, guard: Guard) -> Result<(), Error> {
         loop {
             let msg = self.message().await?;
             match msg {
                 ServerMessage::ReadyForCommand(_) => {
+                    drop(guard);
+                    self.state = State::Normal { idle_since: Instant::now() };
                     // TODO(tailhook) update transaction state
                     return Ok(())
                 }
@@ -31,7 +49,7 @@ impl ConnInner {
     pub async fn prepare(&mut self, flags: &CompilationFlags, query: &str)
         -> Result<PrepareComplete, Error>
     {
-        // TODO(tailhook) modify state
+        let guard = self.begin_request()?;
         self.send_messages(&[
             ClientMessage::Prepare(Prepare::new(flags, query)),
             ClientMessage::Sync,
@@ -41,11 +59,11 @@ impl ConnInner {
             let msg = self.message().await?;
             match msg {
                 ServerMessage::PrepareComplete(data) => {
-                    self.expect_ready().await?;
+                    self.expect_ready(guard).await?;
                     return Ok(data);
                 }
                 ServerMessage::ErrorResponse(err) => {
-                    self.expect_ready().await
+                    self.expect_ready(guard).await
                         .map_err(|e| log::warn!(
                             "Error waiting for Ready after error: {e:#}"))
                         .ok();
@@ -61,7 +79,7 @@ impl ConnInner {
     pub async fn describe_data(&mut self)
         -> Result<CommandDataDescription, Error>
     {
-        // TODO(tailhook) modify state
+        let guard = self.begin_request()?;
         self.send_messages(&[
             ClientMessage::DescribeStatement(DescribeStatement {
                 headers: HashMap::new(),
@@ -75,11 +93,11 @@ impl ConnInner {
             let msg = self.message().await?;
             match msg {
                 ServerMessage::CommandDataDescription(data_desc) => {
-                    self.expect_ready().await?;
+                    self.expect_ready(guard).await?;
                     return Ok(data_desc);
                 }
                 ServerMessage::ErrorResponse(err) => {
-                    self.expect_ready().await
+                    self.expect_ready(guard).await
                         .map_err(|e| log::warn!(
                             "Error waiting for Ready after error: {e:#}"))
                         .ok();
@@ -95,7 +113,8 @@ impl ConnInner {
     pub async fn execute(&mut self, arguments: &Bytes)
         -> Result<Vec<Data>, Error>
     {
-        // TODO(tailhook) modify state
+        let guard = self.begin_request()?;
+        let start = std::time::Instant::now();
         self.send_messages(&[
             ClientMessage::Execute(Execute {
                 headers: HashMap::new(),
@@ -113,11 +132,11 @@ impl ConnInner {
                     result.push(data);
                 }
                 ServerMessage::CommandComplete(_) => {
-                    self.expect_ready().await?;
+                    self.expect_ready(guard).await?;
                     return Ok(result);
                 }
                 ServerMessage::ErrorResponse(err) => {
-                    self.expect_ready().await
+                    self.expect_ready(guard).await
                         .map_err(|e| log::warn!(
                             "Error waiting for Ready after error: {e:#}"))
                         .ok();
