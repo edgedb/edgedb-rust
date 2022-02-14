@@ -3,16 +3,16 @@
 pub struct Json(String);
 
 impl Json {
-	pub(crate) fn _new_unchecked(value: String) -> Json {
-		Json(value)
-	}
+    pub(crate) fn _new_unchecked(value: String) -> Json {
+        Json(value)
+    }
     /// Create a JSON value without checking the contents.
     ///
     /// This is used to construct values with the data received from the
     /// database, because we trust database to produce valid JSON.
-	pub unsafe fn new_unchecked(value: String) -> Json {
-		Json(value)
-	}
+    pub unsafe fn new_unchecked(value: String) -> Json {
+        Json(value)
+    }
 }
 
 impl AsRef<str> for Json {

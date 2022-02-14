@@ -1,15 +1,14 @@
 use bytes::Bytes;
 
-use edgedb_protocol::QueryResult;
-use edgedb_protocol::query_arg::QueryArgs;
-use edgedb_protocol::descriptors::OutputTypedesc;
 use edgedb_protocol::client_message::{Cardinality, IoFormat};
+use edgedb_protocol::descriptors::OutputTypedesc;
+use edgedb_protocol::query_arg::QueryArgs;
+use edgedb_protocol::QueryResult;
 
-use crate::errors::{Error, NoResultExpected, NoDataError, ErrorKind};
-use crate::Client;
 use crate::client::StatementParams;
+use crate::errors::{Error, ErrorKind, NoDataError, NoResultExpected};
 use crate::model::Json;
-
+use crate::Client;
 
 /// Result returned from an [`execute()`][Executor#method.execute] call.
 #[derive(Debug, Clone)]
@@ -35,16 +34,12 @@ pub trait GenericQuery: Send + Sync {
     fn params(&self) -> &StatementParams;
 }
 
-pub trait Encoder: Send + Sync {
-}
-pub trait Decoder: Send + Sync {
-}
-pub trait Decodable {
-}
+pub trait Encoder: Send + Sync {}
+pub trait Decoder: Send + Sync {}
+pub trait Decodable {}
 #[async_trait::async_trait]
 pub trait Sealed {
-    async fn query_dynamic(&mut self, query: &dyn GenericQuery)
-        -> Result<GenericResult, Error>;
+    async fn query_dynamic(&mut self, query: &dyn GenericQuery) -> Result<GenericResult, Error>;
 }
 
 /// The main trait that allows query execution.
@@ -63,14 +58,11 @@ pub trait Sealed {
 ///
 /// This trait is sealed (no imlementation can be done outside of this crate),
 /// since we don't want to expose too many implementation details for now.
-pub trait Executor: Sealed {
-}
+pub trait Executor: Sealed {}
 
 #[async_trait::async_trait]
 impl Sealed for Client {
-    async fn query_dynamic(&mut self, query: &dyn GenericQuery)
-        -> Result<GenericResult, Error>
-    {
+    async fn query_dynamic(&mut self, query: &dyn GenericQuery) -> Result<GenericResult, Error> {
         // TODO(tailhook) retry loop
         let mut conn = self.inner.acquire().await?;
         conn.query_dynamic(query).await
@@ -93,16 +85,18 @@ impl dyn Executor + '_ {
     /// This method can be used with both static arguments, like a tuple of
     /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
-    pub async fn query<R, A>(&mut self, query: &str, arguments: &A)
-        -> Result<Vec<R>, Error>
-        where A: QueryArgs,
-              R: QueryResult,
+    pub async fn query<R, A>(&mut self, query: &str, arguments: &A) -> Result<Vec<R>, Error>
+    where
+        A: QueryArgs,
+        R: QueryResult,
     {
-        let result = self.query_dynamic(&Statement {
-            params: StatementParams::new(),
-            query,
-            arguments,
-        }).await?;
+        let result = self
+            .query_dynamic(&Statement {
+                params: StatementParams::new(),
+                query,
+                arguments,
+            })
+            .await?;
         match result.descriptor.root_pos() {
             Some(root_pos) => {
                 let ctx = result.descriptor.as_queryable_context();
@@ -113,11 +107,9 @@ impl dyn Executor + '_ {
                 }
                 Ok(res)
             }
-            None => {
-                Err(NoResultExpected::with_message(
-                    String::from_utf8_lossy(&result.completion[..])
-                    .to_string()))?
-            }
+            None => Err(NoResultExpected::with_message(
+                String::from_utf8_lossy(&result.completion[..]).to_string(),
+            ))?,
         }
     }
 
@@ -140,68 +132,66 @@ impl dyn Executor + '_ {
     /// This method can be used with both static arguments, like a tuple of
     /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
-    pub async fn query_single<R, A>(&mut self, query: &str, arguments: &A)
-        -> Result<R, Error>
-        where A: QueryArgs,
-              R: QueryResult,
+    pub async fn query_single<R, A>(&mut self, query: &str, arguments: &A) -> Result<R, Error>
+    where
+        A: QueryArgs,
+        R: QueryResult,
     {
-        let result = self.query_dynamic(&Statement {
-            params: StatementParams::new()
-                .cardinality(Cardinality::AtMostOne)
-                .clone(),
-            query,
-            arguments,
-        }).await?;
+        let result = self
+            .query_dynamic(&Statement {
+                params: StatementParams::new()
+                    .cardinality(Cardinality::AtMostOne)
+                    .clone(),
+                query,
+                arguments,
+            })
+            .await?;
         match result.descriptor.root_pos() {
             Some(root_pos) => {
                 let ctx = result.descriptor.as_queryable_context();
                 let mut state = R::prepare(&ctx, root_pos)?;
                 if result.data.len() == 0 {
                     return Err(NoDataError::with_message(
-                        "query_single() returned zero results"))
+                        "query_single() returned zero results",
+                    ));
                 }
-                return Ok(R::decode(&mut state, &result.data[0])?)
+                return Ok(R::decode(&mut state, &result.data[0])?);
             }
-            None => {
-                Err(NoResultExpected::with_message(
-                    String::from_utf8_lossy(&result.completion[..])
-                    .to_string()))?
-            }
+            None => Err(NoResultExpected::with_message(
+                String::from_utf8_lossy(&result.completion[..]).to_string(),
+            ))?,
         }
     }
 
     /// Execute a query and return the result as JSON.
-    pub async fn query_json<A>(&mut self, query: &str, arguments: &A)
-        -> Result<Json, Error>
-        where A: QueryArgs,
+    pub async fn query_json<A>(&mut self, query: &str, arguments: &A) -> Result<Json, Error>
+    where
+        A: QueryArgs,
     {
-        let result = self.query_dynamic(&Statement {
-            params: StatementParams::new()
-                .io_format(IoFormat::Json)
-                .clone(),
-            query,
-            arguments,
-        }).await?;
+        let result = self
+            .query_dynamic(&Statement {
+                params: StatementParams::new().io_format(IoFormat::Json).clone(),
+                query,
+                arguments,
+            })
+            .await?;
         match result.descriptor.root_pos() {
             Some(root_pos) => {
                 let ctx = result.descriptor.as_queryable_context();
-                let mut state = <String as QueryResult>
-                    ::prepare(&ctx, root_pos)?;
+                let mut state = <String as QueryResult>::prepare(&ctx, root_pos)?;
                 if result.data.len() == 0 {
                     return Err(NoDataError::with_message(
-                        "query_json() returned zero results"))
+                        "query_json() returned zero results",
+                    ));
                 }
-                let data = <String as QueryResult>::decode(
-                    &mut state, &result.data[0])?;
+                let data = <String as QueryResult>::decode(&mut state, &result.data[0])?;
                 // trust database to produce valid JSON
                 let json = unsafe { Json::new_unchecked(data) };
-                return Ok(json)
+                return Ok(json);
             }
-            None => {
-                Err(NoResultExpected::with_message(
-                    String::from_utf8_lossy(&result.completion[..])
-                    .to_string()))?
-            }
+            None => Err(NoResultExpected::with_message(
+                String::from_utf8_lossy(&result.completion[..]).to_string(),
+            ))?,
         }
     }
 
@@ -212,38 +202,37 @@ impl dyn Executor + '_ {
     /// [`ResultCardinalityMismatchError`][crate::errors::ResultCardinalityMismatchError]
     /// is raised. If the query returns an empty set, a
     /// [`NoDataError`][crate::errors::NoDataError] is raised.
-    pub async fn query_single_json<A>(&mut self, query: &str, arguments: &A)
-        -> Result<Json, Error>
-        where A: QueryArgs,
+    pub async fn query_single_json<A>(&mut self, query: &str, arguments: &A) -> Result<Json, Error>
+    where
+        A: QueryArgs,
     {
-        let result = self.query_dynamic(&Statement {
-            params: StatementParams::new()
-                .io_format(IoFormat::Json)
-                .cardinality(Cardinality::AtMostOne)
-                .clone(),
-            query,
-            arguments,
-        }).await?;
+        let result = self
+            .query_dynamic(&Statement {
+                params: StatementParams::new()
+                    .io_format(IoFormat::Json)
+                    .cardinality(Cardinality::AtMostOne)
+                    .clone(),
+                query,
+                arguments,
+            })
+            .await?;
         match result.descriptor.root_pos() {
             Some(root_pos) => {
                 let ctx = result.descriptor.as_queryable_context();
-                let mut state = <String as QueryResult>
-                    ::prepare(&ctx, root_pos)?;
+                let mut state = <String as QueryResult>::prepare(&ctx, root_pos)?;
                 if result.data.len() == 0 {
                     return Err(NoDataError::with_message(
-                        "query_single_json() returned zero results"))
+                        "query_single_json() returned zero results",
+                    ));
                 }
-                let data = <String as QueryResult>::decode(
-                    &mut state, &result.data[0])?;
+                let data = <String as QueryResult>::decode(&mut state, &result.data[0])?;
                 // trust database to produce valid JSON
                 let json = unsafe { Json::new_unchecked(data) };
-                return Ok(json)
+                return Ok(json);
             }
-            None => {
-                Err(NoResultExpected::with_message(
-                    String::from_utf8_lossy(&result.completion[..])
-                    .to_string()))?
-            }
+            None => Err(NoResultExpected::with_message(
+                String::from_utf8_lossy(&result.completion[..]).to_string(),
+            ))?,
         }
     }
     /// Execute one or more EdgeQL commands.
@@ -251,17 +240,21 @@ impl dyn Executor + '_ {
     /// Note that if you want the results of query, use
     /// [`query()`][Client::query] or [`query_single()`][Client::query_single]
     /// instead.
-    pub async fn execute<A>(&mut self, query: &str, arguments: &A)
-        -> Result<ExecuteResult, Error>
-        where A: QueryArgs,
+    pub async fn execute<A>(&mut self, query: &str, arguments: &A) -> Result<ExecuteResult, Error>
+    where
+        A: QueryArgs,
     {
-        let result = self.query_dynamic(&Statement {
-            params: StatementParams::new(),
-            query,
-            arguments,
-        }).await?;
+        let result = self
+            .query_dynamic(&Statement {
+                params: StatementParams::new(),
+                query,
+                arguments,
+            })
+            .await?;
         // Dropping the actual results
-        return Ok(ExecuteResult { marker: result.completion });
+        return Ok(ExecuteResult {
+            marker: result.completion,
+        });
     }
 }
 

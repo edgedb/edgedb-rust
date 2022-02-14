@@ -1,5 +1,5 @@
-use syn::punctuated::Punctuated;
 use syn::parse::{Parse, ParseStream};
+use syn::punctuated::Punctuated;
 
 #[derive(Debug)]
 enum FieldAttr {
@@ -63,17 +63,13 @@ impl Parse for FieldAttrList {
 }
 
 impl FieldAttrs {
-    fn default() -> FieldAttrs{
-        FieldAttrs {
-            json: false,
-        }
+    fn default() -> FieldAttrs {
+        FieldAttrs { json: false }
     }
     pub fn from_syn(attrs: &[syn::Attribute]) -> syn::Result<FieldAttrs> {
         let mut res = FieldAttrs::default();
         for attr in attrs {
-            if matches!(attr.style, syn::AttrStyle::Outer) &&
-                attr.path.is_ident("edgedb")
-            {
+            if matches!(attr.style, syn::AttrStyle::Outer) && attr.path.is_ident("edgedb") {
                 let chunk: FieldAttrList = attr.parse_args()?;
                 for item in chunk.0 {
                     match item {
@@ -87,17 +83,13 @@ impl FieldAttrs {
 }
 
 impl ContainerAttrs {
-    fn default() -> ContainerAttrs{
-        ContainerAttrs {
-            json: false,
-        }
+    fn default() -> ContainerAttrs {
+        ContainerAttrs { json: false }
     }
     pub fn from_syn(attrs: &[syn::Attribute]) -> syn::Result<ContainerAttrs> {
         let mut res = ContainerAttrs::default();
         for attr in attrs {
-            if matches!(attr.style, syn::AttrStyle::Outer) &&
-                attr.path.is_ident("edgedb")
-            {
+            if matches!(attr.style, syn::AttrStyle::Outer) && attr.path.is_ident("edgedb") {
                 let chunk: ContainerAttrList = attr.parse_args()?;
                 for item in chunk.0 {
                     match item {

@@ -1,6 +1,5 @@
 use crate::errors;
 
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Cardinality {
     NoResult = 0x6e,
@@ -36,4 +35,3 @@ impl Cardinality {
         }
     }
 }
-

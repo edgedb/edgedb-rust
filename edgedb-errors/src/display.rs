@@ -2,7 +2,6 @@ use std::fmt;
 
 use crate::{Error, InternalServerError};
 
-
 pub struct DisplayError<'a>(&'a Error, bool);
 pub struct VerboseError<'a>(&'a Error);
 
@@ -50,9 +49,14 @@ impl fmt::Display for VerboseError<'_> {
         let line = e.line();
         let column = e.column();
         if [pstart, pend, line, column].iter().any(|x| x.is_some()) {
-            writeln!(f, "Span: {}-{}, line {}, column {}",
-                DisplayNum(pstart), DisplayNum(pend),
-                DisplayNum(line), DisplayNum(column))?;
+            writeln!(
+                f,
+                "Span: {}-{}, line {}, column {}",
+                DisplayNum(pstart),
+                DisplayNum(pend),
+                DisplayNum(line),
+                DisplayNum(column)
+            )?;
         }
         if let Some(traceback) = e.server_traceback() {
             writeln!(f, "Server traceback:")?;

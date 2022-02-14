@@ -1,12 +1,11 @@
 use std::sync::Arc;
 
-use rustls::{Certificate, RootCertStore, TLSError, ServerCertVerified};
-use rustls::{ServerCertVerifier, OwnedTrustAnchor};
+use rustls::{Certificate, RootCertStore, ServerCertVerified, TLSError};
+use rustls::{OwnedTrustAnchor, ServerCertVerifier};
+use tls_api::TlsConnectorBox;
 use tls_api::{TlsConnector as _, TlsConnectorBuilder as _};
-use tls_api::{TlsConnectorBox};
-use tls_api_rustls::{TlsConnector};
-use webpki::{DNSNameRef, SignatureAlgorithm, EndEntityCert};
-
+use tls_api_rustls::TlsConnector;
+use webpki::{DNSNameRef, EndEntityCert, SignatureAlgorithm};
 
 static SIG_ALGS: &[&SignatureAlgorithm] = &[
     &webpki::ECDSA_P256_SHA256,
@@ -28,9 +27,7 @@ pub struct CertVerifier {
 
 impl CertVerifier {
     pub fn new(verify_hostname: bool) -> Self {
-        Self {
-            verify_hostname
-        }
+        Self { verify_hostname }
     }
 }
 
@@ -39,7 +36,6 @@ type CertChainAndRoots<'a, 'b> = (
     Vec<&'a [u8]>,
     Vec<webpki::TrustAnchor<'b>>,
 );
-
 
 fn webpki_now() -> Result<webpki::Time, TLSError> {
     webpki::Time::try_from(std::time::SystemTime::now())
@@ -72,7 +68,8 @@ fn prepare<'a, 'b>(
 }
 
 impl ServerCertVerifier for CertVerifier {
-    fn verify_server_cert(&self,
+    fn verify_server_cert(
+        &self,
         roots: &RootCertStore,
         presented_certs: &[Certificate],
         dns_name: DNSNameRef,
@@ -88,7 +85,8 @@ impl ServerCertVerifier for CertVerifier {
 }
 
 impl ServerCertVerifier for NullVerifier {
-    fn verify_server_cert(&self,
+    fn verify_server_cert(
+        &self,
         _roots: &RootCertStore,
         _presented_certs: &[Certificate],
         _dns_name: DNSNameRef,
@@ -117,36 +115,52 @@ pub fn verify_server_cert<'a>(
 pub fn connector(
     cert: &rustls::RootCertStore,
     cert_verifier: Arc<dyn ServerCertVerifier>,
-) -> Result<TlsConnectorBox, tls_api::Error>
-{
+) -> Result<TlsConnectorBox, tls_api::Error> {
     let mut builder = TlsConnector::builder()?;
     if cert.is_empty() {
         log::debug!("Loading native root certificates");
         match rustls_native_certs::load_native_certs() {
             Ok(loaded) => {
-                builder.underlying_mut()
-                        .root_store.roots.extend(loaded.roots);
+                builder
+                    .underlying_mut()
+                    .root_store
+                    .roots
+                    .extend(loaded.roots);
             }
             Err((Some(loaded), e)) => {
-                log::warn!("Error while loading native TLS certificates: {}. \
+                log::warn!(
+                    "Error while loading native TLS certificates: {}. \
                     Using {} loaded ones.",
-                    e, loaded.roots.len());
-                builder.underlying_mut()
-                        .root_store.roots.extend(loaded.roots);
+                    e,
+                    loaded.roots.len()
+                );
+                builder
+                    .underlying_mut()
+                    .root_store
+                    .roots
+                    .extend(loaded.roots);
             }
             Err((None, e)) => {
-                log::warn!("Error while loading native TLS certificates: {}. \
-                    Will use built-in ones.", e);
+                log::warn!(
+                    "Error while loading native TLS certificates: {}. \
+                    Will use built-in ones.",
+                    e
+                );
                 // builtin certs are used by default in TLS API
             }
         }
     } else {
-        log::debug!("Using custom root chain, {} certificates",
-            cert.roots.len());
-        builder.underlying_mut()
-                .root_store.roots.extend(cert.roots.iter().cloned());
+        log::debug!("Using custom root chain, {} certificates", cert.roots.len());
+        builder
+            .underlying_mut()
+            .root_store
+            .roots
+            .extend(cert.roots.iter().cloned());
     };
-    builder.config.dangerous().set_certificate_verifier(cert_verifier);
+    builder
+        .config
+        .dangerous()
+        .set_certificate_verifier(cert_verifier);
     builder.set_alpn_protocols(&[b"edgedb-binary"])?;
     let connector = builder.build()?.into_dyn();
     Ok(connector)

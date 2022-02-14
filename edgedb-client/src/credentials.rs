@@ -1,18 +1,16 @@
 //! Credentials file handling routines
 use std::default::Default;
 
-use serde::{de, ser, Serialize, Deserialize};
-
+use serde::{de, ser, Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all="snake_case")]
+#[serde(rename_all = "snake_case")]
 pub enum TlsSecurity {
     Insecure,
     NoHostVerification,
     Strict,
     Default,
 }
-
 
 /// A structure that represents the contents of the credentials file.
 #[derive(Debug)]
@@ -28,32 +26,29 @@ pub struct Credentials {
     pub(crate) file_outdated: bool,
 }
 
-
 #[derive(Serialize, Deserialize)]
 struct CredentialsCompat {
-    #[serde(default, skip_serializing_if="Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     host: Option<String>,
-    #[serde(default="default_port")]
+    #[serde(default = "default_port")]
     port: u16,
     user: String,
-    #[serde(default, skip_serializing_if="Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     password: Option<String>,
-    #[serde(default, skip_serializing_if="Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     database: Option<String>,
-    #[serde(default, skip_serializing_if="Option::is_none")]
-    tls_cert_data: Option<String>,  // deprecated
-    #[serde(default, skip_serializing_if="Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tls_cert_data: Option<String>, // deprecated
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     tls_ca: Option<String>,
-    #[serde(default, skip_serializing_if="Option::is_none")]
-    tls_verify_hostname: Option<bool>,  // deprecated
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tls_verify_hostname: Option<bool>, // deprecated
     tls_security: Option<TlsSecurity>,
 }
-
 
 fn default_port() -> u16 {
     5656
 }
-
 
 impl Default for Credentials {
     fn default() -> Credentials {
@@ -69,7 +64,6 @@ impl Default for Credentials {
         }
     }
 }
-
 
 impl Serialize for Credentials {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -97,7 +91,6 @@ impl Serialize for Credentials {
     }
 }
 
-
 impl<'de> Deserialize<'de> for Credentials {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -109,27 +102,24 @@ impl<'de> Deserialize<'de> for Credentials {
             Some(TlsSecurity::NoHostVerification) => Some(false),
             _ => None,
         };
-        if creds.tls_verify_hostname.is_some() &&
-            creds.tls_security.is_some() &&
-            creds.tls_verify_hostname != expected_verify
+        if creds.tls_verify_hostname.is_some()
+            && creds.tls_security.is_some()
+            && creds.tls_verify_hostname != expected_verify
         {
             Err(de::Error::custom(format!(
                 "detected conflicting settings: \
                  tls_security={} but tls_verify_hostname={}",
-                serde_json::to_string(&creds.tls_security)
-                    .map_err(de::Error::custom)?,
-                serde_json::to_string(&creds.tls_verify_hostname)
-                    .map_err(de::Error::custom)?,
+                serde_json::to_string(&creds.tls_security).map_err(de::Error::custom)?,
+                serde_json::to_string(&creds.tls_verify_hostname).map_err(de::Error::custom)?,
             )))
-        } else if creds.tls_ca.is_some() &&
-            creds.tls_cert_data.is_some() &&
-            creds.tls_ca != creds.tls_cert_data
+        } else if creds.tls_ca.is_some()
+            && creds.tls_cert_data.is_some()
+            && creds.tls_ca != creds.tls_cert_data
         {
             Err(de::Error::custom(format!(
                 "detected conflicting settings: \
                  tls_ca={:?} but tls_cert_data={:?}",
-                creds.tls_ca,
-                creds.tls_cert_data,
+                creds.tls_ca, creds.tls_cert_data,
             )))
         } else {
             Ok(Credentials {
@@ -139,15 +129,14 @@ impl<'de> Deserialize<'de> for Credentials {
                 password: creds.password,
                 database: creds.database,
                 tls_ca: creds.tls_ca.or(creds.tls_cert_data.clone()),
-                tls_security: creds.tls_security.unwrap_or(
-                    match creds.tls_verify_hostname {
+                tls_security: creds
+                    .tls_security
+                    .unwrap_or(match creds.tls_verify_hostname {
                         None => TlsSecurity::Default,
                         Some(true) => TlsSecurity::Strict,
                         Some(false) => TlsSecurity::NoHostVerification,
-                    }
-                ),
-                file_outdated: creds.tls_verify_hostname.is_some() &&
-                    creds.tls_security.is_none(),
+                    }),
+                file_outdated: creds.tls_verify_hostname.is_some() && creds.tls_security.is_none(),
             })
         }
     }

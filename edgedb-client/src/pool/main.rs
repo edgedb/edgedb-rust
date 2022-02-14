@@ -1,13 +1,12 @@
 use std::cmp::min;
 use std::collections::VecDeque;
 
-use async_std::sync::{Arc, Mutex, Condvar};
 use async_std::channel::{Receiver, RecvError};
+use async_std::sync::{Arc, Condvar, Mutex};
 
-use crate::client::Connection;
 use crate::builder::Builder;
+use crate::client::Connection;
 use crate::pool::command::Command;
-
 
 /// This is common state of the pool shared between background task
 /// (which runs `pool::main::main`) and `Pool` instance
@@ -32,15 +31,13 @@ impl PoolState {
             inner: Mutex::new(Inner {
                 in_progress: 0,
                 acquired_conns: 0,
-                conns: VecDeque::with_capacity(
-                    min(config.max_connections, 16)),
+                conns: VecDeque::with_capacity(min(config.max_connections, 16)),
             }),
             connection_released: Condvar::new(),
             config,
         }
     }
 }
-
 
 pub(crate) async fn main(state: Arc<PoolState>, rcv: Receiver<Command>) {
     loop {

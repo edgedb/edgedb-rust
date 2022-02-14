@@ -1,8 +1,8 @@
 use crate::model::{OutOfRangeError, ParseDurationError};
 use std::convert::{TryFrom, TryInto};
-use std::time::SystemTime;
 use std::fmt::{self, Debug, Display};
 use std::str::FromStr;
+use std::time::SystemTime;
 
 /// A span of time.
 ///
@@ -48,32 +48,32 @@ pub struct RelativeDuration {
     pub(crate) months: i32,
 }
 
-const SECS_PER_DAY : u64 = 86_400;
-const MICROS_PER_DAY : u64 = SECS_PER_DAY * 1_000_000;
+const SECS_PER_DAY: u64 = 86_400;
+const MICROS_PER_DAY: u64 = SECS_PER_DAY * 1_000_000;
 
 // leap years repeat every 400 years
-const DAYS_IN_400_YEARS : u32 = 400 * 365 + 97;
+const DAYS_IN_400_YEARS: u32 = 400 * 365 + 97;
 
-const MIN_YEAR : i32 = -4713; // starts at 4713-11-24
-const MAX_YEAR : i32 = 294_276; // ends at +294276-12-31
+const MIN_YEAR: i32 = -4713; // starts at 4713-11-24
+const MAX_YEAR: i32 = 294_276; // ends at +294276-12-31
 
 // year -4800 is a multiple of 400 smaller than the minimum supported year (-4713)
-const BASE_YEAR : i32 = -4800;
+const BASE_YEAR: i32 = -4800;
 
 #[allow(dead_code)] // only used by specific features
-const DAYS_IN_2000_YEARS : i32 = 5 * DAYS_IN_400_YEARS as i32;
+const DAYS_IN_2000_YEARS: i32 = 5 * DAYS_IN_400_YEARS as i32;
 
-const DAY_TO_MONTH_365 : [u32; 13] = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365];
-const DAY_TO_MONTH_366 : [u32; 13] = [0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366];
+const DAY_TO_MONTH_365: [u32; 13] = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365];
+const DAY_TO_MONTH_366: [u32; 13] = [0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366];
 
-const MICROS_PER_MS : i64 = 1_000;
-const MICROS_PER_SECOND : i64 = MICROS_PER_MS * 1_000;
-const MICROS_PER_MINUTE : i64 = MICROS_PER_SECOND * 60;
-const MICROS_PER_HOUR : i64 = MICROS_PER_MINUTE * 60;
+const MICROS_PER_MS: i64 = 1_000;
+const MICROS_PER_SECOND: i64 = MICROS_PER_MS * 1_000;
+const MICROS_PER_MINUTE: i64 = MICROS_PER_SECOND * 60;
+const MICROS_PER_HOUR: i64 = MICROS_PER_MINUTE * 60;
 
 impl Duration {
-    pub const MIN : LocalDatetime = LocalDatetime { micros: i64::MIN };
-    pub const MAX : LocalDatetime = LocalDatetime { micros: i64::MAX };
+    pub const MIN: LocalDatetime = LocalDatetime { micros: i64::MIN };
+    pub const MAX: LocalDatetime = LocalDatetime { micros: i64::MAX };
 
     pub fn from_micros(micros: i64) -> Duration {
         Duration { micros }
@@ -98,8 +98,7 @@ impl Duration {
     // Note: `std::time::Duration` can't be negative
     pub fn abs_duration(&self) -> std::time::Duration {
         if self.micros.is_negative() {
-            return std::time::Duration::from_micros(
-                u64::MAX - self.micros as u64 + 1);
+            return std::time::Duration::from_micros(u64::MAX - self.micros as u64 + 1);
         } else {
             return std::time::Duration::from_micros(self.micros as u64);
         }
@@ -112,36 +111,29 @@ impl Duration {
         let mut pos: usize = 0;
 
         {
-            let hour_str = split
-                .next()
-                .filter(|s| s.len() > 0)
-                .ok_or_else(|| ParseDurationError::new(
-                    "EOF met, expecting `+`, `-` or int")
+            let hour_str = split.next().filter(|s| s.len() > 0).ok_or_else(|| {
+                ParseDurationError::new("EOF met, expecting `+`, `-` or int")
                     .not_final()
                     .pos(input.len())
-                )?;
+            })?;
             pos += hour_str.len() - 1;
             let hour_str = hour_str.trim_start();
             let hour = hour_str
                 .strip_prefix("-")
                 .unwrap_or(hour_str)
                 .parse::<i32>()
-                .map_err(|e|
-                    ParseDurationError::from(e).not_final().pos(pos)
-                )?;
+                .map_err(|e| ParseDurationError::from(e).not_final().pos(pos))?;
             negative = hour_str.starts_with("-");
             value += (hour.abs() as i64) * MICROS_PER_HOUR;
         }
 
         {
             pos += 1;
-            let minute_str = split
-                .next()
-                .ok_or_else(||
-                    ParseDurationError::new("EOF met, expecting `:`")
-                        .not_final()
-                        .pos(pos)
-                )?;
+            let minute_str = split.next().ok_or_else(|| {
+                ParseDurationError::new("EOF met, expecting `:`")
+                    .not_final()
+                    .pos(pos)
+            })?;
             if minute_str.len() > 0 {
                 pos += minute_str.len();
                 let minute = minute_str
@@ -151,10 +143,7 @@ impl Duration {
                         if m <= 59 {
                             Ok(m)
                         } else {
-                            Err(ParseDurationError::new(
-                                "minutes value out of range")
-                                .pos(pos)
-                            )
+                            Err(ParseDurationError::new("minutes value out of range").pos(pos))
                         }
                     })?;
                 value += (minute as i64) * MICROS_PER_MINUTE;
@@ -175,10 +164,7 @@ impl Duration {
                         if s <= 59 {
                             Ok(s)
                         } else {
-                            Err(ParseDurationError::new(
-                                "seconds value out of range")
-                                .pos(pos)
-                            )
+                            Err(ParseDurationError::new("seconds value out of range").pos(pos))
                         }
                     })?;
                 value += (second as i64) * MICROS_PER_SECOND;
@@ -189,10 +175,7 @@ impl Duration {
                 for (i, c) in sub_sec_str.char_indices() {
                     let d = c
                         .to_digit(10)
-                        .ok_or_else(||
-                            ParseDurationError::new("not a digit")
-                                .pos(pos + i + 1)
-                        )?;
+                        .ok_or_else(|| ParseDurationError::new("not a digit").pos(pos + i + 1))?;
                     if i < 6 {
                         value += (d * 10_u32.pow((5 - i) as u32)) as i64;
                     } else {
@@ -222,9 +205,7 @@ impl Duration {
                 if let Some(hour_str) = part.strip_suffix("H") {
                     let hour = hour_str
                         .parse::<i32>()
-                        .map_err(|e| ParseDurationError::from(e)
-                            .pos(pos)
-                        )?;
+                        .map_err(|e| ParseDurationError::from(e).pos(pos))?;
                     result += (hour as i64) * MICROS_PER_HOUR;
                     pos += part.len();
                     current = parts.next();
@@ -235,9 +216,7 @@ impl Duration {
                 if let Some(minute_str) = part.strip_suffix("M") {
                     let minute = minute_str
                         .parse::<i32>()
-                        .map_err(|e| ParseDurationError::from(e)
-                            .pos(pos)
-                        )?;
+                        .map_err(|e| ParseDurationError::from(e).pos(pos))?;
                     result += (minute as i64) * MICROS_PER_MINUTE;
                     pos += part.len();
                     current = parts.next();
@@ -248,27 +227,22 @@ impl Duration {
                 if let Some(second_str) = part.strip_suffix("S") {
                     let (second_str, subsec_str) = second_str
                         .split_once('.')
-                        .map(|(sec, sub)|
-                            (sec, sub.get(..6).or_else(||Some(sub))))
+                        .map(|(sec, sub)| (sec, sub.get(..6).or_else(|| Some(sub))))
                         .unwrap_or_else(|| (second_str, None));
 
                     let second = second_str
                         .parse::<i32>()
-                        .map_err(|e| ParseDurationError::from(e)
-                            .pos(pos)
-                        )?;
+                        .map_err(|e| ParseDurationError::from(e).pos(pos))?;
                     result += (second as i64) * MICROS_PER_SECOND;
                     pos += second_str.len() + 1;
 
                     if let Some(subsec_str) = subsec_str {
                         let subsec = subsec_str
                             .parse::<i32>()
-                            .map_err(|e| ParseDurationError::from(e)
-                                .pos(pos)
-                            )?;
-                        result += (subsec as i64) * 10_i64.pow(
-                            (6 - subsec_str.len()) as u32
-                        ) * if second < 0 { -1 } else { 1 };
+                            .map_err(|e| ParseDurationError::from(e).pos(pos))?;
+                        result += (subsec as i64)
+                            * 10_i64.pow((6 - subsec_str.len()) as u32)
+                            * if second < 0 { -1 } else { 1 };
                         pos += subsec_str.len()
                     }
                     current = parts.next();
@@ -286,14 +260,14 @@ impl Duration {
     }
 
     fn get_pg_format_value(
-        input: &str, start: usize, end: usize
+        input: &str,
+        start: usize,
+        end: usize,
     ) -> Result<i64, ParseDurationError> {
         if let Some(val) = input.get(start..end) {
             match val.parse::<i32>() {
                 Ok(v) => Ok(v as i64),
-                Err(e) => Err(
-                    ParseDurationError::from(e).pos(end.saturating_sub(1))
-                ),
+                Err(e) => Err(ParseDurationError::from(e).pos(end.saturating_sub(1))),
             }
         } else {
             Err(ParseDurationError::new("expecting value").pos(end))
@@ -304,7 +278,7 @@ impl Duration {
         enum Expect {
             Numeric { begin: usize },
             Alphabetic { begin: usize, numeric: i64 },
-            Whitespace { numeric: Option<i64> }
+            Whitespace { numeric: Option<i64> },
         }
         let mut seen = Vec::new();
         let mut get_unit = |start: usize, end: usize, default: Option<&str>| {
@@ -312,23 +286,19 @@ impl Duration {
                 .get(start..end)
                 .or(default)
                 .and_then(|u| match u.to_lowercase().as_str() {
-                    "h"|"hr"|"hrs"|"hour"|"hours" => Some(MICROS_PER_HOUR),
-                    "m"|"min"|"mins"
-                        |"minute"|"minutes" => Some(MICROS_PER_MINUTE),
-                    "ms"|"millisecon"|"millisecons"
-                        |"millisecond"|"milliseconds" => Some(MICROS_PER_MS),
-                    "us"|"microsecond"|"microseconds" => Some(1),
-                    "s"|"sec"|"secs"|"second"
-                        |"seconds" => Some(MICROS_PER_SECOND),
+                    "h" | "hr" | "hrs" | "hour" | "hours" => Some(MICROS_PER_HOUR),
+                    "m" | "min" | "mins" | "minute" | "minutes" => Some(MICROS_PER_MINUTE),
+                    "ms" | "millisecon" | "millisecons" | "millisecond" | "milliseconds" => {
+                        Some(MICROS_PER_MS)
+                    }
+                    "us" | "microsecond" | "microseconds" => Some(1),
+                    "s" | "sec" | "secs" | "second" | "seconds" => Some(MICROS_PER_SECOND),
                     _ => None,
                 })
-                .ok_or_else(||
-                    ParseDurationError::new("unknown unit").pos(start)
-                )
+                .ok_or_else(|| ParseDurationError::new("unknown unit").pos(start))
                 .and_then(|u| {
                     if seen.contains(&u) {
-                        Err(ParseDurationError::new("specified more than once")
-                            .pos(start))
+                        Err(ParseDurationError::new("specified more than once").pos(start))
                     } else {
                         seen.push(u.clone());
                         Ok(u)
@@ -342,15 +312,11 @@ impl Duration {
             let is_numeric = c.is_numeric() || c == '+' || c == '-';
             let is_alphabetic = c.is_alphabetic();
             if !(is_whitespace || is_numeric || is_alphabetic) {
-                return Err(
-                    ParseDurationError::new("unexpected character").pos(pos)
-                )
+                return Err(ParseDurationError::new("unexpected character").pos(pos));
             }
             match state {
                 Expect::Numeric { begin } if !is_numeric => {
-                    let numeric = Self::get_pg_format_value(
-                        input, begin, pos
-                    )?;
+                    let numeric = Self::get_pg_format_value(input, begin, pos)?;
                     if is_alphabetic {
                         state = Expect::Alphabetic {
                             begin: pos,
@@ -375,20 +341,22 @@ impl Duration {
                         state = Expect::Numeric { begin: pos };
                     } else {
                         return Err(
-                            ParseDurationError::new(
-                                "expecting whitespace or numeric")
-                                .pos(pos)
-                        )
+                            ParseDurationError::new("expecting whitespace or numeric").pos(pos)
+                        );
                     }
                 }
                 Expect::Whitespace {
-                    numeric: Some(numeric)
+                    numeric: Some(numeric),
                 } if !is_whitespace => {
                     if is_alphabetic {
-                        state = Expect::Alphabetic { begin: pos, numeric };
+                        state = Expect::Alphabetic {
+                            begin: pos,
+                            numeric,
+                        };
                     } else {
-                        return Err(ParseDurationError::new(
-                            "expecting whitespace or alphabetic").pos(pos))
+                        return Err(
+                            ParseDurationError::new("expecting whitespace or alphabetic").pos(pos),
+                        );
                     }
                 }
                 _ => {}
@@ -396,14 +364,14 @@ impl Duration {
         }
         match state {
             Expect::Numeric { begin } => {
-                result += Self::get_pg_format_value(
-                    input, begin, input.len()
-                )? * MICROS_PER_SECOND;
+                result += Self::get_pg_format_value(input, begin, input.len())? * MICROS_PER_SECOND;
             }
             Expect::Alphabetic { begin, numeric } => {
                 result += numeric * get_unit(begin, input.len(), Some("s"))?;
             }
-            Expect::Whitespace { numeric: Some(numeric) } => {
+            Expect::Whitespace {
+                numeric: Some(numeric),
+            } => {
                 result += numeric * MICROS_PER_SECOND;
             }
             _ => {}
@@ -420,33 +388,33 @@ impl FromStr for Duration {
             seconds
                 .checked_mul(MICROS_PER_SECOND)
                 .map(|micros| Self::from_micros(micros))
-                .ok_or_else(|| Self::Err::new("seconds value out of range")
-                    .pos(input.len() - 1))
+                .ok_or_else(|| Self::Err::new("seconds value out of range").pos(input.len() - 1))
         } else {
             Self::try_from_pg_simple_format(input)
-                .or_else(|e|
+                .or_else(|e| {
                     if e.is_final {
                         Err(e)
                     } else {
                         Self::try_from_iso_format(input)
                     }
-                )
-                .or_else(|e|
+                })
+                .or_else(|e| {
                     if e.is_final {
                         Err(e)
                     } else {
                         Self::try_from_pg_format(input)
                     }
-                )
+                })
         }
     }
 }
 
 impl LocalDatetime {
-    pub const MIN : LocalDatetime = LocalDatetime { micros: LocalDate::MIN.days as i64 * MICROS_PER_DAY as i64 };
-    pub const MAX : LocalDatetime = LocalDatetime {
-        micros: LocalDate::MAX.days as i64 * MICROS_PER_DAY as i64
-         + LocalTime::MAX.micros as i64
+    pub const MIN: LocalDatetime = LocalDatetime {
+        micros: LocalDate::MIN.days as i64 * MICROS_PER_DAY as i64,
+    };
+    pub const MAX: LocalDatetime = LocalDatetime {
+        micros: LocalDate::MAX.days as i64 * MICROS_PER_DAY as i64 + LocalTime::MAX.micros as i64,
     };
 
     fn try_from_micros(micros: i64) -> Result<LocalDatetime, OutOfRangeError> {
@@ -459,7 +427,8 @@ impl LocalDatetime {
     pub fn from_micros(micros: i64) -> LocalDatetime {
         Self::try_from_micros(micros).expect(&format!(
             "LocalDatetime::from_micros({}) is outside the valid datetime range",
-             micros))
+            micros
+        ))
     }
 
     pub fn to_micros(self) -> i64 {
@@ -492,19 +461,23 @@ impl Debug for LocalDatetime {
 }
 
 impl LocalTime {
-    pub const MIDNIGHT : LocalTime = LocalTime { micros: 0 };
-    pub const MAX : LocalTime = LocalTime { micros: MICROS_PER_DAY - 1 };
+    pub const MIDNIGHT: LocalTime = LocalTime { micros: 0 };
+    pub const MAX: LocalTime = LocalTime {
+        micros: MICROS_PER_DAY - 1,
+    };
 
     pub(crate) fn try_from_micros(micros: u64) -> Result<LocalTime, OutOfRangeError> {
         if micros < MICROS_PER_DAY {
             Ok(LocalTime { micros: micros })
         } else {
-             Err(OutOfRangeError)
+            Err(OutOfRangeError)
         }
     }
 
     pub fn from_micros(micros: u64) -> LocalTime {
-        Self::try_from_micros(micros).ok().expect("LocalTime is out of range")
+        Self::try_from_micros(micros)
+            .ok()
+            .expect("LocalTime is out of range")
     }
 
     pub fn to_micros(self) -> u64 {
@@ -531,17 +504,14 @@ impl LocalTime {
     }
 
     #[cfg(test)] // currently only used by tests, will be used by parsing later
-    fn from_hmsu(hour: u8, minute: u8, second:u8, microsecond: u32) -> LocalTime {
+    fn from_hmsu(hour: u8, minute: u8, second: u8, microsecond: u32) -> LocalTime {
         assert!(microsecond < 1000_000);
         assert!(second < 60);
         assert!(minute < 60);
         assert!(hour < 24);
 
-        let micros =
-        microsecond as u64
-        + 1000_000 * (second as u64
-             + 60 * (minute as u64
-                + 60 * (hour as u64)));
+        let micros = microsecond as u64
+            + 1000_000 * (second as u64 + 60 * (minute as u64 + 60 * (hour as u64)));
         LocalTime::from_micros(micros)
     }
 }
@@ -569,9 +539,15 @@ impl Debug for LocalTime {
 }
 
 impl LocalDate {
-    pub const MIN : LocalDate = LocalDate { days: -((2000 - (MIN_YEAR + 1)) * 365 + 1665) }; // -4713-11-24 in proleptic Gregorian or -4712-01-01 in Julian
-    pub const MAX : LocalDate = LocalDate { days: (MAX_YEAR - 2000) * 365 + 71_242 }; // +294276-12-31
-    pub const UNIX_EPOCH : LocalDate = LocalDate { days: -(30 * 365 + 7) }; // 1970-01-01
+    pub const MIN: LocalDate = LocalDate {
+        days: -((2000 - (MIN_YEAR + 1)) * 365 + 1665),
+    }; // -4713-11-24 in proleptic Gregorian or -4712-01-01 in Julian
+    pub const MAX: LocalDate = LocalDate {
+        days: (MAX_YEAR - 2000) * 365 + 71_242,
+    }; // +294276-12-31
+    pub const UNIX_EPOCH: LocalDate = LocalDate {
+        days: -(30 * 365 + 7),
+    }; // 1970-01-01
 
     fn try_from_days(days: i32) -> Result<LocalDate, OutOfRangeError> {
         if days < Self::MIN.days || days > Self::MAX.days {
@@ -581,21 +557,22 @@ impl LocalDate {
     }
 
     pub fn from_days(days: i32) -> LocalDate {
-        Self::try_from_days(days)
-            .expect(&format!("LocalDate::from_days({}) is outside the valid date range", days))
+        Self::try_from_days(days).expect(&format!(
+            "LocalDate::from_days({}) is outside the valid date range",
+            days
+        ))
     }
 
     pub fn to_days(self) -> i32 {
         self.days
     }
 
-    pub fn from_ymd(year:i32, month: u8, day:u8) -> LocalDate {
-        Self::try_from_ymd(year, month, day).expect(&format!(
-            "invalid date {:04}-{:02}-{:02}",
-            year, month, day))
+    pub fn from_ymd(year: i32, month: u8, day: u8) -> LocalDate {
+        Self::try_from_ymd(year, month, day)
+            .expect(&format!("invalid date {:04}-{:02}-{:02}", year, month, day))
     }
 
-    fn try_from_ymd(year:i32, month: u8, day:u8) -> Result<LocalDate, OutOfRangeError> {
+    fn try_from_ymd(year: i32, month: u8, day: u8) -> Result<LocalDate, OutOfRangeError> {
         if day < 1 || day > 31 {
             return Err(OutOfRangeError);
         }
@@ -603,38 +580,40 @@ impl LocalDate {
             return Err(OutOfRangeError);
         }
         if year < MIN_YEAR || year > MAX_YEAR {
-           return Err(OutOfRangeError);
+            return Err(OutOfRangeError);
         }
 
         let passed_years = (year - BASE_YEAR - 1) as u32;
         let days_from_year =
-            365 * passed_years
-            + passed_years / 4
-            - passed_years / 100
-            + passed_years / 400
-            + 366;
+            365 * passed_years + passed_years / 4 - passed_years / 100 + passed_years / 400 + 366;
 
         let is_leap_year = (year % 400 == 0) || (year % 4 == 0 && year % 100 != 0);
-        let day_to_month =
-            if is_leap_year { DAY_TO_MONTH_366 } else { DAY_TO_MONTH_365 };
+        let day_to_month = if is_leap_year {
+            DAY_TO_MONTH_366
+        } else {
+            DAY_TO_MONTH_365
+        };
 
         let day_in_year = (day - 1) as u32 + day_to_month[month as usize - 1];
         if day_in_year >= day_to_month[month as usize] {
             return Err(OutOfRangeError);
         }
 
-        LocalDate::try_from_days((days_from_year + day_in_year) as i32
-         - DAYS_IN_400_YEARS as i32 * ((2000 - BASE_YEAR) / 400))
+        LocalDate::try_from_days(
+            (days_from_year + day_in_year) as i32
+                - DAYS_IN_400_YEARS as i32 * ((2000 - BASE_YEAR) / 400),
+        )
     }
 
     fn to_ymd(self) -> (i32, u8, u8) {
-        const DAYS_IN_100_YEARS : u32 = 100 * 365 + 24;
-        const DAYS_IN_4_YEARS :u32 = 4 * 365 + 1;
-        const DAYS_IN_1_YEAR : u32 = 365;
-        const DAY_TO_MONTH_MARCH : [u32; 12] = [0, 31, 61, 92, 122, 153, 184, 214, 245, 275, 306, 337];
-        const MARCH_1 : u32 = 31 + 29;
-        const MARCH_1_MINUS_BASE_YEAR_TO_POSTGRES_EPOCH : u32
-            = (2000 - BASE_YEAR) as u32 / 400 * DAYS_IN_400_YEARS - MARCH_1;
+        const DAYS_IN_100_YEARS: u32 = 100 * 365 + 24;
+        const DAYS_IN_4_YEARS: u32 = 4 * 365 + 1;
+        const DAYS_IN_1_YEAR: u32 = 365;
+        const DAY_TO_MONTH_MARCH: [u32; 12] =
+            [0, 31, 61, 92, 122, 153, 184, 214, 245, 275, 306, 337];
+        const MARCH_1: u32 = 31 + 29;
+        const MARCH_1_MINUS_BASE_YEAR_TO_POSTGRES_EPOCH: u32 =
+            (2000 - BASE_YEAR) as u32 / 400 * DAYS_IN_400_YEARS - MARCH_1;
 
         let days = (self.days as u32).wrapping_add(MARCH_1_MINUS_BASE_YEAR_TO_POSTGRES_EPOCH);
 
@@ -642,14 +621,18 @@ impl LocalDate {
         let days = days % DAYS_IN_400_YEARS;
 
         let mut years100 = days / DAYS_IN_100_YEARS;
-        if years100 == 4 { years100 = 3 }; // prevent 400 year leap day from overflowing
+        if years100 == 4 {
+            years100 = 3
+        }; // prevent 400 year leap day from overflowing
         let days = days - DAYS_IN_100_YEARS * years100;
 
         let years4 = days / DAYS_IN_4_YEARS;
         let days = days % DAYS_IN_4_YEARS;
 
         let mut years1 = days / DAYS_IN_1_YEAR;
-        if years1 == 4 { years1 = 3 }; // prevent 4 year leap day from overflowing
+        if years1 == 4 {
+            years1 = 3
+        }; // prevent 4 year leap day from overflowing
         let days = days - DAYS_IN_1_YEAR * years1;
 
         let years = years1 + years4 * 4 + years100 * 100 + years400 * 400;
@@ -677,7 +660,8 @@ impl Display for LocalDate {
 impl Debug for LocalDate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let (year, month, day) = self.to_ymd();
-        if year >= 10_000 { // ISO format requires a + on dates longer than 4 digits
+        if year >= 10_000 {
+            // ISO format requires a + on dates longer than 4 digits
             write!(f, "+")?;
         }
         if year >= 0 {
@@ -690,9 +674,15 @@ impl Debug for LocalDate {
 }
 
 impl Datetime {
-    pub const MIN : Datetime = Datetime { micros: LocalDatetime::MIN.micros };
-    pub const MAX : Datetime = Datetime { micros: LocalDatetime::MAX.micros };
-    pub const UNIX_EPOCH : Datetime = Datetime { micros: LocalDate::UNIX_EPOCH.days as i64 * MICROS_PER_DAY as i64 };
+    pub const MIN: Datetime = Datetime {
+        micros: LocalDatetime::MIN.micros,
+    };
+    pub const MAX: Datetime = Datetime {
+        micros: LocalDatetime::MAX.micros,
+    };
+    pub const UNIX_EPOCH: Datetime = Datetime {
+        micros: LocalDate::UNIX_EPOCH.days as i64 * MICROS_PER_DAY as i64,
+    };
 
     pub fn try_from_micros(micros: i64) -> Result<Datetime, OutOfRangeError> {
         if micros < Self::MIN.micros || micros > Self::MAX.micros {
@@ -704,7 +694,8 @@ impl Datetime {
     pub fn from_micros(micros: i64) -> Datetime {
         Self::try_from_micros(micros).expect(&format!(
             "Datetime::from_micros({}) is outside the valid datetime range",
-             micros))
+            micros
+        ))
     }
 
     pub fn to_micros(self) -> i64 {
@@ -712,7 +703,7 @@ impl Datetime {
     }
 
     fn postgres_epoch_unix() -> SystemTime {
-        use std::time::{ Duration, UNIX_EPOCH };
+        use std::time::{Duration, UNIX_EPOCH};
         // postgres epoch starts at 2020-01-01
         UNIX_EPOCH + Duration::from_micros((-Datetime::UNIX_EPOCH.micros) as u64)
     }
@@ -726,11 +717,12 @@ impl Datetime {
             Self::postgres_epoch_unix().checked_add(Duration::from_micros(self.micros as u64))
         } else {
             Self::postgres_epoch_unix().checked_sub(Duration::from_micros((-self.micros) as u64))
-        }.ok_or(OutOfRangeError)
+        }
+        .ok_or(OutOfRangeError)
     }
 
     // I believe this can fail on both Windows and Linux, since Postgres can "only" store dates starting 4713 BC
-    fn from_system_time(time:SystemTime) -> Result<Datetime, OutOfRangeError> {
+    fn from_system_time(time: SystemTime) -> Result<Datetime, OutOfRangeError> {
         let postgres_epoch = Self::postgres_epoch_unix();
 
         let nanos = if time >= postgres_epoch {
@@ -778,8 +770,7 @@ impl std::ops::Add<&'_ std::time::Duration> for Datetime {
             Ok(m) => m,
             Err(_) => {
                 // crash in debug mode
-                debug_assert!(false,
-                    "resulting datetime is out of range");
+                debug_assert!(false, "resulting datetime is out of range");
                 // saturate in release mode
                 return Datetime::MAX;
             }
@@ -787,8 +778,7 @@ impl std::ops::Add<&'_ std::time::Duration> for Datetime {
         let micros = self.micros.saturating_add(micros);
         if micros > Datetime::MAX.micros {
             // crash in debug mode
-            debug_assert!(false,
-                "resulting datetime is out of range");
+            debug_assert!(false, "resulting datetime is out of range");
             // saturate in release mode
             return Datetime::MAX;
         }
@@ -807,7 +797,7 @@ impl Display for Duration {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let abs = if self.micros < 0 {
             write!(f, "-")?;
-            - self.micros
+            -self.micros
         } else {
             self.micros
         };
@@ -819,16 +809,17 @@ impl Display for Duration {
                 zeros += 1;
                 fract /= 10;
             }
-            write!(f, "{hours}:{minutes:02}:{seconds:02}.{fract:0>fsize$}",
-                hours=sec / 3600,
-                minutes=sec / 60 % 60,
-                seconds=sec % 60,
-                fract=fract,
-                fsize=6 - zeros,
+            write!(
+                f,
+                "{hours}:{minutes:02}:{seconds:02}.{fract:0>fsize$}",
+                hours = sec / 3600,
+                minutes = sec / 60 % 60,
+                seconds = sec % 60,
+                fract = fract,
+                fsize = 6 - zeros,
             )
         } else {
-            write!(f, "{}:{:02}:{:02}",
-                sec / 3600, sec / 60 % 60, sec % 60)
+            write!(f, "{}:{:02}:{:02}", sec / 3600, sec / 60 % 60, sec % 60)
         }
     }
 }
@@ -877,13 +868,14 @@ mod test {
             let days_in_current_month = days_in_month_leap[month - 1];
             total_days += days_in_current_month;
 
-            let end_of_month = LocalDate::from_ymd(2004, month as u8, days_in_current_month as u8).to_days();
+            let end_of_month =
+                LocalDate::from_ymd(2004, month as u8, days_in_current_month as u8).to_days();
             assert_eq!(total_days - 1, end_of_month - start_of_year);
         }
         assert_eq!(366, total_days);
     }
 
-    const DAYS_IN_MONTH_LEAP :[u8; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    const DAYS_IN_MONTH_LEAP: [u8; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
     #[test]
     fn local_date_from_ymd_normal_year() {
@@ -896,16 +888,17 @@ mod test {
             let days_in_current_month = DAYS_IN_MONTH_LEAP[month - 1];
             total_days += days_in_current_month as i32;
 
-            let end_of_month = LocalDate::from_ymd(2001, month as u8, days_in_current_month as u8).to_days();
+            let end_of_month =
+                LocalDate::from_ymd(2001, month as u8, days_in_current_month as u8).to_days();
             assert_eq!(total_days - 1, end_of_month - start_of_year);
         }
         assert_eq!(365, total_days);
     }
 
-    pub const CHRONO_MAX_YEAR : i32 = 262_143;
+    pub const CHRONO_MAX_YEAR: i32 = 262_143;
 
-    fn extended_test_dates() -> impl Iterator<Item=(i32, u8, u8)> {
-        const YEARS :[i32; 41]= [
+    fn extended_test_dates() -> impl Iterator<Item = (i32, u8, u8)> {
+        const YEARS: [i32; 41] = [
             MIN_YEAR + 1,
             -4700,
             -4400,
@@ -949,22 +942,20 @@ mod test {
             MAX_YEAR,
         ];
 
-        const MONTHS : std::ops::RangeInclusive<u8>= 1u8..=12;
-        const DAYS :[u8; 6] = [1u8, 13, 28, 29, 30, 31];
-        let dates = MONTHS
-            .flat_map(|month| DAYS.iter().map(move |day| (month, *day)));
+        const MONTHS: std::ops::RangeInclusive<u8> = 1u8..=12;
+        const DAYS: [u8; 6] = [1u8, 13, 28, 29, 30, 31];
+        let dates = MONTHS.flat_map(|month| DAYS.iter().map(move |day| (month, *day)));
 
         YEARS
             .iter()
-            .flat_map(move|year| dates.clone().map(move |date| (*year, date.0, date.1)))
+            .flat_map(move |year| dates.clone().map(move |date| (*year, date.0, date.1)))
     }
 
-    pub fn valid_test_dates() -> impl Iterator<Item=(i32, u8, u8)> {
-        extended_test_dates().filter(|date|
-                LocalDate::try_from_ymd(date.0, date.1, date.2).is_ok())
+    pub fn valid_test_dates() -> impl Iterator<Item = (i32, u8, u8)> {
+        extended_test_dates().filter(|date| LocalDate::try_from_ymd(date.0, date.1, date.2).is_ok())
     }
 
-    pub fn test_times() -> impl Iterator<Item=u64> {
+    pub fn test_times() -> impl Iterator<Item = u64> {
         const TIMES: [u64; 7] = [
             0,
             10,
@@ -1003,13 +994,34 @@ mod test {
     #[test]
     fn format_local_date() {
         assert_eq!("2000-01-01", LocalDate::from_days(0).to_string());
-        assert_eq!("0000-01-01", LocalDate::from_days(-DAYS_IN_2000_YEARS).to_string());
-        assert_eq!("0001-01-01", LocalDate::from_days(-DAYS_IN_2000_YEARS + 366).to_string());
-        assert_eq!("-0001-01-01", LocalDate::from_days(-DAYS_IN_2000_YEARS - 365).to_string());
-        assert_eq!("-4000-01-01", LocalDate::from_days(-3 * DAYS_IN_2000_YEARS as i32).to_string());
-        assert_eq!("+10000-01-01", LocalDate::from_days(4 * DAYS_IN_2000_YEARS as i32).to_string());
-        assert_eq!("9999-12-31", LocalDate::from_days(4 * DAYS_IN_2000_YEARS as i32 - 1).to_string());
-        assert_eq!("+10001-01-01", LocalDate::from_days(4 * DAYS_IN_2000_YEARS as i32 + 366).to_string());
+        assert_eq!(
+            "0000-01-01",
+            LocalDate::from_days(-DAYS_IN_2000_YEARS).to_string()
+        );
+        assert_eq!(
+            "0001-01-01",
+            LocalDate::from_days(-DAYS_IN_2000_YEARS + 366).to_string()
+        );
+        assert_eq!(
+            "-0001-01-01",
+            LocalDate::from_days(-DAYS_IN_2000_YEARS - 365).to_string()
+        );
+        assert_eq!(
+            "-4000-01-01",
+            LocalDate::from_days(-3 * DAYS_IN_2000_YEARS as i32).to_string()
+        );
+        assert_eq!(
+            "+10000-01-01",
+            LocalDate::from_days(4 * DAYS_IN_2000_YEARS as i32).to_string()
+        );
+        assert_eq!(
+            "9999-12-31",
+            LocalDate::from_days(4 * DAYS_IN_2000_YEARS as i32 - 1).to_string()
+        );
+        assert_eq!(
+            "+10001-01-01",
+            LocalDate::from_days(4 * DAYS_IN_2000_YEARS as i32 + 366).to_string()
+        );
         assert_eq!("-4713-11-24", LocalDate::MIN.to_string());
         assert_eq!("+294276-12-31", LocalDate::MAX.to_string());
     }
@@ -1018,35 +1030,59 @@ mod test {
     fn format_local_time() {
         assert_eq!("00:00:00", LocalTime::MIDNIGHT.to_string());
         assert_eq!("00:00:00.010", LocalTime::from_micros(10_000).to_string());
-        assert_eq!("00:00:00.010020", LocalTime::from_micros(10_020).to_string());
+        assert_eq!(
+            "00:00:00.010020",
+            LocalTime::from_micros(10_020).to_string()
+        );
         assert_eq!("23:59:59.999999", LocalTime::MAX.to_string());
     }
 
-    pub fn to_debug<T:Debug>(x:T) -> String {
+    pub fn to_debug<T: Debug>(x: T) -> String {
         format!("{:?}", x)
     }
 
     #[test]
     fn format_local_datetime() {
-        assert_eq!("2039-02-13 23:31:30.123456", LocalDatetime::from_micros(1_234_567_890_123_456).to_string());
-        assert_eq!("2039-02-13T23:31:30.123456", to_debug(LocalDatetime::from_micros(1_234_567_890_123_456)));
+        assert_eq!(
+            "2039-02-13 23:31:30.123456",
+            LocalDatetime::from_micros(1_234_567_890_123_456).to_string()
+        );
+        assert_eq!(
+            "2039-02-13T23:31:30.123456",
+            to_debug(LocalDatetime::from_micros(1_234_567_890_123_456))
+        );
 
         assert_eq!("-4713-11-24 00:00:00", LocalDatetime::MIN.to_string());
         assert_eq!("-4713-11-24T00:00:00", to_debug(LocalDatetime::MIN));
 
-        assert_eq!("+294276-12-31 23:59:59.999999", LocalDatetime::MAX.to_string());
-        assert_eq!("+294276-12-31T23:59:59.999999", to_debug(LocalDatetime::MAX));
+        assert_eq!(
+            "+294276-12-31 23:59:59.999999",
+            LocalDatetime::MAX.to_string()
+        );
+        assert_eq!(
+            "+294276-12-31T23:59:59.999999",
+            to_debug(LocalDatetime::MAX)
+        );
     }
 
     #[test]
     fn format_datetime() {
-        assert_eq!("2039-02-13 23:31:30.123456 UTC", Datetime::from_micros(1_234_567_890_123_456).to_string());
-        assert_eq!("2039-02-13T23:31:30.123456Z", to_debug(Datetime::from_micros(1_234_567_890_123_456)));
+        assert_eq!(
+            "2039-02-13 23:31:30.123456 UTC",
+            Datetime::from_micros(1_234_567_890_123_456).to_string()
+        );
+        assert_eq!(
+            "2039-02-13T23:31:30.123456Z",
+            to_debug(Datetime::from_micros(1_234_567_890_123_456))
+        );
 
         assert_eq!("-4713-11-24 00:00:00 UTC", Datetime::MIN.to_string());
         assert_eq!("-4713-11-24T00:00:00Z", to_debug(Datetime::MIN));
 
-        assert_eq!("+294276-12-31 23:59:59.999999 UTC", Datetime::MAX.to_string());
+        assert_eq!(
+            "+294276-12-31 23:59:59.999999 UTC",
+            Datetime::MAX.to_string()
+        );
         assert_eq!("+294276-12-31T23:59:59.999999Z", to_debug(Datetime::MAX));
     }
 
@@ -1075,9 +1111,18 @@ mod test {
         assert_eq!(micros("  20us  1h    20   "), 3620_000_020);
         assert_eq!(micros("  -20us  1h    20   "), 3619_999_980);
         assert_eq!(micros("  -20US  1H    20   "), 3619_999_980);
-        assert_eq!(micros("1 hour 20 minutes 30 seconds 40 milliseconds 50 microseconds"), 4830_040_050);
-        assert_eq!(micros("1 hour 20 minutes +30seconds 40 milliseconds -50microseconds"), 4830_039_950);
-        assert_eq!(micros("1 houR  20 minutes 30SECOND 40 milliseconds 50 us"), 4830_040_050);
+        assert_eq!(
+            micros("1 hour 20 minutes 30 seconds 40 milliseconds 50 microseconds"),
+            4830_040_050
+        );
+        assert_eq!(
+            micros("1 hour 20 minutes +30seconds 40 milliseconds -50microseconds"),
+            4830_039_950
+        );
+        assert_eq!(
+            micros("1 houR  20 minutes 30SECOND 40 milliseconds 50 us"),
+            4830_040_050
+        );
         assert_eq!(micros("  20 us 1H 20 minutes "), 4800_000_020);
         assert_eq!(micros("-1h"), -3600_000_000);
         assert_eq!(micros("100h"), 3600_000_000_00);
@@ -1146,7 +1191,9 @@ mod test {
         assert_error("  20us 20   1h       ", 12, "alphabetic");
         assert_error("  20us $ 20   1h       ", 7, "unexpected");
         assert_error(
-            "1 houR  20 minutes 30SECOND 40 milliseconds 50 uss", 47, "unit"
+            "1 houR  20 minutes 30SECOND 40 milliseconds 50 uss",
+            47,
+            "unit",
         );
         assert_error("PT1M1H", 4, "EOF");
         assert_error("PT1S1M", 4, "EOF");
@@ -1154,9 +1201,7 @@ mod test {
 }
 
 impl RelativeDuration {
-    pub fn try_from_years(years: i32)
-        -> Result<RelativeDuration, OutOfRangeError>
-    {
+    pub fn try_from_years(years: i32) -> Result<RelativeDuration, OutOfRangeError> {
         Ok(RelativeDuration {
             months: years.checked_mul(12).ok_or(OutOfRangeError)?,
             days: 0,
@@ -1166,9 +1211,7 @@ impl RelativeDuration {
     pub fn from_years(years: i32) -> RelativeDuration {
         RelativeDuration::try_from_years(years).unwrap()
     }
-    pub fn try_from_months(months: i32)
-        -> Result<RelativeDuration, OutOfRangeError>
-    {
+    pub fn try_from_months(months: i32) -> Result<RelativeDuration, OutOfRangeError> {
         Ok(RelativeDuration {
             months: months,
             days: 0,
@@ -1178,9 +1221,7 @@ impl RelativeDuration {
     pub fn from_months(months: i32) -> RelativeDuration {
         RelativeDuration::try_from_months(months).unwrap()
     }
-    pub fn try_from_days(days: i32)
-        -> Result<RelativeDuration, OutOfRangeError>
-    {
+    pub fn try_from_days(days: i32) -> Result<RelativeDuration, OutOfRangeError> {
         Ok(RelativeDuration {
             months: 0,
             days,
@@ -1190,9 +1231,7 @@ impl RelativeDuration {
     pub fn from_days(days: i32) -> RelativeDuration {
         RelativeDuration::try_from_days(days).unwrap()
     }
-    pub fn try_from_hours(hours: i64)
-        -> Result<RelativeDuration, OutOfRangeError>
-    {
+    pub fn try_from_hours(hours: i64) -> Result<RelativeDuration, OutOfRangeError> {
         Ok(RelativeDuration {
             months: 0,
             days: 0,
@@ -1202,9 +1241,7 @@ impl RelativeDuration {
     pub fn from_hours(hours: i64) -> RelativeDuration {
         RelativeDuration::try_from_hours(hours).unwrap()
     }
-    pub fn try_from_minutes(minutes: i64)
-        -> Result<RelativeDuration, OutOfRangeError>
-    {
+    pub fn try_from_minutes(minutes: i64) -> Result<RelativeDuration, OutOfRangeError> {
         Ok(RelativeDuration {
             months: 0,
             days: 0,
@@ -1214,9 +1251,7 @@ impl RelativeDuration {
     pub fn from_minutes(minutes: i64) -> RelativeDuration {
         RelativeDuration::try_from_minutes(minutes).unwrap()
     }
-    pub fn try_from_secs(secs: i64)
-        -> Result<RelativeDuration, OutOfRangeError>
-    {
+    pub fn try_from_secs(secs: i64) -> Result<RelativeDuration, OutOfRangeError> {
         Ok(RelativeDuration {
             months: 0,
             days: 0,
@@ -1226,9 +1261,7 @@ impl RelativeDuration {
     pub fn from_secs(secs: i64) -> RelativeDuration {
         RelativeDuration::try_from_secs(secs).unwrap()
     }
-    pub fn try_from_millis(millis: i64)
-        -> Result<RelativeDuration, OutOfRangeError>
-    {
+    pub fn try_from_millis(millis: i64) -> Result<RelativeDuration, OutOfRangeError> {
         Ok(RelativeDuration {
             months: 0,
             days: 0,
@@ -1238,9 +1271,7 @@ impl RelativeDuration {
     pub fn from_millis(millis: i64) -> RelativeDuration {
         RelativeDuration::try_from_millis(millis).unwrap()
     }
-    pub fn try_from_micros(micros: i64)
-        -> Result<RelativeDuration, OutOfRangeError>
-    {
+    pub fn try_from_micros(micros: i64) -> Result<RelativeDuration, OutOfRangeError> {
         Ok(RelativeDuration {
             months: 0,
             days: 0,
@@ -1320,12 +1351,12 @@ impl Display for RelativeDuration {
             if micros.abs() > 0 {
                 let mut buf = [0u8; 6];
                 let text = {
-                    use std::io::{Write, Cursor};
+                    use std::io::{Cursor, Write};
 
                     let mut cur = Cursor::new(&mut buf[..]);
                     write!(cur, "{:06}", micros.abs()).unwrap();
                     let mut len = buf.len();
-                    while buf[len-1] == b'0' {
+                    while buf[len - 1] == b'0' {
                         len -= 1;
                     }
                     std::str::from_utf8(&buf[..len]).unwrap()
@@ -1342,29 +1373,28 @@ impl Display for RelativeDuration {
 
 #[test]
 fn relative_duration_display() {
-    let dur = RelativeDuration::from_years(2) +
-            RelativeDuration::from_months(56) +
-            RelativeDuration::from_days(-16) +
-            RelativeDuration::from_hours(48) +
-            RelativeDuration::from_minutes(245) +
-            RelativeDuration::from_secs(7) +
-            RelativeDuration::from_millis(600);
+    let dur = RelativeDuration::from_years(2)
+        + RelativeDuration::from_months(56)
+        + RelativeDuration::from_days(-16)
+        + RelativeDuration::from_hours(48)
+        + RelativeDuration::from_minutes(245)
+        + RelativeDuration::from_secs(7)
+        + RelativeDuration::from_millis(600);
     assert_eq!(dur.to_string(), "P6Y8M-16DT52H5M7.6S");
 
-    let dur = RelativeDuration::from_years(2) +
-            RelativeDuration::from_months(-56) +
-            RelativeDuration::from_days(-16) +
-            RelativeDuration::from_minutes(-245) +
-            RelativeDuration::from_secs(7) +
-            RelativeDuration::from_millis(600);
+    let dur = RelativeDuration::from_years(2)
+        + RelativeDuration::from_months(-56)
+        + RelativeDuration::from_days(-16)
+        + RelativeDuration::from_minutes(-245)
+        + RelativeDuration::from_secs(7)
+        + RelativeDuration::from_millis(600);
     assert_eq!(dur.to_string(), "P-2Y-8M-16DT-4H-4M-52.4S");
 }
-
 
 #[cfg(feature = "chrono")]
 mod chrono_interop {
     use super::*;
-    use chrono::naive::{NaiveDate, NaiveDateTime, NaiveTime };
+    use chrono::naive::{NaiveDate, NaiveDateTime, NaiveTime};
     use std::convert::{From, Into, TryFrom, TryInto};
 
     type ChronoDatetime = chrono::DateTime<chrono::Utc>;
@@ -1374,7 +1404,8 @@ mod chrono_interop {
         fn try_from(value: &LocalDatetime) -> Result<NaiveDateTime, Self::Error> {
             // convert between epochs after converting to seconds to avoid integer overflows for values close to the maximum
             // however it looks like from_timestamp_opt fails for these values anyways
-            let timestamp_seconds = value.micros.wrapping_div_euclid(1000_000) - (Datetime::UNIX_EPOCH.micros / 1000_000);
+            let timestamp_seconds = value.micros.wrapping_div_euclid(1000_000)
+                - (Datetime::UNIX_EPOCH.micros / 1000_000);
             let timestamp_nanos = (value.micros.wrapping_rem_euclid(1000_000) * 1000) as u32;
             NaiveDateTime::from_timestamp_opt(timestamp_seconds, timestamp_nanos)
                 .ok_or(OutOfRangeError)
@@ -1383,16 +1414,16 @@ mod chrono_interop {
 
     impl TryFrom<&NaiveDateTime> for LocalDatetime {
         type Error = OutOfRangeError;
-        fn try_from(d: &NaiveDateTime)
-            -> Result<LocalDatetime, Self::Error>
-        {
+        fn try_from(d: &NaiveDateTime) -> Result<LocalDatetime, Self::Error> {
             let secs = d.timestamp();
             let micros = d.timestamp_subsec_micros();
-            let timestamp = secs.checked_mul(1_000_000)
+            let timestamp = secs
+                .checked_mul(1_000_000)
                 .and_then(|x| x.checked_add(micros as i64))
                 .ok_or(OutOfRangeError)?;
             Ok(LocalDatetime {
-                micros: timestamp.checked_add(Datetime::UNIX_EPOCH.micros)
+                micros: timestamp
+                    .checked_add(Datetime::UNIX_EPOCH.micros)
                     .ok_or(OutOfRangeError)?,
             })
         }
@@ -1401,14 +1432,15 @@ mod chrono_interop {
     impl TryFrom<&Datetime> for ChronoDatetime {
         type Error = OutOfRangeError;
 
-        fn try_from(value:&Datetime) -> Result<ChronoDatetime, Self::Error> {
+        fn try_from(value: &Datetime) -> Result<ChronoDatetime, Self::Error> {
             use chrono::TimeZone;
 
             let postgres_epoch = chrono::Utc.ymd(2000, 1, 1).and_hms(0, 0, 0);
             let duration = chrono::Duration::microseconds(value.micros);
             // this overflows for large values,
             // chrono uses an epoch based on year 0
-            postgres_epoch.checked_add_signed(duration)
+            postgres_epoch
+                .checked_add_signed(duration)
                 .ok_or(OutOfRangeError)
         }
     }
@@ -1416,22 +1448,25 @@ mod chrono_interop {
     impl TryFrom<&ChronoDatetime> for Datetime {
         type Error = OutOfRangeError;
 
-        fn try_from(value:&ChronoDatetime) -> Result<Datetime, Self::Error> {
-           let min = ChronoDatetime::try_from(Datetime::from_micros(i64::MIN)).unwrap();
-           let duration = value.signed_duration_since(min).to_std().map_err(|_| OutOfRangeError)?;
-           let micros = u64::try_from(duration.as_micros()).map_err(|_| OutOfRangeError)?;
-           let micros = i64::MIN.wrapping_add(micros as i64);
-           Ok(Datetime::from_micros(micros))
+        fn try_from(value: &ChronoDatetime) -> Result<Datetime, Self::Error> {
+            let min = ChronoDatetime::try_from(Datetime::from_micros(i64::MIN)).unwrap();
+            let duration = value
+                .signed_duration_since(min)
+                .to_std()
+                .map_err(|_| OutOfRangeError)?;
+            let micros = u64::try_from(duration.as_micros()).map_err(|_| OutOfRangeError)?;
+            let micros = i64::MIN.wrapping_add(micros as i64);
+            Ok(Datetime::from_micros(micros))
         }
     }
 
     impl TryFrom<&NaiveDate> for LocalDate {
         type Error = OutOfRangeError;
-        fn try_from(d: &NaiveDate) -> Result<LocalDate, Self::Error>
-        {
+        fn try_from(d: &NaiveDate) -> Result<LocalDate, Self::Error> {
             let days = chrono::Datelike::num_days_from_ce(d);
             Ok(LocalDate {
-                days: days.checked_sub(DAYS_IN_2000_YEARS - 365)
+                days: days
+                    .checked_sub(DAYS_IN_2000_YEARS - 365)
                     .ok_or(OutOfRangeError)?,
             })
         }
@@ -1440,9 +1475,11 @@ mod chrono_interop {
     impl TryFrom<&LocalDate> for NaiveDate {
         type Error = OutOfRangeError;
         fn try_from(value: &LocalDate) -> Result<NaiveDate, Self::Error> {
-            value.days.checked_add(DAYS_IN_2000_YEARS - 365)
-            .and_then(NaiveDate::from_num_days_from_ce_opt)
-            .ok_or(OutOfRangeError)
+            value
+                .days
+                .checked_add(DAYS_IN_2000_YEARS - 365)
+                .and_then(NaiveDate::from_num_days_from_ce_opt)
+                .ok_or(OutOfRangeError)
         }
     }
 
@@ -1450,7 +1487,8 @@ mod chrono_interop {
         fn from(value: &LocalTime) -> NaiveTime {
             NaiveTime::from_num_seconds_from_midnight(
                 (value.micros / 1000_000) as u32,
-                ((value.micros % 1000_000) * 1000) as u32)
+                ((value.micros % 1000_000) * 1000) as u32,
+            )
         }
     }
 
@@ -1488,8 +1526,7 @@ mod chrono_interop {
 
     impl TryFrom<NaiveDate> for LocalDate {
         type Error = OutOfRangeError;
-        fn try_from(d: NaiveDate) -> Result<LocalDate, Self::Error>
-        {
+        fn try_from(d: NaiveDate) -> Result<LocalDate, Self::Error> {
             std::convert::TryFrom::try_from(&d)
         }
     }
@@ -1502,18 +1539,14 @@ mod chrono_interop {
 
     impl TryFrom<NaiveDateTime> for LocalDatetime {
         type Error = OutOfRangeError;
-        fn try_from(d: NaiveDateTime)
-            -> Result<LocalDatetime, Self::Error>
-        {
+        fn try_from(d: NaiveDateTime) -> Result<LocalDatetime, Self::Error> {
             std::convert::TryFrom::try_from(&d)
         }
     }
 
     impl TryFrom<ChronoDatetime> for Datetime {
         type Error = OutOfRangeError;
-        fn try_from(d: ChronoDatetime)
-            -> Result<Datetime, Self::Error>
-        {
+        fn try_from(d: ChronoDatetime) -> Result<Datetime, Self::Error> {
             std::convert::TryFrom::try_from(&d)
         }
     }
@@ -1527,34 +1560,39 @@ mod chrono_interop {
     #[cfg(test)]
     mod test {
         use super::*;
-        use crate::model::time::test::{ test_times, valid_test_dates, to_debug, CHRONO_MAX_YEAR};
+        use crate::model::time::test::{test_times, to_debug, valid_test_dates, CHRONO_MAX_YEAR};
         use crate::model::time::Datetime;
         use std::convert::{TryFrom, TryInto};
+        use std::fmt::{Debug, Display};
         use std::str::FromStr;
-        use std::fmt::{ Display, Debug };
 
         #[test]
         fn chrono_roundtrips() -> Result<(), Box<dyn std::error::Error>> {
             let naive = NaiveDateTime::from_str("2019-12-27T01:02:03.123456")?;
-            assert_eq!(naive,
-                TryInto::<NaiveDateTime>::try_into(
-                    LocalDatetime::try_from(naive)?)?);
+            assert_eq!(
+                naive,
+                TryInto::<NaiveDateTime>::try_into(LocalDatetime::try_from(naive)?)?
+            );
             let naive = NaiveDate::from_str("2019-12-27")?;
-            assert_eq!(naive,
-                TryInto::<NaiveDate>::try_into(LocalDate::try_from(naive)?)?);
+            assert_eq!(
+                naive,
+                TryInto::<NaiveDate>::try_into(LocalDate::try_from(naive)?)?
+            );
             let naive = NaiveTime::from_str("01:02:03.123456")?;
-            assert_eq!(naive,
-                TryInto::<NaiveTime>::try_into(LocalTime::try_from(naive)?)?);
+            assert_eq!(
+                naive,
+                TryInto::<NaiveTime>::try_into(LocalTime::try_from(naive)?)?
+            );
             Ok(())
         }
 
-        fn check_display<E:Display, A:Display>(expected_value:E, actual_value:A) {
+        fn check_display<E: Display, A: Display>(expected_value: E, actual_value: A) {
             let expected_display = expected_value.to_string();
             let actual_display = actual_value.to_string();
             assert_eq!(expected_display, actual_display);
         }
 
-        fn check_debug<E:Debug, A:Debug>(expected_value:E, actual_value:A) {
+        fn check_debug<E: Debug, A: Debug>(expected_value: E, actual_value: A) {
             let expected_debug = to_debug(expected_value);
             let actual_debug = to_debug(actual_value);
             assert_eq!(expected_debug, actual_debug);
@@ -1591,7 +1629,10 @@ mod chrono_interop {
                     let actual_date = LocalDate::from_ymd(date.0, date.1, date.2);
                     let actual_time = LocalTime::from_micros(time);
                     let actual_value = LocalDatetime::new(actual_date, actual_time);
-                    let expected_value = NaiveDateTime::try_from(actual_value).expect(&format!("Could not convert LocalDatetime '{}'", actual_value));
+                    let expected_value = NaiveDateTime::try_from(actual_value).expect(&format!(
+                        "Could not convert LocalDatetime '{}'",
+                        actual_value
+                    ));
 
                     check_display(expected_value, actual_value);
                     check_debug(expected_value, actual_value);
@@ -1608,7 +1649,8 @@ mod chrono_interop {
                     let actual_time = LocalTime::from_micros(time);
                     let local_datetime = LocalDatetime::new(actual_date, actual_time);
                     let actual_value = Datetime::from_micros(local_datetime.to_micros());
-                    let expected_value = ChronoDatetime::try_from(actual_value).expect(&format!("Could not convert Datetime '{}'", actual_value));
+                    let expected_value = ChronoDatetime::try_from(actual_value)
+                        .expect(&format!("Could not convert Datetime '{}'", actual_value));
 
                     check_display(expected_value, actual_value);
                     check_debug(expected_value, actual_value);

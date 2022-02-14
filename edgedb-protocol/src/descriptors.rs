@@ -2,18 +2,17 @@ use std::convert::{TryFrom, TryInto};
 use std::sync::Arc;
 
 use bytes::Buf;
-use uuid::Uuid;
 use snafu::{ensure, OptionExt};
+use uuid::Uuid;
 
-use crate::codec::{Codec, build_codec};
+use crate::codec::{build_codec, Codec};
 use crate::common::Cardinality;
 use crate::encoding::{Decode, Input};
+use crate::errors::{self, CodecError, DecodeError};
 use crate::errors::{InvalidTypeDescriptor, UnexpectedTypePos};
-use crate::errors::{self, DecodeError, CodecError};
 use crate::features::ProtocolVersion;
-use crate::queryable;
 use crate::query_arg;
-
+use crate::queryable;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct TypePos(pub u16);
@@ -144,9 +143,13 @@ impl OutputTypedesc {
         let root_pos = if root_id == Uuid::from_u128(0) {
             None
         } else {
-            let idx = descriptors.iter().position(|x| *x.id() == root_id)
+            let idx = descriptors
+                .iter()
+                .position(|x| *x.id() == root_id)
                 .context(errors::UuidNotFound { uuid: root_id })?;
-            let pos = idx.try_into().ok()
+            let pos = idx
+                .try_into()
+                .ok()
                 .context(errors::TooManyDescriptors { index: idx })?;
             Some(TypePos(pos))
         };
@@ -158,7 +161,6 @@ impl OutputTypedesc {
         })
     }
 }
-
 
 impl InputTypedesc {
     pub fn as_query_arg_context(&self) -> query_arg::DescriptorContext {
@@ -181,13 +183,17 @@ impl InputTypedesc {
         self.root_pos
     }
     pub fn get(&self, type_pos: TypePos) -> Result<&Descriptor, CodecError> {
-        self.array.get(type_pos.0 as usize)
-            .context(UnexpectedTypePos { position: type_pos.0 })
+        self.array
+            .get(type_pos.0 as usize)
+            .context(UnexpectedTypePos {
+                position: type_pos.0,
+            })
     }
     pub fn is_empty_tuple(&self) -> bool {
         match self.root() {
-            Some(Descriptor::Tuple(t))
-              => t.id == Uuid::from_u128(0xFF) && t.element_types.is_empty(),
+            Some(Descriptor::Tuple(t)) => {
+                t.id == Uuid::from_u128(0xFF) && t.element_types.is_empty()
+            }
             _ => false,
         }
     }
@@ -229,10 +235,8 @@ impl Decode for Descriptor {
             5 => NamedTupleTypeDescriptor::decode(buf).map(D::NamedTuple),
             6 => ArrayTypeDescriptor::decode(buf).map(D::Array),
             7 => EnumerationTypeDescriptor::decode(buf).map(D::Enumeration),
-            0x7F..=0xFF => {
-                TypeAnnotationDescriptor::decode(buf).map(D::TypeAnnotation)
-            }
-            descriptor => InvalidTypeDescriptor { descriptor }.fail()?
+            0x7F..=0xFF => TypeAnnotationDescriptor::decode(buf).map(D::TypeAnnotation),
+            descriptor => InvalidTypeDescriptor { descriptor }.fail()?,
         }
     }
 }
@@ -293,7 +297,6 @@ impl Decode for BaseScalarTypeDescriptor {
     }
 }
 
-
 impl Decode for ScalarTypeDescriptor {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 19, errors::Underflow);
@@ -310,7 +313,7 @@ impl Decode for TupleTypeDescriptor {
         assert!(buf.get_u8() == 4);
         let id = Uuid::decode(buf)?;
         let el_count = buf.get_u16();
-        ensure!(buf.remaining() >= 2*el_count as usize, errors::Underflow);
+        ensure!(buf.remaining() >= 2 * el_count as usize, errors::Underflow);
         let mut element_types = Vec::with_capacity(el_count as usize);
         for _ in 0..el_count {
             element_types.push(TypePos(buf.get_u16()));
@@ -338,10 +341,7 @@ impl Decode for TupleElement {
         let name = String::decode(buf)?;
         ensure!(buf.remaining() >= 2, errors::Underflow);
         let type_pos = TypePos(buf.get_u16());
-        Ok(TupleElement {
-            name,
-            type_pos,
-        })
+        Ok(TupleElement { name, type_pos })
     }
 }
 
@@ -352,7 +352,7 @@ impl Decode for ArrayTypeDescriptor {
         let id = Uuid::decode(buf)?;
         let type_pos = TypePos(buf.get_u16());
         let dim_count = buf.get_u16();
-        ensure!(buf.remaining() >= 4*dim_count as usize, errors::Underflow);
+        ensure!(buf.remaining() >= 4 * dim_count as usize, errors::Underflow);
         let mut dimensions = Vec::with_capacity(dim_count as usize);
         for _ in 0..dim_count {
             dimensions.push(match buf.get_i32() {
@@ -361,7 +361,11 @@ impl Decode for ArrayTypeDescriptor {
                 _ => errors::InvalidArrayShape.fail()?,
             });
         }
-        Ok(ArrayTypeDescriptor { id, type_pos, dimensions })
+        Ok(ArrayTypeDescriptor {
+            id,
+            type_pos,
+            dimensions,
+        })
     }
 }
 
@@ -386,6 +390,10 @@ impl Decode for TypeAnnotationDescriptor {
         assert!(annotated_type >= 0x7F);
         let id = Uuid::decode(buf)?;
         let annotation = String::decode(buf)?;
-        Ok(TypeAnnotationDescriptor { annotated_type, id, annotation })
+        Ok(TypeAnnotationDescriptor {
+            annotated_type,
+            id,
+            annotation,
+        })
     }
 }

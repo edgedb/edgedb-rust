@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use async_std::channel::{Sender};
-use async_std::task::JoinHandle;
+use async_std::channel::Sender;
 use async_std::sync::Mutex;
+use async_std::task::JoinHandle;
 
 mod command;
 mod connection;
@@ -13,10 +13,8 @@ use command::Command;
 use connection::PoolConn;
 use main::PoolState;
 
-
 #[derive(Debug, Clone)]
-struct Options {
-}
+struct Options {}
 
 #[derive(Debug)]
 /// This structure is shared between Pool instances when options are changed.

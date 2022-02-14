@@ -18,17 +18,13 @@ impl Display for ConfigMemory {
         let v = self.0;
         if v >= TIB && v % TIB == 0 {
             write!(f, "{}TiB", v / TIB)
-        }
-        else if v >= GIB && v % GIB == 0 {
+        } else if v >= GIB && v % GIB == 0 {
             write!(f, "{}GiB", v / GIB)
-        }
-        else if v >= MIB && v % MIB == 0 {
+        } else if v >= MIB && v % MIB == 0 {
             write!(f, "{}MiB", v / MIB)
-        }
-        else if v >= KIB && v % KIB == 0 {
+        } else if v >= KIB && v % KIB == 0 {
             write!(f, "{}KiB", v / KIB)
-        }
-        else {
+        } else {
             write!(f, "{}B", v)
         }
     }

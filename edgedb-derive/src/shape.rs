@@ -30,15 +30,14 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
         }
         _ => {
             return Err(syn::Error::new_spanned(
-                &s.fields, "only named fields are supported"));
+                &s.fields,
+                "only named fields are supported",
+            ));
         }
     };
-    let fieldname = fields.iter()
-        .map(|f| f.name.clone()).collect::<Vec<_>>();
-    let has_id = fieldname.iter()
-        .find(|x| x.to_string() == "id").is_some();
-    let base_fields = fields.len()
-        + if has_id { 0 } else { 1 };
+    let fieldname = fields.iter().map(|f| f.name.clone()).collect::<Vec<_>>();
+    let has_id = fieldname.iter().find(|x| x.to_string() == "id").is_some();
+    let base_fields = fields.len() + if has_id { 0 } else { 1 };
     let type_id_block = Some(quote! {
         if decoder.has_implicit_tid {
             elements.skip_element()?;
@@ -82,49 +81,55 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
             idx += 1;
         })
     };
-    let field_decoders = fields.iter().map(|field| {
-        let ref fieldname = field.name;
-        if field.attrs.json {
-            quote!{
-                let #fieldname: ::edgedb_protocol::model::Json =
+    let field_decoders = fields
+        .iter()
+        .map(|field| {
+            let ref fieldname = field.name;
+            if field.attrs.json {
+                quote! {
+                    let #fieldname: ::edgedb_protocol::model::Json =
+                        <::edgedb_protocol::model::Json as
+                            ::edgedb_protocol::queryable::Queryable>
+                        ::decode_optional(decoder, elements.read()?)?;
+                    let #fieldname = ::serde_json::from_str(#fieldname.as_ref())
+                        .map_err(::edgedb_protocol::errors::decode_error)?;
+                }
+            } else {
+                quote! {
+                    let #fieldname =
+                        ::edgedb_protocol::queryable::Queryable
+                        ::decode_optional(decoder, elements.read()?)?;
+                }
+            }
+        })
+        .collect::<TokenStream>();
+    let field_checks = fields
+        .iter()
+        .map(|field| {
+            let ref name_str = field.str_name;
+            let mut result = quote! {
+                let el = &shape.elements[idx];
+                if(el.name != #name_str) {
+                    return Err(ctx.wrong_field(#name_str, &el.name));
+                }
+                idx += 1;
+            };
+            let ref fieldtype = field.ty;
+            if field.attrs.json {
+                result.extend(quote! {
                     <::edgedb_protocol::model::Json as
                         ::edgedb_protocol::queryable::Queryable>
-                    ::decode_optional(decoder, elements.read()?)?;
-                let #fieldname = ::serde_json::from_str(#fieldname.as_ref())
-                    .map_err(::edgedb_protocol::errors::decode_error)?;
+                        ::check_descriptor(ctx, el.type_pos)?;
+                });
+            } else {
+                result.extend(quote! {
+                    <#fieldtype as ::edgedb_protocol::queryable::Queryable>
+                        ::check_descriptor(ctx, el.type_pos)?;
+                });
             }
-        } else {
-            quote!{
-                let #fieldname =
-                    ::edgedb_protocol::queryable::Queryable
-                    ::decode_optional(decoder, elements.read()?)?;
-            }
-        }
-    }).collect::<TokenStream>();
-    let field_checks = fields.iter().map(|field| {
-        let ref name_str = field.str_name;
-        let mut result = quote!{
-            let el = &shape.elements[idx];
-            if(el.name != #name_str) {
-                return Err(ctx.wrong_field(#name_str, &el.name));
-            }
-            idx += 1;
-        };
-        let ref fieldtype = field.ty;
-        if field.attrs.json {
-            result.extend(quote!{
-                <::edgedb_protocol::model::Json as
-                    ::edgedb_protocol::queryable::Queryable>
-                    ::check_descriptor(ctx, el.type_pos)?;
-            });
-        } else {
-            result.extend(quote!{
-                <#fieldtype as ::edgedb_protocol::queryable::Queryable>
-                    ::check_descriptor(ctx, el.type_pos)?;
-            });
-        }
-        result
-    }).collect::<TokenStream>();
+            result
+        })
+        .collect::<TokenStream>();
 
     let expanded = quote! {
         impl #impl_generics ::edgedb_protocol::queryable::Queryable

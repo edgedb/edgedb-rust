@@ -1,5 +1,5 @@
 use edgedb_derive::Queryable;
-use edgedb_protocol::queryable::{Queryable, Decoder};
+use edgedb_protocol::queryable::{Decoder, Queryable};
 
 #[derive(Queryable, Debug, PartialEq)]
 struct ScalarType {
@@ -20,13 +20,15 @@ fn decode_new() {
         \x01\x0c\0\0\0\x19\0\0\0\x0fcal::local_date\
         \0\0\0\x19\0\0\0\x0estd::anyscalar\0\0\0\x19\0\0\0\x06normal";
     let res = ScalarType::decode(&Decoder::default(), data);
-    assert_eq!(res.unwrap(), ScalarType {
-        name: "cal::local_date".into(),
-        extending: "std::anyscalar".into(),
-        kind: "normal".into(),
-    });
+    assert_eq!(
+        res.unwrap(),
+        ScalarType {
+            name: "cal::local_date".into(),
+            extending: "std::anyscalar".into(),
+            kind: "normal".into(),
+        }
+    );
 }
-
 
 #[test]
 fn decode_old() {
@@ -36,10 +38,12 @@ fn decode_old() {
         \x01\x0c\0\0\0\x19\0\0\0\x0fcal::local_date\
         \0\0\0\x19\0\0\0\x0estd::anyscalar\0\0\0\x19\0\0\0\x06normal";
     let res = ScalarType::decode(&old_decoder(), data);
-    assert_eq!(res.unwrap(), ScalarType {
-        name: "cal::local_date".into(),
-        extending: "std::anyscalar".into(),
-        kind: "normal".into(),
-    });
+    assert_eq!(
+        res.unwrap(),
+        ScalarType {
+            name: "cal::local_date".into(),
+            extending: "std::anyscalar".into(),
+            kind: "normal".into(),
+        }
+    );
 }
-

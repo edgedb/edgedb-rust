@@ -30,7 +30,7 @@ impl BigInt {
             self.digits.remove(0);
             self.weight -= 1;
         }
-        return self
+        return self;
     }
 
     fn trailing_zero_groups(&self) -> i16 {
@@ -72,7 +72,8 @@ impl From<u64> for BigInt {
                 (v / 10000 % 10000) as u16,
                 (v % 10000) as u16,
             ],
-        }.normalize();
+        }
+        .normalize();
     }
 }
 
@@ -93,7 +94,8 @@ impl From<i64> for BigInt {
                 (abs / 10000 % 10000) as u16,
                 (abs % 10000) as u16,
             ],
-        }.normalize();
+        }
+        .normalize();
     }
 }
 
@@ -107,7 +109,8 @@ impl From<u32> for BigInt {
                 (v / 10000 % 10000) as u16,
                 (v % 10000) as u16,
             ],
-        }.normalize();
+        }
+        .normalize();
     }
 }
 
@@ -126,12 +129,13 @@ impl From<i32> for BigInt {
                 (abs / 10000 % 10000) as u16,
                 (abs % 10000) as u16,
             ],
-        }.normalize();
+        }
+        .normalize();
     }
 }
 
 impl Decimal {
-#[allow(dead_code)]  // isn't used when BigDecimal is disabled
+    #[allow(dead_code)] // isn't used when BigDecimal is disabled
     fn normalize(mut self) -> Decimal {
         while let Some(0) = self.digits.last() {
             self.digits.pop();
@@ -140,13 +144,13 @@ impl Decimal {
             self.digits.remove(0);
             self.weight -= 1;
         }
-        return self
+        return self;
     }
 }
 
 #[cfg(test)]
 #[allow(dead_code)] // used by optional tests
-pub(self) mod test_helpers{
+pub(self) mod test_helpers {
     use rand::Rng;
 
     pub fn gen_u64<T: Rng>(rng: &mut T) -> u64 {
@@ -163,11 +167,11 @@ pub(self) mod test_helpers{
 }
 
 #[cfg(test)]
-#[allow(unused_imports)]  // because of optional tests
+#[allow(unused_imports)] // because of optional tests
 mod test {
-    use std::str::FromStr;
+    use super::{BigInt, Decimal};
     use std::convert::TryFrom;
-    use super::{Decimal, BigInt};
+    use std::str::FromStr;
 
     #[test]
     fn big_int_conversion() {
@@ -237,16 +241,7 @@ mod test {
 
     #[test]
     fn display() {
-        let cases = [
-            0,
-            1,
-            -1,
-            1_0000,
-            -1_0000,
-            1_2345_6789,
-            i64::MAX,
-            i64::MIN,
-        ];
+        let cases = [0, 1, -1, 1_0000, -1_0000, 1_2345_6789, i64::MAX, i64::MIN];
         for i in cases.iter() {
             assert_eq!(BigInt::from(*i).to_string(), i.to_string());
         }
@@ -254,7 +249,7 @@ mod test {
 
     #[test]
     fn display_rand() {
-        use rand::{Rng, SeedableRng, rngs::StdRng};
+        use rand::{rngs::StdRng, Rng, SeedableRng};
         let mut rng = StdRng::seed_from_u64(4);
         for _ in 0..1000 {
             let i = super::test_helpers::gen_i64(&mut rng);

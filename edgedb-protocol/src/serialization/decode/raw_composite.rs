@@ -1,27 +1,32 @@
+use self::inner::DecodeCompositeInner;
 use crate::errors::{self, DecodeError};
 use snafu::ensure;
-use self::inner::DecodeCompositeInner;
-
 
 pub struct DecodeTupleLike<'t> {
-    inner:DecodeCompositeInner<'t>
+    inner: DecodeCompositeInner<'t>,
 }
 
 impl<'t> DecodeTupleLike<'t> {
-    fn new(buf:&'t [u8]) -> Result<Self, DecodeError> {
+    fn new(buf: &'t [u8]) -> Result<Self, DecodeError> {
         let inner = DecodeCompositeInner::read_tuple_like_header(buf)?;
-        Ok(DecodeTupleLike{inner})
+        Ok(DecodeTupleLike { inner })
     }
 
-    pub fn new_object(buf:&'t [u8], expected_count:usize) -> Result<Self, DecodeError> {
+    pub fn new_object(buf: &'t [u8], expected_count: usize) -> Result<Self, DecodeError> {
         let elements = Self::new(buf)?;
-        ensure!(elements.inner.count() == expected_count, errors::ObjectSizeMismatch);
+        ensure!(
+            elements.inner.count() == expected_count,
+            errors::ObjectSizeMismatch
+        );
         Ok(elements)
     }
 
-    pub fn new_tuple(buf:&'t [u8], expected_count:usize) -> Result<Self, DecodeError> {
+    pub fn new_tuple(buf: &'t [u8], expected_count: usize) -> Result<Self, DecodeError> {
         let elements = Self::new(buf)?;
-        ensure!(elements.inner.count() == expected_count, errors::TupleSizeMismatch);
+        ensure!(
+            elements.inner.count() == expected_count,
+            errors::TupleSizeMismatch
+        );
         Ok(elements)
     }
 
@@ -36,23 +41,28 @@ impl<'t> DecodeTupleLike<'t> {
 }
 
 pub struct DecodeArrayLike<'t> {
-    inner:DecodeCompositeInner<'t>
+    inner: DecodeCompositeInner<'t>,
 }
 
 impl<'t> DecodeArrayLike<'t> {
-    pub fn new_array(buf:&'t [u8]) -> Result<Self, DecodeError> {
-        let inner = DecodeCompositeInner::read_array_like_header(buf, || errors::InvalidArrayShape.build())?;
-        Ok(DecodeArrayLike{inner})
+    pub fn new_array(buf: &'t [u8]) -> Result<Self, DecodeError> {
+        let inner = DecodeCompositeInner::read_array_like_header(buf, || {
+            errors::InvalidArrayShape.build()
+        })?;
+        Ok(DecodeArrayLike { inner })
     }
 
-    pub fn new_set(buf:&'t [u8]) -> Result<Self, DecodeError> {
-        let inner = DecodeCompositeInner::read_array_like_header(buf, || errors::InvalidSetShape.build())?;
-        Ok(DecodeArrayLike{inner})
+    pub fn new_set(buf: &'t [u8]) -> Result<Self, DecodeError> {
+        let inner =
+            DecodeCompositeInner::read_array_like_header(buf, || errors::InvalidSetShape.build())?;
+        Ok(DecodeArrayLike { inner })
     }
 
-    pub fn new_collection(buf:&'t [u8]) -> Result<Self, DecodeError> {
-        let inner = DecodeCompositeInner::read_array_like_header(buf, || errors::InvalidArrayOrSetShape.build())?;
-        Ok(DecodeArrayLike{inner})
+    pub fn new_collection(buf: &'t [u8]) -> Result<Self, DecodeError> {
+        let inner = DecodeCompositeInner::read_array_like_header(buf, || {
+            errors::InvalidArrayOrSetShape.build()
+        })?;
+        Ok(DecodeArrayLike { inner })
     }
 }
 
@@ -81,27 +91,28 @@ impl<'t> ExactSizeIterator for DecodeArrayLike<'t> {
 
 mod inner {
     use crate::errors::{self, DecodeError};
-    use snafu::ensure;
     use bytes::Buf;
+    use snafu::ensure;
 
-    pub(super) struct DecodeCompositeInner<'t>
-    {
-        raw:&'t [u8],
+    pub(super) struct DecodeCompositeInner<'t> {
+        raw: &'t [u8],
         count: usize,
     }
 
     impl<'t> std::fmt::Debug for DecodeCompositeInner<'t> {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.write_fmt(format_args!("count = {} data = {:x?}", self.count, self.raw))
+            f.write_fmt(format_args!(
+                "count = {} data = {:x?}",
+                self.count, self.raw
+            ))
         }
     }
 
-    impl<'t> DecodeCompositeInner<'t>
-    {
+    impl<'t> DecodeCompositeInner<'t> {
         fn underflow(&mut self) -> errors::Underflow {
             // after one underflow happened, all further reads should underflow as well
             // all other errors should be recoverable, since they only affect the content of one element and not the size of that element
-            self.raw = &[0u8;0];
+            self.raw = &[0u8; 0];
             errors::Underflow
         }
 
@@ -109,12 +120,15 @@ mod inner {
             self.count
         }
 
-        fn new(bytes:&'t [u8], count: usize) -> Self {
-            DecodeCompositeInner { raw:bytes, count }
+        fn new(bytes: &'t [u8], count: usize) -> Self {
+            DecodeCompositeInner { raw: bytes, count }
         }
 
-        fn read_element(&mut self, position:usize) -> Result<&'t [u8], DecodeError> {
-            assert!(self.count() > 0, "reading from a finished elements sequence");
+        fn read_element(&mut self, position: usize) -> Result<&'t [u8], DecodeError> {
+            assert!(
+                self.count() > 0,
+                "reading from a finished elements sequence"
+            );
             self.count -= 1;
             ensure!(self.raw.len() >= position, self.underflow());
             let result = &self.raw[..position];
@@ -141,13 +155,16 @@ mod inner {
             Ok(self.read_element(len)?)
         }
 
-        pub fn read_tuple_like_header(mut buf:&'t [u8]) -> Result<Self, DecodeError> {
+        pub fn read_tuple_like_header(mut buf: &'t [u8]) -> Result<Self, DecodeError> {
             ensure!(buf.remaining() >= 4, errors::Underflow);
             let count = buf.get_u32() as usize;
             Ok(Self::new(buf, count))
         }
 
-        pub fn read_array_like_header(mut buf:&'t [u8], error: impl Fn() -> DecodeError) -> Result<Self, DecodeError> {
+        pub fn read_array_like_header(
+            mut buf: &'t [u8],
+            error: impl Fn() -> DecodeError,
+        ) -> Result<Self, DecodeError> {
             ensure!(buf.remaining() >= 12, errors::Underflow);
             let ndims = buf.get_u32();
             let _reserved0 = buf.get_u32();

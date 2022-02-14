@@ -1,7 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-
 pub fn derive(item: &syn::Item) -> syn::Result<TokenStream> {
     let (name, impl_generics, ty_generics) = match item {
         syn::Item::Struct(s) => {
@@ -13,8 +12,9 @@ pub fn derive(item: &syn::Item) -> syn::Result<TokenStream> {
             (&e.ident, impl_generics, ty_generics)
         }
         _ => {
-            return Err(syn::Error::new_spanned(item,
-                "can only derive Queryable for structs and enums in JSON mode"
+            return Err(syn::Error::new_spanned(
+                item,
+                "can only derive Queryable for structs and enums in JSON mode",
             ));
         }
     };

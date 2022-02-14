@@ -1,47 +1,46 @@
 #[warn(missing_docs)]
-
 mod builder;
 mod debug;
 mod sealed;
 mod traits;
 
-#[cfg(feature="unstable")]
+#[cfg(feature = "unstable")]
 pub mod tls;
-#[cfg(not(feature="unstable"))]
+#[cfg(not(feature = "unstable"))]
 mod tls;
 
-#[cfg(feature="unstable")]
+#[cfg(feature = "unstable")]
 pub mod client;
-#[cfg(not(feature="unstable"))]
+#[cfg(not(feature = "unstable"))]
 mod client;
 
-#[cfg(feature="unstable")]
+#[cfg(feature = "unstable")]
 pub mod reader;
-#[cfg(not(feature="unstable"))]
+#[cfg(not(feature = "unstable"))]
 mod reader;
 
-#[cfg(feature="unstable")]
+#[cfg(feature = "unstable")]
 pub mod credentials;
-#[cfg(not(feature="unstable"))]
+#[cfg(not(feature = "unstable"))]
 mod credentials;
 
-#[cfg(feature="unstable")]
+#[cfg(feature = "unstable")]
 pub mod server_params;
-#[cfg(not(feature="unstable"))]
+#[cfg(not(feature = "unstable"))]
 mod server_params;
 
 pub mod errors;
 
 pub use builder::Builder;
+pub use errors::Error;
 pub use pool::Client;
-pub use errors::{Error};
-pub use traits::{Executor, ExecuteResult};
+pub use traits::{ExecuteResult, Executor};
 
 pub use edgedb_protocol::model;
 pub use edgedb_protocol::query_arg::{QueryArg, QueryArgs};
-pub use edgedb_protocol::{QueryResult};
+pub use edgedb_protocol::QueryResult;
 
-#[cfg(feature="derive")]
+#[cfg(feature = "derive")]
 pub use edgedb_derive::Queryable;
 
 mod pool;

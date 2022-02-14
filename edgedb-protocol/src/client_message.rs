@@ -2,13 +2,12 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::u16;
 
-use bytes::{Bytes, BufMut, Buf};
-use snafu::{OptionExt, ensure};
+use bytes::{Buf, BufMut, Bytes};
+use snafu::{ensure, OptionExt};
 
-use crate::encoding::{Encode, Decode, Headers, encode, Input, Output};
-use crate::errors::{self, EncodeError, DecodeError};
 pub use crate::common::Cardinality;
-
+use crate::encoding::{encode, Decode, Encode, Headers, Input, Output};
+use crate::errors::{self, DecodeError, EncodeError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -38,7 +37,7 @@ pub struct SaslInitialResponse {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SaslResponse {
-    pub data: Bytes
+    pub data: Bytes,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -107,7 +106,6 @@ pub enum IoFormat {
     JsonElements = 0x4a,
 }
 
-
 struct Empty;
 impl ClientMessage {
     pub fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
@@ -128,9 +126,7 @@ impl ClientMessage {
             Flush => encode(buf, 0x48, &Empty),
             Terminate => encode(buf, 0x58, &Empty),
 
-            UnknownMessage(_, _) => {
-                errors::UnknownMessageCantBeEncoded.fail()?
-            }
+            UnknownMessage(_, _) => errors::UnknownMessageCantBeEncoded.fail()?,
         }
     }
     /// Decode exactly one frame from the buffer.
@@ -143,10 +139,10 @@ impl ClientMessage {
         let mut data = buf.slice(5..);
         match buf[0] {
             0x56 => ClientHandshake::decode(&mut data).map(M::ClientHandshake),
-            0x70 => SaslInitialResponse::decode(&mut data)
-                .map(M::AuthenticationSaslInitialResponse),
-            0x72 => SaslResponse::decode(&mut data)
-                .map(M::AuthenticationSaslResponse),
+            0x70 => {
+                SaslInitialResponse::decode(&mut data).map(M::AuthenticationSaslInitialResponse)
+            }
+            0x72 => SaslResponse::decode(&mut data).map(M::AuthenticationSaslResponse),
             0x51 => ExecuteScript::decode(&mut data).map(M::ExecuteScript),
             0x50 => Prepare::decode(&mut data).map(M::Prepare),
             0x45 => Execute::decode(&mut data).map(M::Execute),
@@ -157,9 +153,7 @@ impl ClientMessage {
             0x53 => Ok(M::Sync),
             0x48 => Ok(M::Flush),
             0x58 => Ok(M::Terminate),
-            0x44 => {
-                DescribeStatement::decode(&mut data).map(M::DescribeStatement)
-            }
+            0x44 => DescribeStatement::decode(&mut data).map(M::DescribeStatement),
             code => Ok(M::UnknownMessage(
                 code,
                 data.copy_to_bytes(data.remaining()),
@@ -169,34 +163,39 @@ impl ClientMessage {
 }
 
 impl Encode for Empty {
-    fn encode(&self, _buf: &mut Output)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, _buf: &mut Output) -> Result<(), EncodeError> {
         Ok(())
     }
 }
 
 impl Encode for ClientHandshake {
-    fn encode(&self, buf: &mut Output)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         buf.reserve(8);
         buf.put_u16(self.major_ver);
         buf.put_u16(self.minor_ver);
-        buf.put_u16(u16::try_from(self.params.len()).ok()
-            .context(errors::TooManyParams)?);
+        buf.put_u16(
+            u16::try_from(self.params.len())
+                .ok()
+                .context(errors::TooManyParams)?,
+        );
         for (k, v) in &self.params {
             k.encode(buf)?;
             v.encode(buf)?;
         }
         buf.reserve(2);
-        buf.put_u16(u16::try_from(self.extensions.len()).ok()
-            .context(errors::TooManyExtensions)?);
+        buf.put_u16(
+            u16::try_from(self.extensions.len())
+                .ok()
+                .context(errors::TooManyExtensions)?,
+        );
         for (name, headers) in &self.extensions {
             name.encode(buf)?;
             buf.reserve(2);
-            buf.put_u16(u16::try_from(headers.len()).ok()
-                .context(errors::TooManyHeaders)?);
+            buf.put_u16(
+                u16::try_from(headers.len())
+                    .ok()
+                    .context(errors::TooManyHeaders)?,
+            );
             for (&name, value) in headers {
                 buf.reserve(2);
                 buf.put_u16(name);
@@ -233,7 +232,10 @@ impl Decode for ClientHandshake {
             extensions.insert(name, headers);
         }
         Ok(ClientHandshake {
-            major_ver, minor_ver, params, extensions,
+            major_ver,
+            minor_ver,
+            params,
+            extensions,
         })
     }
 }
@@ -247,9 +249,7 @@ impl Encode for SaslInitialResponse {
 }
 
 impl Decode for SaslInitialResponse {
-    fn decode(buf: &mut Input)
-        -> Result<SaslInitialResponse, DecodeError>
-    {
+    fn decode(buf: &mut Input) -> Result<SaslInitialResponse, DecodeError> {
         let method = String::decode(buf)?;
         let data = Bytes::decode(buf)?;
         Ok(SaslInitialResponse { method, data })
@@ -271,12 +271,13 @@ impl Decode for SaslResponse {
 }
 
 impl Encode for ExecuteScript {
-    fn encode(&self, buf: &mut Output)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         buf.reserve(6);
-        buf.put_u16(u16::try_from(self.headers.len()).ok()
-            .context(errors::TooManyHeaders)?);
+        buf.put_u16(
+            u16::try_from(self.headers.len())
+                .ok()
+                .context(errors::TooManyHeaders)?,
+        );
         for (&name, value) in &self.headers {
             buf.reserve(2);
             buf.put_u16(name);
@@ -297,17 +298,21 @@ impl Decode for ExecuteScript {
             headers.insert(buf.get_u16(), Bytes::decode(buf)?);
         }
         let script_text = String::decode(buf)?;
-        Ok(ExecuteScript { script_text, headers })
+        Ok(ExecuteScript {
+            script_text,
+            headers,
+        })
     }
 }
 
 impl Encode for Prepare {
-    fn encode(&self, buf: &mut Output)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         buf.reserve(12);
-        buf.put_u16(u16::try_from(self.headers.len()).ok()
-            .context(errors::TooManyHeaders)?);
+        buf.put_u16(
+            u16::try_from(self.headers.len())
+                .ok()
+                .context(errors::TooManyHeaders)?,
+        );
         for (&name, value) in &self.headers {
             buf.reserve(2);
             buf.put_u16(name);
@@ -352,12 +357,13 @@ impl Decode for Prepare {
 }
 
 impl Encode for DescribeStatement {
-    fn encode(&self, buf: &mut Output)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         buf.reserve(7);
-        buf.put_u16(u16::try_from(self.headers.len()).ok()
-            .context(errors::TooManyHeaders)?);
+        buf.put_u16(
+            u16::try_from(self.headers.len())
+                .ok()
+                .context(errors::TooManyHeaders)?,
+        );
         buf.reserve(5);
         buf.put_u8(self.aspect as u8);
         self.statement_name.encode(buf)?;
@@ -389,12 +395,13 @@ impl Decode for DescribeStatement {
 }
 
 impl Encode for Execute {
-    fn encode(&self, buf: &mut Output)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         buf.reserve(10);
-        buf.put_u16(u16::try_from(self.headers.len()).ok()
-            .context(errors::TooManyHeaders)?);
+        buf.put_u16(
+            u16::try_from(self.headers.len())
+                .ok()
+                .context(errors::TooManyHeaders)?,
+        );
         for (&name, value) in &self.headers {
             buf.reserve(2);
             buf.put_u16(name);
@@ -426,12 +433,13 @@ impl Decode for Execute {
 }
 
 impl Encode for Dump {
-    fn encode(&self, buf: &mut Output)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         buf.reserve(10);
-        buf.put_u16(u16::try_from(self.headers.len()).ok()
-            .context(errors::TooManyHeaders)?);
+        buf.put_u16(
+            u16::try_from(self.headers.len())
+                .ok()
+                .context(errors::TooManyHeaders)?,
+        );
         for (&name, value) in &self.headers {
             buf.reserve(2);
             buf.put_u16(name);
@@ -455,12 +463,13 @@ impl Decode for Dump {
 }
 
 impl Encode for Restore {
-    fn encode(&self, buf: &mut Output)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         buf.reserve(4 + self.data.len());
-        buf.put_u16(u16::try_from(self.headers.len()).ok()
-            .context(errors::TooManyHeaders)?);
+        buf.put_u16(
+            u16::try_from(self.headers.len())
+                .ok()
+                .context(errors::TooManyHeaders)?,
+        );
         for (&name, value) in &self.headers {
             buf.reserve(2);
             buf.put_u16(name);
@@ -486,14 +495,16 @@ impl Decode for Restore {
         let jobs = buf.get_u16();
 
         let data = buf.copy_to_bytes(buf.remaining());
-        return Ok(Restore { jobs, headers, data })
+        return Ok(Restore {
+            jobs,
+            headers,
+            data,
+        });
     }
 }
 
 impl Encode for RestoreBlock {
-    fn encode(&self, buf: &mut Output)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         buf.extend(&self.data);
         Ok(())
     }
@@ -502,6 +513,6 @@ impl Encode for RestoreBlock {
 impl Decode for RestoreBlock {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         let data = buf.copy_to_bytes(buf.remaining());
-        return Ok(RestoreBlock { data })
+        return Ok(RestoreBlock { data });
     }
 }

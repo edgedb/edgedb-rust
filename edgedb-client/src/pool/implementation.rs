@@ -1,22 +1,22 @@
 use async_std::channel::unbounded;
-use async_std::task;
 use async_std::sync::{Arc, Mutex, MutexGuard};
+use async_std::task;
 
 use bytes::Bytes;
 
-use edgedb_protocol::QueryResult;
-use edgedb_protocol::client_message::{IoFormat, Cardinality};
+use edgedb_protocol::client_message::{Cardinality, IoFormat};
 use edgedb_protocol::query_arg::QueryArgs;
 use edgedb_protocol::value::Value;
+use edgedb_protocol::QueryResult;
 
-use crate::ExecuteResult;
-use crate::model::Json;
 use crate::builder::Builder;
 use crate::client::{Connection, StatementParams};
 use crate::errors::{Error, ErrorKind, NoDataError, NoResultExpected};
+use crate::model::Json;
 use crate::pool::command::Command;
 use crate::pool::main;
-use crate::pool::{Client, PoolInner, PoolState, PoolConn, Options};
+use crate::pool::{Client, Options, PoolConn, PoolInner, PoolState};
+use crate::ExecuteResult;
 
 pub enum InProgressState {
     Connecting,
@@ -30,11 +30,12 @@ struct InProgress {
 }
 
 impl InProgress {
-    fn new(mut guard: MutexGuard<'_, main::Inner>, pool: &Arc<PoolInner>)
-        -> InProgress
-    {
+    fn new(mut guard: MutexGuard<'_, main::Inner>, pool: &Arc<PoolInner>) -> InProgress {
         guard.in_progress += 1;
-        InProgress { pool: pool.clone(), state: InProgressState::Connecting }
+        InProgress {
+            pool: pool.clone(),
+            state: InProgressState::Connecting,
+        }
     }
     async fn commit(mut self) {
         self.state = InProgressState::Comitting;
@@ -62,11 +63,15 @@ impl Drop for InProgress {
 }
 
 impl PoolInner {
-    async fn query<R, A>(self: &Arc<Self>, request: &str, arguments: &A,
-        bld: &StatementParams)
-        -> Result<Vec<R>, Error>
-        where A: QueryArgs,
-              R: QueryResult,
+    async fn query<R, A>(
+        self: &Arc<Self>,
+        request: &str,
+        arguments: &A,
+        bld: &StatementParams,
+    ) -> Result<Vec<R>, Error>
+    where
+        A: QueryArgs,
+        R: QueryResult,
     {
         // TODO(tailhook) retry loop
         let mut conn = self.acquire().await?;
@@ -87,11 +92,7 @@ impl Client {
         let task = Mutex::new(Some(task::spawn(main::main(state2, rcv))));
         Client {
             options: Arc::new(Options {}),
-            inner: Arc::new(PoolInner {
-                chan,
-                task,
-                state,
-            }),
+            inner: Arc::new(PoolInner { chan, task, state }),
         }
     }
 
@@ -130,12 +131,14 @@ impl Client {
     /// This method can be used with both static arguments, like a tuple of
     /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
-    pub async fn query<R, A>(&self, request: &str, arguments: &A)
-        -> Result<Vec<R>, Error>
-        where A: QueryArgs,
-              R: QueryResult,
+    pub async fn query<R, A>(&self, request: &str, arguments: &A) -> Result<Vec<R>, Error>
+    where
+        A: QueryArgs,
+        R: QueryResult,
     {
-        self.inner.query(request, arguments, &StatementParams::new()).await
+        self.inner
+            .query(request, arguments, &StatementParams::new())
+            .await
     }
 
     /// Execute a query and return a single result.
@@ -157,37 +160,44 @@ impl Client {
     /// This method can be used with both static arguments, like a tuple of
     /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
-    pub async fn query_single<R, A>(&self, request: &str, arguments: &A)
-        -> Result<R, Error>
-        where A: QueryArgs,
-              R: QueryResult,
+    pub async fn query_single<R, A>(&self, request: &str, arguments: &A) -> Result<R, Error>
+    where
+        A: QueryArgs,
+        R: QueryResult,
     {
-        let result = self.inner.query(request, arguments,
-            StatementParams::new()
-            .cardinality(Cardinality::AtMostOne)
-        ).await?;
-        result.into_iter().next()
-            .ok_or_else(|| {
-                NoDataError::with_message(
-                    "query_single() returned zero results")
-            })
+        let result = self
+            .inner
+            .query(
+                request,
+                arguments,
+                StatementParams::new().cardinality(Cardinality::AtMostOne),
+            )
+            .await?;
+        result
+            .into_iter()
+            .next()
+            .ok_or_else(|| NoDataError::with_message("query_single() returned zero results"))
     }
 
     /// Execute a query and return the result as JSON.
-    pub async fn query_json<A>(&self, request: &str, arguments: &A)
-        -> Result<Json, Error>
-        where A: QueryArgs,
+    pub async fn query_json<A>(&self, request: &str, arguments: &A) -> Result<Json, Error>
+    where
+        A: QueryArgs,
     {
-        let result = self.inner.query(request, arguments,
-            StatementParams::new()
-            .io_format(IoFormat::Json),
-        ).await?;
-        result.into_iter().next()
+        let result = self
+            .inner
+            .query(
+                request,
+                arguments,
+                StatementParams::new().io_format(IoFormat::Json),
+            )
+            .await?;
+        result
+            .into_iter()
+            .next()
             // we trust database to produce valid json
             .map(|v| unsafe { Json::new_unchecked(v) })
-            .ok_or_else(|| {
-                NoDataError::with_message("query row returned zero results")
-            })
+            .ok_or_else(|| NoDataError::with_message("query row returned zero results"))
     }
 
     /// Execute a query and return a single result as JSON.
@@ -197,50 +207,59 @@ impl Client {
     /// [`ResultCardinalityMismatchError`][crate::errors::ResultCardinalityMismatchError]
     /// is raised. If the query returns an empty set, a
     /// [`NoDataError`][crate::errors::NoDataError] is raised.
-    pub async fn query_single_json<A>(&self, request: &str, arguments: &A)
-        -> Result<Json, Error>
-        where A: QueryArgs,
+    pub async fn query_single_json<A>(&self, request: &str, arguments: &A) -> Result<Json, Error>
+    where
+        A: QueryArgs,
     {
-        let result = self.inner.query(request, arguments,
-            StatementParams::new()
-            .io_format(IoFormat::Json)
-            .cardinality(Cardinality::AtMostOne)
-        ).await?;
-        result.into_iter().next()
+        let result = self
+            .inner
+            .query(
+                request,
+                arguments,
+                StatementParams::new()
+                    .io_format(IoFormat::Json)
+                    .cardinality(Cardinality::AtMostOne),
+            )
+            .await?;
+        result
+            .into_iter()
+            .next()
             // we trust database to produce valid json
             .map(|v| unsafe { Json::new_unchecked(v) })
-            .ok_or_else(|| {
-                NoDataError::with_message("query row returned zero results")
-            })
+            .ok_or_else(|| NoDataError::with_message("query row returned zero results"))
     }
     /// Execute one or more EdgeQL commands.
     ///
     /// Note that if you want the results of query, use
     /// [`query()`][Client::query] or [`query_single()`][Client::query_single]
     /// instead.
-    pub async fn execute<A>(&self, request: &str, arguments: &A)
-        -> Result<ExecuteResult, Error>
-        where A: QueryArgs,
+    pub async fn execute<A>(&self, request: &str, arguments: &A) -> Result<ExecuteResult, Error>
+    where
+        A: QueryArgs,
     {
-        let result = self.inner.query::<Value, _>(request, arguments,
-                StatementParams::new()
-                .cardinality(Cardinality::Many) // TODO: NoResult
-            ).await;
+        let result = self
+            .inner
+            .query::<Value, _>(
+                request,
+                arguments,
+                StatementParams::new().cardinality(Cardinality::Many), // TODO: NoResult
+            )
+            .await;
         match result {
             // TODO(tailhook) propagate better rather than returning nothing
-            Ok(_) => Ok(ExecuteResult { marker: Bytes::from_static(b"") }),
+            Ok(_) => Ok(ExecuteResult {
+                marker: Bytes::from_static(b""),
+            }),
             Err(e) if e.is::<NoResultExpected>() => {
                 // TODO(tailhook) propagate better rather than parsing a
                 // message
                 match e.initial_message() {
-                    Some(m) => {
-                        Ok(ExecuteResult {
-                            marker: Bytes::from(m.as_bytes().to_vec()),
-                        })
-                    }
-                    None => {
-                        Ok(ExecuteResult { marker: Bytes::from_static(b"") })
-                    }
+                    Some(m) => Ok(ExecuteResult {
+                        marker: Bytes::from(m.as_bytes().to_vec()),
+                    }),
+                    None => Ok(ExecuteResult {
+                        marker: Bytes::from_static(b""),
+                    }),
                 }
             }
             Err(e) => return Err(e),
@@ -255,7 +274,10 @@ impl PoolInner {
             if let Some(conn) = inner.conns.pop_front() {
                 assert!(conn.is_consistent());
                 inner.acquired_conns += 1;
-                return Ok(PoolConn { conn: Some(conn), pool: self.clone() });
+                return Ok(PoolConn {
+                    conn: Some(conn),
+                    pool: self.clone(),
+                });
             }
             let in_pool = inner.in_progress + inner.acquired_conns;
             if in_pool < self.state.config.max_connections {
@@ -264,7 +286,10 @@ impl PoolInner {
                 // Make sure that connection is wrapped before we commit,
                 // so that connection is returned into a pool if we fail
                 // to commit because of async stuff
-                let conn = PoolConn { conn: Some(conn), pool: self.clone() };
+                let conn = PoolConn {
+                    conn: Some(conn),
+                    pool: self.clone(),
+                };
                 guard.commit().await;
                 return Ok(conn);
             }
@@ -280,7 +305,8 @@ impl Drop for PoolInner {
     fn drop(&mut self) {
         // If task is locked (i.e. try_lock returns an error) it means
         // somebody is currently waiting for pool to be closed, which is fine.
-        self.task.try_lock()
+        self.task
+            .try_lock()
             .and_then(|mut task| task.take().map(|t| t.cancel()));
     }
 }

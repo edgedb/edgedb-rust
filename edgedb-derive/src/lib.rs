@@ -7,7 +7,6 @@ mod attrib;
 mod json;
 mod shape;
 
-
 /// Derive macro that allows structs and enums to be populated by database
 /// queries.
 ///
@@ -71,8 +70,9 @@ fn derive(item: &syn::Item) -> syn::Result<proc_macro2::TokenStream> {
         syn::Item::Struct(s) => &s.attrs,
         syn::Item::Enum(e) => &e.attrs,
         _ => {
-            return Err(syn::Error::new_spanned(item,
-                "can only derive Queryable for structs and enums"
+            return Err(syn::Error::new_spanned(
+                item,
+                "can only derive Queryable for structs and enums",
             ));
         }
     };
@@ -83,8 +83,9 @@ fn derive(item: &syn::Item) -> syn::Result<proc_macro2::TokenStream> {
         match item {
             syn::Item::Struct(s) => shape::derive_struct(s),
             _ => {
-                return Err(syn::Error::new_spanned(item,
-                    "can only derive Queryable for a struct in non-JSON mode"
+                return Err(syn::Error::new_spanned(
+                    item,
+                    "can only derive Queryable for a struct in non-JSON mode",
                 ));
             }
         }
