@@ -41,6 +41,11 @@ pub use edgedb_protocol::model;
 pub use edgedb_protocol::query_arg::{QueryArg, QueryArgs};
 pub use edgedb_protocol::{QueryResult};
 
+// this is needed in order to avoid requiring user crate to explicitly
+// depend on `edgedb_protocol` in their `Cargo.toml`
+#[cfg(feature = "derive")]
+pub use ::edgedb_protocol as protocol;
+
 #[cfg(feature="derive")]
 pub use edgedb_derive::Queryable;
 
