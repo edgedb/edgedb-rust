@@ -44,6 +44,7 @@ pub use edgedb_protocol::{QueryResult};
 // this is needed in order to avoid requiring user crate to explicitly
 // depend on `edgedb_protocol` in their `Cargo.toml`
 #[cfg(feature = "derive")]
+#[doc(hidden)]
 pub use ::edgedb_protocol as protocol;
 
 #[cfg(feature="derive")]
