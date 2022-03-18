@@ -12,9 +12,9 @@ use std::sync::Arc;
 use std::time::{Instant, Duration};
 
 use async_std::fs;
-use async_std::path::{Path as AsyncPath};
 use async_std::future::Future;
 use async_std::net::TcpStream;
+use async_std::path::{Path as AsyncPath};
 use async_std::task::sleep;
 use bytes::{Bytes, BytesMut};
 use futures_util::AsyncReadExt;
@@ -22,10 +22,11 @@ use rand::{thread_rng, Rng};
 use rustls::ServerCertVerifier;
 use scram::ScramClient;
 use serde_json::from_slice;
-use typemap::{TypeMap, DebugAny};
+use sha1::Digest;
 use tls_api::{TlsConnectorBox, TlsConnector as _, TlsConnectorBuilder as _};
 use tls_api::{TlsStream, TlsStreamDyn as _};
 use tls_api_not_tls::TlsConnector as PlainConnector;
+use typemap::{TypeMap, DebugAny};
 use webpki::DNSNameRef;
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
@@ -236,7 +237,7 @@ fn path_bytes<'x>(path: &'x Path) -> &'x [u8] {
 }
 
 fn hash(path: &Path) -> String {
-    sha1::Sha1::from(path_bytes(path)).hexdigest()
+    format!("{:x}", sha1::Sha1::new_with_prefix(path_bytes(path)).finalize())
 }
 
 fn stash_name(path: &Path) -> OsString {

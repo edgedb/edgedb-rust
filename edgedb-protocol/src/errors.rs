@@ -8,7 +8,7 @@ use crate::value::Value;
 
 
 #[derive(Snafu, Debug)]
-#[snafu(visibility(pub))]
+#[snafu(visibility(pub), context(suffix(false)))]
 #[non_exhaustive]
 pub enum DecodeError {
     #[snafu(display("unexpected end of frame"))]
@@ -66,7 +66,7 @@ pub enum DecodeError {
 }
 
 #[derive(Snafu, Debug)]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub(crate)), context(suffix(false)))]
 #[non_exhaustive]
 pub enum EncodeError {
     #[snafu(display("message doesn't fit 4GiB"))]
@@ -110,7 +110,7 @@ pub enum EncodeError {
 }
 
 #[derive(Snafu, Debug)]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub(crate)), context(suffix(false)))]
 #[non_exhaustive]
 pub enum CodecError {
     #[snafu(display("type position {} is absent", position))]
