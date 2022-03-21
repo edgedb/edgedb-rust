@@ -4,8 +4,7 @@ use std::time::SystemTime;
 
 use anyhow::Context;
 use rustls::client::{ServerCertVerifier, ServerCertVerified};
-use rustls::{Certificate};
-use rustls::{ServerName};
+use rustls::{Certificate, ServerName};
 use tls_api::{TlsConnector as _, TlsConnectorBuilder as _};
 use tls_api::{TlsConnectorBox};
 use tls_api_rustls::{TlsConnector};

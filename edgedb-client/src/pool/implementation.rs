@@ -11,7 +11,7 @@ use edgedb_protocol::value::Value;
 
 use crate::ExecuteResult;
 use crate::model::Json;
-use crate::builder::Builder;
+use crate::builder::Config;
 use crate::client::{Connection, StatementParams};
 use crate::errors::{Error, ErrorKind, NoDataError, NoResultExpected};
 use crate::pool::command::Command;
@@ -80,7 +80,7 @@ impl Client {
     /// Note this does not create a connection immediately.
     /// Use [`ensure_connected()`][Client::ensure_connected] to establish a
     /// connection and verify that the connection is usable.
-    pub fn new(builder: Builder) -> Client {
+    pub fn new(builder: Config) -> Client {
         let (chan, rcv) = unbounded();
         let state = Arc::new(PoolState::new(builder));
         let state2 = state.clone();
@@ -258,7 +258,7 @@ impl PoolInner {
                 return Ok(PoolConn { conn: Some(conn), pool: self.clone() });
             }
             let in_pool = inner.in_progress + inner.acquired_conns;
-            if in_pool < self.state.config.max_connections {
+            if in_pool < self.state.config.0.max_connections {
                 let guard = InProgress::new(inner, self);
                 let conn = self.state.config.private_connect().await?;
                 // Make sure that connection is wrapped before we commit,

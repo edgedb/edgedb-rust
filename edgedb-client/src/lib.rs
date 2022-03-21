@@ -32,7 +32,7 @@ mod server_params;
 
 pub mod errors;
 
-pub use builder::Builder;
+pub use builder::{Builder, Config};
 pub use pool::Client;
 pub use errors::{Error};
 pub use traits::{Executor, ExecuteResult};
@@ -59,7 +59,7 @@ mod pool;
 /// For more fine-grained setup see the [`Client`] and [`Builder`]
 /// documentation and the source of this function.
 pub async fn connect() -> Result<Client, Error> {
-    let pool = Client::new(Builder::from_env().await?);
+    let pool = Client::new(Builder::from_env().await?.build()?);
     pool.ensure_connected().await?;
     Ok(pool)
 }

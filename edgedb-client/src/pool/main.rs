@@ -5,7 +5,7 @@ use async_std::sync::{Arc, Mutex, Condvar};
 use async_std::channel::{Receiver, RecvError};
 
 use crate::client::Connection;
-use crate::builder::Builder;
+use crate::builder::Config;
 use crate::pool::command::Command;
 
 
@@ -13,7 +13,7 @@ use crate::pool::command::Command;
 /// (which runs `pool::main::main`) and `Pool` instance
 #[derive(Debug)]
 pub(crate) struct PoolState {
-    pub config: Builder,
+    pub config: Config,
     pub inner: Mutex<Inner>,
     pub connection_released: Condvar,
 }
@@ -27,13 +27,13 @@ pub(crate) struct Inner {
 }
 
 impl PoolState {
-    pub(crate) fn new(config: Builder) -> PoolState {
+    pub(crate) fn new(config: Config) -> PoolState {
         PoolState {
             inner: Mutex::new(Inner {
                 in_progress: 0,
                 acquired_conns: 0,
                 conns: VecDeque::with_capacity(
-                    min(config.max_connections, 16)),
+                    min(config.0.max_connections, 16)),
             }),
             connection_released: Condvar::new(),
             config,

@@ -4,8 +4,17 @@ commands:
     description: Build the library
     container: ubuntu
     run: |
+      set -ex
       cargo build --workspace --exclude=edgeql-pytest
       cargo build -p edgeql-pytest
+
+  check: !Command
+    description: Check the library
+    container: ubuntu
+    run: |
+      set -ex
+      cargo build --workspace --exclude=edgedb-tokio
+      cargo build -p edgedb-tokio
 
   cargo: !Command
     description: Run arbitrary cargo command
@@ -21,7 +30,10 @@ commands:
   test-rust: !Command
     description: Run tests
     container: ubuntu
-    run: [cargo, test, --all-features]
+    run: |
+      set -ex
+      cargo test --workspace --exclude edgedb-tokio --all-features
+      cargo test -p edgedb-tokio --all-features
 
   test-all-types: !Command
     description: Run tests
