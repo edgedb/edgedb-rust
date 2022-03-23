@@ -845,7 +845,12 @@ impl Builder {
         ).map_err(ClientError::with_source_ref)
     }
 
-    fn root_cert_store(&self) -> Result<rustls::RootCertStore, Error> {
+    #[cfg(feature="unstable")]
+    pub fn root_cert_store(&self) -> Result<rustls::RootCertStore, Error> {
+        self._root_cert_store()
+    }
+
+    fn _root_cert_store(&self) -> Result<rustls::RootCertStore, Error> {
         let mut roots = rustls::RootCertStore::empty();
         if self.pem.is_some() {
             roots.add_server_trust_anchors(
@@ -885,7 +890,7 @@ impl Builder {
             }
             Strict => {
                 Arc::new(rustls::client::WebPkiVerifier::new(
-                    self.root_cert_store()?,
+                    self._root_cert_store()?,
                     None,
                 )) as Verifier
             }
@@ -897,7 +902,7 @@ impl Builder {
                 }
                 None => {
                     Arc::new(rustls::client::WebPkiVerifier::new(
-                        self.root_cert_store()?,
+                        self._root_cert_store()?,
                         None,
                     )) as Verifier
                 }
