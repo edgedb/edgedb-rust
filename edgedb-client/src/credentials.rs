@@ -25,6 +25,8 @@ pub struct Credentials {
     pub database: Option<String>,
     pub tls_ca: Option<String>,
     pub tls_security: TlsSecurity,
+    pub cloud_instance_id: Option<String>,
+    pub cloud_original_dsn: Option<String>,
     pub(crate) file_outdated: bool,
 }
 
@@ -47,6 +49,10 @@ struct CredentialsCompat {
     #[serde(default, skip_serializing_if="Option::is_none")]
     tls_verify_hostname: Option<bool>,  // deprecated
     tls_security: Option<TlsSecurity>,
+    #[serde(default, skip_serializing_if="Option::is_none")]
+    cloud_instance_id: Option<String>,
+    #[serde(default, skip_serializing_if="Option::is_none")]
+    cloud_original_dsn: Option<String>,
 }
 
 
@@ -65,6 +71,8 @@ impl Default for Credentials {
             database: None,
             tls_ca: None,
             tls_security: TlsSecurity::Default,
+            cloud_instance_id: None,
+            cloud_original_dsn: None,
             file_outdated: false,
         }
     }
@@ -91,6 +99,8 @@ impl Serialize for Credentials {
                 TlsSecurity::NoHostVerification => Some(false),
                 TlsSecurity::Insecure => Some(false),
             },
+            cloud_instance_id: self.cloud_instance_id.clone(),
+            cloud_original_dsn: self.cloud_original_dsn.clone(),
         };
 
         return CredentialsCompat::serialize(&creds, serializer);
@@ -150,6 +160,8 @@ impl<'de> Deserialize<'de> for Credentials {
                 ),
                 file_outdated: creds.tls_verify_hostname.is_some() &&
                     creds.tls_security.is_none(),
+                cloud_instance_id: creds.cloud_instance_id,
+                cloud_original_dsn: creds.cloud_original_dsn,
             })
         }
     }
