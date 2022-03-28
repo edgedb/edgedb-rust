@@ -932,6 +932,21 @@ impl Builder {
         self.max_connections = value;
         self
     }
+
+    /// Get the path of the Unix socket if that is configured to be used.
+    ///
+    /// This is a deprecated API and should only be used by the command-line
+    /// tool.
+    #[cfg(feature="admin_socket")]
+    pub fn get_unix_path(&self) -> Option<PathBuf> {
+        self._get_unix_path().unwrap_or(None)
+    }
+    fn _get_unix_path(&self) -> Result<Option<PathBuf>, Error> {
+        match &self.address {
+            Address::Unix(path) => Ok(Some(path.clone())),
+            Address::Tcp(_) => Ok(None),
+        }
+    }
 }
 
 fn validate_certs(data: &str) -> Result<(), Error> {
