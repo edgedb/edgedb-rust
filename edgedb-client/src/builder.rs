@@ -846,6 +846,7 @@ impl Builder {
     }
 
     #[cfg(feature="unstable")]
+    /// Returns certificate store
     pub fn root_cert_store(&self) -> Result<rustls::RootCertStore, Error> {
         self._root_cert_store()
     }
@@ -1049,16 +1050,16 @@ impl Config {
     }
 
 
-    fn do_verify_hostname(&self) -> bool {
+    fn do_verify_hostname(&self) -> Option<bool> {
         use TlsSecurity::*;
         if self.0.insecure_dev_mode {
-            return false;
+            return Some(false);
         }
         match self.0.tls_security {
-            Insecure => false,
-            NoHostVerification => false,
-            Strict => true,
-            Default => unreachable!(),
+            Insecure => Some(false),
+            NoHostVerification => Some(false),
+            Strict => Some(true),
+            Default => None,
         }
     }
     /// Return a single connection.
@@ -1069,9 +1070,9 @@ impl Config {
 
     pub(crate) async fn private_connect(&self) -> Result<Connection, Error> {
         let verify_host = self.do_verify_hostname();
-        match &self.0.address {
-            Address::Tcp((host, _))
-                if verify_host && IpAddr::from_str(host).is_ok() => {
+        match (&self.0.address, verify_host) {
+            (Address::Tcp((host, _)), Some(true))
+                if IpAddr::from_str(host).is_ok() => {
                     return Err(ClientError::with_message(
                         "Cannot use `verify_hostname` or system \
                         root certificates with an IP address"));
