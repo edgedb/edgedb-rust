@@ -111,7 +111,9 @@ impl<'de> Deserialize<'de> for Credentials {
         };
         if creds.tls_verify_hostname.is_some() &&
             creds.tls_security.is_some() &&
-            creds.tls_verify_hostname != expected_verify
+            expected_verify.zip(creds.tls_verify_hostname)
+                .map(|(creds, expected)| creds == expected)
+                .unwrap_or(false)
         {
             Err(de::Error::custom(format!(
                 "detected conflicting settings: \
