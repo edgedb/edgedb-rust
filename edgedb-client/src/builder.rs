@@ -724,6 +724,41 @@ impl Builder {
     }
 
     #[cfg(feature="admin_socket")]
+    /// Use admin socket instead of normal socket
+    pub fn admin(&mut self) -> Result<&mut Self, Error> {
+        let prefix = if let Some(name) = &self.instance_name {
+            if cfg!(windows) {
+                return Err(ClientError::with_message(
+                    "unix sockets are not supported on Windows"));
+            } else if let Some(dir) = dirs::runtime_dir() {
+                dir.join(format!("edgedb-{}", name))
+            } else {
+                dirs::cache_dir()
+                    .ok_or_else(|| ClientError::with_message(
+                        "cannot determine cache directory"))?
+                    .join("edgedb")
+                    .join("run")
+                    .join(name)
+            }
+        } else {
+            if cfg!(target_os="macos") {
+                "/var/run/edgedb".into()
+            } else {
+                "/run/edgedb".into()
+            }
+        };
+        match self.address {
+            Address::Tcp((_, port)) => {
+                self.address = Address::Unix(
+                    prefix.join(format!(".s.EDGEDB.admin.{}", port))
+                );
+            }
+            Address::Unix(_) => {},
+        }
+        Ok(self)
+    }
+
+    #[cfg(feature="admin_socket")]
     /// Initialize credentials using unix socket
     pub fn unix_path(&mut self, path: impl Into<PathBuf>,
                      port: Option<u16>, admin: bool)
