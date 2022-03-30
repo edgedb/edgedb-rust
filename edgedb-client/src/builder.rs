@@ -685,16 +685,6 @@ impl Builder {
             file_outdated: false
         })
     }
-    /// Create an admin socket instead of a regular one.
-    ///
-    /// This behavior is deprecated and is only used for command-line tools.
-    #[cfg(feature="admin_socket")]
-    pub fn admin(&mut self, value: bool)
-        -> &mut Self
-    {
-        self.admin = value;
-        self
-    }
     /// Get the `host` this builder is configured to connect to.
     ///
     /// For unix-socket-configured builder (only if `admin_socket` feature is
@@ -735,8 +725,29 @@ impl Builder {
 
     #[cfg(feature="admin_socket")]
     /// Initialize credentials using unix socket
-    pub fn unix_path(&mut self, path: impl Into<PathBuf>) -> &mut Self {
+    pub fn unix_path(&mut self, path: impl Into<PathBuf>,
+                     port: Option<u16>, admin: bool)
+        -> &mut Self
+    {
         self.reset_compound();
+        self.admin = admin;
+        let path = path.into();
+        let has_socket_name = path.file_name()
+            .and_then(|x| x.to_str())
+            .map(|x| x.contains(".s.EDGEDB"))
+            .unwrap_or(false);
+        let path = if has_socket_name {
+            // it's the full path
+            path
+        } else {
+            let port = port.unwrap_or(5656);
+            let socket_name = if admin {
+                format!(".s.EDGEDB.admin.{}", port)
+            } else {
+                format!(".s.EDGEDB.{}", port)
+            };
+            path.join(socket_name)
+        };
         // TODO(tailhook) figure out whether it's a prefix or full socket?
         self.address = Address::Unix(path.into());
         self.initialized = true;
@@ -1425,7 +1436,10 @@ fn display() {
                Some("/test/my.sock/.s.EDGEDB.5656".into()));
     */
     #[cfg(feature="admin_socket")] {
-        bld.unix_path("/test/.s.EDGEDB.8888");
+        bld.unix_path("/test/.s.EDGEDB.8888", None, false);
+        assert_eq!(bld.build().unwrap()._get_unix_path().unwrap(),
+                   Some("/test/.s.EDGEDB.8888".into()));
+        bld.unix_path("/test", Some(8888), false);
         assert_eq!(bld.build().unwrap()._get_unix_path().unwrap(),
                    Some("/test/.s.EDGEDB.8888".into()));
     }
