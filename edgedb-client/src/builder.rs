@@ -12,21 +12,22 @@ use std::sync::Arc;
 use std::time::{Instant, Duration};
 
 use async_std::fs;
-use async_std::path::{Path as AsyncPath};
 use async_std::future::Future;
 use async_std::net::TcpStream;
+use async_std::path::{Path as AsyncPath};
 use async_std::task::sleep;
 use bytes::{Bytes, BytesMut};
 use futures_util::AsyncReadExt;
 use rand::{thread_rng, Rng};
-use rustls::ServerCertVerifier;
+use rustls::client::ServerCertVerifier;
 use scram::ScramClient;
 use serde_json::from_slice;
-use typemap::{TypeMap, DebugAny};
+use sha1::Digest;
 use tls_api::{TlsConnectorBox, TlsConnector as _, TlsConnectorBuilder as _};
 use tls_api::{TlsStream, TlsStreamDyn as _};
 use tls_api_not_tls::TlsConnector as PlainConnector;
-use webpki::DNSNameRef;
+use typemap::{TypeMap, DebugAny};
+use webpki::DnsNameRef;
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
 use edgedb_protocol::features::ProtocolVersion;
@@ -51,18 +52,17 @@ pub const DEFAULT_POOL_SIZE: usize = 10;
 pub const DEFAULT_HOST: &str = "localhost";
 pub const DEFAULT_PORT: u16 = 5656;
 
+type Verifier = Arc<dyn ServerCertVerifier>;
 
 /// A builder used to create connections.
 #[derive(Debug, Clone)]
 pub struct Builder {
-    host: String,
-    port: u16,
+    address: Address,
     admin: bool,
     user: String,
     password: Option<String>,
     database: String,
     pem: Option<String>,
-    cert: rustls::RootCertStore,
     tls_security: TlsSecurity,
     instance_name: Option<String>,
 
@@ -75,20 +75,40 @@ pub struct Builder {
     // Pool configuration
     pub(crate) max_connections: usize,
 }
+/// Configuration of the client
+///
+/// Use [`Builder`][] to create an instance
+#[derive(Clone)]
+pub struct Config(pub(crate) Arc<ConfigInner>);
 
-struct DisplayAddr<'a>(&'a Builder);
+pub(crate) struct ConfigInner {
+    pub address: Address,
+    #[allow(dead_code)] // TODO(tailhook) for cli only
+    pub admin: bool,
+    pub user: String,
+    pub password: Option<String>,
+    pub database: String,
+    pub verifier: Arc<dyn ServerCertVerifier>,
+    #[allow(dead_code)] // TODO(tailhook) maybe for errors
+    pub instance_name: Option<String>,
+    pub wait: Duration,
+    pub connect_timeout: Duration,
+    pub tls_security: TlsSecurity,
+    #[allow(dead_code)] // TODO(tailhook) maybe for future things
+    pub insecure_dev_mode: bool,
 
-impl fmt::Display for DisplayAddr<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if !self.0.initialized {
-            write!(f, "<no address>")
-        } else if let Some(path) = self.0._get_unix_path().unwrap_or(None) {
-            write!(f, "{}", path.display())
-        } else {
-            write!(f, "{}:{}", self.0.host, self.0.port)
-        }
-    }
+    // Pool configuration
+    pub max_connections: usize,
 }
+
+#[derive(Debug, Clone)]
+pub(crate) enum Address {
+    Tcp((String, u16)),
+    #[allow(dead_code)] // TODO(tailhook), but for cli only
+    Unix(PathBuf),
+}
+
+struct DisplayAddr<'a>(Option<&'a Address>);
 
 pub async fn timeout<F, T>(dur: Duration, f: F) -> Result<T, Error>
     where F: Future<Output = Result<T, Error>>,
@@ -137,27 +157,16 @@ fn is_temporary(e: &Error) -> bool {
     return false;
 }
 
-fn tls_fail(e: tls_api::Error) -> Error {
-    match e.into_inner().downcast::<io::Error>() {
-        Ok(e) => {
-            if let Some(e) = e.get_ref() {
-                if let Some(e) = e.downcast_ref::<rustls::TLSError>() {
-                    if matches!(e, rustls::TLSError::CorruptMessage) {
-                        return ProtocolTlsError::with_message(
-                            "corrupt message, possibly server \
-                             does not support TLS connection."
-                        );
-                    }
-                }
-            }
-            // We ignore that this error is inside TLS code,
-            // when rethrowing here. But it should be fine for IO errors,
-            // as underlying reason of IO failure is more important than
-            // which operation is was running at that time.
-            ClientConnectionError::with_source(e)
+fn tls_fail(e: anyhow::Error) -> Error {
+    if let Some(e) = e.downcast_ref::<rustls::Error>() {
+        if matches!(e, rustls::Error::CorruptMessage) {
+            return ProtocolTlsError::with_message(
+                "corrupt message, possibly server \
+                 does not support TLS connection."
+            );
         }
-        Err(e) => ClientConnectionError::with_source_box(e),
     }
+    ClientConnectionError::with_source_ref(e)
 }
 
 fn get_env(name: &str) -> Result<Option<String>, Error> {
@@ -236,7 +245,7 @@ fn path_bytes<'x>(path: &'x Path) -> &'x [u8] {
 }
 
 fn hash(path: &Path) -> String {
-    sha1::Sha1::from(path_bytes(path)).hexdigest()
+    format!("{:x}", sha1::Sha1::new_with_prefix(path_bytes(path)).finalize())
 }
 
 fn stash_name(path: &Path) -> OsString {
@@ -279,22 +288,6 @@ fn default_runtime_base() -> Result<PathBuf, Error> {
     Err(ClientError::with_message("no default runtime dir for the platform"))
 }
 
-fn runtime_dir(name: &str) -> Result<PathBuf, Error> {
-    if cfg!(windows) {
-        Err(ClientError::with_message(
-            "unix sockets are not supported on Windows"))
-    } else if let Some(dir) = dirs::runtime_dir() {
-        Ok(dir.join(format!("edgedb-{}", name)))
-    } else {
-        Ok(dirs::cache_dir()
-            .ok_or_else(|| ClientError::with_message(
-                "cannot determine cache directory"))?
-            .join("edgedb")
-            .join("run")
-            .join(name))
-    }
-}
-
 fn stash_path(project_dir: &Path) -> Result<PathBuf, Error> {
     Ok(config_dir()?.join("projects").join(stash_name(project_dir)))
 }
@@ -311,6 +304,19 @@ fn is_valid_instance_name(name: &str) -> bool {
         }
     }
     return true;
+}
+
+
+impl fmt::Display for DisplayAddr<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self.0 {
+            Some(Address::Tcp((host, port))) => {
+                write!(f, "{}:{}", host, port)
+            }
+            Some(Address::Unix(path)) => write!(f, "unix:{}", path.display()),
+            None => write!(f, "<no address>"),
+        }
+    }
 }
 
 impl Builder {
@@ -387,10 +393,7 @@ impl Builder {
         }
         Ok(self)
     }
-    /// A displayable form for an address.
-    pub fn display_addr<'x>(&'x self) -> impl fmt::Display + 'x {
-        DisplayAddr(self)
-    }
+
     /// Indicates whether credentials are set for this builder.
     pub fn is_initialized(&self) -> bool {
         self.initialized
@@ -483,31 +486,16 @@ impl Builder {
     pub fn credentials(&mut self, credentials: &Credentials)
         -> Result<&mut Self, Error>
     {
-        let mut cert = rustls::RootCertStore::empty();
-        let pem;
         if let Some(cert_data) = &credentials.tls_ca {
-            pem = Some(cert_data.clone());
-            match
-                cert.add_pem_file(&mut io::Cursor::new(cert_data.as_bytes()))
-            {
-                Ok((0, 0)) => {
-                    return Err(ClientError::with_message(
-                        "Empty certificate data"));
-                }
-                Ok((_, 0)) => {}
-                Ok((_, _)) | Err(()) => {
-                    return Err(ClientError::with_message(
-                        "Invalid certificates are contained in `tls_ca`"
-                    ));
-                }
-            }
-        } else {
-            pem = None;
+            validate_certs(&cert_data)
+                .context("invalid certificates in `tls_ca`")?;
         }
         self.reset_compound();
-        self.host = credentials.host.clone()
-                .unwrap_or_else(|| DEFAULT_HOST.into());
-        self.port = credentials.port;
+        self.address = Address::Tcp((
+            credentials.host.clone()
+                .unwrap_or_else(|| DEFAULT_HOST.into()),
+            credentials.port,
+        ));
         self.admin = false;
         self.user = credentials.user.clone();
         self.password = credentials.password.clone();
@@ -515,8 +503,7 @@ impl Builder {
                 .unwrap_or_else(|| "edgedb".into());
         self.creds_file_outdated = credentials.file_outdated;
         self.tls_security = credentials.tls_security;
-        self.cert = cert;
-        self.pem = pem;
+        self.pem = credentials.tls_ca.clone();
         self.initialized = true;
         Ok(self)
     }
@@ -608,13 +595,14 @@ impl Builder {
             .map_err(|e| ClientError::with_source(e)
                 .context(format!("cannot parse DSN {:?}", dsn)))?;
         self.reset_compound();
-        if let Some(url::Host::Ipv6(host)) = url.host() {
+        let host = if let Some(url::Host::Ipv6(host)) = url.host() {
             // async-std uses raw IPv6 address without "[]"
-            self.host = host.to_string();
+            host.to_string()
         } else {
-            self.host = url.host_str().unwrap_or(DEFAULT_HOST).to_owned();
-        }
-        self.port = url.port().unwrap_or(DEFAULT_PORT);
+            url.host_str().unwrap_or(DEFAULT_HOST).to_owned()
+        };
+        let port = url.port().unwrap_or(DEFAULT_PORT);
+        self.address = Address::Tcp((host, port));
         self.admin = admin;
         self.user = if url.username().is_empty() {
             "edgedb".to_owned()
@@ -636,14 +624,12 @@ impl Builder {
     /// Usually, `Builder::from_env()` should be used instead.
     pub fn uninitialized() -> Builder {
         Builder {
-            host: DEFAULT_HOST.into(),
-            port: DEFAULT_PORT,
+            address: Address::Tcp((DEFAULT_HOST.into(), DEFAULT_PORT)),
             admin: false,
             user: "edgedb".into(),
             password: None,
             database: "edgedb".into(),
             tls_security: TlsSecurity::Default,
-            cert: rustls::RootCertStore::empty(),
             pem: None,
             instance_name: None,
 
@@ -659,14 +645,12 @@ impl Builder {
     fn reset_compound(&mut self) {
         *self = Builder {
             // replace all of them
-            host: DEFAULT_HOST.into(),
-            port: DEFAULT_PORT.into(),
+            address: Address::Tcp((DEFAULT_HOST.into(), DEFAULT_PORT)),
             admin: false,
             user: "edgedb".into(),
             password: None,
             database: "edgedb".into(),
             tls_security: TlsSecurity::Default,
-            cert: rustls::RootCertStore::empty(),
             pem: None,
             instance_name: None,
 
@@ -682,9 +666,17 @@ impl Builder {
     }
     /// Extract credentials from the [Builder] so they can be saved as JSON.
     pub fn as_credentials(&self) -> Result<Credentials, Error> {
+        let (host, port) = match &self.address {
+            Address::Tcp(pair) => pair,
+            Address::Unix(_) => {
+                return Err(ClientError::with_message(
+                    "Unix socket address cannot \
+                    be saved as credentials file"));
+            }
+        };
         Ok(Credentials {
-            host: Some(self.host.clone()),
-            port: self.port,
+            host: Some(host.clone()),
+            port: *port,
             user: self.user.clone(),
             password: self.password.clone(),
             database: Some( self.database.clone()),
@@ -693,23 +685,22 @@ impl Builder {
             file_outdated: false
         })
     }
-    /// Create an admin socket instead of a regular one.
-    ///
-    /// This behavior is deprecated and is only used for command-line tools.
-    #[cfg(feature="admin_socket")]
-    pub fn admin(&mut self, value: bool)
-        -> &mut Self
-    {
-        self.admin = value;
-        self
-    }
     /// Get the `host` this builder is configured to connect to.
+    ///
+    /// For unix-socket-configured builder (only if `admin_socket` feature is
+    /// enabled) returns "localhost"
     pub fn get_host(&self) -> &str {
-        &self.host
+        match &self.address {
+            Address::Tcp((host, _)) => host,
+            Address::Unix(_) => "localhost",
+        }
     }
     /// Get the `port` this builder is configured to connect to.
     pub fn get_port(&self) -> u16 {
-        self.port
+        match &self.address {
+            Address::Tcp((_, port)) => *port,
+            Address::Unix(_) => 5656
+        }
     }
     /// Initialize credentials using host/port data.
     ///
@@ -724,8 +715,76 @@ impl Builder {
         -> &mut Self
     {
         self.reset_compound();
-        self.host = host.map_or_else(|| DEFAULT_HOST.into(), |h| h.into());
-        self.port = port.unwrap_or(DEFAULT_PORT);
+        self.address = Address::Tcp((
+            host.map_or_else(|| DEFAULT_HOST.into(), |h| h.into()),
+            port.unwrap_or(DEFAULT_PORT),
+        ));
+        self.initialized = true;
+        self
+    }
+
+    #[cfg(feature="admin_socket")]
+    /// Use admin socket instead of normal socket
+    pub fn admin(&mut self) -> Result<&mut Self, Error> {
+        let prefix = if let Some(name) = &self.instance_name {
+            if cfg!(windows) {
+                return Err(ClientError::with_message(
+                    "unix sockets are not supported on Windows"));
+            } else if let Some(dir) = dirs::runtime_dir() {
+                dir.join(format!("edgedb-{}", name))
+            } else {
+                dirs::cache_dir()
+                    .ok_or_else(|| ClientError::with_message(
+                        "cannot determine cache directory"))?
+                    .join("edgedb")
+                    .join("run")
+                    .join(name)
+            }
+        } else {
+            if cfg!(target_os="macos") {
+                "/var/run/edgedb".into()
+            } else {
+                "/run/edgedb".into()
+            }
+        };
+        match self.address {
+            Address::Tcp((_, port)) => {
+                self.address = Address::Unix(
+                    prefix.join(format!(".s.EDGEDB.admin.{}", port))
+                );
+            }
+            Address::Unix(_) => {},
+        }
+        Ok(self)
+    }
+
+    #[cfg(feature="admin_socket")]
+    /// Initialize credentials using unix socket
+    pub fn unix_path(&mut self, path: impl Into<PathBuf>,
+                     port: Option<u16>, admin: bool)
+        -> &mut Self
+    {
+        self.reset_compound();
+        self.admin = admin;
+        let path = path.into();
+        let has_socket_name = path.file_name()
+            .and_then(|x| x.to_str())
+            .map(|x| x.contains(".s.EDGEDB"))
+            .unwrap_or(false);
+        let path = if has_socket_name {
+            // it's the full path
+            path
+        } else {
+            let port = port.unwrap_or(5656);
+            let socket_name = if admin {
+                format!(".s.EDGEDB.admin.{}", port)
+            } else {
+                format!(".s.EDGEDB.{}", port)
+            };
+            path.join(socket_name)
+        };
+        // TODO(tailhook) figure out whether it's a prefix or full socket?
+        self.address = Address::Unix(path.into());
         self.initialized = true;
         self
     }
@@ -789,11 +848,7 @@ impl Builder {
     pub fn pem_certificates(&mut self, cert_data: &String)
         -> Result<&mut Self, Error>
     {
-        self.cert.roots.clear();
-        self.pem = None;
-        self.cert.add_pem_file(&mut io::Cursor::new(cert_data.as_bytes()))
-            .map_err(|()| ClientError::with_message(
-                "error reading certificate"))?;
+        validate_certs(cert_data).context("invalid PEM certificate")?;
         self.pem = Some(cert_data.clone());
         Ok(self)
     }
@@ -816,6 +871,148 @@ impl Builder {
         self
     }
 
+    /// A displayable form for an address this builder will connect to
+    pub fn display_addr<'x>(&'x self) -> impl fmt::Display + 'x {
+        if self.initialized {
+            DisplayAddr(Some(&self.address))
+        } else {
+            DisplayAddr(None)
+        }
+    }
+
+    fn insecure(&self) -> bool {
+        use TlsSecurity::Insecure;
+        self.insecure_dev_mode || self.tls_security == Insecure
+    }
+
+    fn trust_anchors(&self) -> Result<Vec<tls::OwnedTrustAnchor>, Error> {
+        tls::OwnedTrustAnchor::read_all(
+            self.pem.as_deref().unwrap_or("")
+        ).map_err(ClientError::with_source_ref)
+    }
+
+    #[cfg(feature="unstable")]
+    /// Returns certificate store
+    pub fn root_cert_store(&self) -> Result<rustls::RootCertStore, Error> {
+        self._root_cert_store()
+    }
+
+    fn _root_cert_store(&self) -> Result<rustls::RootCertStore, Error> {
+        let mut roots = rustls::RootCertStore::empty();
+        if self.pem.is_some() {
+            roots.add_server_trust_anchors(
+                self.trust_anchors()?.into_iter().map(Into::into)
+            );
+        } else {
+            roots.add_server_trust_anchors(
+                webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+                    rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
+                        ta.subject,
+                        ta.spki,
+                        ta.name_constraints,
+                    )
+                })
+            );
+        }
+        Ok(roots)
+    }
+
+    /// Build connection and pool configuration object
+    pub fn build(&self) -> Result<Config, Error> {
+        use TlsSecurity::*;
+
+        if !self.initialized {
+            return Err(ClientNoCredentialsError::with_message(
+                "EdgeDB connection options are not initialized. \
+                Run `edgedb project init` or use environment variables \
+                to configure connection."));
+        }
+        let verifier = match self.tls_security {
+            _ if self.insecure() => Arc::new(tls::NullVerifier) as Verifier,
+            Insecure => Arc::new(tls::NullVerifier) as Verifier,
+            NoHostVerification => {
+                Arc::new(tls::NoHostnameVerifier::new(
+                        self.trust_anchors()?
+                )) as Verifier
+            }
+            Strict => {
+                Arc::new(rustls::client::WebPkiVerifier::new(
+                    self._root_cert_store()?,
+                    None,
+                )) as Verifier
+            }
+            Default => match self.pem {
+                Some(_) => {
+                    Arc::new(tls::NoHostnameVerifier::new(
+                            self.trust_anchors()?
+                    )) as Verifier
+                }
+                None => {
+                    Arc::new(rustls::client::WebPkiVerifier::new(
+                        self._root_cert_store()?,
+                        None,
+                    )) as Verifier
+                }
+            },
+        };
+
+        Ok(Config(Arc::new(ConfigInner {
+            address: self.address.clone(),
+            admin: self.admin,
+            user: self.user.clone(),
+            password: self.password.clone(),
+            database: self.database.clone(),
+            verifier,
+            instance_name: self.instance_name.clone(),
+            wait: self.wait,
+            connect_timeout: self.connect_timeout,
+            tls_security: self.tls_security,
+            insecure_dev_mode: self.insecure_dev_mode,
+
+            // Pool configuration
+            max_connections: self.max_connections,
+        })))
+    }
+
+    /// Set the maximum number of underlying database connections.
+    pub fn max_connections(&mut self, value: usize) -> &mut Self {
+        self.max_connections = value;
+        self
+    }
+
+    /// Get the path of the Unix socket if that is configured to be used.
+    ///
+    /// This is a deprecated API and should only be used by the command-line
+    /// tool.
+    #[cfg(feature="admin_socket")]
+    pub fn get_unix_path(&self) -> Option<PathBuf> {
+        self._get_unix_path().unwrap_or(None)
+    }
+    fn _get_unix_path(&self) -> Result<Option<PathBuf>, Error> {
+        match &self.address {
+            Address::Unix(path) => Ok(Some(path.clone())),
+            Address::Tcp(_) => Ok(None),
+        }
+    }
+}
+
+fn validate_certs(data: &str) -> Result<(), Error> {
+    let anchors = tls::OwnedTrustAnchor::read_all(data)
+        .map_err(|e| ClientError::with_source_ref(e))?;
+    if anchors.is_empty() {
+        return Err(ClientError::with_message(
+                "PEM data contains no certificate"));
+    }
+    Ok(())
+}
+
+impl Config {
+
+    /// A displayable form for an address this builder will connect to
+    pub fn display_addr<'x>(&'x self) -> impl fmt::Display + 'x {
+        DisplayAddr(Some(&self.0.address))
+    }
+
     /// Connect with a custom certificate verifier.
     ///
     /// Unstable API
@@ -829,12 +1026,6 @@ impl Builder {
     async fn _connect_with_cert_verifier(
         &self, cert_verifier: Arc<dyn ServerCertVerifier>
     ) -> Result<Connection, Error> {
-        if !self.initialized {
-            return Err(ClientNoCredentialsError::with_message(
-                "EdgeDB connection options are not initialized. \
-                Run `edgedb project init` or use environment variables \
-                to configure connection."));
-        }
         self.connect_inner(cert_verifier).await.map_err(|e| {
             if e.is::<ClientConnectionError>() {
                 e.refine_kind::<ClientConnectionFailedError>()
@@ -853,52 +1044,24 @@ impl Builder {
         self._get_unix_path().unwrap_or(None)
     }
     fn _get_unix_path(&self) -> Result<Option<PathBuf>, Error> {
-        let unix_host = self.host.contains("/");
-        if self.admin || unix_host {
-            let prefix = if unix_host {
-                self.host.clone().into()
-            } else {
-                if let Some(instance) = &self.instance_name {
-                    runtime_dir(instance)
-                        .context("cannot find admin socket")?
-                } else {
-                    if cfg!(target_os="macos") {
-                        "/var/run/edgedb".into()
-                    } else {
-                        "/run/edgedb".into()
-                    }
-                }
-            };
-            let has_socket_name = prefix.file_name()
-                .and_then(|x| x.to_str())
-                .map(|x| x.contains(".s.EDGEDB"))
-                .unwrap_or(false);
-            let path = if has_socket_name {
-                // it's the full path
-                prefix
-            } else {
-                let socket_name = if self.admin {
-                    format!(".s.EDGEDB.admin.{}", self.port)
-                } else {
-                    format!(".s.EDGEDB.{}", self.port)
-                };
-                prefix.join(socket_name)
-            };
-            Ok(Some(path.into()))
-        } else {
-            Ok(None)
+        match &self.0.address {
+            Address::Unix(path) => Ok(Some(path.clone())),
+            Address::Tcp(_) => Ok(None),
         }
     }
 
     async fn connect_inner(
         &self, cert_verifier: Arc<dyn ServerCertVerifier>
     ) -> Result<Connection, Error> {
-        let tls = tls::connector(&self.cert, cert_verifier).map_err(tls_fail)?;
+        let tls = tls::connector(cert_verifier).map_err(tls_fail)?;
         if log::log_enabled!(log::Level::Info) {
-            if let Some(path) = self._get_unix_path()? {
-                log::info!("Connecting via Unix `{}`", path.display());
-            } else {
-                log::info!("Connecting via TCP {}:{}", self.host, self.port);
+            match &self.0.address {
+                Address::Unix(path) => {
+                    log::info!("Connecting via Unix `{}`", path.display());
+                }
+                Address::Tcp((host, port)) => {
+                    log::info!("Connecting via TCP {host}:{port}");
+                }
             }
         }
 
@@ -906,17 +1069,18 @@ impl Builder {
         let ref mut warned = false;
         let conn = loop {
             match
-                timeout(self.connect_timeout, self._connect(&tls, warned)).await
+                timeout(self.0.connect_timeout,
+                        self._connect(&tls, warned)).await
             {
                 Err(e) if is_temporary(&e) => {
                     log::debug!("Temporary connection error: {:#}", e);
-                    if self.wait > start.elapsed() {
+                    if self.0.wait > start.elapsed() {
                         sleep(sleep_duration()).await;
                         continue;
-                    } else if self.wait > Duration::new(0, 0) {
+                    } else if self.0.wait > Duration::new(0, 0) {
                         return Err(e.context(
                             format!("cannot establish connection for {:?}",
-                                    self.wait)));
+                                    self.0.wait)));
                     } else {
                         return Err(e);
                     }
@@ -931,22 +1095,17 @@ impl Builder {
         Ok(conn)
     }
 
-    /// Set the maximum number of underlying database connections.
-    pub fn max_connections(&mut self, value: usize) -> &mut Self {
-        self.max_connections = value;
-        self
-    }
 
-    fn do_verify_hostname(&self) -> bool {
+    fn do_verify_hostname(&self) -> Option<bool> {
         use TlsSecurity::*;
-        if self.insecure_dev_mode {
-            return false;
+        if self.0.insecure_dev_mode {
+            return Some(false);
         }
-        match self.tls_security {
-            Insecure => false,
-            NoHostVerification => false,
-            Strict => true,
-            Default => self.cert.is_empty(),
+        match self.0.tls_security {
+            Insecure => Some(false),
+            NoHostVerification => Some(false),
+            Strict => Some(true),
+            Default => None,
         }
     }
     /// Return a single connection.
@@ -954,26 +1113,19 @@ impl Builder {
     pub async fn connect(&self) -> Result<Connection, Error> {
         self.private_connect().await
     }
-    fn insecure(&self) -> bool {
-        use TlsSecurity::Insecure;
-        self.insecure_dev_mode || self.tls_security == Insecure
-    }
+
     pub(crate) async fn private_connect(&self) -> Result<Connection, Error> {
-        if self.insecure() {
-            self._connect_with_cert_verifier(Arc::new(tls::NullVerifier)).await
-        } else {
-            let verify_host = self.do_verify_hostname();
-            if verify_host && IpAddr::from_str(&self.host).is_ok() {
-                // FIXME: https://github.com/rustls/rustls/issues/184
-                // When rustls issue ix fixed we may lift this limitation
-                return Err(ClientError::with_message(
-                    "Cannot use `verify_hostname` or system \
-                    root certificates with an IP address"));
-            }
-            self._connect_with_cert_verifier(
-                Arc::new(tls::CertVerifier::new(verify_host))
-            ).await
+        let verify_host = self.do_verify_hostname();
+        match (&self.0.address, verify_host) {
+            (Address::Tcp((host, _)), Some(true))
+                if IpAddr::from_str(host).is_ok() => {
+                    return Err(ClientError::with_message(
+                        "Cannot use `verify_hostname` or system \
+                        root certificates with an IP address"));
+                }
+            _ => {}
         }
+        self._connect_with_cert_verifier(self.0.verifier.clone()).await
     }
     async fn _connect(&self, tls: &TlsConnectorBox, warned: &mut bool)
         -> Result<Connection, Error>
@@ -987,8 +1139,8 @@ impl Builder {
                 }
                 self._connect_stream(
                     &PlainConnector::builder()
-                        .map_err(ClientError::with_source)?
-                        .build().map_err(ClientError::with_source)?
+                        .map_err(ClientError::with_source_ref)?
+                        .build().map_err(ClientError::with_source_ref)?
                         .into_dyn()
                 ).await?
             }
@@ -1009,19 +1161,17 @@ impl Builder {
     async fn _connect_stream(&self, tls: &TlsConnectorBox)
         -> Result<TlsStream, Error>
     {
-        match self._get_unix_path()? {
-            None => {
-                let conn = TcpStream::connect(
-                    &(&self.host[..], self.port)
-                ).await.map_err(ClientConnectionError::with_source)?;
-                let is_valid_dns_name = DNSNameRef::try_from_ascii_str(
-                    &self.host
-                ).is_ok();
+        match &self.0.address {
+            Address::Tcp((host, port)) => {
+                let conn = TcpStream::connect(&(&host[..], *port)).await
+                    .map_err(ClientConnectionError::with_source)?;
+                let is_valid_dns_name = DnsNameRef::try_from_ascii_str(host)
+                    .is_ok();
                 let host = if !is_valid_dns_name {
                     // FIXME: https://github.com/rustls/rustls/issues/184
                     // If self.host is neither an IP address nor a valid DNS
                     // name, the hacks below won't make it valid anyways.
-                    let host = format!("{}.host-for-ip.edgedb.net", self.host);
+                    let host = format!("{}.host-for-ip.edgedb.net", host);
                     // for ipv6addr
                     let host = host.replace(":", "-").replace("%", "-");
                     if host.starts_with("-") {
@@ -1030,11 +1180,11 @@ impl Builder {
                         Cow::from(host)
                     }
                 } else {
-                    Cow::from(&self.host[..])
+                    Cow::from(&host[..])
                 };
                 Ok(tls.connect(&host[..], conn).await.map_err(tls_fail)?)
             }
-            Some(path) => {
+            Address::Unix(path) => {
                 #[cfg(windows)] {
                     return Err(ClientError::with_message(
                         "Unix socket are not supported on windows",
@@ -1046,8 +1196,8 @@ impl Builder {
                         .map_err(ClientConnectionError::with_source)?;
                     Ok(
                         PlainConnector::builder()
-                            .map_err(ClientError::with_source)?
-                            .build().map_err(ClientError::with_source)?
+                            .map_err(ClientError::with_source_ref)?
+                            .build().map_err(ClientError::with_source_ref)?
                             .into_dyn()
                         .connect("localhost", conn).await.map_err(tls_fail)?
                     )
@@ -1076,8 +1226,8 @@ impl Builder {
         };
         let mut seq = conn.start_sequence().await?;
         let mut params = HashMap::new();
-        params.insert(String::from("user"), self.user.clone());
-        params.insert(String::from("database"), self.database.clone());
+        params.insert(String::from("user"), self.0.user.clone());
+        params.insert(String::from("database"), self.0.database.clone());
 
         let (major_ver, minor_ver) = version.version_tuple();
         seq.send_messages(&[
@@ -1102,8 +1252,8 @@ impl Builder {
             ServerMessage::Authentication(Authentication::Sasl { methods })
             => {
                 if methods.iter().any(|x| x == "SCRAM-SHA-256") {
-                    if let Some(password) = &self.password {
-                        scram(&mut seq, &self.user, password).await
+                    if let Some(password) = &self.0.password {
+                        scram(&mut seq, &self.0.user, password).await
                             .map_err(ClientError::with_source)?;
                     } else {
                         return Err(PasswordRequired::with_message(
@@ -1285,12 +1435,22 @@ async fn scram(seq: &mut Sequence<'_>, user: &str, password: &str)
     Ok(())
 }
 
+impl fmt::Debug for Config {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Config")
+            .field("address", &self.0.address)
+            .field("max_connections", &self.0.max_connections)
+            // TODO(tailhook) more fields
+            .finish()
+    }
+}
+
 #[test]
 fn read_credentials() {
     let mut bld = Builder::uninitialized();
     async_std::task::block_on(
         bld.read_credentials("tests/credentials1.json")).unwrap();
-    assert!(matches!(bld.port, 10702));
+    assert!(matches!(&bld.address, Address::Tcp((_, 10702))));
     assert_eq!(&bld.user, "test3n");
     assert_eq!(&bld.database, "test3n");
     assert_eq!(bld.password, Some("lZTBy1RVCfOpBAOwSCwIyBIR".into()));
@@ -1301,14 +1461,23 @@ fn display() {
     let mut bld = Builder::uninitialized();
     async_std::task::block_on(
         bld.read_dsn("edgedb://localhost:1756")).unwrap();
-    assert_eq!(bld.host, "localhost");
-    assert_eq!(bld.port, 1756);
-    bld.host_port(Some("/test/my.sock"), None);
-    assert_eq!(bld._get_unix_path().unwrap(),
+    assert!(matches!(
+        &bld.address,
+        Address::Tcp((host, 1756)) if host == "localhost"
+    ));
+    /* TODO(tailhook)
+    bld.unix_path("/test/my.sock");
+    assert_eq!(bld.build().unwrap()._get_unix_path().unwrap(),
                Some("/test/my.sock/.s.EDGEDB.5656".into()));
-    bld.host_port(Some("/test/.s.EDGEDB.8888"), None);
-    assert_eq!(bld._get_unix_path().unwrap(),
-               Some("/test/.s.EDGEDB.8888".into()));
+    */
+    #[cfg(feature="admin_socket")] {
+        bld.unix_path("/test/.s.EDGEDB.8888", None, false);
+        assert_eq!(bld.build().unwrap()._get_unix_path().unwrap(),
+                   Some("/test/.s.EDGEDB.8888".into()));
+        bld.unix_path("/test", Some(8888), false);
+        assert_eq!(bld.build().unwrap()._get_unix_path().unwrap(),
+                   Some("/test/.s.EDGEDB.8888".into()));
+    }
 }
 
 #[test]
@@ -1317,8 +1486,11 @@ fn from_dsn() {
     async_std::task::block_on(bld.read_dsn(
         "edgedb://user1:EiPhohl7@edb-0134.elb.us-east-2.amazonaws.com/db2"
     )).unwrap();
-    assert_eq!(bld.host, "edb-0134.elb.us-east-2.amazonaws.com");
-    assert_eq!(bld.port, DEFAULT_PORT);
+    assert!(matches!(
+        &bld.address,
+        Address::Tcp((host, 5656))
+        if host == "edb-0134.elb.us-east-2.amazonaws.com",
+    ));
     assert_eq!(&bld.user, "user1");
     assert_eq!(&bld.database, "db2");
     assert_eq!(bld.password, Some("EiPhohl7".into()));
@@ -1327,8 +1499,11 @@ fn from_dsn() {
     async_std::task::block_on(bld.read_dsn(
         "edgedb://user2@edb-0134.elb.us-east-2.amazonaws.com:1756/db2"
     )).unwrap();
-    assert_eq!(bld.host, "edb-0134.elb.us-east-2.amazonaws.com");
-    assert_eq!(bld.port, 1756);
+    assert!(matches!(
+        &bld.address,
+        Address::Tcp((host, 1756))
+        if host == "edb-0134.elb.us-east-2.amazonaws.com",
+    ));
     assert_eq!(&bld.user, "user2");
     assert_eq!(&bld.database, "db2");
     assert_eq!(bld.password, None);
@@ -1337,8 +1512,11 @@ fn from_dsn() {
     async_std::task::block_on(bld.read_dsn(
         "edgedb://edb-0134.elb.us-east-2.amazonaws.com:1756"
     )).unwrap();
-    assert_eq!(bld.host, "edb-0134.elb.us-east-2.amazonaws.com");
-    assert_eq!(bld.port, 1756);
+    assert!(matches!(
+        &bld.address,
+        Address::Tcp((host, 1756))
+        if host == "edb-0134.elb.us-east-2.amazonaws.com",
+    ));
     assert_eq!(&bld.user, "edgedb");
     assert_eq!(&bld.database, "edgedb");
     assert_eq!(bld.password, None);
@@ -1346,8 +1524,10 @@ fn from_dsn() {
     async_std::task::block_on(bld.read_dsn(
         "edgedb://user3:123123@[::1]:5555/abcdef"
     )).unwrap();
-    assert_eq!(bld.host, "::1");
-    assert_eq!(bld.port, 5555);
+    assert!(matches!(
+        &bld.address,
+        Address::Tcp((host, 5555)) if host == "::1",
+    ));
     assert_eq!(&bld.user, "user3");
     assert_eq!(&bld.database, "abcdef");
     assert_eq!(bld.password, Some("123123".into()));
@@ -1360,8 +1540,10 @@ fn from_dsn_ipv6_scoped_address() {
     async_std::task::block_on(bld.read_dsn(
         "edgedb://user3@[fe80::1ff:fe23:4567:890a%25eth0]:3000/ab"
     )).unwrap();
-    assert_eq!(bld.host, "fe80::1ff:fe23:4567:890a%eth0");
-    assert_eq!(bld.port, 3000);
+    assert!(matches!(
+        &bld.address,
+        Address::Tcp((host, 3000)) if host == "fe80::1ff:fe23:4567:890a%eth0",
+    ));
     assert_eq!(&bld.user, "user3");
     assert_eq!(&bld.database, "ab");
     assert_eq!(bld.password, None);

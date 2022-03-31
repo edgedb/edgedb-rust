@@ -845,6 +845,7 @@ impl fmt::Debug for Config {
         f.debug_struct("Config")
             .field("address", &self.0.address)
             .field("max_connections", &self.0.max_connections)
+            // TODO(tailhook) more fields
             .finish()
     }
 }
