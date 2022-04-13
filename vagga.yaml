@@ -94,13 +94,21 @@ commands:
     container: tools
     run: [cargo, fuzz]
 
-  example: !Command
-    description: Run named example
+  example-tokio: !Command
+    description: Run named tokio example
     container: ubuntu
     environ:
-      EDGEDB_INSECURE_DEV_MODE: 1
+      EDGEDB_CLIENT_TLS_SECURITY: insecure
       EDGEDB_HOST: localhost
-    run: [cargo, run, --example]
+    run: [cargo, run, --package=edgedb-tokio, --example]
+
+  example-astd: !Command
+    description: Run named async-std example
+    container: ubuntu
+    environ:
+      EDGEDB_CLIENT_TLS_SECURITY: insecure
+      EDGEDB_HOST: localhost
+    run: [cargo, run, --package=edgedb-client, --example]
 
   gen-errors: !Command
     description: Generate error codes
