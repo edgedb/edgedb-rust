@@ -19,9 +19,11 @@ bitflags::bitflags! {
         const TRANSACTION =         0b00000100;
         const DDL =                 0b00001000;
         const PERSISTENT_CONFIG =   0b00010000;
+        const ALL =                 0b00011111;
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct CompilationFlags {
     pub implicit_limit: Option<u64>,
     pub implicit_typenames: bool,

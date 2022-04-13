@@ -3,6 +3,7 @@ use std::convert::TryFrom;
 use std::u16;
 
 use bytes::{Bytes, BufMut, Buf};
+use uuid::Uuid;
 use snafu::{OptionExt, ensure};
 
 use crate::encoding::{Encode, Decode, Headers, encode, Input, Output};
@@ -18,6 +19,7 @@ pub enum ClientMessage {
     Prepare(Prepare),
     DescribeStatement(DescribeStatement),
     Execute(Execute),
+    OptimisticExecute(OptimisticExecute),
     UnknownMessage(u8, Bytes),
     AuthenticationSaslInitialResponse(SaslInitialResponse),
     AuthenticationSaslResponse(SaslResponse),
@@ -79,6 +81,17 @@ pub struct Execute {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OptimisticExecute {
+    pub headers: Headers,
+    pub io_format: IoFormat,
+    pub expected_cardinality: Cardinality,
+    pub command_text: String,
+    pub input_typedesc_id: Uuid,
+    pub output_typedesc_id: Uuid,
+    pub arguments: Bytes,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dump {
     pub headers: Headers,
 }
@@ -120,6 +133,7 @@ impl ClientMessage {
             Prepare(h) => encode(buf, 0x50, h),
             DescribeStatement(h) => encode(buf, 0x44, h),
             Execute(h) => encode(buf, 0x45, h),
+            OptimisticExecute(h) => encode(buf, 0x4f, h),
             Dump(h) => encode(buf, 0x3e, h),
             Restore(h) => encode(buf, 0x3c, h),
             RestoreBlock(h) => encode(buf, 0x3d, h),
@@ -150,6 +164,8 @@ impl ClientMessage {
             0x51 => ExecuteScript::decode(&mut data).map(M::ExecuteScript),
             0x50 => Prepare::decode(&mut data).map(M::Prepare),
             0x45 => Execute::decode(&mut data).map(M::Execute),
+            0x4f => OptimisticExecute::decode(&mut data)
+                .map(M::OptimisticExecute),
             0x3e => Dump::decode(&mut data).map(M::Dump),
             0x3c => Restore::decode(&mut data).map(M::Restore),
             0x3d => RestoreBlock::decode(&mut data).map(M::RestoreBlock),
@@ -420,6 +436,94 @@ impl Decode for Execute {
         Ok(Execute {
             headers,
             statement_name,
+            arguments,
+        })
+    }
+}
+
+impl OptimisticExecute {
+    pub fn new(
+        flags: &CompilationFlags,
+        query: &str, arguments: impl Into<Bytes>,
+        input_typedesc_id: Uuid, output_typedesc_id: Uuid,
+    ) -> OptimisticExecute {
+        let mut headers = Headers::new();
+        if let Some(limit) = flags.implicit_limit {
+            headers.insert(0xFF01, Bytes::from(limit.to_string()));
+        }
+        if flags.implicit_typenames {
+            headers.insert(0xFF02, "true".into());
+        }
+        if flags.implicit_typeids {
+            headers.insert(0xFF03, "true".into());
+        }
+        let caps = flags.allow_capabilities.bits().to_be_bytes();
+        headers.insert(0xFF04, caps[..].to_vec().into());
+        if flags.explicit_objectids {
+            headers.insert(0xFF03, "true".into());
+        }
+        OptimisticExecute {
+            headers,
+            io_format: flags.io_format,
+            expected_cardinality: flags.expected_cardinality,
+            command_text: query.into(),
+            input_typedesc_id,
+            output_typedesc_id,
+            arguments: arguments.into(),
+        }
+    }
+}
+
+impl Encode for OptimisticExecute {
+    fn encode(&self, buf: &mut Output)
+        -> Result<(), EncodeError>
+    {
+        buf.reserve(2+1+1+4+16+16+4);
+        buf.put_u16(u16::try_from(self.headers.len()).ok()
+            .context(errors::TooManyHeaders)?);
+        for (&name, value) in &self.headers {
+            buf.reserve(2);
+            buf.put_u16(name);
+            value.encode(buf)?;
+        }
+        buf.reserve(1+1+4+16+16+4);
+        buf.put_u8(self.io_format as u8);
+        buf.put_u8(self.expected_cardinality as u8);
+        self.command_text.encode(buf)?;
+        self.input_typedesc_id.encode(buf)?;
+        self.output_typedesc_id.encode(buf)?;
+        self.arguments.encode(buf)?;
+        Ok(())
+    }
+}
+
+impl Decode for OptimisticExecute {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
+        ensure!(buf.remaining() >= 12, errors::Underflow);
+        let num_headers = buf.get_u16();
+        let mut headers = HashMap::new();
+        for _ in 0..num_headers {
+            ensure!(buf.remaining() >= 4, errors::Underflow);
+            headers.insert(buf.get_u16(), Bytes::decode(buf)?);
+        }
+        let io_format = match buf.get_u8() {
+            0x62 => IoFormat::Binary,
+            0x6a => IoFormat::Json,
+            0x4a => IoFormat::JsonElements,
+            c => errors::InvalidIoFormat { io_format: c }.fail()?,
+        };
+        let expected_cardinality = TryFrom::try_from(buf.get_u8())?;
+        let command_text = String::decode(buf)?;
+        let input_typedesc_id = Uuid::decode(buf)?;
+        let output_typedesc_id = Uuid::decode(buf)?;
+        let arguments = Bytes::decode(buf)?;
+        Ok(OptimisticExecute {
+            headers,
+            io_format,
+            expected_cardinality,
+            command_text,
+            input_typedesc_id,
+            output_typedesc_id,
             arguments,
         })
     }
