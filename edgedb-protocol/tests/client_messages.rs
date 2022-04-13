@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 
+use uuid::Uuid;
 use bytes::{Bytes, BytesMut};
 
 use edgedb_protocol::encoding::{Input, Output};
@@ -11,6 +12,7 @@ use edgedb_protocol::client_message::{Prepare, IoFormat, Cardinality};
 use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
 use edgedb_protocol::client_message::{SaslInitialResponse};
 use edgedb_protocol::client_message::{SaslResponse};
+use edgedb_protocol::client_message::{OptimisticExecute};
 use edgedb_protocol::client_message::Restore;
 
 mod base;
@@ -89,6 +91,22 @@ fn execute() -> Result<(), Box<dyn Error>> {
         statement_name: Bytes::from_static(b"example"),
         arguments: Bytes::new(),
     }), b"E\0\0\0\x15\0\0\0\0\0\x07example\0\0\0\0");
+    Ok(())
+}
+
+#[test]
+fn optimistic_execute() -> Result<(), Box<dyn Error>> {
+    encoding_eq!(ClientMessage::OptimisticExecute(OptimisticExecute {
+        headers: HashMap::new(),
+        io_format: IoFormat::Binary,
+        expected_cardinality: Cardinality::AtMostOne,
+        command_text: String::from("COMMIT"),
+        input_typedesc_id: Uuid::from_u128(0xFF),
+        output_typedesc_id: Uuid::from_u128(0x0),
+        arguments: Bytes::new(),
+    }),  b"O\0\0\06\0\0bo\0\0\0\x06COMMIT\
+           \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\
+           \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
     Ok(())
 }
 
