@@ -11,10 +11,12 @@ mod errors;
 mod sealed;
 mod server_params;
 mod tls;
+mod transaction;
 
 pub use builder::{Builder, Config};
 pub use client::Client;
 pub use errors::Error;
+pub use transaction::{Transaction};
 
 /// Create a connection to the database with default parameters
 ///

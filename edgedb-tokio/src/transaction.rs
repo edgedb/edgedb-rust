@@ -1,44 +1,95 @@
 use std::future::Future;
 
 use bytes::BytesMut;
-use edgedb_protocol::model::Json;
+use edgedb_protocol::QueryResult;
 use edgedb_protocol::common::CompilationFlags;
 use edgedb_protocol::common::{IoFormat, Capabilities, Cardinality};
+use edgedb_protocol::model::Json;
 use edgedb_protocol::query_arg::{QueryArgs, Encoder};
-use edgedb_protocol::QueryResult;
+use tokio::sync::oneshot;
 
-use crate::raw::Pool;
-use crate::builder::Config;
+use crate::errors::{ClientError};
 use crate::errors::{Error, ErrorKind};
 use crate::errors::{ProtocolEncodingError, NoResultExpected, NoDataError};
-use crate::transaction::{Transaction, transaction};
+use crate::raw::{Pool, Connection};
 
-/// EdgeDB Client
-///
-/// Internally it contains a connection pool
-pub struct Client {
-    pool: Pool,
+pub struct Transaction(Option<Inner>);
+
+pub struct TransactionResult {
+    conn: Connection,
+    started: bool,
 }
 
-impl Client {
-    /// Create a new connection pool.
-    ///
-    /// Note this does not create a connection immediately.
-    /// Use [`ensure_connected()`][Client::ensure_connected] to establish a
-    /// connection and verify that the connection is usable.
-    pub fn new(config: &Config) -> Client {
-        Client {
-            pool: Pool::new(config),
+pub struct Inner {
+    started: bool,
+    conn: Connection,
+    return_conn: oneshot::Sender<TransactionResult>,
+}
+
+trait Assert: Send {}
+impl Assert for Transaction {}
+
+impl Drop for Transaction {
+    fn drop(&mut self) {
+        self.0.take().map(|Inner { started, conn, return_conn }| {
+            return_conn.send(TransactionResult {
+                started,
+                conn,
+            }).ok()
+        });
+    }
+}
+
+pub(crate) async fn transaction<T, B, F>(pool: &Pool, mut body: B)
+    -> Result<T, Error>
+        where B: FnMut(Transaction) -> F,
+              F: Future<Output=Result<T, Error>>,
+{
+    loop {
+        let conn = pool.acquire().await?;
+        let (tx, mut rx) = oneshot::channel();
+        let tran = Transaction(Some(Inner {
+            started: false,
+            conn,
+            return_conn: tx,
+        }));
+        let result = body(tran).await;
+        let TransactionResult { mut conn, started } =
+            rx.try_recv().expect("Transaction object must \
+            be dropped by the time transaction body finishes.");
+        match result {
+            Ok(val) => {
+                if started {
+                    log::debug!("Comitting transaction");
+                    conn.statement("COMMIT").await?;
+                }
+                return Ok(val)
+            }
+            Err(e) => {
+                if started {
+                    log::debug!("Rolling back transaction on error");
+                    conn.statement("ROLLBACK").await?;
+                }
+                return Err(e);
+            }
         }
     }
+}
 
-    /// Ensure that there is at least one working connection to the pool.
-    ///
-    /// This can be used at application startup to ensure that you have a
-    /// working connection.
-    pub async fn ensure_connected(&self) -> Result<(), Error> {
-        self.pool.acquire().await?;
-        Ok(())
+impl Transaction {
+
+    async fn ensure_started(&mut self) -> anyhow::Result<(), Error> {
+        if let Some(inner) = &mut self.0 {
+            if !inner.started {
+                inner.conn.statement("START TRANSACTION").await?;
+                inner.started = true;
+            }
+            return Ok(());
+        }
+        Err(ClientError::with_message("using transaction after drop"))
+    }
+    fn inner(&mut self) -> &mut Inner {
+        self.0.as_mut().expect("transaction object is not dropped")
     }
 
     /// Execute a query and return a collection of results.
@@ -54,13 +105,12 @@ impl Client {
     /// This method can be used with both static arguments, like a tuple of
     /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
-    pub async fn query<R, A>(&self, query: &str, arguments: &A)
+    pub async fn query<R, A>(&mut self, query: &str, arguments: &A)
         -> Result<Vec<R>, Error>
         where A: QueryArgs,
               R: QueryResult,
     {
-        let mut conn = self.pool.acquire().await?;
-
+        self.ensure_started().await?;
         let flags = CompilationFlags {
             implicit_limit: None,
             implicit_typenames: false,
@@ -70,6 +120,7 @@ impl Client {
             io_format: IoFormat::Binary,
             expected_cardinality: Cardinality::Many,
         };
+        let ref mut conn = self.inner().conn;
         let _prepare = conn.prepare(&flags, query).await?;
         let desc = conn.describe_data().await?;
         let inp_desc = desc.input()
@@ -115,13 +166,12 @@ impl Client {
     /// This method can be used with both static arguments, like a tuple of
     /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
-    pub async fn query_single<R, A>(&self, query: &str, arguments: &A)
+    pub async fn query_single<R, A>(&mut self, query: &str, arguments: &A)
         -> Result<Option<R>, Error>
         where A: QueryArgs,
               R: QueryResult,
     {
-        let mut conn = self.pool.acquire().await?;
-
+        self.ensure_started().await?;
         let flags = CompilationFlags {
             implicit_limit: None,
             implicit_typenames: false,
@@ -131,6 +181,7 @@ impl Client {
             io_format: IoFormat::Binary,
             expected_cardinality: Cardinality::AtMostOne,
         };
+        let ref mut conn = self.inner().conn;
         let _prepare = conn.prepare(&flags, query).await?;
         let desc = conn.describe_data().await?;
         let inp_desc = desc.input()
@@ -187,7 +238,7 @@ impl Client {
     /// This method can be used with both static arguments, like a tuple of
     /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
-    pub async fn query_required_single<R, A>(&self, query: &str, arguments: &A)
+    pub async fn query_required_single<R, A>(&mut self, query: &str, arguments: &A)
         -> Result<R, Error>
         where A: QueryArgs,
               R: QueryResult,
@@ -198,11 +249,10 @@ impl Client {
     }
 
     /// Execute a query and return the result as JSON.
-    pub async fn query_json(&self, query: &str, arguments: &impl QueryArgs)
+    pub async fn query_json(&mut self, query: &str, arguments: &impl QueryArgs)
         -> Result<Json, Error>
     {
-        let mut conn = self.pool.acquire().await?;
-
+        self.ensure_started().await?;
         let flags = CompilationFlags {
             implicit_limit: None,
             implicit_typenames: false,
@@ -212,6 +262,7 @@ impl Client {
             io_format: IoFormat::Json,
             expected_cardinality: Cardinality::Many,
         };
+        let ref mut conn = self.inner().conn;
         let _prepare = conn.prepare(&flags, query).await?;
         let desc = conn.describe_data().await?;
         let inp_desc = desc.input()
@@ -253,12 +304,11 @@ impl Client {
     /// than one element, a
     /// [`ResultCardinalityMismatchError`][crate::errors::ResultCardinalityMismatchError]
     /// is raised.
-    pub async fn query_single_json(&self,
+    pub async fn query_single_json(&mut self,
                                    query: &str, arguments: &impl QueryArgs)
         -> Result<Option<Json>, Error>
     {
-        let mut conn = self.pool.acquire().await?;
-
+        self.ensure_started().await?;
         let flags = CompilationFlags {
             implicit_limit: None,
             implicit_typenames: false,
@@ -268,6 +318,7 @@ impl Client {
             io_format: IoFormat::Json,
             expected_cardinality: Cardinality::AtMostOne,
         };
+        let ref mut conn = self.inner().conn;
         let _prepare = conn.prepare(&flags, query).await?;
         let desc = conn.describe_data().await?;
         let inp_desc = desc.input()
@@ -309,19 +360,12 @@ impl Client {
     /// [`ResultCardinalityMismatchError`][crate::errors::ResultCardinalityMismatchError]
     /// is raised. If the query returns an empty set, a
     /// [`NoDataError`][crate::errors::NoDataError] is raised.
-    pub async fn query_required_single_json(&self,
+    pub async fn query_required_single_json(&mut self,
                                    query: &str, arguments: &impl QueryArgs)
         -> Result<Json, Error>
     {
         self.query_single_json(query, arguments).await?
             .ok_or_else(|| NoDataError::with_message(
                         "query row returned zero results"))
-    }
-
-    pub async fn transaction<T, B, F>(self, body: B) -> Result<T, Error>
-        where B: FnMut(Transaction) -> F,
-              F: Future<Output=Result<T, Error>>,
-    {
-        transaction(&self.pool, body).await
     }
 }
