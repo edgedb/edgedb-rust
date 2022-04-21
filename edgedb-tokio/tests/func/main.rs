@@ -6,3 +6,6 @@ mod raw;
 
 #[cfg(not(windows))]
 mod client;
+
+#[cfg(not(windows))]
+mod transactions;

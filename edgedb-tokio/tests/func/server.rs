@@ -1,5 +1,5 @@
 use std::env;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{BufReader, BufRead};
 use std::os::unix::io::FromRawFd;
 use std::process;
@@ -90,6 +90,23 @@ impl ServerGuard {
         }
         sinfo.push(ShutdownInfo { process });
         let info = result?;
+
+        fs::remove_file("tests/func/dbschema/migrations/00001.edgeql").ok();
+        assert!(Command::new("edgedb")
+            .current_dir("./tests/func")
+            .arg("--tls-security").arg("insecure")
+            .arg("--port").arg(info.port.to_string())
+            .arg("migration")
+            .arg("create")
+            .arg("--non-interactive")
+            .status()?.success());
+        assert!(Command::new("edgedb")
+            .current_dir("./tests/func")
+            .arg("--tls-security").arg("insecure")
+            .arg("--port").arg(info.port.to_string())
+            .arg("migration")
+            .arg("apply")
+            .status()?.success());
 
         let cert_data = std::fs::read_to_string(&info.tls_cert_file)
             .expect("cert file should be readable");
