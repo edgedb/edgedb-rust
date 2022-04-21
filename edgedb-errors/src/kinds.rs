@@ -160,4 +160,5 @@ define_errors![
     (struct ClientConnectionEosError, 0xFF01FF00u32, 0x00000000),
     (struct NoResultExpected, 0xFF02FF00u32, 0x00000000),
     (struct DescriptorMismatch, 0xFF02FE00u32, 0x00000000),
+    (struct UserError, 0xFE000000u32, 0x00000000),
 ];
