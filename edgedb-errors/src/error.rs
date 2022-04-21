@@ -5,6 +5,7 @@ use std::fmt;
 use std::str;
 
 use crate::kinds::{tag_check, error_name};
+use crate::kinds::{UserError};
 use crate::traits::ErrorKind;
 
 
@@ -189,5 +190,14 @@ impl fmt::Debug for Source {
             Source::Box(b) => fmt::Debug::fmt(b.as_ref(), f),
             Source::Ref(b) => fmt::Debug::fmt((**b).as_ref(), f),
         }
+    }
+}
+
+impl<T> From<T> for Error
+    where T: AsRef<dyn StdError + Send + Sync + 'static>
+             + Send + Sync + 'static,
+{
+    fn from(err: T) -> Error {
+        UserError::with_source_ref(err)
     }
 }
