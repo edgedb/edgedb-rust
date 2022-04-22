@@ -25,7 +25,10 @@ const FIELD_COLUMN: u16 = 0x_FF_F4;
 #[derive(Debug)]
 pub struct Error(pub(crate) Box<Inner>);
 
+pub struct Chain<'a>(Option<&'a (dyn StdError + 'static)>);
+
 /// Tag that is used to group similar errors.
+#[derive(Clone, Copy)]
 pub struct Tag { pub(crate)  bit: u32 }
 
 pub(crate) enum Source {
@@ -53,6 +56,9 @@ impl Error {
     }
     pub fn has_tag(&self, tag: Tag) -> bool {
         tag_check(self.0.code, tag.bit)
+    }
+    pub fn chain(&self) -> Chain {
+        Chain(Some(self))
     }
     pub fn context<S: Into<Cow<'static, str>>>(mut self, msg: S) -> Error {
         self.0.messages.push(msg.into());
@@ -199,5 +205,14 @@ impl<T> From<T> for Error
 {
     fn from(err: T) -> Error {
         UserError::with_source_ref(err)
+    }
+}
+
+impl<'a> Iterator for Chain<'a> {
+    type Item = &'a (dyn StdError + 'static);
+    fn next(&mut self) -> Option<Self::Item> {
+        let result = self.0.take();
+        self.0 = result.and_then(|e| e.source());
+        result
     }
 }

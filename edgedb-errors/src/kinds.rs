@@ -15,13 +15,15 @@ macro_rules! define_errors {
             impl ErrorKind for $id {}
         )*
         pub(crate) fn tag_check(code: u32, bit: u32) -> bool {
-            let tag_mask = match code {
+            return get_tags(code) & (1 << bit) != 0;
+        }
+        pub(crate) fn get_tags(code: u32) -> u32 {
+            match code {
                 $(
                     $code => $tags,
                 )*
                 _ => 0,
-            };
-            return tag_mask & (1 << bit) != 0;
+            }
         }
         pub(crate) fn error_name(code: u32) -> &'static str {
             match code {
