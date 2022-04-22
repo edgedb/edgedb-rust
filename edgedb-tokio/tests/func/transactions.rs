@@ -1,14 +1,29 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
 
-use tokio::sync::{Barrier, Mutex};
+use tokio::sync::{Mutex};
 
 use edgedb_tokio::{Client, Transaction};
 
 use crate::server::SERVER;
 
+struct OnceBarrier(AtomicBool, tokio::sync::Barrier);
+
+impl OnceBarrier {
+    fn new(n: usize) -> OnceBarrier {
+        OnceBarrier(AtomicBool::new(false), tokio::sync::Barrier::new(n))
+    }
+    async fn wait(&self) {
+        if self.0.load(Ordering::SeqCst) {
+            return
+        }
+        self.1.wait().await;
+        self.0.store(true, Ordering::SeqCst)
+    }
+}
+
 async fn transaction1(client: Client, name: &str, iterations: Arc<AtomicUsize>,
-                      barrier: Arc<Barrier>, lock: Arc<Mutex<()>>)
+                      barrier: Arc<OnceBarrier>, lock: Arc<Mutex<()>>)
     -> anyhow::Result<i32>
 {
     let val = client.transaction(|mut tx| {
@@ -42,12 +57,12 @@ async fn transaction1(client: Client, name: &str, iterations: Arc<AtomicUsize>,
     Ok(val)
 }
 
-#[tokio::test]
+#[test_log::test(tokio::test)]
 async fn transaction_conflict() -> anyhow::Result<()> {
     let cli1 = Client::new(&SERVER.config);
     let cli2 = Client::new(&SERVER.config);
     tokio::try_join!(cli1.ensure_connected(), cli2.ensure_connected())?;
-    let barrier = Arc::new(Barrier::new(2));
+    let barrier = Arc::new(OnceBarrier::new(2));
     let lock = Arc::new(Mutex::new(()));
     let iters = Arc::new(AtomicUsize::new(0));
 
@@ -84,7 +99,7 @@ async fn get_counter_value(tx: &mut Transaction, name: &str)
 
 async fn transaction1e(
     client: Client, name: &str, iterations: Arc<AtomicUsize>,
-    barrier: Arc<Barrier>, lock: Arc<Mutex<()>>)
+    barrier: Arc<OnceBarrier>, lock: Arc<Mutex<()>>)
     -> anyhow::Result<i32>
 {
     let val = client.transaction(|mut tx| {
@@ -110,14 +125,14 @@ async fn transaction_conflict_with_complex_err() -> anyhow::Result<()> {
     let cli1 = Client::new(&SERVER.config);
     let cli2 = Client::new(&SERVER.config);
     tokio::try_join!(cli1.ensure_connected(), cli2.ensure_connected())?;
-    let barrier = Arc::new(Barrier::new(2));
+    let barrier = Arc::new(OnceBarrier::new(2));
     let lock = Arc::new(Mutex::new(()));
     let iters = Arc::new(AtomicUsize::new(0));
 
     // TODO(tailhook) set retry options
     let res = tokio::try_join!(
-        transaction1e(cli1, "x", iters.clone(), barrier.clone(), lock.clone()),
-        transaction1e(cli2, "x", iters.clone(), barrier.clone(), lock.clone()),
+        transaction1e(cli1, "y", iters.clone(), barrier.clone(), lock.clone()),
+        transaction1e(cli2, "y", iters.clone(), barrier.clone(), lock.clone()),
     );
     println!("Result {:#?}", res);
     let tup = res?;

@@ -9,11 +9,19 @@ use edgedb_protocol::query_arg::{QueryArgs, Encoder};
 use tokio::sync::oneshot;
 
 use crate::errors::{ClientError};
-use crate::errors::{Error, ErrorKind};
+use crate::errors::{Error, ErrorKind, SHOULD_RETRY};
 use crate::errors::{ProtocolEncodingError, NoResultExpected, NoDataError};
 use crate::raw::{Pool, Connection};
 
-pub struct Transaction(Option<Inner>);
+
+// TODO(tailhook) temporary
+const MAX_ITERATIONS: u32 = 3;
+
+
+pub struct Transaction {
+    iteration: u32,
+    inner: Option<Inner>,
+}
 
 pub struct TransactionResult {
     conn: Connection,
@@ -31,7 +39,7 @@ impl Assert for Transaction {}
 
 impl Drop for Transaction {
     fn drop(&mut self) {
-        self.0.take().map(|Inner { started, conn, return_conn }| {
+        self.inner.take().map(|Inner { started, conn, return_conn }| {
             return_conn.send(TransactionResult {
                 started,
                 conn,
@@ -45,30 +53,46 @@ pub(crate) async fn transaction<T, B, F>(pool: &Pool, mut body: B)
         where B: FnMut(Transaction) -> F,
               F: Future<Output=Result<T, Error>>,
 {
-    loop {
+    let mut iteration = 0;
+    'transaction: loop {
+        iteration += 1;
         let conn = pool.acquire().await?;
         let (tx, mut rx) = oneshot::channel();
-        let tran = Transaction(Some(Inner {
-            started: false,
-            conn,
-            return_conn: tx,
-        }));
+        let tran = Transaction {
+            iteration,
+            inner: Some(Inner {
+                started: false,
+                conn,
+                return_conn: tx,
+            })
+        };
         let result = body(tran).await;
         let TransactionResult { mut conn, started } =
             rx.try_recv().expect("Transaction object must \
             be dropped by the time transaction body finishes.");
         match result {
             Ok(val) => {
+                log::debug!("Comitting transaction");
                 if started {
-                    log::debug!("Comitting transaction");
                     conn.statement("COMMIT").await?;
                 }
                 return Ok(val)
             }
             Err(e) => {
+                log::debug!("Rolling back transaction on error");
                 if started {
-                    log::debug!("Rolling back transaction on error");
                     conn.statement("ROLLBACK").await?;
+                }
+                for e in e.chain() {
+                    if let Some(e) = e.downcast_ref::<Error>() {
+                        if e.has_tag(SHOULD_RETRY) {
+                            if iteration < MAX_ITERATIONS { // TODO
+                                log::info!("Retrying transaction on {:#}",
+                                           e);
+                                continue 'transaction;
+                            }
+                        }
+                    }
                 }
                 return Err(e);
             }
@@ -77,9 +101,11 @@ pub(crate) async fn transaction<T, B, F>(pool: &Pool, mut body: B)
 }
 
 impl Transaction {
-
+    pub fn iteration(&self) -> u32 {
+        self.iteration
+    }
     async fn ensure_started(&mut self) -> anyhow::Result<(), Error> {
-        if let Some(inner) = &mut self.0 {
+        if let Some(inner) = &mut self.inner {
             if !inner.started {
                 inner.conn.statement("START TRANSACTION").await?;
                 inner.started = true;
@@ -89,7 +115,7 @@ impl Transaction {
         Err(ClientError::with_message("using transaction after drop"))
     }
     fn inner(&mut self) -> &mut Inner {
-        self.0.as_mut().expect("transaction object is not dropped")
+        self.inner.as_mut().expect("transaction object is not dropped")
     }
 
     /// Execute a query and return a collection of results.
