@@ -25,7 +25,8 @@
 //! }
 //! ```
 //! More [examples on github](https://github.com/edgedb/edgedb-rust/tree/master/edgedb-tokio/examples)
-#![warn(missing_docs, missing_debug_implementations)]
+#![cfg_attr(not(feature="unstable"),
+   warn(missing_docs, missing_debug_implementations))]
 
 #[cfg(feature="unstable")]
 pub mod raw;
