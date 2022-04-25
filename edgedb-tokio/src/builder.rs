@@ -773,6 +773,7 @@ impl Builder {
         ).map_err(ClientError::with_source_ref)
     }
 
+    /// Create configuration object that can be used for connections
     pub fn build(&self) -> Result<Config, Error> {
         use TlsSecurity::*;
 

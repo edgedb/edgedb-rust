@@ -29,6 +29,7 @@ pub struct NoHostnameVerifier {
     trust_anchors: Vec<OwnedTrustAnchor>,
 }
 
+#[derive(Debug)]
 pub struct OwnedTrustAnchor {
     subject: Vec<u8>,
     spki: Vec<u8>,

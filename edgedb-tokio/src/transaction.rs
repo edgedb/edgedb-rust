@@ -18,16 +18,26 @@ use crate::raw::{Pool, Connection};
 const MAX_ITERATIONS: u32 = 3;
 
 
+/// Transaction object passed to the closure via
+/// [`Client::transaction()`](crate::Client::transaction) method
+///
+/// The Transaction object must be dropped by the end of the closure execution.
+///
+/// All database queries in transaction should be executed using methods on
+/// this object instead of using original [`Client`](crate::Client) instance.
+#[derive(Debug)]
 pub struct Transaction {
     iteration: u32,
     inner: Option<Inner>,
 }
 
+#[derive(Debug)]
 pub struct TransactionResult {
     conn: Connection,
     started: bool,
 }
 
+#[derive(Debug)]
 pub struct Inner {
     started: bool,
     conn: Connection,
@@ -101,6 +111,10 @@ pub(crate) async fn transaction<T, B, F>(pool: &Pool, mut body: B)
 }
 
 impl Transaction {
+    /// Zero-based iteration (attempt) number for the current transaction
+    ///
+    /// First attempt gets `iteration = 0`, second attempt `iteration = 1`,
+    /// etc.
     pub fn iteration(&self) -> u32 {
         self.iteration
     }
