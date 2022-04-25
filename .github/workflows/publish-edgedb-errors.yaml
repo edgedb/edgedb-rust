@@ -19,7 +19,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --all-features --pacage=edgedb-errors
+          args: --all-features --package=edgedb-errors
       - run: |
           set -x
           cargo_version="$(cargo metadata --format-version 1 \
