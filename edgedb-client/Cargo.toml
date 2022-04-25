@@ -7,6 +7,7 @@ edition = "2018"
 description = """
     EdgeDB database client implementation based on async-std.
 """
+readme = "README.md"
 
 [dependencies]
 edgedb-protocol = {path = "../edgedb-protocol", version="0.2.0"}
