@@ -15,7 +15,13 @@ use crate::transaction::{Transaction, transaction};
 
 /// EdgeDB Client
 ///
-/// Internally it contains a connection pool
+/// Internally it contains a connection pool.
+///
+/// To create client, use [`create_client`](crate::create_client) function (it
+/// gets database connection configuration from environment). You can also use
+/// [`Builder`](crate::Builder) to [`build`](`crate::Builder::build`) custom
+/// [`Config`] and [create a client](Client::new) using that config.
+#[derive(Debug)]
 pub struct Client {
     pool: Pool,
 }
@@ -318,6 +324,28 @@ impl Client {
                         "query row returned zero results"))
     }
 
+    /// Execute a transaction
+    ///
+    /// Transaction body must be encompassed in the closure. The closure **may
+    /// be executed multiple times**. This includes not only database queries
+    /// but also executing the whole function, so the transaction code must be
+    /// prepared to be idempotent.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// # async fn transaction() -> Result<(), edgedb_tokio::Error> {
+    /// let conn = edgedb_tokio::create_client().await?;
+    /// let val = conn.transaction(|mut tx| async move {
+    ///     tx.query_required_single::<i64, _>("
+    ///         WITH C := UPDATE Counter SET { value := .value + 1}
+    ///         SELECT C.value LIMIT 1
+    ///     ", &()
+    ///     ).await
+    /// }).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn transaction<T, B, F>(self, body: B) -> Result<T, Error>
         where B: FnMut(Transaction) -> F,
               F: Future<Output=Result<T, Error>>,

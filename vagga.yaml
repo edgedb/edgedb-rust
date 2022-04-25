@@ -16,6 +16,14 @@ commands:
       cargo build --workspace --exclude=edgedb-tokio
       cargo build -p edgedb-tokio
 
+  doc: !Command
+    description: Build documentation
+    container: ubuntu
+    run: |
+      set -ex
+      cargo doc --workspace --exclude=edgedb-tokio
+      cargo doc -p edgedb-tokio --no-deps
+
   cargo: !Command
     description: Run arbitrary cargo command
     symlink-name: cargo
