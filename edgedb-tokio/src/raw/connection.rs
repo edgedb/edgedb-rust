@@ -45,6 +45,7 @@ pub(crate) enum State {
     Normal {
         idle_since: Instant,
     },
+    Transaction { dirty: bool },
     Dirty,
     #[allow(dead_code)] // TODO
     AwaitingPing,
