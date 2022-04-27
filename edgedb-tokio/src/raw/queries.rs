@@ -27,19 +27,34 @@ impl ConnInner {
                 self.state = State::Dirty;
                 Ok(Guard)
             }
-            State::Dirty => Err(ClientInconsistentError::build()),
+            State::Transaction { dirty: ref mut dirty@false } => {
+                *dirty = true;
+                Ok(Guard)
+            }
+            State::Transaction { dirty: true }
+            | State::Dirty => Err(ClientInconsistentError::build()),
             // TODO(tailhook) technically we could just wait ping here
             State::AwaitingPing => Err(ClientInconsistentError
                                        ::with_message("interrupted ping")),
         }
     }
     async fn expect_ready(&mut self, guard: Guard) -> Result<(), Error> {
+        use edgedb_protocol::server_message::TransactionState::*;
         loop {
             let msg = self.message().await?;
             match msg {
-                ServerMessage::ReadyForCommand(_) => {
+                ServerMessage::ReadyForCommand(ready) => {
                     drop(guard);
-                    self.state = State::Normal { idle_since: Instant::now() };
+                    match ready.transaction_state {
+                        NotInTransaction => {
+                            self.state = State::Normal {
+                                idle_since: Instant::now()
+                            };
+                        },
+                        InTransaction | InFailedTransaction => {
+                            self.state = State::Transaction { dirty: false };
+                        }
+                    }
                     // TODO(tailhook) update transaction state
                     return Ok(())
                 }
