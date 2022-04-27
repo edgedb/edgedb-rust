@@ -65,7 +65,6 @@ pub(crate) async fn transaction<T, B, F>(pool: &Pool, mut body: B)
 {
     let mut iteration = 0;
     'transaction: loop {
-        iteration += 1;
         let conn = pool.acquire().await?;
         let (tx, mut rx) = oneshot::channel();
         let tran = Transaction {
@@ -99,6 +98,7 @@ pub(crate) async fn transaction<T, B, F>(pool: &Pool, mut body: B)
                             if iteration < MAX_ITERATIONS { // TODO
                                 log::info!("Retrying transaction on {:#}",
                                            e);
+                                iteration += 1;
                                 continue 'transaction;
                             }
                         }
