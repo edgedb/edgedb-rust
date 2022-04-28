@@ -331,6 +331,13 @@ impl Client {
     /// but also executing the whole function, so the transaction code must be
     /// prepared to be idempotent.
     ///
+    /// # Panics
+    ///
+    /// Function panics when transaction object passed to the closure is not
+    /// dropped after closure exists. General rule: do not store transaction
+    /// anywhere and do not send to another coroutine. Pass to all further
+    /// function calls by reference.
+    ///
     /// # Example
     ///
     /// ```rust,no_run
