@@ -38,6 +38,7 @@ mod builder;
 mod client;
 mod credentials;
 mod errors;
+mod options;
 mod sealed;
 mod server_params;
 mod tls;
@@ -46,6 +47,7 @@ mod transaction;
 pub use builder::{Builder, Config};
 pub use client::Client;
 pub use errors::Error;
+pub use options::{TransactionOptions, RetryOptions};
 pub use transaction::{Transaction};
 
 /// Create a connection to the database with default parameters
