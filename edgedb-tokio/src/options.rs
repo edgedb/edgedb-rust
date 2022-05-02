@@ -6,6 +6,8 @@ use std::time::Duration;
 
 use rand::{thread_rng, Rng};
 
+use edgedb_errors::Error;
+
 trait Assert: Send + Sync + 'static {}
 impl Assert for RetryOptions {}
 impl Assert for TransactionOptions {}
@@ -55,9 +57,9 @@ struct RetryOptionsInner {
 }
 
 #[derive(Clone)]
-struct RetryRule {
-    attempts: u32,
-    backoff: Arc<dyn Fn(u32) -> Duration + Send + Sync>,
+pub(crate) struct RetryRule {
+    pub(crate) attempts: u32,
+    pub(crate) backoff: Arc<dyn Fn(u32) -> Duration + Send + Sync>,
 }
 
 impl Default for TransactionOptions {
@@ -137,6 +139,19 @@ impl RetryOptions {
             backoff: Arc::new(backoff),
         });
         self
+    }
+    pub(crate) fn get_rule(&self, err: &Error) -> &RetryRule {
+        use edgedb_errors::{TransactionConflictError, ClientError};
+        use RetryCondition::*;
+
+        if err.is::<TransactionConflictError>() {
+            self.0.overrides.get(&TransactionConflict)
+                .unwrap_or(&self.0.default)
+        } else if err.is::<ClientError>() {
+            self.0.overrides.get(&NetworkError).unwrap_or(&self.0.default)
+        } else {
+            &self.0.default
+       }
     }
 }
 

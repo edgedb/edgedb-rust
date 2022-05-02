@@ -1,7 +1,8 @@
 #![cfg_attr(not(feature="unstable"), allow(dead_code))]
 
-mod queries;
 mod connection;
+mod options;
+mod queries;
 
 use std::sync::{Arc, Mutex as BlockingMutex};
 use std::collections::VecDeque;
@@ -14,6 +15,8 @@ use edgedb_protocol::features::ProtocolVersion;
 
 use crate::errors::{Error, ErrorKind, ClientError};
 use crate::builder::Config;
+
+pub use options::Options;
 
 #[derive(Clone, Debug)]
 pub struct Pool(Arc<PoolInner>);
