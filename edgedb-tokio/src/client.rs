@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::future::Future;
 
 use bytes::BytesMut;
@@ -12,6 +13,14 @@ use crate::builder::Config;
 use crate::errors::{Error, ErrorKind};
 use crate::errors::{ProtocolEncodingError, NoResultExpected, NoDataError};
 use crate::transaction::{Transaction, transaction};
+use crate::options::{TransactionOptions, RetryOptions};
+
+
+#[derive(Debug, Clone, Default)]
+struct Options {
+    transaction: TransactionOptions,
+    retry: RetryOptions,
+}
 
 /// EdgeDB Client
 ///
@@ -23,6 +32,7 @@ use crate::transaction::{Transaction, transaction};
 /// [`Config`] and [create a client](Client::new) using that config.
 #[derive(Debug)]
 pub struct Client {
+    options: Arc<Options>,
     pool: Pool,
 }
 
@@ -34,6 +44,7 @@ impl Client {
     /// connection and verify that the connection is usable.
     pub fn new(config: &Config) -> Client {
         Client {
+            options: Default::default(),
             pool: Pool::new(config),
         }
     }
@@ -358,5 +369,45 @@ impl Client {
               F: Future<Output=Result<T, Error>>,
     {
         transaction(&self.pool, body).await
+    }
+
+    /// Returns client with adjusted options for future transactions.
+    ///
+    /// This method returns a "shallow copy" of the current client
+    /// with modified transaction options.
+    ///
+    /// Both ``self`` and returned client can be used after, but when using
+    /// them transaction options applied will be different.
+    ///
+    /// Transaction options are used by the ``transaction`` method.
+    pub fn with_transaction_options(&self, options: TransactionOptions)
+        -> Self
+    {
+        Client {
+            options: Arc::new(Options {
+                transaction: options,
+                retry: self.options.retry.clone(),
+            }),
+            pool: self.pool.clone(),
+        }
+    }
+    /// Returns client with adjusted options for future retrying
+    /// transactions.
+    ///
+    /// This method returns a "shallow copy" of the current client
+    /// with modified transaction options.
+    ///
+    /// Both ``self`` and returned client can be used after, but when using
+    /// them transaction options applied will be different.
+    pub fn with_retry_options(&self, options: RetryOptions)
+        -> Self
+    {
+        Client {
+            options: Arc::new(Options {
+                transaction: self.options.transaction.clone(),
+                retry: options,
+            }),
+            pool: self.pool.clone(),
+        }
     }
 }
