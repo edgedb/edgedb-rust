@@ -7,15 +7,12 @@ use edgedb_protocol::common::{IoFormat, Capabilities, Cardinality};
 use edgedb_protocol::model::Json;
 use edgedb_protocol::query_arg::{QueryArgs, Encoder};
 use tokio::sync::oneshot;
+use tokio::time::sleep;
 
 use crate::errors::{ClientError};
 use crate::errors::{Error, ErrorKind, SHOULD_RETRY};
 use crate::errors::{ProtocolEncodingError, NoResultExpected, NoDataError};
-use crate::raw::{Pool, Connection};
-
-
-// TODO(tailhook) temporary
-const MAX_ITERATIONS: u32 = 3;
+use crate::raw::{Pool, Connection, Options};
 
 
 /// Transaction object passed to the closure via
@@ -58,7 +55,8 @@ impl Drop for Transaction {
     }
 }
 
-pub(crate) async fn transaction<T, B, F>(pool: &Pool, mut body: B)
+pub(crate) async fn transaction<T, B, F>(pool: &Pool, options: &Options,
+                                         mut body: B)
     -> Result<T, Error>
         where B: FnMut(Transaction) -> F,
               F: Future<Output=Result<T, Error>>,
@@ -95,10 +93,12 @@ pub(crate) async fn transaction<T, B, F>(pool: &Pool, mut body: B)
                 for e in e.chain() {
                     if let Some(e) = e.downcast_ref::<Error>() {
                         if e.has_tag(SHOULD_RETRY) {
-                            if iteration < MAX_ITERATIONS { // TODO
+                            let rule = options.retry.get_rule(e);
+                            if iteration < rule.attempts {
                                 log::info!("Retrying transaction on {:#}",
                                            e);
                                 iteration += 1;
+                                sleep((rule.backoff)(iteration)).await;
                                 continue 'transaction;
                             }
                         }

@@ -14,13 +14,7 @@ use crate::errors::{Error, ErrorKind};
 use crate::errors::{ProtocolEncodingError, NoResultExpected, NoDataError};
 use crate::transaction::{Transaction, transaction};
 use crate::options::{TransactionOptions, RetryOptions};
-
-
-#[derive(Debug, Clone, Default)]
-struct Options {
-    transaction: TransactionOptions,
-    retry: RetryOptions,
-}
+use crate::raw::Options;
 
 /// EdgeDB Client
 ///
@@ -368,7 +362,7 @@ impl Client {
         where B: FnMut(Transaction) -> F,
               F: Future<Output=Result<T, Error>>,
     {
-        transaction(&self.pool, body).await
+        transaction(&self.pool, &self.options, body).await
     }
 
     /// Returns client with adjusted options for future transactions.
