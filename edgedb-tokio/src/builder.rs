@@ -30,8 +30,7 @@ type Verifier = Arc<dyn ServerCertVerifier>;
 /// is encouraged.
 #[derive(Debug, Clone)]
 pub struct Builder {
-    host: String,
-    port: u16,
+    addr: Address,
     admin: bool,
     user: String,
     password: Option<String>,
@@ -50,10 +49,10 @@ pub struct Builder {
     pub(crate) max_connections: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) enum Address {
     Tcp((String, u16)),
-    #[allow(dead_code)] // TODO(tailhook), but for cli only
+    #[allow(dead_code)] // only with feature="unstable"
     Unix(PathBuf),
 }
 
@@ -89,10 +88,11 @@ impl fmt::Display for DisplayAddr<'_> {
         if !self.0.initialized {
             write!(f, "<no address>")
         // TODO
-        //} else if let Some(path) = self.0._get_unix_path().unwrap_or(None) {
-        //    write!(f, "{}", path.display())
         } else {
-            write!(f, "{}:{}", self.0.host, self.0.port)
+            match &self.0.addr {
+                Address::Unix(path) => write!(f, "{}", path.display()),
+                Address::Tcp((host, port)) => write!(f, "{}:{}", host, port),
+            }
         }
     }
 }
@@ -485,9 +485,10 @@ impl Builder {
                 .context("invalid certificates in `tls_ca`")?;
         }
         self.reset_compound();
-        self.host = credentials.host.clone()
+        let host = credentials.host.clone()
                 .unwrap_or_else(|| DEFAULT_HOST.into());
-        self.port = credentials.port;
+        let port = credentials.port;
+        self.addr = Address::Tcp((host, port));
         self.admin = false;
         self.user = credentials.user.clone();
         self.password = credentials.password.clone();
@@ -507,6 +508,53 @@ impl Builder {
             self.instance_name.as_deref()
         } else {
             None
+        }
+    }
+
+
+    #[cfg(feature="unstable")]
+    /// Initialize credentials using unix socket
+    pub fn unix_path(&mut self, path: impl Into<PathBuf>,
+                     port: Option<u16>, admin: bool)
+        -> &mut Self
+    {
+        self.reset_compound();
+        self.admin = admin;
+        let path = path.into();
+        let has_socket_name = path.file_name()
+            .and_then(|x| x.to_str())
+            .map(|x| x.contains(".s.EDGEDB"))
+            .unwrap_or(false);
+        let path = if has_socket_name {
+            // it's the full path
+            path
+        } else {
+            let port = port.unwrap_or(5656);
+            let socket_name = if admin {
+                format!(".s.EDGEDB.admin.{}", port)
+            } else {
+                format!(".s.EDGEDB.{}", port)
+            };
+            path.join(socket_name)
+        };
+        // TODO(tailhook) figure out whether it's a prefix or full socket?
+        self.addr = Address::Unix(path.into());
+        self.initialized = true;
+        self
+    }
+
+    /// Get the path of the Unix socket if that is configured to be used.
+    ///
+    /// This is a deprecated API and should only be used by the command-line
+    /// tool.
+    #[cfg(feature="admin_socket")]
+    pub fn get_unix_path(&self) -> Option<PathBuf> {
+        self._get_unix_path().unwrap_or(None)
+    }
+    fn _get_unix_path(&self) -> Result<Option<PathBuf>, Error> {
+        match &self.addr {
+            Address::Unix(path) => Ok(Some(path.clone())),
+            Address::Tcp(_) => Ok(None),
         }
     }
 
@@ -534,13 +582,14 @@ impl Builder {
             .map_err(|e| ClientError::with_source(e)
                 .context(format!("cannot parse DSN {:?}", dsn)))?;
         self.reset_compound();
-        if let Some(url::Host::Ipv6(host)) = url.host() {
+        let host = if let Some(url::Host::Ipv6(host)) = url.host() {
             // async-std uses raw IPv6 address without "[]"
-            self.host = host.to_string();
+            host.to_string()
         } else {
-            self.host = url.host_str().unwrap_or(DEFAULT_HOST).to_owned();
-        }
-        self.port = url.port().unwrap_or(DEFAULT_PORT);
+            url.host_str().unwrap_or(DEFAULT_HOST).to_owned()
+        };
+        let port = url.port().unwrap_or(DEFAULT_PORT);
+        self.addr = Address::Tcp((host, port));
         self.admin = admin;
         self.user = if url.username().is_empty() {
             "edgedb".to_owned()
@@ -562,8 +611,7 @@ impl Builder {
     /// Usually, `Builder::from_env()` should be used instead.
     pub fn uninitialized() -> Builder {
         Builder {
-            host: DEFAULT_HOST.into(),
-            port: DEFAULT_PORT,
+            addr: Address::Tcp((DEFAULT_HOST.into(), DEFAULT_PORT)),
             admin: false,
             user: "edgedb".into(),
             password: None,
@@ -584,8 +632,7 @@ impl Builder {
     fn reset_compound(&mut self) {
         *self = Builder {
             // replace all of them
-            host: DEFAULT_HOST.into(),
-            port: DEFAULT_PORT.into(),
+            addr: Address::Tcp((DEFAULT_HOST.into(), DEFAULT_PORT)),
             admin: false,
             user: "edgedb".into(),
             password: None,
@@ -606,16 +653,21 @@ impl Builder {
     }
     /// Extract credentials from the [Builder] so they can be saved as JSON.
     pub fn as_credentials(&self) -> Result<Credentials, Error> {
-        Ok(Credentials {
-            host: Some(self.host.clone()),
-            port: self.port,
-            user: self.user.clone(),
-            password: self.password.clone(),
-            database: Some( self.database.clone()),
-            tls_ca: self.pem.clone(),
-            tls_security: self.tls_security,
-            file_outdated: false
-        })
+        if let Address::Tcp((host, port)) = &self.addr {
+            Ok(Credentials {
+                host: Some(host.clone()),
+                port: *port,
+                user: self.user.clone(),
+                password: self.password.clone(),
+                database: Some( self.database.clone()),
+                tls_ca: self.pem.clone(),
+                tls_security: self.tls_security,
+                file_outdated: false
+            })
+        } else {
+            return Err(ClientError::with_message(
+                    "only TCP addresses are supported in credentials"));
+        }
     }
     /// Create an admin socket instead of a regular one.
     ///
@@ -629,11 +681,17 @@ impl Builder {
     }
     /// Get the `host` this builder is configured to connect to.
     pub fn get_host(&self) -> &str {
-        &self.host
+        match &self.addr {
+            Address::Tcp((host, _)) => host,
+            _ => panic!("not a TCP address"),
+        }
     }
     /// Get the `port` this builder is configured to connect to.
     pub fn get_port(&self) -> u16 {
-        self.port
+        match self.addr {
+            Address::Tcp((_, port)) => port,
+            _ => panic!("not a TCP address"),
+        }
     }
     /// Initialize credentials using host/port data.
     ///
@@ -648,8 +706,9 @@ impl Builder {
         -> &mut Self
     {
         self.reset_compound();
-        self.host = host.map_or_else(|| DEFAULT_HOST.into(), |h| h.into());
-        self.port = port.unwrap_or(DEFAULT_PORT);
+        let host = host.map_or_else(|| DEFAULT_HOST.into(), |h| h.into());
+        let port = port.unwrap_or(DEFAULT_PORT);
+        self.addr = Address::Tcp((host, port));
         self.initialized = true;
         self
     }
@@ -783,7 +842,7 @@ impl Builder {
                 Run `edgedb project init` or use environment variables \
                 to configure connection."));
         }
-        let address = Address::Tcp((self.host.clone(), self.port));
+        let address = self.addr.clone();
         let verifier = match self.tls_security {
             _ if self.insecure() => Arc::new(tls::NullVerifier) as Verifier,
             Insecure => Arc::new(tls::NullVerifier) as Verifier,
