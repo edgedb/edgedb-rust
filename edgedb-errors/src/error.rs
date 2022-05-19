@@ -83,7 +83,7 @@ impl Error {
         self.0.messages.first().map(|m| &m[..])
     }
     pub fn contexts(&self) -> impl DoubleEndedIterator<Item=&str> {
-        self.0.messages[1..].iter().map(|m| &m[..])
+        self.0.messages.iter().skip(1).map(|m| &m[..])
     }
     fn header(&self, field: u16) -> Option<&str> {
         if let Some(value) = self.headers().get(&field) {
