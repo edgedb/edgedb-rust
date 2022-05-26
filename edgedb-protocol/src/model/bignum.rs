@@ -131,7 +131,7 @@ impl From<i32> for BigInt {
 }
 
 impl Decimal {
-#[allow(dead_code)]  // isn't used when BigDecimal is disabled
+    #[allow(dead_code)]  // isn't used when BigDecimal is disabled
     fn normalize(mut self) -> Decimal {
         while let Some(0) = self.digits.last() {
             self.digits.pop();

@@ -58,6 +58,9 @@ impl Into<bigdecimal::BigDecimal> for &Decimal {
         use num_bigint::BigInt;
         use num_traits::pow;
         use std::cmp::max;
+        if self.digits.len() == 0 {
+            return BigDecimal::from(0);
+        }
 
         let mut r = BigInt::from(0);
         // TODO(tailhook) this is quite slow, use preallocated vector
@@ -203,6 +206,26 @@ mod test {
         Ok(())
     }
 
+    #[test]
+    fn convert_special() {
+        let orig = Decimal {
+            negative: false,
+            weight: 0,
+            decimal_digits: 1,
+            digits: Vec::new(),
+        };
+        let big: BigDecimal = orig.into();
+        assert_eq!(big.to_string(), "0");
+        let orig = Decimal {
+            negative: false,
+            weight: 0,
+            decimal_digits: 0,
+            digits: Vec::new(),
+        };
+        let big: BigDecimal = orig.into();
+        assert_eq!(big.to_string(), "0");
+    }
+
     fn dec_roundtrip(s: &str) -> BigDecimal {
         let rust = BigDecimal::from_str(s).expect("can parse big decimal");
         let edgedb = Decimal::try_from(rust).expect("can convert for edgedb");
@@ -301,7 +324,12 @@ mod test {
             let nulls = rng.gen_range(-100..100);
             let txt = format!("{}.{}e{}", head, fract, nulls);
             let rt = dec_roundtrip(&txt);
-            let dec = B::from_str(&txt)?;
+            let dec = if head == 0 && fract == 0 {
+                // Zeros are normalized
+                B::from(0)
+            } else {
+                B::from_str(&txt)?
+            };
             assert_eq!(rt, dec,
                        "parsing {}: {}", iter, txt);
             if dec.as_bigint_and_exponent().1 > 0 {
@@ -352,10 +380,16 @@ mod test {
             let decimals = gen_u64(&mut rng);
             let txt = format!("{0}{1:0<2$}.{1:0<3$}{4}", head,
                 "", nulls1, nulls2, decimals);
-            assert_eq!(dec_roundtrip(&txt), B::from_str(&txt)?,
+            let dec = if head == 0 && decimals == 0 {
+                // Zeros are normalized
+                B::from(0)
+            } else {
+                B::from_str(&txt)?
+            };
+            assert_eq!(dec_roundtrip(&txt), dec,
                        "parsing {}: {}", iter, txt);
             assert_eq!(dec_roundtrip(&txt).as_bigint_and_exponent().1,
-                       B::from_str(&txt)?.as_bigint_and_exponent().1,
+                       dec.as_bigint_and_exponent().1,
                        "precision: {}", txt);
         }
         Ok(())
