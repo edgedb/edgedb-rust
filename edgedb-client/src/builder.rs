@@ -35,6 +35,7 @@ use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use edgedb_protocol::server_message::{TransactionState, ServerHandshake};
 use edgedb_protocol::server_message::ParameterStatus;
 use edgedb_protocol::value::Value;
+use edgedb_protocol::model;
 
 use crate::client::{Connection, Sequence, State, PingInterval};
 use crate::credentials::{Credentials, TlsSecurity};
@@ -476,6 +477,17 @@ impl Builder {
                     ));
                 }
             };
+        }
+        if let Some(wait) = get_env("EDGEDB_WAIT_UNTIL_AVAILABLE")? {
+            self.wait = wait.parse::<model::Duration>()
+                .map_err(ClientError::with_source)
+                .and_then(|d| match d.is_negative() {
+                    false => Ok(d.abs_duration()),
+                    true => Err(ClientError::with_message(
+                        "negative durations are unsupported")),
+                })
+                .context("Invalid value {:?} for env var \
+                          EDGEDB_WAIT_UNTIL_AVAILABLE.")?;
         }
         Ok(self)
     }
