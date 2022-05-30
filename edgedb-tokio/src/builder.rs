@@ -6,12 +6,13 @@ use std::time::{Duration};
 
 use rustls::client::ServerCertVerifier;
 
-use crate::errors::{ClientError};
-use crate::errors::{Error, ErrorKind, ResultExt};
-use crate::errors::{ClientNoCredentialsError};
-use crate::tls;
+use edgedb_protocol::model;
 
 use crate::credentials::{Credentials, TlsSecurity};
+use crate::errors::{ClientError};
+use crate::errors::{ClientNoCredentialsError};
+use crate::errors::{Error, ErrorKind, ResultExt};
+use crate::tls;
 
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub const DEFAULT_WAIT: Duration = Duration::from_secs(30);
@@ -413,6 +414,17 @@ impl Builder {
                     ));
                 }
             };
+        }
+        if let Some(wait) = get_env("EDGEDB_WAIT_UNTIL_AVAILABLE")? {
+            self.wait = wait.parse::<model::Duration>()
+                .map_err(ClientError::with_source)
+                .and_then(|d| match d.is_negative() {
+                    false => Ok(d.abs_duration()),
+                    true => Err(ClientError::with_message(
+                        "negative durations are unsupported")),
+                })
+                .context("Invalid value {:?} for env var \
+                          EDGEDB_WAIT_UNTIL_AVAILABLE.")?;
         }
         Ok(self)
     }
