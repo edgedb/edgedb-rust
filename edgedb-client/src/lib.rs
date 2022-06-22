@@ -37,6 +37,9 @@ pub use pool::Client;
 pub use errors::{Error};
 pub use traits::{Executor, ExecuteResult};
 
+#[cfg(feature="unstable")]
+pub use builder::{get_project_dir};
+
 pub use edgedb_protocol::model;
 pub use edgedb_protocol::query_arg::{QueryArg, QueryArgs};
 pub use edgedb_protocol::{QueryResult};

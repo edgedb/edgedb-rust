@@ -356,27 +356,9 @@ impl Builder {
         override_dir: Option<&Path>, search_parents: bool)
         -> Result<&mut Self, Error>
     {
-        let dir = match override_dir {
-            Some(v) => Cow::Borrowed(v.as_ref()),
-            None => {
-                Cow::Owned(env::current_dir()
-                    .map_err(|e| ClientError::with_source(e)
-                        .context("failed to get current directory"))?
-                    .into())
-            }
-        };
-
-        let dir = if search_parents {
-            if let Some(ancestor) = search_dir(&dir).await? {
-                Cow::Borrowed(ancestor)
-            } else {
-                return Ok(self);
-            }
-        } else {
-            if !dir.join("edgedb.toml").exists().await {
-                return Ok(self);
-            }
-            dir
+        let dir = match get_project_dir(override_dir, search_parents).await? {
+            Some(dir) => dir,
+            None => return Ok(self),
         };
         let canon = fs::canonicalize(&dir).await
             .map_err(|e| ClientError::with_source(e).context(
@@ -1561,4 +1543,31 @@ fn from_dsn_ipv6_scoped_address() {
     assert_eq!(&bld.user, "user3");
     assert_eq!(&bld.database, "ab");
     assert_eq!(bld.password, None);
+}
+
+pub async fn get_project_dir(override_dir: Option<&Path>, search_parents: bool)
+    -> Result<Option<PathBuf>, Error>
+{
+    let dir = match override_dir {
+        Some(v) => Cow::Borrowed(v.as_ref()),
+        None => {
+            Cow::Owned(env::current_dir()
+                .map_err(|e| ClientError::with_source(e)
+                    .context("failed to get current directory"))?
+                .into())
+        }
+    };
+
+    if search_parents {
+        if let Some(ancestor) = search_dir(&dir).await? {
+            return Ok(Some(ancestor.into()));
+        } else {
+            return Ok(None);
+        }
+    } else {
+        if !dir.join("edgedb.toml").exists().await {
+            return Ok(None)
+        }
+        return Ok(Some(dir.to_path_buf().into()))
+    };
 }
