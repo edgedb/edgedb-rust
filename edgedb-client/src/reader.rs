@@ -65,12 +65,16 @@ impl<'r> Reader<'r> {
         *self.transaction_state = ready.transaction_state;
     }
     pub async fn passive_wait(&mut self) -> io::Result<()> {
-        if !self.buf.is_empty() {
-            return Err(io::ErrorKind::InvalidData)?;
+        loop {
+            let msg = self
+                .message()
+                .await
+                .map_err(|_| io::ErrorKind::InvalidData)?;
+            match msg {
+                ServerMessage::ParameterStatus(_) => {},
+                _ => return Err(io::ErrorKind::InvalidData)?,
+            }
         }
-        let mut buf = [0u8; 1];
-        self.stream.read(&mut buf[..]).await?;
-        return Err(io::ErrorKind::InvalidData)?;
     }
     pub async fn wait_ready(&mut self) -> Result<(), Error> {
         loop {
