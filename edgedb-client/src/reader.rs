@@ -7,7 +7,7 @@ use std::pin::Pin;
 use std::slice;
 use std::task::{Poll, Context};
 
-use async_std::io::{self, Read as AsyncRead, ReadExt};
+use async_std::io::{self, Read as AsyncRead};
 use async_std::stream::{Stream, StreamExt};
 use bytes::{Bytes, BytesMut, BufMut};
 use futures_util::io::ReadHalf;
@@ -20,6 +20,7 @@ use edgedb_protocol::encoding::Input;
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::server_message::{ReadyForCommand, TransactionState};
 use edgedb_protocol::server_message::{ServerMessage, ErrorResponse};
+use edgedb_protocol::server_message::MessageSeverity;
 use edgedb_protocol::{QueryResult};
 
 use crate::client;
@@ -84,8 +85,6 @@ impl<'r> Reader<'r> {
                     self.consume_ready(ready);
                     return Ok(())
                 }
-                // TODO(tailhook) should we react on messages somehow?
-                //                At list parse LogMessage's?
                 _ => {},
             }
         }
@@ -142,7 +141,22 @@ impl<'r> Reader<'r> {
         )).map_err(ProtocolEncodingError::with_source)?;
         log::debug!(target: "edgedb::incoming::frame",
                     "Frame Contents: {:#?}", result);
-        return Poll::Ready(Ok(result));
+        if let ServerMessage::LogMessage(msg) = &result {
+            match msg.severity {
+                MessageSeverity::Debug => {
+                    log::debug!("[{}] {}", msg.code, msg.text);
+                }
+                MessageSeverity::Notice | MessageSeverity::Info => {
+                    log::info!("[{}] {}", msg.code, msg.text);
+                }
+                MessageSeverity::Warning | MessageSeverity::Unknown(_) => {
+                    log::warn!("[{}] {}", msg.code, msg.text);
+                }
+            }
+            self.poll_message(cx)
+        } else {
+            Poll::Ready(Ok(result))
+        }
     }
 }
 
