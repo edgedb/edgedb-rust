@@ -147,6 +147,12 @@ pub struct Object {
 }
 
 #[derive(Debug)]
+pub struct Input {
+    shape: ObjectShape,
+    codecs: Vec<Arc<dyn Codec>>,
+}
+
+#[derive(Debug)]
 pub struct Set {
     element: Arc<dyn Codec>,
 }
@@ -235,6 +241,7 @@ impl<'a> CodecBuilder<'a> {
                 D::Enumeration(d) => Ok(Arc::new(Enum {
                     members: d.members.iter().map(|x| x[..].into()).collect(),
                 })),
+                D::InputShape(d) => Ok(Arc::new(Input::build(d, self)?)),
                 // type annotations are stripped from codecs array before
                 // building a codec
                 D::TypeAnnotation(..) => unreachable!(),
@@ -536,6 +543,19 @@ impl Object {
     }
 }
 
+impl Input {
+    fn build(d: &descriptors::InputShapeTypeDescriptor, dec: &CodecBuilder)
+        -> Result<Input, CodecError>
+    {
+        Ok(Input {
+            shape: d.elements.as_slice().into(),
+            codecs: d.elements.iter()
+                .map(|e| dec.build(e.type_pos))
+                .collect::<Result<_, _>>()?,
+        })
+    }
+}
+
 impl Tuple {
     fn build(d: &descriptors::TupleTypeDescriptor, dec: &CodecBuilder)
         -> Result<Tuple, CodecError>
@@ -575,6 +595,55 @@ fn decode_array_like<'t>(elements: DecodeArrayLike<'t>, codec:&dyn Codec) -> Res
 }
 
 impl Codec for Object {
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        let mut elements = DecodeTupleLike::new_object(buf, self.codecs.len())?;
+        let fields = self.codecs
+            .iter()
+            .map(|codec| elements.read()?.map(|element| codec.decode(element)).transpose())
+            .collect::<Result<Vec<Option<Value>>, DecodeError>>()?;
+
+        Ok(Value::Object {
+            shape: self.shape.clone(),
+            fields,
+        })
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        let (shape, fields) = match val {
+            Value::Object { shape, fields } => (shape, fields),
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        ensure!(shape == &self.shape, errors::ObjectShapeMismatch);
+        ensure!(self.codecs.len() == fields.len(),
+                errors::ObjectShapeMismatch);
+        debug_assert_eq!(self.codecs.len(), shape.0.elements.len());
+        buf.reserve(4 + 8*self.codecs.len());
+        buf.put_u32(self.codecs.len().try_into()
+                    .ok().context(errors::TooManyElements)?);
+        for (codec, field) in self.codecs.iter().zip(fields) {
+            buf.reserve(8);
+            buf.put_u32(0);
+            match field {
+                Some(v) => {
+                    let pos = buf.len();
+                    buf.put_i32(0);  // replaced after serializing a value
+                    codec.encode(buf, v)?;
+                    let len = buf.len()-pos-4;
+                    buf[pos..pos+4].copy_from_slice(&i32::try_from(len)
+                            .ok().context(errors::ElementTooLong)?
+                            .to_be_bytes());
+                }
+                None => {
+                    buf.put_i32(-1);
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Codec for Input {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         let mut elements = DecodeTupleLike::new_object(buf, self.codecs.len())?;
         let fields = self.codecs

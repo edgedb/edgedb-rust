@@ -5,19 +5,22 @@ use std::error::Error;
 use uuid::Uuid;
 use bytes::{Bytes, BytesMut};
 
+use edgedb_protocol::common::{Capabilities};
 use edgedb_protocol::encoding::{Input, Output};
 use edgedb_protocol::features::ProtocolVersion;
-use edgedb_protocol::server_message::{ServerMessage};
-use edgedb_protocol::server_message::{ServerHandshake};
-use edgedb_protocol::server_message::{ErrorResponse, ErrorSeverity};
-use edgedb_protocol::server_message::{ReadyForCommand, TransactionState};
-use edgedb_protocol::server_message::{ServerKeyData, ParameterStatus};
-use edgedb_protocol::server_message::{CommandComplete};
-use edgedb_protocol::server_message::{PrepareComplete, Cardinality};
-use edgedb_protocol::server_message::{CommandDataDescription, Data};
 use edgedb_protocol::server_message::{Authentication};
+use edgedb_protocol::server_message::{CommandComplete0, CommandComplete1};
+use edgedb_protocol::server_message::{CommandDataDescription0, Data};
+use edgedb_protocol::server_message::{CommandDataDescription1};
+use edgedb_protocol::server_message::{ErrorResponse, ErrorSeverity};
 use edgedb_protocol::server_message::{LogMessage, MessageSeverity};
+use edgedb_protocol::server_message::{PrepareComplete, Cardinality};
+use edgedb_protocol::server_message::{ReadyForCommand, TransactionState};
 use edgedb_protocol::server_message::{RestoreReady};
+use edgedb_protocol::server_message::{ServerHandshake};
+use edgedb_protocol::server_message::{ServerKeyData, ParameterStatus};
+use edgedb_protocol::server_message::{ServerMessage};
+use edgedb_protocol::server_message::{StateDataDescription};
 
 mod base;
 
@@ -112,11 +115,25 @@ fn parameter_status() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn command_complete() -> Result<(), Box<dyn Error>> {
-    encoding_eq!(ServerMessage::CommandComplete(CommandComplete {
+fn command_complete0() -> Result<(), Box<dyn Error>> {
+    encoding_eq_ver!(0, 13, ServerMessage::CommandComplete0(CommandComplete0 {
         headers: HashMap::new(),
         status_data: Bytes::from_static(b"okay"),
     }), b"C\0\0\0\x0e\0\0\0\0\0\x04okay");
+    Ok(())
+}
+
+#[test]
+fn command_complete1() -> Result<(), Box<dyn Error>> {
+    encoding_eq_ver!(1, 0, ServerMessage::CommandComplete1(CommandComplete1 {
+        annotations: HashMap::new(),
+        capabilities: Capabilities::MODIFICATIONS,
+        status_data: Bytes::from_static(b"okay"),
+        state_typedesc_id: Uuid::from_u128(0),
+        state_data: Bytes::from_static(b""),
+    }), b"C\0\0\0*\0\0\0\0\0\0\0\0\0\x01\0\0\0\x04okay\
+          \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+          \0\0\0\0");
     Ok(())
 }
 
@@ -138,38 +155,80 @@ fn prepare_complete() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn command_data_description() -> Result<(), Box<dyn Error>> {
-    encoding_eq!(ServerMessage::CommandDataDescription(CommandDataDescription {
-        proto: ProtocolVersion::current(),
-        headers: HashMap::new(),
-        result_cardinality: Cardinality::AtMostOne,
-        input_typedesc_id: Uuid::from_u128(0xFF),
-        input_typedesc: Bytes::from_static(
-            b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0"),
-        output_typedesc_id: Uuid::from_u128(0x105),
-        output_typedesc: Bytes::from_static(
-            b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"),
-    }), bconcat!(b"T\0\0\0S\0\0o"
-                 b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff"
-                 b"\0\0\0\x13"
-                 b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0"
-                 b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"
-                 b"\0\0\0\x11"
-                 b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"));
-    encoding_eq!(ServerMessage::CommandDataDescription(CommandDataDescription {
-        proto: ProtocolVersion::current(),
-        headers: HashMap::new(),
-        result_cardinality: Cardinality::NoResult,
-        input_typedesc_id: Uuid::from_u128(0xFF),
-        input_typedesc: Bytes::from_static(
-            b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0"),
-        output_typedesc_id: Uuid::from_u128(0),
-        output_typedesc: Bytes::from_static(b""),
-    }), bconcat!(b"T\0\0\0B\0\0n"
-                 b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff"
-                 b"\0\0\0\x13"
-                 b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0"
-                 b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"));
+fn command_data_description0() -> Result<(), Box<dyn Error>> {
+    encoding_eq_ver!(0, 13,
+        ServerMessage::CommandDataDescription0(CommandDataDescription0 {
+            proto: ProtocolVersion::new(0, 13),
+            headers: HashMap::new(),
+            result_cardinality: Cardinality::AtMostOne,
+            input_typedesc_id: Uuid::from_u128(0xFF),
+            input_typedesc: Bytes::from_static(
+                b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0"),
+            output_typedesc_id: Uuid::from_u128(0x105),
+            output_typedesc: Bytes::from_static(
+                b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"),
+        }), bconcat!(b"T\0\0\0S\0\0o"
+                     b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff"
+                     b"\0\0\0\x13"
+                     b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0"
+                     b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"
+                     b"\0\0\0\x11"
+                     b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"));
+    encoding_eq_ver!(0, 13,
+        ServerMessage::CommandDataDescription0(CommandDataDescription0 {
+            proto: ProtocolVersion::new(0, 13),
+            headers: HashMap::new(),
+            result_cardinality: Cardinality::NoResult,
+            input_typedesc_id: Uuid::from_u128(0xFF),
+            input_typedesc: Bytes::from_static(
+                b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0"),
+            output_typedesc_id: Uuid::from_u128(0),
+            output_typedesc: Bytes::from_static(b""),
+        }), bconcat!(b"T\0\0\0B\0\0n"
+                     b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff"
+                     b"\0\0\0\x13"
+                     b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0"
+                     b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"));
+    Ok(())
+}
+
+#[test]
+fn command_data_description1() -> Result<(), Box<dyn Error>> {
+    encoding_eq_ver!(1, 0,
+        ServerMessage::CommandDataDescription1(CommandDataDescription1 {
+            proto: ProtocolVersion::current(),
+            annotations: HashMap::new(),
+            capabilities: Capabilities::MODIFICATIONS,
+            result_cardinality: Cardinality::AtMostOne,
+            input_typedesc_id: Uuid::from_u128(0xFF),
+            input_typedesc: Bytes::from_static(
+                b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0"),
+            output_typedesc_id: Uuid::from_u128(0x105),
+            output_typedesc: Bytes::from_static(
+                b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"),
+        }), bconcat!(b"T\0\0\0[\0\0\0\0\0\0\0\0\0\x01o"
+                     b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff"
+                     b"\0\0\0\x13"
+                     b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0"
+                     b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"
+                     b"\0\0\0\x11"
+                     b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"));
+    encoding_eq_ver!(1, 0,
+        ServerMessage::CommandDataDescription1(CommandDataDescription1 {
+            proto: ProtocolVersion::current(),
+            annotations: HashMap::new(),
+            capabilities: Capabilities::MODIFICATIONS,
+            result_cardinality: Cardinality::NoResult,
+            input_typedesc_id: Uuid::from_u128(0xFF),
+            input_typedesc: Bytes::from_static(
+                b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0"),
+            output_typedesc_id: Uuid::from_u128(0),
+            output_typedesc: Bytes::from_static(b""),
+        }), bconcat!(b"T\0\0\0J\0\0\0\0\0\0\0\0\0\x01n"
+                     b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff"
+                     b"\0\0\0\x13"
+                     b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0"
+                     b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"));
     Ok(())
 }
 
@@ -223,5 +282,19 @@ fn log_message() -> Result<(), Box<dyn Error>> {
             attributes: map!{},
         }),
         b"L\0\0\0%<\xf0\0\0\0\0\0\0\x16changing system config\0\0");
+    Ok(())
+}
+
+#[test]
+fn state_data_description() -> Result<(), Box<dyn Error>> {
+    encoding_eq!(
+        ServerMessage::StateDataDescription(StateDataDescription {
+            typedesc_id: Uuid::from_u128(0x105),
+            typedesc: Bytes::from_static(
+                b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"),
+        }),
+        b"s\0\0\0)\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05\0\0\0\
+        \x11\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"
+    );
     Ok(())
 }

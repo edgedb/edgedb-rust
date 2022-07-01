@@ -4,29 +4,33 @@ use core::future::Future;
 use std::collections::HashMap;
 use std::fmt;
 use std::str;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use async_std::prelude::FutureExt;
-use async_std::prelude::StreamExt;
 use async_std::future::{timeout, pending};
 use async_std::io::prelude::WriteExt;
+use async_std::prelude::FutureExt;
+use async_std::prelude::StreamExt;
 use bytes::{Bytes, BytesMut};
 use futures_util::io::{ReadHalf, WriteHalf};
-use typemap::TypeMap;
 use tls_api::TlsStream;
+use typemap::TypeMap;
 
 use edgedb_protocol::QueryResult;
 use edgedb_protocol::client_message::ClientMessage;
+use edgedb_protocol::client_message::{Capabilities, CompilationFlags};
 use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
-use edgedb_protocol::client_message::{Execute, ExecuteScript};
-use edgedb_protocol::client_message::{Prepare, IoFormat, Cardinality};
+use edgedb_protocol::client_message::{Execute0, Execute1, ExecuteScript};
+use edgedb_protocol::client_message::{Prepare, Parse, IoFormat, Cardinality};
+use edgedb_protocol::codec::Codec;
 use edgedb_protocol::descriptors::OutputTypedesc;
 use edgedb_protocol::encoding::Output;
 use edgedb_protocol::features::ProtocolVersion;
+use edgedb_protocol::model::Uuid;
 use edgedb_protocol::query_arg::{QueryArgs, Encoder};
 use edgedb_protocol::queryable::{Queryable};
-use edgedb_protocol::server_message::ServerMessage;
-use edgedb_protocol::server_message::{TransactionState};
+use edgedb_protocol::server_message::{ServerMessage, TransactionState};
+use edgedb_protocol::server_message::{StateDataDescription, CommandComplete1};
 
 use crate::debug::PartialDebug;
 use crate::errors::{ClientConnectionError, ProtocolError};
@@ -37,6 +41,9 @@ use crate::errors::{NoResultExpected, NoDataError};
 use crate::errors::{ProtocolOutOfOrderError, ProtocolEncodingError};
 use crate::reader::{self, QueryResponse, Reader};
 use crate::server_params::{ServerParam, SystemConfig};
+
+
+const EMPTY_STATE: Uuid = Uuid::from_u128(0x0);
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum State {
@@ -55,6 +62,22 @@ pub(crate) enum PingInterval {
     Interval(Duration),
 }
 
+#[derive(Debug)]
+pub struct EdgeqlStateDesc {
+    #[allow(dead_code)] // TODO(tailhook)
+    pub(crate) descriptor_id: Uuid,
+    #[allow(dead_code)] // TODO(tailhook)
+    pub(crate) descriptor: Bytes,
+    #[allow(dead_code)] // TODO(tailhook)
+    pub(crate) codec: Arc<dyn Codec>,
+}
+
+#[derive(Debug)]
+pub struct EdgeqlState {
+    pub(crate) descriptor_id: Uuid,
+    pub(crate) data: Bytes,
+}
+
 
 #[derive(Debug)]
 /// A single connection to the EdgeDB server.
@@ -68,13 +91,25 @@ pub struct Connection {
     pub(crate) params: TypeMap<dyn typemap::DebugAny + Send + Sync>,
     pub(crate) transaction_state: TransactionState,
     pub(crate) state: State,
+    pub(crate) eql_state_desc: EdgeqlStateDesc,
+    pub(crate) eql_state: EdgeqlState,
+    pub(crate) eql_state_desc_in_transaction: Option<EdgeqlStateDesc>,
+    pub(crate) eql_state_in_transaction: Option<EdgeqlState>,
+}
+
+pub(crate) struct PartialState<'a> {
+    pub(crate) state: &'a mut State,
+    pub(crate) eql_state_desc: &'a mut EdgeqlStateDesc,
+    pub(crate) eql_state: &'a mut EdgeqlState,
+    pub(crate) eql_state_desc_in_transaction: &'a mut Option<EdgeqlStateDesc>,
+    pub(crate) eql_state_in_transaction: &'a mut Option<EdgeqlState>,
 }
 
 pub struct Sequence<'a> {
     pub writer: Writer<'a>,
     pub reader: Reader<'a>,
     pub(crate) active: bool,
-    pub(crate) state: &'a mut State,
+    pub(crate) state: PartialState<'a>,
 }
 
 pub struct Writer<'a> {
@@ -129,7 +164,11 @@ impl<'a> Sequence<'a> {
         let complete = loop {
             match self.reader.message().await? {
                 ServerMessage::Data(m) => data.extend(m.data),
-                ServerMessage::CommandComplete(m) => break Ok(m.status_data),
+                ServerMessage::CommandComplete0(m) => break Ok(m.status_data),
+                ServerMessage::CommandComplete1(d) => {
+                    self.process_complete(&d)?;
+                    break Ok(d.status_data);
+                }
                 ServerMessage::ErrorResponse(e) => break Err(e),
                 msg => {
                     return Err(ProtocolOutOfOrderError::with_message(format!(
@@ -150,11 +189,66 @@ impl<'a> Sequence<'a> {
         }
     }
 
+    pub fn process_complete(&mut self, cmp: &CommandComplete1)
+        -> Result<(), Error>
+    {
+        if cmp.state_data.len() != 0 {
+            *self.state.eql_state_in_transaction = Some(EdgeqlState {
+                descriptor_id: cmp.state_typedesc_id,
+                data: cmp.state_data.clone(),
+            });
+        }
+        Ok(())
+    }
+
     pub fn end_clean(&mut self) {
+        use TransactionState::NotInTransaction;
+
         self.active = false;
-        *self.state = State::Normal {
+        *self.state.state = State::Normal {
             idle_since: Instant::now(),
         };
+        if *self.reader.transaction_state == NotInTransaction {
+            if let Some(s) = self.state.eql_state_desc_in_transaction.take() {
+                *self.state.eql_state_desc = s;
+            }
+            if let Some(s) = self.state.eql_state_in_transaction.take() {
+                *self.state.eql_state = s;
+            }
+        }
+    }
+
+    pub fn set_state_description(&mut self, descr: StateDataDescription)
+        -> Result<(), Error>
+    {
+        let descriptor_id = descr.typedesc_id;
+        let descriptor = descr.typedesc.clone();
+        let parsed = descr.parse(&self.reader.proto)
+            .map_err(ProtocolEncodingError::with_source)?;
+        let codec = parsed.build_codec()
+            .map_err(ProtocolEncodingError::with_source)?;
+        *self.state.eql_state_desc_in_transaction = Some(EdgeqlStateDesc {
+            descriptor_id,
+            descriptor,
+            codec,
+        });
+        Ok(())
+    }
+
+    #[cfg(feature="unstable")]
+    pub fn get_state_typedesc_id(&self) -> Uuid {
+        if let Some(s) = &self.state.eql_state_in_transaction {
+            return s.descriptor_id;
+        }
+        self.state.eql_state.descriptor_id
+    }
+
+    #[cfg(feature="unstable")]
+    pub fn get_state_data(&self) -> Bytes {
+        if let Some(s) = &self.state.eql_state_in_transaction {
+            return s.data.clone()
+        }
+        self.state.eql_state.data.clone()
     }
 }
 
@@ -175,27 +269,27 @@ impl Connection {
 
         let (mut writer, mut reader, state) = self.split();
 
-        if *state == State::AwaitingPing {
-            Self::synchronize_ping(&mut reader, state).await?;
+        if *state.state == State::AwaitingPing {
+            Self::synchronize_ping(&mut reader, state.state).await?;
         }
 
-        while let State::Normal { idle_since: last_pong } = *state {
+        while let State::Normal { idle_since: last_pong } = *state.state {
             match io::timeout(
                 interval.saturating_sub(Instant::now() - last_pong),
                 reader.passive_wait()
             ).await {
                 Err(e) if e.kind() == io::ErrorKind::TimedOut => (),
                 Err(e) => {
-                    *state = State::Dirty;
+                    *state.state = State::Dirty;
                     return Err(ClientConnectionError::with_source(e))?;
                 }
                 Ok(_) => unreachable!(),
             }
 
-            *state = State::Dirty;
+            *state.state = State::Dirty;
             writer.send_messages(&[ClientMessage::Sync]).await?;
-            *state = State::AwaitingPing;
-            Self::synchronize_ping(&mut reader, state).await?;
+            *state.state = State::AwaitingPing;
+            Self::synchronize_ping(&mut reader, state.state).await?;
         }
         Ok(())
     }
@@ -272,7 +366,7 @@ impl Connection {
             let rv = other.race(self.background_pings(interval)).await;
             if self.state == State::AwaitingPing {
                 let (_, ref mut reader, state) = self.split();
-                Self::synchronize_ping(reader, state).await.ok();
+                Self::synchronize_ping(reader, state.state).await.ok();
             }
             rv
         } else {
@@ -298,13 +392,13 @@ impl Connection {
         -> Result<Sequence<'x>, Error>
     {
         let (writer, reader, state) = self.split();
-        if !matches!(*state, State::Normal {
+        if !matches!(*state.state, State::Normal {
             idle_since: _,
         }) {
             return Err(ClientInconsistentError::with_message(
                 "Connection is inconsistent state. Please reconnect."));
         }
-        *state = State::Dirty;
+        *state.state = State::Dirty;
         Ok(Sequence {
             writer,
             reader,
@@ -322,7 +416,7 @@ impl Connection {
     pub fn transaction_state(&self) -> TransactionState {
         self.transaction_state
     }
-    fn split(&mut self) -> (Writer, Reader, &mut State) {
+    fn split(&mut self) -> (Writer, Reader, PartialState<'_>) {
         let reader = Reader {
             proto: &self.version,
             buf: &mut self.input_buf,
@@ -334,7 +428,15 @@ impl Connection {
             outbuf: &mut self.output_buf,
             stream: &mut self.output,
         };
-        (writer, reader, &mut self.state)
+        let state = PartialState {
+            state: &mut self.state,
+            eql_state_desc: &mut self.eql_state_desc,
+            eql_state: &mut self.eql_state,
+            eql_state_desc_in_transaction:
+                &mut self.eql_state_desc_in_transaction,
+            eql_state_in_transaction: &mut self.eql_state_in_transaction,
+        };
+        (writer, reader, state)
     }
 }
 
@@ -393,7 +495,13 @@ impl<'a> Sequence<'a> {
         let status = loop {
             let msg = self.reader.message().await?;
             match msg {
-                ServerMessage::CommandComplete(c) => {
+                ServerMessage::CommandComplete0(c) => {
+                    self.reader.wait_ready().await?;
+                    self.end_clean();
+                    break c.status_data;
+                }
+                ServerMessage::CommandComplete1(c) => {
+                    self.process_complete(&c)?;
                     self.reader.wait_ready().await?;
                     self.end_clean();
                     break c.status_data;
@@ -418,8 +526,19 @@ impl<'a> Sequence<'a> {
         where A: QueryArgs + ?Sized,
     {
         assert!(self.active);  // TODO(tailhook) maybe debug_assert
-        let statement_name = Bytes::from_static(b"");
+        if self.writer.proto.is_1() {
+            self._query_1(request, arguments, bld).await
+        } else {
+            self._query_0(request, arguments, bld).await
+        }
+    }
 
+    async fn _query_0<A>(&mut self, request: &str, arguments: &A,
+        bld: &StatementParams)
+        -> Result<OutputTypedesc, Error>
+        where A: QueryArgs + ?Sized,
+    {
+        let statement_name = Bytes::from_static(b"");
         self.send_messages(&[
             ClientMessage::Prepare(Prepare {
                 headers: HashMap::new(),
@@ -460,7 +579,7 @@ impl<'a> Sequence<'a> {
         let data_description = loop {
             let msg = self.reader.message().await?;
             match msg {
-                ServerMessage::CommandDataDescription(data_desc) => {
+                ServerMessage::CommandDataDescription0(data_desc) => {
                     break data_desc;
                 }
                 ServerMessage::ErrorResponse(err) => {
@@ -485,9 +604,77 @@ impl<'a> Sequence<'a> {
         ))?;
 
         self.send_messages(&[
-            ClientMessage::Execute(Execute {
+            ClientMessage::Execute0(Execute0 {
                 headers: HashMap::new(),
                 statement_name: statement_name.clone(),
+                arguments: arg_buf.freeze(),
+            }),
+            ClientMessage::Sync,
+        ]).await?;
+        Ok(desc)
+    }
+
+    async fn _query_1<A>(&mut self, request: &str, arguments: &A,
+        bld: &StatementParams)
+        -> Result<OutputTypedesc, Error>
+        where A: QueryArgs + ?Sized,
+    {
+        self.send_messages(&[
+            ClientMessage::Parse(Parse {
+                annotations: HashMap::new(),
+                allowed_capabilities: Capabilities::ALL,
+                compilation_flags: CompilationFlags::INJECT_OUTPUT_OBJECT_IDS,
+                implicit_limit: None,
+                output_format: bld.io_format,
+                expected_cardinality: bld.cardinality,
+                command_text: String::from(request),
+                state_typedesc_id: self.get_state_typedesc_id(),
+                state_data: self.get_state_data(),
+            }),
+            ClientMessage::Flush,
+        ]).await?;
+
+        let data_description = loop {
+            let msg = self.reader.message().await?;
+            match msg {
+                ServerMessage::CommandDataDescription1(desc) => {
+                    break desc;
+                }
+                ServerMessage::ErrorResponse(err) => {
+                    self.err_sync().await?;
+                    return Err(err.into());
+                }
+                _ => {
+                    return Err(ProtocolOutOfOrderError::with_message(format!(
+                        "Unsolicited message {:?}", msg)));
+                }
+            }
+        };
+
+        let desc = data_description.output()
+            .map_err(ProtocolEncodingError::with_source)?;
+        let inp_desc = data_description.input()
+            .map_err(ProtocolEncodingError::with_source)?;
+
+        let mut arg_buf = BytesMut::with_capacity(8);
+        arguments.encode(&mut Encoder::new(
+            &inp_desc.as_query_arg_context(),
+            &mut arg_buf,
+        ))?;
+
+        self.send_messages(&[
+            ClientMessage::Execute1(Execute1 {
+                annotations: HashMap::new(),
+                allowed_capabilities: Capabilities::ALL,
+                compilation_flags: CompilationFlags::INJECT_OUTPUT_OBJECT_IDS,
+                implicit_limit: None,
+                output_format: bld.io_format,
+                expected_cardinality: bld.cardinality,
+                command_text: String::from(request),
+                state_typedesc_id: self.get_state_typedesc_id(),
+                state_data: self.get_state_data(),
+                input_typedesc_id: data_description.input_typedesc_id,
+                output_typedesc_id: data_description.output_typedesc_id,
                 arguments: arg_buf.freeze(),
             }),
             ClientMessage::Sync,
@@ -501,6 +688,16 @@ impl Connection {
         -> Result<Bytes, Error>
         where S: ToString,
     {
+        if self.version.is_1() {
+            self.execute1(request).await
+        }  else {
+            self.execute0(request).await
+        }
+    }
+    async fn execute0<S>(&mut self, request: S)
+        -> Result<Bytes, Error>
+        where S: ToString,
+    {
         let mut seq = self.start_sequence().await?;
         seq.send_messages(&[
             ClientMessage::ExecuteScript(ExecuteScript {
@@ -510,7 +707,49 @@ impl Connection {
         ]).await?;
         let status = loop {
             match seq.message().await? {
-                ServerMessage::CommandComplete(c) => {
+                ServerMessage::CommandComplete0(c) => {
+                    seq.expect_ready().await?;
+                    break c.status_data;
+                }
+                ServerMessage::ErrorResponse(err) => {
+                    seq.expect_ready().await?;
+                    return Err(err.into());
+                }
+                msg => {
+                    eprintln!("WARNING: unsolicited message {:?}", msg);
+                }
+            }
+        };
+        Ok(status)
+    }
+
+    async fn execute1<S>(&mut self, request: S)
+        -> Result<Bytes, Error>
+        where S: ToString,
+    {
+        //let state_typedesc_id = seq.get_state_typedesc_id();
+        let mut seq = self.start_sequence().await?;
+        seq.send_messages(&[
+            ClientMessage::Execute1(Execute1 {
+                annotations: HashMap::new(),
+                allowed_capabilities: Capabilities::ALL,
+                compilation_flags: CompilationFlags::INJECT_OUTPUT_OBJECT_IDS,
+                implicit_limit: None,
+                output_format: IoFormat::None,
+                expected_cardinality: Cardinality::Many,
+                command_text: request.to_string(),
+                state_typedesc_id: seq.get_state_typedesc_id(),
+                state_data: seq.get_state_data(),
+                input_typedesc_id: Uuid::from_u128(0),
+                output_typedesc_id: Uuid::from_u128(0),
+                arguments: Bytes::new(),
+            }),
+            ClientMessage::Sync,
+        ]).await?;
+        let status = loop {
+            match seq.message().await? {
+                ServerMessage::CommandComplete1(c) => {
+                    seq.process_complete(&c)?;
                     seq.expect_ready().await?;
                     break c.status_data;
                 }

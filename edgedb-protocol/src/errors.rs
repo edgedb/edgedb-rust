@@ -25,6 +25,10 @@ pub enum DecodeError {
     InvalidIoFormat { backtrace: Backtrace, io_format: u8 },
     #[snafu(display("unsupported cardinality: {:x}", cardinality))]
     InvalidCardinality { backtrace: Backtrace, cardinality: u8 },
+    #[snafu(display("unsupported capability: {:b}", capabilities))]
+    InvalidCapabilities { backtrace: Backtrace, capabilities: u64 },
+    #[snafu(display("unsupported compilation flags: {:b}", compilation_flags))]
+    InvalidCompilationFlags { backtrace: Backtrace, compilation_flags: u64 },
     #[snafu(display("unsupported describe aspect: {:x}", aspect))]
     InvalidAspect { backtrace: Backtrace, aspect: u8 },
     #[snafu(display("unsupported type descriptor: {:x}", descriptor))]

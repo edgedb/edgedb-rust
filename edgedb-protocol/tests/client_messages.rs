@@ -5,10 +5,11 @@ use uuid::Uuid;
 use bytes::{Bytes, BytesMut};
 
 use edgedb_protocol::encoding::{Input, Output};
+use edgedb_protocol::common::{Capabilities, CompilationFlags};
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
-use edgedb_protocol::client_message::{ExecuteScript, Execute};
-use edgedb_protocol::client_message::{Prepare, IoFormat, Cardinality};
+use edgedb_protocol::client_message::{ExecuteScript, Execute0, Execute1};
+use edgedb_protocol::client_message::{Parse, Prepare, IoFormat, Cardinality};
 use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
 use edgedb_protocol::client_message::{SaslInitialResponse};
 use edgedb_protocol::client_message::{SaslResponse};
@@ -64,13 +65,30 @@ fn execute_script() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn prepare() -> Result<(), Box<dyn Error>> {
-    encoding_eq!(ClientMessage::Prepare(Prepare {
+    encoding_eq_ver!(0, 13, ClientMessage::Prepare(Prepare {
         headers: HashMap::new(),
         io_format: IoFormat::Binary,
         expected_cardinality: Cardinality::AtMostOne,
         statement_name: Bytes::from_static(b"example"),
         command_text: String::from("SELECT 1;"),
     }), b"P\0\0\0 \0\0bo\0\0\0\x07example\0\0\0\tSELECT 1;");
+    Ok(())
+}
+
+#[test]
+fn parse() -> Result<(), Box<dyn Error>> {
+    encoding_eq_ver!(1, 0, ClientMessage::Parse(Parse {
+        annotations: HashMap::new(),
+        allowed_capabilities: Capabilities::MODIFICATIONS,
+        compilation_flags: CompilationFlags::INJECT_OUTPUT_TYPE_NAMES,
+        implicit_limit: Some(77),
+        output_format: IoFormat::Binary,
+        expected_cardinality: Cardinality::AtMostOne,
+        command_text: String::from("SELECT 1;"),
+        state_typedesc_id: Uuid::from_u128(0),
+        state_data: Bytes::from(""),
+    }), b"P\0\0\0A\0\0\0\0\0\0\0\0\0\x01\0\0\0\0\0\0\0\x02\0\0\0\0\0\0\0Mbo\
+          \0\0\0\tSELECT 1;\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
     Ok(())
 }
 
@@ -85,8 +103,8 @@ fn describe_statement() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn execute() -> Result<(), Box<dyn Error>> {
-    encoding_eq!(ClientMessage::Execute(Execute {
+fn execute0() -> Result<(), Box<dyn Error>> {
+    encoding_eq_ver!(0, 13, ClientMessage::Execute0(Execute0 {
         headers: HashMap::new(),
         statement_name: Bytes::from_static(b"example"),
         arguments: Bytes::new(),
@@ -95,18 +113,41 @@ fn execute() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn optimistic_execute() -> Result<(), Box<dyn Error>> {
-    encoding_eq!(ClientMessage::OptimisticExecute(OptimisticExecute {
-        headers: HashMap::new(),
-        io_format: IoFormat::Binary,
+fn execute1() -> Result<(), Box<dyn Error>> {
+    encoding_eq_ver!(1, 0, ClientMessage::Execute1(Execute1 {
+        annotations: HashMap::new(),
+        allowed_capabilities: Capabilities::MODIFICATIONS,
+        compilation_flags: CompilationFlags::INJECT_OUTPUT_TYPE_NAMES,
+        implicit_limit: Some(77),
+        output_format: IoFormat::Binary,
         expected_cardinality: Cardinality::AtMostOne,
-        command_text: String::from("COMMIT"),
-        input_typedesc_id: Uuid::from_u128(0xFF),
-        output_typedesc_id: Uuid::from_u128(0x0),
+        command_text: String::from("SELECT 1;"),
+        state_typedesc_id: Uuid::from_u128(0),
+        state_data: Bytes::new(),
+        input_typedesc_id: Uuid::from_u128(123),
+        output_typedesc_id: Uuid::from_u128(456),
         arguments: Bytes::new(),
-    }),  b"O\0\0\06\0\0bo\0\0\0\x06COMMIT\
-           \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\
-           \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
+    }), b"O\0\0\0e\0\0\0\0\0\0\0\0\0\x01\0\0\0\0\0\0\0\x02\0\0\0\0\0\0\0Mbo\
+          \0\0\0\tSELECT 1;\
+          \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+          \0\0\0{\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\xc8\0\0\0\0");
+    Ok(())
+}
+
+#[test]
+fn optimistic_execute() -> Result<(), Box<dyn Error>> {
+    encoding_eq_ver!(0, 13,
+        ClientMessage::OptimisticExecute(OptimisticExecute {
+            headers: HashMap::new(),
+            io_format: IoFormat::Binary,
+            expected_cardinality: Cardinality::AtMostOne,
+            command_text: String::from("COMMIT"),
+            input_typedesc_id: Uuid::from_u128(0xFF),
+            output_typedesc_id: Uuid::from_u128(0x0),
+            arguments: Bytes::new(),
+        }),  b"O\0\0\06\0\0bo\0\0\0\x06COMMIT\
+               \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\
+               \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
     Ok(())
 }
 

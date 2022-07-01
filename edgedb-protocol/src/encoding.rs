@@ -11,7 +11,8 @@ use crate::features::ProtocolVersion;
 use crate::errors::{self, EncodeError, DecodeError};
 
 
-pub type Headers = HashMap<u16, Bytes>;
+pub type KeyValues = HashMap<u16, Bytes>;
+pub type Annotations = HashMap<String, String>;
 
 pub struct Input {
     #[allow(dead_code)]
@@ -96,6 +97,9 @@ impl Output<'_> {
             proto,
             bytes,
         }
+    }
+    pub fn proto(&self) -> &ProtocolVersion {
+        &self.proto
     }
     pub fn reserve(&mut self, size: usize) {
         self.bytes.reserve(size)

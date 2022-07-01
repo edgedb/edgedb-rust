@@ -6,9 +6,11 @@ use bytes::{Bytes, BufMut, Buf};
 use uuid::Uuid;
 use snafu::{OptionExt, ensure};
 
-use crate::encoding::{Encode, Decode, Headers, encode, Input, Output};
+use crate::encoding::{Encode, Decode, encode, Input, Output};
+use crate::encoding::{Annotations, KeyValues};
 use crate::errors::{self, EncodeError, DecodeError};
-pub use crate::common::{Cardinality, CompilationFlags};
+pub use crate::common::{Cardinality, CompilationFlags, Capabilities};
+pub use crate::common::{CompilationOptions};
 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,9 +18,11 @@ pub use crate::common::{Cardinality, CompilationFlags};
 pub enum ClientMessage {
     ClientHandshake(ClientHandshake),
     ExecuteScript(ExecuteScript),
-    Prepare(Prepare),
+    Prepare(Prepare),  // protocol < 1.0
+    Parse(Parse), // protocol > 1.0
     DescribeStatement(DescribeStatement),
-    Execute(Execute),
+    Execute0(Execute0),
+    Execute1(Execute1),
     OptimisticExecute(OptimisticExecute),
     UnknownMessage(u8, Bytes),
     AuthenticationSaslInitialResponse(SaslInitialResponse),
@@ -48,18 +52,18 @@ pub struct ClientHandshake {
     pub major_ver: u16,
     pub minor_ver: u16,
     pub params: HashMap<String, String>,
-    pub extensions: HashMap<String, Headers>,
+    pub extensions: HashMap<String, KeyValues>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecuteScript {
-    pub headers: Headers,
+    pub headers: KeyValues,
     pub script_text: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Prepare {
-    pub headers: Headers,
+    pub headers: KeyValues,
     pub io_format: IoFormat,
     pub expected_cardinality: Cardinality,
     pub statement_name: Bytes,
@@ -67,22 +71,51 @@ pub struct Prepare {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Parse {
+    pub annotations: Annotations,
+    pub allowed_capabilities: Capabilities,
+    pub compilation_flags: CompilationFlags,
+    pub implicit_limit: Option<u64>,
+    pub output_format: IoFormat,
+    pub expected_cardinality: Cardinality,
+    pub command_text: String,
+    pub state_typedesc_id: Uuid,
+    pub state_data: Bytes,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DescribeStatement {
-    pub headers: Headers,
+    pub headers: KeyValues,
     pub aspect: DescribeAspect,
     pub statement_name: Bytes,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Execute {
-    pub headers: Headers,
+pub struct Execute0 {
+    pub headers: KeyValues,
     pub statement_name: Bytes,
     pub arguments: Bytes,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Execute1 {
+    pub annotations: Annotations,
+    pub allowed_capabilities: Capabilities,
+    pub compilation_flags: CompilationFlags,
+    pub implicit_limit: Option<u64>,
+    pub output_format: IoFormat,
+    pub expected_cardinality: Cardinality,
+    pub command_text: String,
+    pub state_typedesc_id: Uuid,
+    pub state_data: Bytes,
+    pub input_typedesc_id: Uuid,
+    pub output_typedesc_id: Uuid,
+    pub arguments: Bytes,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OptimisticExecute {
-    pub headers: Headers,
+    pub headers: KeyValues,
     pub io_format: IoFormat,
     pub expected_cardinality: Cardinality,
     pub command_text: String,
@@ -93,12 +126,12 @@ pub struct OptimisticExecute {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dump {
-    pub headers: Headers,
+    pub headers: KeyValues,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Restore {
-    pub headers: Headers,
+    pub headers: KeyValues,
     pub jobs: u16,
     pub data: Bytes,
 }
@@ -118,6 +151,7 @@ pub enum IoFormat {
     Binary = 0x62,
     Json = 0x6a,
     JsonElements = 0x4a,
+    None = 0x6e,
 }
 
 
@@ -131,9 +165,11 @@ impl ClientMessage {
             AuthenticationSaslResponse(h) => encode(buf, 0x72, h),
             ExecuteScript(h) => encode(buf, 0x51, h),
             Prepare(h) => encode(buf, 0x50, h),
+            Parse(h) => encode(buf, 0x50, h),
             DescribeStatement(h) => encode(buf, 0x44, h),
-            Execute(h) => encode(buf, 0x45, h),
+            Execute0(h) => encode(buf, 0x45, h),
             OptimisticExecute(h) => encode(buf, 0x4f, h),
+            Execute1(h) => encode(buf, 0x4f, h),
             Dump(h) => encode(buf, 0x3e, h),
             Restore(h) => encode(buf, 0x3c, h),
             RestoreBlock(h) => encode(buf, 0x3d, h),
@@ -155,32 +191,42 @@ impl ClientMessage {
     pub fn decode(buf: &mut Input) -> Result<ClientMessage, DecodeError> {
         use self::ClientMessage as M;
         let mut data = buf.slice(5..);
-        match buf[0] {
-            0x56 => ClientHandshake::decode(&mut data).map(M::ClientHandshake),
+        let result = match buf[0] {
+            0x56 => ClientHandshake::decode(&mut data)
+                .map(M::ClientHandshake)?,
             0x70 => SaslInitialResponse::decode(&mut data)
-                .map(M::AuthenticationSaslInitialResponse),
+                .map(M::AuthenticationSaslInitialResponse)?,
             0x72 => SaslResponse::decode(&mut data)
-                .map(M::AuthenticationSaslResponse),
-            0x51 => ExecuteScript::decode(&mut data).map(M::ExecuteScript),
-            0x50 => Prepare::decode(&mut data).map(M::Prepare),
-            0x45 => Execute::decode(&mut data).map(M::Execute),
-            0x4f => OptimisticExecute::decode(&mut data)
-                .map(M::OptimisticExecute),
-            0x3e => Dump::decode(&mut data).map(M::Dump),
-            0x3c => Restore::decode(&mut data).map(M::Restore),
-            0x3d => RestoreBlock::decode(&mut data).map(M::RestoreBlock),
-            0x2e => Ok(M::RestoreEof),
-            0x53 => Ok(M::Sync),
-            0x48 => Ok(M::Flush),
-            0x58 => Ok(M::Terminate),
+                .map(M::AuthenticationSaslResponse)?,
+            0x51 => ExecuteScript::decode(&mut data).map(M::ExecuteScript)?,
+            0x50 => if buf.proto().is_1() {
+                Parse::decode(&mut data).map(M::Parse)?
+            } else {
+                Prepare::decode(&mut data).map(M::Prepare)?
+            },
+            0x45 => Execute0::decode(&mut data).map(M::Execute0)?,
+            0x4f => if buf.proto().is_1() {
+                Execute1::decode(&mut data).map(M::Execute1)?
+            } else {
+                OptimisticExecute::decode(&mut data).map(M::OptimisticExecute)?
+            },
+            0x3e => Dump::decode(&mut data).map(M::Dump)?,
+            0x3c => Restore::decode(&mut data).map(M::Restore)?,
+            0x3d => RestoreBlock::decode(&mut data).map(M::RestoreBlock)?,
+            0x2e => M::RestoreEof,
+            0x53 => M::Sync,
+            0x48 => M::Flush,
+            0x58 => M::Terminate,
             0x44 => {
-                DescribeStatement::decode(&mut data).map(M::DescribeStatement)
+                DescribeStatement::decode(&mut data).map(M::DescribeStatement)?
             }
-            code => Ok(M::UnknownMessage(
+            code => M::UnknownMessage(
                 code,
                 data.copy_to_bytes(data.remaining()),
-            )),
-        }
+            ),
+        };
+        ensure!(data.remaining() == 0, errors::ExtraData);
+        Ok(result)
     }
 }
 
@@ -321,6 +367,7 @@ impl Encode for Prepare {
     fn encode(&self, buf: &mut Output)
         -> Result<(), EncodeError>
     {
+        debug_assert!(!buf.proto().is_1());
         buf.reserve(12);
         buf.put_u16(u16::try_from(self.headers.len()).ok()
             .context(errors::TooManyHeaders)?);
@@ -404,10 +451,11 @@ impl Decode for DescribeStatement {
     }
 }
 
-impl Encode for Execute {
+impl Encode for Execute0 {
     fn encode(&self, buf: &mut Output)
         -> Result<(), EncodeError>
     {
+        debug_assert!(!buf.proto().is_1());
         buf.reserve(10);
         buf.put_u16(u16::try_from(self.headers.len()).ok()
             .context(errors::TooManyHeaders)?);
@@ -422,7 +470,7 @@ impl Encode for Execute {
     }
 }
 
-impl Decode for Execute {
+impl Decode for Execute0 {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 12, errors::Underflow);
         let num_headers = buf.get_u16();
@@ -433,7 +481,7 @@ impl Decode for Execute {
         }
         let statement_name = Bytes::decode(buf)?;
         let arguments = Bytes::decode(buf)?;
-        Ok(Execute {
+        Ok(Execute0 {
             headers,
             statement_name,
             arguments,
@@ -443,11 +491,11 @@ impl Decode for Execute {
 
 impl OptimisticExecute {
     pub fn new(
-        flags: &CompilationFlags,
+        flags: &CompilationOptions,
         query: &str, arguments: impl Into<Bytes>,
         input_typedesc_id: Uuid, output_typedesc_id: Uuid,
     ) -> OptimisticExecute {
-        let mut headers = Headers::new();
+        let mut headers = KeyValues::new();
         if let Some(limit) = flags.implicit_limit {
             headers.insert(0xFF01, Bytes::from(limit.to_string()));
         }
@@ -522,6 +570,80 @@ impl Decode for OptimisticExecute {
             io_format,
             expected_cardinality,
             command_text,
+            input_typedesc_id,
+            output_typedesc_id,
+            arguments,
+        })
+    }
+}
+
+impl Encode for Execute1 {
+    fn encode(&self, buf: &mut Output)
+        -> Result<(), EncodeError>
+    {
+        buf.reserve(2+3*8+1+1+4+16+4+16+16+4);
+        buf.put_u16(u16::try_from(self.annotations.len()).ok()
+            .context(errors::TooManyHeaders)?);
+        for (name, value) in &self.annotations {
+            buf.reserve(4);
+            name.encode(buf)?;
+            value.encode(buf)?;
+        }
+        buf.reserve(3*8+1+1+4+16+4+16+16+4);
+        buf.put_u64(self.allowed_capabilities.bits());
+        buf.put_u64(self.compilation_flags.bits());
+        buf.put_u64(self.implicit_limit.unwrap_or(0));
+        buf.put_u8(self.output_format as u8);
+        buf.put_u8(self.expected_cardinality as u8);
+        self.command_text.encode(buf)?;
+        self.state_typedesc_id.encode(buf)?;
+        self.state_data.encode(buf)?;
+        self.input_typedesc_id.encode(buf)?;
+        self.output_typedesc_id.encode(buf)?;
+        self.arguments.encode(buf)?;
+        Ok(())
+    }
+}
+
+impl Decode for Execute1 {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
+        ensure!(buf.remaining() >= 2+3*8+2+4+16+4+16+16+4, errors::Underflow);
+        let num_annotations = buf.get_u16();
+        let mut annotations = HashMap::new();
+        for _ in 0..num_annotations {
+            ensure!(buf.remaining() >= 4, errors::Underflow);
+            annotations.insert(String::decode(buf)?, String::decode(buf)?);
+        }
+        ensure!(buf.remaining() >= 3*8+2+4+16+4+16+16+4, errors::Underflow);
+        let allowed_capabilities = decode_capabilities(buf.get_u64())?;
+        let compilation_flags = decode_compilation_flags(buf.get_u64())?;
+        let implicit_limit = match buf.get_u64() {
+            0 => None,
+            val => Some(val),
+        };
+        let output_format = match buf.get_u8() {
+            0x62 => IoFormat::Binary,
+            0x6a => IoFormat::Json,
+            0x4a => IoFormat::JsonElements,
+            c => errors::InvalidIoFormat { io_format: c }.fail()?,
+        };
+        let expected_cardinality = TryFrom::try_from(buf.get_u8())?;
+        let command_text = String::decode(buf)?;
+        let state_typedesc_id = Uuid::decode(buf)?;
+        let state_data = Bytes::decode(buf)?;
+        let input_typedesc_id = Uuid::decode(buf)?;
+        let output_typedesc_id = Uuid::decode(buf)?;
+        let arguments = Bytes::decode(buf)?;
+        Ok(Execute1 {
+            annotations,
+            allowed_capabilities,
+            compilation_flags,
+            implicit_limit,
+            output_format,
+            expected_cardinality,
+            command_text,
+            state_typedesc_id,
+            state_data,
             input_typedesc_id,
             output_typedesc_id,
             arguments,
@@ -611,8 +733,8 @@ impl Decode for RestoreBlock {
 }
 
 impl Prepare {
-    pub fn new(flags: &CompilationFlags, query: &str) -> Prepare {
-        let mut headers = Headers::new();
+    pub fn new(flags: &CompilationOptions, query: &str) -> Prepare {
+        let mut headers = KeyValues::new();
         if let Some(limit) = flags.implicit_limit {
             headers.insert(0xFF01, Bytes::from(limit.to_string()));
         }
@@ -634,5 +756,83 @@ impl Prepare {
             statement_name: Bytes::from(""),
             command_text: query.into(),
         }
+    }
+}
+
+fn decode_capabilities(val: u64) -> Result<Capabilities, DecodeError> {
+    Capabilities::from_bits(val)
+    .ok_or_else(|| errors::InvalidCapabilities { capabilities: val }.build())
+}
+
+fn decode_compilation_flags(val: u64) -> Result<CompilationFlags, DecodeError>
+{
+    CompilationFlags::from_bits(val).ok_or_else(|| {
+        errors::InvalidCompilationFlags { compilation_flags: val }.build()
+    })
+}
+
+impl Decode for Parse {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
+        ensure!(buf.remaining() >= 52, errors::Underflow);
+        let num_headers = buf.get_u16();
+        let mut annotations = HashMap::new();
+        for _ in 0..num_headers {
+            ensure!(buf.remaining() >= 8, errors::Underflow);
+            annotations.insert(String::decode(buf)?, String::decode(buf)?);
+        }
+        ensure!(buf.remaining() >= 50, errors::Underflow);
+        let allowed_capabilities = decode_capabilities(buf.get_u64())?;
+        let compilation_flags = decode_compilation_flags(buf.get_u64())?;
+        let implicit_limit = match buf.get_u64() {
+            0 => None,
+            val => Some(val),
+        };
+        let output_format = match buf.get_u8() {
+            0x62 => IoFormat::Binary,
+            0x6a => IoFormat::Json,
+            0x4a => IoFormat::JsonElements,
+            c => errors::InvalidIoFormat { io_format: c }.fail()?,
+        };
+        let expected_cardinality = TryFrom::try_from(buf.get_u8())?;
+        let command_text = String::decode(buf)?;
+        let state_typedesc_id = Uuid::decode(buf)?;
+        let state_data = Bytes::decode(buf)?;
+        Ok(Parse {
+            annotations,
+            allowed_capabilities,
+            compilation_flags,
+            implicit_limit,
+            output_format,
+            expected_cardinality,
+            command_text,
+            state_typedesc_id,
+            state_data,
+        })
+    }
+}
+
+impl Encode for Parse {
+    fn encode(&self, buf: &mut Output)
+        -> Result<(), EncodeError>
+    {
+        debug_assert!(buf.proto().is_1());
+        buf.reserve(52);
+        buf.put_u16(u16::try_from(self.annotations.len()).ok()
+            .context(errors::TooManyHeaders)?);
+        for (name, value) in &self.annotations {
+            buf.reserve(8);
+            name.encode(buf)?;
+            value.encode(buf)?;
+        }
+        buf.reserve(50);
+        buf.put_u64(self.allowed_capabilities.bits());
+        buf.put_u64(self.compilation_flags.bits());
+        buf.put_u64(self.implicit_limit.unwrap_or(0));
+        buf.put_u8(self.output_format as u8);
+        buf.put_u8(self.expected_cardinality as u8);
+        self.command_text.encode(buf)?;
+        self.state_typedesc_id.encode(buf)?;
+        self.state_data.encode(buf)?;
+        Ok(())
     }
 }

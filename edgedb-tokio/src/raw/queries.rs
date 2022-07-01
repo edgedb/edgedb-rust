@@ -4,13 +4,13 @@ use std::time::Instant;
 use bytes::Bytes;
 use edgedb_protocol::model::Uuid;
 
-use edgedb_protocol::client_message::{ClientMessage, Prepare, Execute};
+use edgedb_protocol::client_message::{ClientMessage, Prepare, Execute0};
 use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
 use edgedb_protocol::client_message::{OptimisticExecute};
-use edgedb_protocol::common::CompilationFlags;
+use edgedb_protocol::common::CompilationOptions;
 use edgedb_protocol::common::{IoFormat, Cardinality, Capabilities};
 use edgedb_protocol::features::ProtocolVersion;
-use edgedb_protocol::server_message::{PrepareComplete, CommandDataDescription};
+use edgedb_protocol::server_message::{PrepareComplete, CommandDataDescription0};
 use edgedb_protocol::server_message::{ServerMessage, Data};
 
 use crate::errors::{Error, ErrorKind};
@@ -64,7 +64,7 @@ impl ConnInner {
             }
         }
     }
-    pub async fn prepare(&mut self, flags: &CompilationFlags, query: &str)
+    pub async fn prepare(&mut self, flags: &CompilationOptions, query: &str)
         -> Result<PrepareComplete, Error>
     {
         let guard = self.begin_request()?;
@@ -95,7 +95,7 @@ impl ConnInner {
         }
     }
     pub async fn describe_data(&mut self)
-        -> Result<CommandDataDescription, Error>
+        -> Result<CommandDataDescription0, Error>
     {
         let guard = self.begin_request()?;
         self.send_messages(&[
@@ -110,7 +110,7 @@ impl ConnInner {
         loop {
             let msg = self.message().await?;
             match msg {
-                ServerMessage::CommandDataDescription(data_desc) => {
+                ServerMessage::CommandDataDescription0(data_desc) => {
                     self.expect_ready(guard).await?;
                     return Ok(data_desc);
                 }
@@ -133,7 +133,7 @@ impl ConnInner {
     {
         let guard = self.begin_request()?;
         self.send_messages(&[
-            ClientMessage::Execute(Execute {
+            ClientMessage::Execute0(Execute0 {
                 headers: HashMap::new(),
                 statement_name: Bytes::from(""),
                 arguments: arguments.clone(),
@@ -148,7 +148,8 @@ impl ConnInner {
                 ServerMessage::Data(data) => {
                     result.push(data);
                 }
-                ServerMessage::CommandComplete(_) => {
+                ServerMessage::CommandComplete0(_) |
+                ServerMessage::CommandComplete1(_) => {
                     self.expect_ready(guard).await?;
                     return Ok(result);
                 }
@@ -166,7 +167,7 @@ impl ConnInner {
             }
         }
     }
-    pub async fn statement(&mut self, flags: &CompilationFlags, query: &str)
+    pub async fn statement(&mut self, flags: &CompilationOptions, query: &str)
         -> Result<(), Error>
     {
         let guard = self.begin_request()?;
@@ -186,7 +187,8 @@ impl ConnInner {
                 ServerMessage::Data(data) => {
                     result.push(data);
                 }
-                ServerMessage::CommandComplete(_) => {
+                ServerMessage::CommandComplete0(_) |
+                ServerMessage::CommandComplete1(_) => {
                     self.expect_ready(guard).await?;
                     return Ok(());
                 }
@@ -207,7 +209,7 @@ impl ConnInner {
 }
 
 impl Connection {
-    pub async fn prepare(&mut self, flags: &CompilationFlags, query: &str)
+    pub async fn prepare(&mut self, flags: &CompilationOptions, query: &str)
         -> Result<PrepareComplete, Error>
     {
         self.inner.as_mut().expect("connection is not dropped")
@@ -215,7 +217,7 @@ impl Connection {
     }
 
     pub async fn describe_data(&mut self)
-        -> Result<CommandDataDescription, Error>
+        -> Result<CommandDataDescription0, Error>
     {
         self.inner.as_mut().expect("connection is not dropped")
             .describe_data().await
@@ -228,7 +230,7 @@ impl Connection {
             .execute(arguments).await
     }
     pub async fn statement(&mut self, query: &str) -> Result<(), Error> {
-        let flags = CompilationFlags {
+        let flags = CompilationOptions {
             implicit_limit: None,
             implicit_typenames: false,
             implicit_typeids: false,
