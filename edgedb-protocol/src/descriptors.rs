@@ -29,6 +29,7 @@ pub enum Descriptor {
     Array(ArrayTypeDescriptor),
     Range(RangeTypeDescriptor),
     Enumeration(EnumerationTypeDescriptor),
+    InputShape(InputShapeTypeDescriptor),
     TypeAnnotation(TypeAnnotationDescriptor),
 }
 
@@ -56,6 +57,12 @@ pub struct SetDescriptor {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ObjectShapeDescriptor {
+    pub id: Uuid,
+    pub elements: Vec<ShapeElement>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InputShapeTypeDescriptor {
     pub id: Uuid,
     pub elements: Vec<ShapeElement>,
 }
@@ -216,6 +223,7 @@ impl Descriptor {
             Array(i) => &i.id,
             Range(i) => &i.id,
             Enumeration(i) => &i.id,
+            InputShape(i) => &i.id,
             TypeAnnotation(i) => &i.id,
         }
     }
@@ -237,6 +245,7 @@ impl Decode for Descriptor {
             5 => NamedTupleTypeDescriptor::decode(buf).map(D::NamedTuple),
             6 => ArrayTypeDescriptor::decode(buf).map(D::Array),
             7 => EnumerationTypeDescriptor::decode(buf).map(D::Enumeration),
+            8 => InputShapeTypeDescriptor::decode(buf).map(D::InputShape),
             9 => RangeTypeDescriptor::decode(buf).map(D::Range),
             0x7F..=0xFF => {
                 TypeAnnotationDescriptor::decode(buf).map(D::TypeAnnotation)
@@ -267,6 +276,20 @@ impl Decode for ObjectShapeDescriptor {
             elements.push(ShapeElement::decode(buf)?);
         }
         Ok(ObjectShapeDescriptor { id, elements })
+    }
+}
+
+impl Decode for InputShapeTypeDescriptor {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
+        ensure!(buf.remaining() >= 19, errors::Underflow);
+        assert!(buf.get_u8() == 8);
+        let id = Uuid::decode(buf)?;
+        let element_count = buf.get_u16();
+        let mut elements = Vec::with_capacity(element_count as usize);
+        for _ in 0..element_count {
+            elements.push(ShapeElement::decode(buf)?);
+        }
+        Ok(InputShapeTypeDescriptor { id, elements })
     }
 }
 

@@ -2,7 +2,7 @@ use std::future::Future;
 
 use bytes::BytesMut;
 use edgedb_protocol::QueryResult;
-use edgedb_protocol::common::CompilationFlags;
+use edgedb_protocol::common::CompilationOptions;
 use edgedb_protocol::common::{IoFormat, Capabilities, Cardinality};
 use edgedb_protocol::model::Json;
 use edgedb_protocol::query_arg::{QueryArgs, Encoder};
@@ -151,7 +151,7 @@ impl Transaction {
               R: QueryResult,
     {
         self.ensure_started().await?;
-        let flags = CompilationFlags {
+        let flags = CompilationOptions {
             implicit_limit: None,
             implicit_typenames: false,
             implicit_typeids: false,
@@ -212,7 +212,7 @@ impl Transaction {
               R: QueryResult,
     {
         self.ensure_started().await?;
-        let flags = CompilationFlags {
+        let flags = CompilationOptions {
             implicit_limit: None,
             implicit_typenames: false,
             implicit_typeids: false,
@@ -293,7 +293,7 @@ impl Transaction {
         -> Result<Json, Error>
     {
         self.ensure_started().await?;
-        let flags = CompilationFlags {
+        let flags = CompilationOptions {
             implicit_limit: None,
             implicit_typenames: false,
             implicit_typeids: false,
@@ -349,7 +349,7 @@ impl Transaction {
         -> Result<Option<Json>, Error>
     {
         self.ensure_started().await?;
-        let flags = CompilationFlags {
+        let flags = CompilationOptions {
             implicit_limit: None,
             implicit_typenames: false,
             implicit_typeids: false,

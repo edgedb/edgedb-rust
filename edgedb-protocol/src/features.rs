@@ -7,8 +7,8 @@ pub struct ProtocolVersion {
 impl ProtocolVersion {
     pub fn current() -> ProtocolVersion {
         ProtocolVersion {
-            major_ver: 0,
-            minor_ver: 13,
+            major_ver: 1,
+            minor_ver: 0,
         }
     }
     pub fn new(major_ver: u16, minor_ver: u16) -> ProtocolVersion {
@@ -19,6 +19,9 @@ impl ProtocolVersion {
     }
     pub fn version_tuple(&self) -> (u16, u16) {
         (self.major_ver, self.minor_ver)
+    }
+    pub fn is_1(&self) -> bool {
+        self.major_ver >= 1
     }
     pub fn supports_inline_typenames(&self) -> bool {
         self.version_tuple() >= (0, 9)

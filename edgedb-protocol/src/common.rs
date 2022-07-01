@@ -23,8 +23,16 @@ bitflags::bitflags! {
     }
 }
 
+bitflags::bitflags! {
+    pub struct CompilationFlags: u64 {
+        const INJECT_OUTPUT_TYPE_IDS =       0b00000001;
+        const INJECT_OUTPUT_TYPE_NAMES =     0b00000010;
+        const INJECT_OUTPUT_OBJECT_IDS =     0b00000100;
+    }
+}
+
 #[derive(Debug, Clone)]
-pub struct CompilationFlags {
+pub struct CompilationOptions {
     pub implicit_limit: Option<u64>,
     pub implicit_typenames: bool,
     pub implicit_typeids: bool,

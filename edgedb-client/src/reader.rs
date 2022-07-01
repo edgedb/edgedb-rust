@@ -202,8 +202,11 @@ impl<T: QueryResult> Stream for QueryResponse<'_, T> {
                     }
                     buffer.extend(data.data.into_iter().rev());
                 }
-                Poll::Ready(Ok(m @ ServerMessage::CommandComplete(_)))
-                if error.is_none()
+                Poll::Ready(Ok(ServerMessage::StateDataDescription(d))) => {
+                    seq.set_state_description(d)?;
+                }
+                Poll::Ready(Ok(m @ ServerMessage::CommandComplete0(_)))
+                    if error.is_none()
                 => {
                     if *complete {
                         return Poll::Ready(Some(
@@ -212,6 +215,20 @@ impl<T: QueryResult> Stream for QueryResponse<'_, T> {
                         ));
                     }
                     *complete = true;
+                }
+                Poll::Ready(Ok(ServerMessage::CommandComplete1(d)))
+                    if error.is_none()
+                => {
+                    if *complete {
+                        return Poll::Ready(Some(
+                            Err(ProtocolOutOfOrderError::with_message(format!(
+                                "unsolicited packet: {}",
+                                PartialDebug(ServerMessage::CommandComplete1(d))
+                            )))
+                        ));
+                    }
+                    *complete = true;
+                    seq.process_complete(&d)?;
                 }
                 Poll::Ready(Ok(ServerMessage::ReadyForCommand(r))) => {
                     if let Some(error) = error.take() {

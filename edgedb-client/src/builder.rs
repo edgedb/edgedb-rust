@@ -30,14 +30,16 @@ use typemap::{TypeMap, DebugAny};
 use webpki::DnsNameRef;
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
+use edgedb_protocol::codec;
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use edgedb_protocol::server_message::{TransactionState, ServerHandshake};
 use edgedb_protocol::server_message::ParameterStatus;
 use edgedb_protocol::value::Value;
-use edgedb_protocol::model;
+use edgedb_protocol::model::{self, Uuid};
 
 use crate::client::{Connection, Sequence, State, PingInterval};
+use crate::client::{EdgeqlState, EdgeqlStateDesc};
 use crate::credentials::{Credentials, TlsSecurity};
 use crate::errors::{ClientConnectionError, ProtocolError, ProtocolTlsError};
 use crate::errors::{ClientConnectionFailedError, AuthenticationError};
@@ -1218,6 +1220,17 @@ impl Config {
             state: State::Normal {
                 idle_since: Instant::now(),
             },
+            eql_state_desc: EdgeqlStateDesc {
+                descriptor_id: Uuid::from_u128(0),
+                descriptor: Bytes::new(),
+                codec: Arc::new(codec::Nothing),
+            },
+            eql_state: EdgeqlState {
+                descriptor_id: Uuid::from_u128(0),
+                data: Bytes::new(),
+            },
+            eql_state_desc_in_transaction: None,
+            eql_state_in_transaction: None,
             version: version.clone(),
         };
         let mut seq = conn.start_sequence().await?;
@@ -1301,6 +1314,9 @@ impl Config {
                         }
                         _ => {}
                     }
+                }
+                ServerMessage::StateDataDescription(d) => {
+                    seq.set_state_description(d)?;
                 }
                 _ => {
                     log::warn!("unsolicited message {:?}", msg);
