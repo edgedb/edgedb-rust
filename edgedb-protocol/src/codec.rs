@@ -16,6 +16,7 @@ use crate::errors::{self, CodecError, DecodeError, EncodeError};
 use crate::value::Value;
 use crate::model;
 use crate::serialization::decode::{RawCodec, DecodeTupleLike, DecodeArrayLike};
+use crate::serialization::decode::{DecodeRange};
 
 pub const STD_UUID: UuidVal = UuidVal::from_u128(0x100);
 pub const STD_STR: UuidVal = UuidVal::from_u128(0x101);
@@ -168,6 +169,11 @@ pub struct Array {
 }
 
 #[derive(Debug)]
+pub struct Range {
+    element: Arc<dyn Codec>,
+}
+
+#[derive(Debug)]
 pub struct ArrayAdapter(Array);
 
 #[derive(Debug)]
@@ -217,6 +223,9 @@ impl<'a> CodecBuilder<'a> {
                     Ok(Arc::new(NamedTuple::build(d, self)?))
                 }
                 D::Array(d) => Ok(Arc::new(Array {
+                    element: self.build(d.type_pos)?,
+                })),
+                D::Range(d) => Ok(Arc::new(Range {
                     element: self.build(d.type_pos)?,
                 })),
                 D::Enumeration(d) => Ok(Arc::new(Enum {
@@ -1035,6 +1044,76 @@ impl Codec for Array {
         Ok(())
     }
 }
+
+impl Codec for Range {
+    fn decode(&self, mut buf: &[u8]) -> Result<Value, DecodeError> {
+        ensure!(buf.remaining() >= 1, errors::Underflow);
+        let flags = buf.get_u8() as usize;
+
+        let inc_lower = (flags & 0x02) != 0;
+        let inc_upper = (flags & 0x04) != 0;
+        let has_lower = (flags & (0x01 | 0x08)) == 0;
+        let has_upper = (flags & (0x01 | 0x10)) == 0;
+
+        let mut range = DecodeRange::new(buf)?;
+
+        let lower = Box::new(if has_lower {
+            Some(self.element.decode(range.read()?)?)
+        } else { None });
+        let upper = Box::new(if has_upper {
+            Some(self.element.decode(range.read()?)?)
+        } else { None });
+
+        return Ok(Value::Range { lower, upper, inc_lower, inc_upper })
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        let (lower, upper, inc_lower, inc_upper) = match val {
+            Value::Range { lower, upper, inc_lower, inc_upper } =>
+                (lower, upper, inc_lower, inc_upper),
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+
+        let flags =
+            (if *inc_lower { 0x02 } else { 0 }) |
+            (if *inc_upper { 0x04 } else { 0 }) |
+            (if lower.is_none() { 0x08 } else { 0 }) |
+            (if upper.is_none() { 0x10 } else { 0 });
+        buf.put_u32(flags);
+
+        match &**lower {
+            None => {}
+            Some(lower) => {
+                let pos = buf.len();
+                buf.put_u32(0);  // replaced after serializing a value
+                self.element.encode(buf, &lower)?;
+                let len = buf.len()-pos-4;
+                buf[pos..pos+4].copy_from_slice(
+                    &u32::try_from(len)
+                        .ok().context(errors::ElementTooLong)?
+                        .to_be_bytes());
+            }
+        }
+
+        match &**upper {
+            None => {}
+            Some(upper) => {
+                let pos = buf.len();
+                buf.put_u32(0);  // replaced after serializing a value
+                self.element.encode(buf, &upper)?;
+                let len = buf.len()-pos-4;
+                buf[pos..pos+4].copy_from_slice(
+                    &u32::try_from(len)
+                        .ok().context(errors::ElementTooLong)?
+                        .to_be_bytes());
+            }
+        }
+
+        Ok(())
+    }
+}
+
 
 impl Codec for Enum {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {

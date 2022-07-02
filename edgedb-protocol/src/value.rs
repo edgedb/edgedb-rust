@@ -31,6 +31,12 @@ pub enum Value {
     NamedTuple { shape: NamedTupleShape, fields: Vec<Value> },
     Array(Vec<Value>),
     Enum(EnumValue),
+    Range {
+        lower: Box<Option<Value>>,
+        upper: Box<Option<Value>>,
+        inc_lower: bool,
+        inc_upper: bool,
+    },
 }
 
 impl Value {
@@ -63,6 +69,7 @@ impl Value {
             NamedTuple { .. } => "named_tuple",
             Array(..) => "array",
             Enum(..) => "enum",
+            Range{..} => "range",
         }
     }
     pub fn empty_tuple() -> Value {

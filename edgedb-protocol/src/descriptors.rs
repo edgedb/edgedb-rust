@@ -27,6 +27,7 @@ pub enum Descriptor {
     Tuple(TupleTypeDescriptor),
     NamedTuple(NamedTupleTypeDescriptor),
     Array(ArrayTypeDescriptor),
+    Range(RangeTypeDescriptor),
     Enumeration(EnumerationTypeDescriptor),
     TypeAnnotation(TypeAnnotationDescriptor),
 }
@@ -103,6 +104,12 @@ pub struct ArrayTypeDescriptor {
     pub id: Uuid,
     pub type_pos: TypePos,
     pub dimensions: Vec<Option<u32>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RangeTypeDescriptor {
+    pub id: Uuid,
+    pub type_pos: TypePos,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -207,6 +214,7 @@ impl Descriptor {
             Tuple(i) => &i.id,
             NamedTuple(i) => &i.id,
             Array(i) => &i.id,
+            Range(i) => &i.id,
             Enumeration(i) => &i.id,
             TypeAnnotation(i) => &i.id,
         }
@@ -229,6 +237,7 @@ impl Decode for Descriptor {
             5 => NamedTupleTypeDescriptor::decode(buf).map(D::NamedTuple),
             6 => ArrayTypeDescriptor::decode(buf).map(D::Array),
             7 => EnumerationTypeDescriptor::decode(buf).map(D::Enumeration),
+            9 => RangeTypeDescriptor::decode(buf).map(D::Range),
             0x7F..=0xFF => {
                 TypeAnnotationDescriptor::decode(buf).map(D::TypeAnnotation)
             }
@@ -362,6 +371,16 @@ impl Decode for ArrayTypeDescriptor {
             });
         }
         Ok(ArrayTypeDescriptor { id, type_pos, dimensions })
+    }
+}
+
+impl Decode for RangeTypeDescriptor {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
+        ensure!(buf.remaining() >= 19, errors::Underflow);
+        assert!(buf.get_u8() == 9);
+        let id = Uuid::decode(buf)?;
+        let type_pos = TypePos(buf.get_u16());
+        Ok(RangeTypeDescriptor { id, type_pos })
     }
 }
 
