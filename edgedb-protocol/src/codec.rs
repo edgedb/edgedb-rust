@@ -33,6 +33,7 @@ pub const CAL_LOCAL_DATE: UuidVal = UuidVal::from_u128(0x10c);
 pub const CAL_LOCAL_TIME: UuidVal = UuidVal::from_u128(0x10d);
 pub const STD_DURATION: UuidVal = UuidVal::from_u128(0x10e);
 pub const CAL_RELATIVE_DURATION: UuidVal = UuidVal::from_u128(0x111);
+pub const CAL_DATE_DURATION: UuidVal = UuidVal::from_u128(0x112);
 pub const STD_JSON: UuidVal = UuidVal::from_u128(0x10f);
 pub const STD_BIGINT: UuidVal = UuidVal::from_u128(0x110);
 pub const CFG_MEMORY: UuidVal = UuidVal::from_u128(0x130);
@@ -104,6 +105,9 @@ pub struct Duration;
 
 #[derive(Debug)]
 pub struct RelativeDuration;
+
+#[derive(Debug)]
+pub struct DateDuration;
 
 #[derive(Debug)]
 pub struct Datetime;
@@ -261,6 +265,7 @@ pub fn scalar_codec(uuid: &UuidVal) -> Result<Arc<dyn Codec>, CodecError> {
         CAL_LOCAL_TIME => Ok(Arc::new(LocalTime {})),
         STD_DURATION => Ok(Arc::new(Duration {})),
         CAL_RELATIVE_DURATION => Ok(Arc::new(RelativeDuration {})),
+        CAL_DATE_DURATION => Ok(Arc::new(DateDuration {})),
         STD_JSON => Ok(Arc::new(Json {})),
         STD_BIGINT => Ok(Arc::new(BigInt {})),
         CFG_MEMORY => Ok(Arc::new(ConfigMemory {})),
@@ -448,6 +453,32 @@ pub(crate) fn encode_relative_duration(buf: &mut BytesMut,
 {
     buf.reserve(16);
     buf.put_i64(val.micros);
+    buf.put_i32(val.days);
+    buf.put_i32(val.months);
+    Ok(())
+}
+
+impl Codec for DateDuration {
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::DateDuration)
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        let val = match val {
+            Value::DateDuration(val) => val,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        encode_date_duration(buf, val)
+    }
+}
+
+pub(crate) fn encode_date_duration(buf: &mut BytesMut,
+                                   val: &model::DateDuration)
+    -> Result<(), EncodeError>
+{
+    buf.reserve(16);
+    buf.put_i64(0);
     buf.put_i32(val.days);
     buf.put_i32(val.months);
     Ok(())

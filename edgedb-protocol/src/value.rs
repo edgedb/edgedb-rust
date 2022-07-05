@@ -1,6 +1,6 @@
 use crate::codec::{NamedTupleShape, ObjectShape, EnumValue};
 use crate::model::{ LocalDatetime, LocalDate, LocalTime, Duration, Datetime};
-use crate::model::{RelativeDuration};
+use crate::model::{RelativeDuration, DateDuration};
 use crate::model::{ BigInt, Decimal, Uuid, ConfigMemory };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -24,6 +24,7 @@ pub enum Value {
     LocalTime(LocalTime),
     Duration(Duration),
     RelativeDuration(RelativeDuration),
+    DateDuration(DateDuration),
     Json(String),  // or should we use serde::Json?
     Set(Vec<Value>),
     Object { shape: ObjectShape, fields: Vec<Option<Value>> },
@@ -56,6 +57,7 @@ impl Value {
             LocalTime(..) => "cal::local_time",
             Duration(..) => "duration",
             RelativeDuration(..) => "cal::relative_duration",
+            DateDuration(..) => "cal::date_duration",
             Json(..) => "json",
             Set(..) => "set",
             Object { .. } => "object",

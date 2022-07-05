@@ -14,7 +14,7 @@ use crate::model::{BigInt, Decimal};
 use crate::model::{Duration, LocalDate, LocalTime, LocalDatetime, Datetime};
 use crate::model::{Json, Uuid};
 use crate::model::{ConfigMemory};
-use crate::model::{RelativeDuration};
+use crate::model::{RelativeDuration, DateDuration};
 use crate::query_arg::{ScalarArg, Encoder, DescriptorContext};
 use crate::serialization::decode::queryable::scalars::DecodeScalar;
 
@@ -494,6 +494,17 @@ impl<'t> RawCodec<'t> for RelativeDuration {
         let days = buf.get_i32();
         let months = buf.get_i32();
         Ok(RelativeDuration { micros, days, months })
+    }
+}
+
+impl<'t> RawCodec<'t> for DateDuration {
+    fn decode(mut buf: &[u8]) -> Result<Self, DecodeError> {
+        ensure_exact_size(buf, 16)?;
+        let micros = buf.get_i64();
+        let days = buf.get_i32();
+        let months = buf.get_i32();
+        ensure!(micros == 0, errors::NonZeroReservedBytes);
+        Ok(DateDuration { days, months })
     }
 }
 
