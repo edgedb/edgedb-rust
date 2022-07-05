@@ -1075,39 +1075,37 @@ impl Codec for Range {
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
 
+        // XXX: empty
         let flags =
             (if *inc_lower { 0x02 } else { 0 }) |
             (if *inc_upper { 0x04 } else { 0 }) |
             (if lower.is_none() { 0x08 } else { 0 }) |
-            (if upper.is_none() { 0x10 } else { 0 });
-        buf.put_u32(flags);
+        (if upper.is_none() { 0x10 } else { 0 });
+        buf.reserve(1);
+        buf.put_u8(flags);
 
-        match &**lower {
-            None => {}
-            Some(lower) => {
-                let pos = buf.len();
-                buf.put_u32(0);  // replaced after serializing a value
-                self.element.encode(buf, &lower)?;
-                let len = buf.len()-pos-4;
-                buf[pos..pos+4].copy_from_slice(
-                    &u32::try_from(len)
-                        .ok().context(errors::ElementTooLong)?
-                        .to_be_bytes());
-            }
+        if let Some(lower) = &**lower {
+            let pos = buf.len();
+            buf.reserve(4);
+            buf.put_u32(0);  // replaced after serializing a value
+            self.element.encode(buf, &lower)?;
+            let len = buf.len()-pos-4;
+            buf[pos..pos+4].copy_from_slice(
+                &u32::try_from(len)
+                    .ok().context(errors::ElementTooLong)?
+                    .to_be_bytes());
         }
 
-        match &**upper {
-            None => {}
-            Some(upper) => {
-                let pos = buf.len();
-                buf.put_u32(0);  // replaced after serializing a value
-                self.element.encode(buf, &upper)?;
-                let len = buf.len()-pos-4;
-                buf[pos..pos+4].copy_from_slice(
-                    &u32::try_from(len)
-                        .ok().context(errors::ElementTooLong)?
-                        .to_be_bytes());
-            }
+        if let Some(upper) = &**upper {
+            let pos = buf.len();
+            buf.reserve(4);
+            buf.put_u32(0);  // replaced after serializing a value
+            self.element.encode(buf, &upper)?;
+            let len = buf.len()-pos-4;
+            buf[pos..pos+4].copy_from_slice(
+                &u32::try_from(len)
+                    .ok().context(errors::ElementTooLong)?
+                    .to_be_bytes());
         }
 
         Ok(())

@@ -142,7 +142,6 @@ mod inner {
         pub fn read_raw_object_element(&mut self) -> Result<Option<&'t [u8]>, DecodeError> {
             ensure!(self.raw.remaining() >= 4, self.underflow());
             let len = self.raw.get_i32();
-            println!("element length! {}", len);
             if len < 0 {
                 ensure!(len == -1, errors::InvalidMarker);
                 return Ok(None);
@@ -152,7 +151,7 @@ mod inner {
         }
 
         pub fn read_object_element(&mut self) -> Result<Option<&'t [u8]>, DecodeError> {
-            ensure!(self.raw.remaining() >= 4, self.underflow());
+            ensure!(self.raw.remaining() >= 8, self.underflow());
             let _reserved = self.raw.get_i32();
             self.read_raw_object_element()
         }
