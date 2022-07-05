@@ -36,6 +36,7 @@ pub enum Value {
         upper: Box<Option<Value>>,
         inc_lower: bool,
         inc_upper: bool,
+        empty: bool,
     },
 }
 

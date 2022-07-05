@@ -1045,15 +1045,22 @@ impl Codec for Array {
     }
 }
 
+const RANGE_EMPTY: usize = 0x01;
+const RANGE_LB_INC: usize = 0x02;
+const RANGE_UB_INC: usize = 0x04;
+const RANGE_LB_INF: usize = 0x08;
+const RANGE_UB_INF: usize = 0x10;
+
 impl Codec for Range {
     fn decode(&self, mut buf: &[u8]) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 1, errors::Underflow);
         let flags = buf.get_u8() as usize;
 
-        let inc_lower = (flags & 0x02) != 0;
-        let inc_upper = (flags & 0x04) != 0;
-        let has_lower = (flags & (0x01 | 0x08)) == 0;
-        let has_upper = (flags & (0x01 | 0x10)) == 0;
+        let empty = (flags & RANGE_EMPTY) != 0;
+        let inc_lower = (flags & RANGE_LB_INC) != 0;
+        let inc_upper = (flags & RANGE_UB_INC) != 0;
+        let has_lower = (flags & (RANGE_EMPTY | RANGE_LB_INF)) == 0;
+        let has_upper = (flags & (RANGE_EMPTY | RANGE_UB_INF)) == 0;
 
         let mut range = DecodeRange::new(buf)?;
 
@@ -1064,25 +1071,26 @@ impl Codec for Range {
             Some(self.element.decode(range.read()?)?)
         } else { None });
 
-        return Ok(Value::Range { lower, upper, inc_lower, inc_upper })
+        return Ok(Value::Range { lower, upper, inc_lower, inc_upper, empty })
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
     {
-        let (lower, upper, inc_lower, inc_upper) = match val {
-            Value::Range { lower, upper, inc_lower, inc_upper } =>
-                (lower, upper, inc_lower, inc_upper),
+        let (lower, upper, inc_lower, inc_upper, empty) = match val {
+            Value::Range { lower, upper, inc_lower, inc_upper, empty } =>
+                (lower, upper, inc_lower, inc_upper, empty),
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
 
-        // XXX: empty
         let flags =
-            (if *inc_lower { 0x02 } else { 0 }) |
-            (if *inc_upper { 0x04 } else { 0 }) |
-            (if lower.is_none() { 0x08 } else { 0 }) |
-        (if upper.is_none() { 0x10 } else { 0 });
+            if *empty { RANGE_EMPTY } else {
+                (if *inc_lower { RANGE_LB_INC } else { 0 }) |
+                (if *inc_upper { RANGE_UB_INC } else { 0 }) |
+                (if lower.is_none() { RANGE_LB_INF } else { 0 }) |
+                (if upper.is_none() { RANGE_UB_INF } else { 0 })
+            };
         buf.reserve(1);
-        buf.put_u8(flags);
+        buf.put_u8(flags as u8);
 
         if let Some(lower) = &**lower {
             let pos = buf.len();
