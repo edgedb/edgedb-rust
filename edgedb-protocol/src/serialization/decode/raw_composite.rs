@@ -56,6 +56,22 @@ impl<'t> DecodeArrayLike<'t> {
     }
 }
 
+pub struct DecodeRange<'t> {
+    inner:DecodeCompositeInner<'t>
+}
+
+impl<'t> DecodeRange<'t> {
+    pub fn new(buf:&'t [u8]) -> Result<Self, DecodeError> {
+        // flags header should already have been read externally
+        let inner = DecodeCompositeInner { raw: buf, count : 2};
+        Ok(DecodeRange{inner})
+    }
+    pub fn read(&mut self) -> Result<&[u8], DecodeError> {
+        self.inner.read_array_like_element()
+    }
+}
+
+
 impl<'t> Iterator for DecodeArrayLike<'t> {
     type Item = Result<&'t [u8], DecodeError>;
 
@@ -86,8 +102,8 @@ mod inner {
 
     pub(super) struct DecodeCompositeInner<'t>
     {
-        raw:&'t [u8],
-        count: usize,
+        pub raw:&'t [u8],
+        pub count: usize,
     }
 
     impl<'t> std::fmt::Debug for DecodeCompositeInner<'t> {
@@ -123,9 +139,8 @@ mod inner {
             Ok(result)
         }
 
-        pub fn read_object_element(&mut self) -> Result<Option<&'t [u8]>, DecodeError> {
-            ensure!(self.raw.remaining() >= 8, self.underflow());
-            let _reserved = self.raw.get_i32();
+        pub fn read_raw_object_element(&mut self) -> Result<Option<&'t [u8]>, DecodeError> {
+            ensure!(self.raw.remaining() >= 4, self.underflow());
             let len = self.raw.get_i32();
             if len < 0 {
                 ensure!(len == -1, errors::InvalidMarker);
@@ -133,6 +148,12 @@ mod inner {
             }
             let len = len as usize;
             Ok(Some(self.read_element(len)?))
+        }
+
+        pub fn read_object_element(&mut self) -> Result<Option<&'t [u8]>, DecodeError> {
+            ensure!(self.raw.remaining() >= 8, self.underflow());
+            let _reserved = self.raw.get_i32();
+            self.read_raw_object_element()
         }
 
         pub fn read_array_like_element(&mut self) -> Result<&'t [u8], DecodeError> {
