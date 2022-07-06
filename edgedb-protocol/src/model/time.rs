@@ -48,6 +48,13 @@ pub struct RelativeDuration {
     pub(crate) months: i32,
 }
 
+/// A type that can represent a human-friendly date duration like 1 month or two days.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct DateDuration {
+    pub(crate) days: i32,
+    pub(crate) months: i32,
+}
+
 const SECS_PER_DAY : u64 = 86_400;
 const MICROS_PER_DAY : u64 = SECS_PER_DAY * 1_000_000;
 
@@ -1360,6 +1367,93 @@ fn relative_duration_display() {
     assert_eq!(dur.to_string(), "P-2Y-8M-16DT-4H-4M-52.4S");
 }
 
+
+impl DateDuration {
+    pub fn try_from_years(years: i32)
+        -> Result<DateDuration, OutOfRangeError>
+    {
+        Ok(DateDuration {
+            months: years.checked_mul(12).ok_or(OutOfRangeError)?,
+            days: 0,
+        })
+    }
+    pub fn from_years(years: i32) -> DateDuration {
+        DateDuration::try_from_years(years).unwrap()
+    }
+    pub fn try_from_months(months: i32)
+        -> Result<DateDuration, OutOfRangeError>
+    {
+        Ok(DateDuration {
+            months: months,
+            days: 0,
+        })
+    }
+    pub fn from_months(months: i32) -> DateDuration {
+        DateDuration::try_from_months(months).unwrap()
+    }
+    pub fn try_from_days(days: i32)
+        -> Result<DateDuration, OutOfRangeError>
+    {
+        Ok(DateDuration {
+            months: 0,
+            days,
+        })
+    }
+    pub fn from_days(days: i32) -> DateDuration {
+        DateDuration::try_from_days(days).unwrap()
+    }
+    pub fn checked_add(self, other: Self) -> Option<Self> {
+        Some(DateDuration {
+            months: self.months.checked_add(other.months)?,
+            days: self.days.checked_add(other.days)?,
+        })
+    }
+    pub fn checked_sub(self, other: Self) -> Option<Self> {
+        Some(DateDuration {
+            months: self.months.checked_sub(other.months)?,
+            days: self.days.checked_sub(other.days)?,
+        })
+    }
+}
+
+impl std::ops::Add for DateDuration {
+    type Output = Self;
+    fn add(self, other: Self) -> Self {
+        DateDuration {
+            months: self.months + other.months,
+            days: self.days + other.days,
+        }
+    }
+}
+
+impl std::ops::Sub for DateDuration {
+    type Output = Self;
+    fn sub(self, other: Self) -> Self {
+        DateDuration {
+            months: self.months - other.months,
+            days: self.days - other.days,
+        }
+    }
+}
+
+impl Display for DateDuration {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.months == 0 && self.days == 0 {
+            return write!(f, "PT0D"); // XXX
+        }
+        write!(f, "P")?;
+        if self.months.abs() > 12 {
+            write!(f, "{}Y", self.months / 12)?;
+        }
+        if (self.months % 12).abs() > 0 {
+            write!(f, "{}M", self.months % 12)?;
+        }
+        if self.days.abs() > 0 {
+            write!(f, "{}D", self.days)?;
+        }
+        Ok(())
+    }
+}
 
 #[cfg(feature = "chrono")]
 mod chrono_interop {
