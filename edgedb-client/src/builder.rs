@@ -1561,6 +1561,7 @@ fn from_dsn_ipv6_scoped_address() {
     assert_eq!(bld.password, None);
 }
 
+/// Searches for project dir either from current dir or from specified
 pub async fn get_project_dir(override_dir: Option<&Path>, search_parents: bool)
     -> Result<Option<PathBuf>, Error>
 {

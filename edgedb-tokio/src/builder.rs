@@ -6,8 +6,6 @@ use std::time::{Duration};
 
 use rustls::client::ServerCertVerifier;
 
-use edgedb_protocol::model;
-
 use crate::credentials::{Credentials, TlsSecurity};
 use crate::errors::{ClientError};
 use crate::errors::{ClientNoCredentialsError};
@@ -401,6 +399,8 @@ impl Builder {
     /// Read environment variables that aren't credentials
     #[cfg(feature="env")]
     pub fn read_extra_env_vars(&mut self) -> Result<&mut Self, Error> {
+        use edgedb_protocol::model;
+
         if let Some(mode) = get_env("EDGEDB_CLIENT_SECURITY")? {
             self.insecure_dev_mode = match &mode[..] {
                 "default" => false,
