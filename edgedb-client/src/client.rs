@@ -43,8 +43,6 @@ use crate::reader::{self, QueryResponse, Reader};
 use crate::server_params::{ServerParam, SystemConfig};
 
 
-const EMPTY_STATE: Uuid = Uuid::from_u128(0x0);
-
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum State {
     Normal {
