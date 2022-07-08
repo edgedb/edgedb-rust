@@ -233,7 +233,6 @@ impl<'a> Sequence<'a> {
         Ok(())
     }
 
-    #[cfg(feature="unstable")]
     pub fn get_state_typedesc_id(&self) -> Uuid {
         if let Some(s) = &self.state.eql_state_in_transaction {
             return s.descriptor_id;
@@ -241,7 +240,6 @@ impl<'a> Sequence<'a> {
         self.state.eql_state.descriptor_id
     }
 
-    #[cfg(feature="unstable")]
     pub fn get_state_data(&self) -> Bytes {
         if let Some(s) = &self.state.eql_state_in_transaction {
             return s.data.clone()
