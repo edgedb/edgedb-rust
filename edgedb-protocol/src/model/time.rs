@@ -1301,7 +1301,7 @@ impl Display for RelativeDuration {
             return write!(f, "PT0S");
         }
         write!(f, "P")?;
-        if self.months.abs() > 12 {
+        if self.months.abs() >= 12 {
             write!(f, "{}Y", self.months / 12)?;
         }
         if (self.months % 12).abs() > 0 {
@@ -1312,15 +1312,15 @@ impl Display for RelativeDuration {
         }
         if self.micros.abs() > 0 {
             write!(f, "T")?;
-            if self.micros.abs() > 3_600_000_000 {
+            if self.micros.abs() >= 3_600_000_000 {
                 write!(f, "{}H", self.micros / 3_600_000_000)?;
             }
             let minutes = self.micros % 3_600_000_000;
-            if minutes.abs() > 60_000_000 {
+            if minutes.abs() >= 60_000_000 {
                 write!(f, "{}M", minutes / 60_000_000)?;
             }
             let seconds = minutes % 60_000_000;
-            if seconds.abs() > 1_000_000 {
+            if seconds.abs() >= 1_000_000 {
                 write!(f, "{}", seconds / 1_000_000)?;
             }
             let micros = seconds % 1_000_000;
@@ -1365,6 +1365,17 @@ fn relative_duration_display() {
             RelativeDuration::from_secs(7) +
             RelativeDuration::from_millis(600);
     assert_eq!(dur.to_string(), "P-2Y-8M-16DT-4H-4M-52.4S");
+
+    let dur = RelativeDuration::from_years(1);
+    assert_eq!(dur.to_string(), "P1Y");
+    let dur = RelativeDuration::from_months(1);
+    assert_eq!(dur.to_string(), "P1M");
+    let dur = RelativeDuration::from_hours(1);
+    assert_eq!(dur.to_string(), "PT1H");
+    let dur = RelativeDuration::from_minutes(1);
+    assert_eq!(dur.to_string(), "PT1M");
+    let dur = RelativeDuration::from_secs(1);
+    assert_eq!(dur.to_string(), "PT1S");
 }
 
 
