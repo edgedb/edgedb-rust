@@ -1367,9 +1367,9 @@ fn relative_duration_display() {
     assert_eq!(dur.to_string(), "P-2Y-8M-16DT-4H-4M-52.4S");
 
     let dur = RelativeDuration::from_years(1);
-    assert_eq!(dur.to_string(), "P1YT");
+    assert_eq!(dur.to_string(), "P1Y");
     let dur = RelativeDuration::from_months(1);
-    assert_eq!(dur.to_string(), "P1MT");
+    assert_eq!(dur.to_string(), "P1M");
     let dur = RelativeDuration::from_hours(1);
     assert_eq!(dur.to_string(), "PT1H");
     let dur = RelativeDuration::from_minutes(1);
