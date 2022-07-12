@@ -29,5 +29,6 @@ all-types = ["with-num-bigint", "with-bigdecimal", "with-chrono"]
 
 [dev-dependencies]
 rand = "0.8"
+pretty_assertions = "1.2.1"
 
 [lib]

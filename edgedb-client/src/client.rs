@@ -4,7 +4,6 @@ use core::future::Future;
 use std::collections::HashMap;
 use std::fmt;
 use std::str;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_std::future::{timeout, pending};
@@ -22,15 +21,15 @@ use edgedb_protocol::client_message::{Capabilities, CompilationFlags};
 use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
 use edgedb_protocol::client_message::{Execute0, Execute1, ExecuteScript};
 use edgedb_protocol::client_message::{Prepare, Parse, IoFormat, Cardinality};
-use edgedb_protocol::codec::Codec;
 use edgedb_protocol::descriptors::OutputTypedesc;
-use edgedb_protocol::encoding::Output;
+use edgedb_protocol::encoding::{Input, Output};
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::model::Uuid;
 use edgedb_protocol::query_arg::{QueryArgs, Encoder};
 use edgedb_protocol::queryable::{Queryable};
 use edgedb_protocol::server_message::{ServerMessage, TransactionState};
 use edgedb_protocol::server_message::{StateDataDescription, CommandComplete1};
+use edgedb_protocol::value::Value;
 
 use crate::debug::PartialDebug;
 use crate::errors::{ClientConnectionError, ProtocolError};
@@ -60,17 +59,14 @@ pub(crate) enum PingInterval {
     Interval(Duration),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EdgeqlStateDesc {
-    #[allow(dead_code)] // TODO(tailhook)
+    pub(crate) proto: ProtocolVersion,
     pub(crate) descriptor_id: Uuid,
-    #[allow(dead_code)] // TODO(tailhook)
     pub(crate) descriptor: Bytes,
-    #[allow(dead_code)] // TODO(tailhook)
-    pub(crate) codec: Arc<dyn Codec>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EdgeqlState {
     pub(crate) descriptor_id: Uuid,
     pub(crate) data: Bytes,
@@ -91,16 +87,12 @@ pub struct Connection {
     pub(crate) state: State,
     pub(crate) eql_state_desc: EdgeqlStateDesc,
     pub(crate) eql_state: EdgeqlState,
-    pub(crate) eql_state_desc_in_transaction: Option<EdgeqlStateDesc>,
-    pub(crate) eql_state_in_transaction: Option<EdgeqlState>,
 }
 
 pub(crate) struct PartialState<'a> {
     pub(crate) state: &'a mut State,
     pub(crate) eql_state_desc: &'a mut EdgeqlStateDesc,
     pub(crate) eql_state: &'a mut EdgeqlState,
-    pub(crate) eql_state_desc_in_transaction: &'a mut Option<EdgeqlStateDesc>,
-    pub(crate) eql_state_in_transaction: &'a mut Option<EdgeqlState>,
 }
 
 pub struct Sequence<'a> {
@@ -167,6 +159,9 @@ impl<'a> Sequence<'a> {
                     self.process_complete(&d)?;
                     break Ok(d.status_data);
                 }
+                ServerMessage::StateDataDescription(d) => {
+                    self.set_state_description(d)?;
+                }
                 ServerMessage::ErrorResponse(e) => break Err(e),
                 msg => {
                     return Err(ProtocolOutOfOrderError::with_message(format!(
@@ -191,29 +186,19 @@ impl<'a> Sequence<'a> {
         -> Result<(), Error>
     {
         if cmp.state_data.len() != 0 {
-            *self.state.eql_state_in_transaction = Some(EdgeqlState {
+            *self.state.eql_state = EdgeqlState {
                 descriptor_id: cmp.state_typedesc_id,
                 data: cmp.state_data.clone(),
-            });
+            };
         }
         Ok(())
     }
 
     pub fn end_clean(&mut self) {
-        use TransactionState::NotInTransaction;
-
         self.active = false;
         *self.state.state = State::Normal {
             idle_since: Instant::now(),
         };
-        if *self.reader.transaction_state == NotInTransaction {
-            if let Some(s) = self.state.eql_state_desc_in_transaction.take() {
-                *self.state.eql_state_desc = s;
-            }
-            if let Some(s) = self.state.eql_state_in_transaction.take() {
-                *self.state.eql_state = s;
-            }
-        }
     }
 
     pub fn set_state_description(&mut self, descr: StateDataDescription)
@@ -221,34 +206,39 @@ impl<'a> Sequence<'a> {
     {
         let descriptor_id = descr.typedesc_id;
         let descriptor = descr.typedesc.clone();
-        let parsed = descr.parse(&self.reader.proto)
-            .map_err(ProtocolEncodingError::with_source)?;
-        let codec = parsed.build_codec()
-            .map_err(ProtocolEncodingError::with_source)?;
-        *self.state.eql_state_desc_in_transaction = Some(EdgeqlStateDesc {
+        *self.state.eql_state_desc = EdgeqlStateDesc {
+            proto: self.writer.proto.clone(),
             descriptor_id,
             descriptor,
-            codec,
-        });
+        };
         Ok(())
     }
 
     pub fn get_state_typedesc_id(&self) -> Uuid {
-        if let Some(s) = &self.state.eql_state_in_transaction {
-            return s.descriptor_id;
-        }
         self.state.eql_state.descriptor_id
     }
 
     pub fn get_state_data(&self) -> Bytes {
-        if let Some(s) = &self.state.eql_state_in_transaction {
-            return s.data.clone()
-        }
         self.state.eql_state.data.clone()
     }
 }
 
 impl Connection {
+    #[cfg(feature="unstable")]
+    /// Set state of this connection
+    pub fn set_state(&mut self, state: EdgeqlState) {
+        self.eql_state = state;
+    }
+    #[cfg(feature="unstable")]
+    /// Get state of this connection
+    pub fn get_state(&self) -> EdgeqlState {
+        self.eql_state.clone()
+    }
+    #[cfg(feature="unstable")]
+    /// Get state descriptor of this connection
+    pub fn get_state_desc(&self) -> EdgeqlStateDesc {
+        self.eql_state_desc.clone()
+    }
     pub fn protocol(&self) -> &ProtocolVersion {
         return &self.version
     }
@@ -428,9 +418,6 @@ impl Connection {
             state: &mut self.state,
             eql_state_desc: &mut self.eql_state_desc,
             eql_state: &mut self.eql_state,
-            eql_state_desc_in_transaction:
-                &mut self.eql_state_desc_in_transaction,
-            eql_state_in_transaction: &mut self.eql_state_in_transaction,
         };
         (writer, reader, state)
     }
@@ -501,6 +488,9 @@ impl<'a> Sequence<'a> {
                     self.reader.wait_ready().await?;
                     self.end_clean();
                     break c.status_data;
+                }
+                ServerMessage::StateDataDescription(d) => {
+                    self.set_state_description(d)?;
                 }
                 ServerMessage::ErrorResponse(err) => {
                     self.reader.wait_ready().await?;
@@ -749,6 +739,9 @@ impl Connection {
                     seq.expect_ready().await?;
                     break c.status_data;
                 }
+                ServerMessage::StateDataDescription(d) => {
+                    seq.set_state_description(d)?;
+                }
                 ServerMessage::ErrorResponse(err) => {
                     seq.expect_ready().await?;
                     return Err(err.into());
@@ -887,4 +880,59 @@ impl Connection {
     }
 }
 
+impl EdgeqlState {
+    pub fn empty() -> EdgeqlState {
+        EdgeqlState {
+            descriptor_id: Uuid::from_u128(0),
+            data: Bytes::new(),
+        }
+    }
+    pub fn descriptor_id(&self) -> Uuid {
+        self.descriptor_id
+    }
+}
 
+impl EdgeqlStateDesc {
+    pub fn uninitialized() -> EdgeqlStateDesc {
+        EdgeqlStateDesc {
+            proto: ProtocolVersion::current(),
+            descriptor_id: Uuid::from_u128(0),
+            descriptor: Bytes::new(),
+        }
+    }
+    pub fn descriptor_id(&self) -> Uuid {
+        self.descriptor_id
+    }
+    pub fn decoded(&self) -> Result<OutputTypedesc, Error> {
+        let ref mut typedesc_buf = Input::new(
+            self.proto.clone(),
+            self.descriptor.clone(),
+        );
+        OutputTypedesc::decode_with_id(
+            self.descriptor_id,
+            typedesc_buf,
+        ).map_err(ProtocolEncodingError::with_source)
+    }
+    pub fn decode(&self, state: &EdgeqlState) -> Result<Option<Value>, Error> {
+        if self.descriptor_id != state.descriptor_id {
+            return Ok(None);
+        }
+        let typedesc = self.decoded()?;
+        let codec = typedesc.build_codec()
+            .map_err(ProtocolEncodingError::with_source)?;
+        let value = codec.decode(&state.data)
+            .map_err(ProtocolEncodingError::with_source)?;
+        Ok(Some(value))
+    }
+    pub fn encode(&self, value: &Value) -> Result<EdgeqlState, Error> {
+        let codec = self.decoded()?.build_codec()
+            .map_err(ProtocolEncodingError::with_source)?;
+        let mut dest = BytesMut::new();
+        codec.encode(&mut dest, value)
+            .map_err(ClientEncodingError::with_source)?;
+        Ok(EdgeqlState {
+            descriptor_id: self.descriptor_id,
+            data: dest.freeze(),
+        })
+    }
+}
