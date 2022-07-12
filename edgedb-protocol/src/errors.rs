@@ -61,6 +61,8 @@ pub enum DecodeError {
     ExtraEnumValue { backtrace: Backtrace },
     #[snafu(display("too may descriptors ({})", index))]
     TooManyDescriptors { backtrace: Backtrace, index: usize },
+    #[snafu(display("invalid index in input shape ({})", index))]
+    InvalidIndex { backtrace: Backtrace, index: usize },
     #[snafu(display("uuid {} not found", uuid))]
     UuidNotFound { backtrace: Backtrace, uuid: uuid::Uuid },
     #[snafu(display("error decoding value"))]

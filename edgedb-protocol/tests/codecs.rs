@@ -1,9 +1,15 @@
+#[macro_use] extern crate pretty_assertions;
+
 use std::error::Error;
 use std::{i16, i32, i64};
 use std::sync::Arc;
 
+use bytes::Bytes;
+
 use edgedb_protocol::codec::{build_codec};
 use edgedb_protocol::codec::{Codec, ObjectShape};
+use edgedb_protocol::common::Cardinality;
+use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::value::{Value};
 use edgedb_protocol::model::{LocalDatetime, LocalDate, LocalTime, Duration};
 use edgedb_protocol::model::{Datetime, RelativeDuration};
@@ -16,6 +22,7 @@ use edgedb_protocol::descriptors::{TupleTypeDescriptor};
 use edgedb_protocol::descriptors::{NamedTupleTypeDescriptor, TupleElement};
 use edgedb_protocol::descriptors::ArrayTypeDescriptor;
 use edgedb_protocol::descriptors::EnumerationTypeDescriptor;
+use edgedb_protocol::server_message::StateDataDescription;
 
 mod base;
 
@@ -321,6 +328,131 @@ fn object_codec() -> Result<(), Box<dyn Error>> {
                     .parse()?)),
             ]
         });
+    Ok(())
+}
+
+#[test]
+fn input_codec() -> Result<(), Box<dyn Error>> {
+    let common = ShapeElement {
+        flag_implicit: false,
+        flag_link_property: false,
+        flag_link: false,
+        cardinality: Some(Cardinality::AtMostOne),
+        name: String::from(""),
+        type_pos: TypePos(0), //unused
+    };
+    let elements = vec![
+        ShapeElement { name: String::from("module"), ..common },
+        ShapeElement { name: String::from("aliases"), ..common },
+        ShapeElement { name: String::from("globals"), ..common },
+        ShapeElement { name: String::from("config"), ..common },
+    ];
+    let globals_shape = vec![
+        ShapeElement { name: String::from("default::my_globalvar_1"),
+                       ..common },
+    ];
+    let config_shape = vec![
+        ShapeElement { name: String::from("durprop"), ..common },
+        ShapeElement { name: String::from("__pg_max_connections"), ..common },
+        ShapeElement { name: String::from("query_execution_timeout"),
+                       ..common },
+        ShapeElement {
+            name: String::from("multiprop"),
+            cardinality: Some(Cardinality::Many),
+            ..common
+        },
+        ShapeElement { name: String::from("__internal_no_const_folding"),
+                       ..common },
+        ShapeElement {
+            name: String::from("sysobj"),
+            cardinality: Some(Cardinality::Many),
+            ..common
+        },
+        ShapeElement { name: String::from("memprop"), ..common },
+        ShapeElement { name: String::from("__internal_testmode"), ..common },
+        ShapeElement { name: String::from("apply_access_policies"), ..common },
+        ShapeElement { name: String::from("session_idle_transaction_timeout"),
+                       ..common },
+        ShapeElement { name: String::from("allow_bare_ddl"), ..common },
+        ShapeElement { name: String::from("singleprop"), ..common },
+        ShapeElement { name: String::from("allow_dml_in_functions"),
+                       ..common },
+        ShapeElement { name: String::from("__internal_sess_testvalue"),
+                       ..common },
+        ShapeElement {
+            name: String::from("sessobj"),
+            cardinality: Some(Cardinality::Many),
+            ..common
+        },
+        ShapeElement { name: String::from("enumprop"), ..common },
+    ];
+    let sdd = StateDataDescription {
+        typedesc_id: "fd6c3b17504a714858ec2282431ce72c".parse()?,
+        typedesc: Bytes::from_static(b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+            \x01\x01\x04\xcf\x9d\xce6\x17\xf05O\t%g\x8eW\xa1\x842\0\x02\
+            \0\0\0\0\x06\xc6R\xf3\xf1\xdd\xe7\0a?\x07|=&\x0b\xfbt\0\x01\
+            \0\x01\xff\xff\xff\xff\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\
+            \x0e\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05\0\xa5zjc\xee\
+            \xc4@\x91\xabnI\x97#\xf5\xe8\xaa\0\0\x02\0\0\0\0\0\0\0\0\
+            \0\0\0\0\0\0\x01\t\x01\xd9\xa1-\xbfH\xfa\xeb\x1a/\xf5xe7\
+            \xc8\xb8\xee\0\0\0\x16w\xe5\x87Y\xbd\x05\xb9\x14\xce\x8a\
+            \xc2\x99\x85b5\0\x07\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x010\
+            \x07\x82w\xed\x1a\xfd\xe0\x11\xec\x8bl\x85\xd0\xc8\xdc\xcd[\
+            \0\x02\0\0\0\x0bAlwaysAllow\0\0\0\nNeverAllow\x01v\x9eH\xcb#\\1\
+            \x90c&\x9b\x90p-\xa7\x03\0\0\0\xb1\xef6\xe2\xbb%Wr\xafk\x11\x84l\
+            \x183n\0\x0b\x07\x85[<\"\xfd\xe0\x11\xec\x9a\xf6\xa1U\x99\xf2+\xc2\
+            \0\x03\0\0\0\x03One\0\0\0\x03Two\0\0\0\x05Three\x08t\x13\xa1IP\xe6\
+            \xc3\xf9*\xd7U1\x9f\xf1\xe1o\0\x10\0\0\0\0o\0\0\0\x07durprop\0\x03\
+            \0\0\0\0o\0\0\0\x14__pg_max_connections\0\x04\0\0\0\0o\
+            \0\0\0\x17query_execution_timeout\0\x03\0\0\0\0m\0\0\0\tmultiprop\
+            \0\x05\0\0\0\0o\0\0\0\x1b__internal_no_const_folding\0\x06\0\0\0\0\
+            m\0\0\0\x06sysobj\0\x08\0\0\0\0o\0\0\0\x07memprop\0\t\0\0\0\0o\0\0\
+            \0\x13__internal_testmode\0\x06\0\0\0\0o\
+            \0\0\0\x15apply_access_policies\0\x06\0\0\0\0o\
+            \0\0\0 session_idle_transaction_timeout\0\x03\0\0\0\0o\
+            \0\0\0\x0eallow_bare_ddl\0\n\0\0\0\0o\0\0\0\nsingleprop\
+            \0\0\0\0\0\0o\0\0\0\x16allow_dml_in_functions\0\x06\0\0\0\0\
+            o\0\0\0\x19__internal_sess_testvalue\0\x04\0\0\0\0m\
+            \0\0\0\x07sessobj\0\x0c\0\0\0\0o\0\0\0\x08enumprop\0\r\x08!s\xfc,)\
+            \x19\x80\x13/E\xea\xf3!\x98\x84\t\0\x01\0\0\0\0o\
+            \0\0\0\x17default::my_globalvar_1\0\0\x08\xfdl;\x17PJqHX\xec\"\x82\
+            C\x1c\xe7,\0\x04\0\0\0\0o\0\0\0\x06module\0\0\0\0\0\0o\
+            \0\0\0\x07aliases\0\x02\0\0\0\0o\0\0\0\x07globals\0\x0f\0\0\0\0\
+            o\0\0\0\x06config\0\x0e"),
+    };
+    let out_desc = sdd.parse(&ProtocolVersion::current())?;
+    let shape = elements.as_slice().into();
+    let globals_shape = globals_shape.as_slice().into();
+    let config_shape = config_shape.as_slice().into();
+    let codec = build_codec(Some(TypePos(16)),
+        &out_desc.descriptors(),
+    )?;
+    encoding_eq!(&codec,
+        b"\0\0\0\x03\0\0\0\0\0\0\0\x07default\0\0\0\x02\0\0\0\x1c\
+            \0\0\0\x01\0\0\0\0\0\0\0\x10GLOBAL VAR VALUE\
+            \0\0\0\x03\0\0\0\x1c\0\0\0\x01\0\0\0\t\0\0\0\x10\
+            \0\0\0\0\x11\xe1\xa3\0\0\0\0\0\0\0\0\0",
+        Value::Object {
+            shape,
+            fields: vec![
+                Some(Value::Str("default".into())),
+                None,
+                Some(Value::Object {
+                    shape: globals_shape,
+                    fields: vec![Some(Value::Str("GLOBAL VAR VALUE".into()))],
+                }),
+                Some(Value::Object {
+                    shape: config_shape,
+                    fields: vec![
+                        None, None, None, None, None, None, None, None, None,
+                        Some(Value::Duration(
+                                Duration::from_micros(300_000_000)
+                        )),
+                        None, None, None, None, None, None,
+                    ],
+                }),
+            ],
+    });
     Ok(())
 }
 

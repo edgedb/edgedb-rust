@@ -30,13 +30,12 @@ use typemap::{TypeMap, DebugAny};
 use webpki::DnsNameRef;
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
-use edgedb_protocol::codec;
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use edgedb_protocol::server_message::{TransactionState, ServerHandshake};
 use edgedb_protocol::server_message::ParameterStatus;
 use edgedb_protocol::value::Value;
-use edgedb_protocol::model::{self, Uuid};
+use edgedb_protocol::model;
 
 use crate::client::{Connection, Sequence, State, PingInterval};
 use crate::client::{EdgeqlState, EdgeqlStateDesc};
@@ -1220,17 +1219,8 @@ impl Config {
             state: State::Normal {
                 idle_since: Instant::now(),
             },
-            eql_state_desc: EdgeqlStateDesc {
-                descriptor_id: Uuid::from_u128(0),
-                descriptor: Bytes::new(),
-                codec: Arc::new(codec::Nothing),
-            },
-            eql_state: EdgeqlState {
-                descriptor_id: Uuid::from_u128(0),
-                data: Bytes::new(),
-            },
-            eql_state_desc_in_transaction: None,
-            eql_state_in_transaction: None,
+            eql_state_desc: EdgeqlStateDesc::uninitialized(),
+            eql_state: EdgeqlState::empty(),
             version: version.clone(),
         };
         let mut seq = conn.start_sequence().await?;

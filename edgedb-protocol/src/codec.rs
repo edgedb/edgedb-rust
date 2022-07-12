@@ -644,13 +644,21 @@ impl Codec for Object {
 }
 
 impl Codec for Input {
-    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
-        let mut elements = DecodeTupleLike::new_object(buf, self.codecs.len())?;
-        let fields = self.codecs
-            .iter()
-            .map(|codec| elements.read()?.map(|element| codec.decode(element)).transpose())
-            .collect::<Result<Vec<Option<Value>>, DecodeError>>()?;
+    fn decode(&self, mut buf: &[u8]) -> Result<Value, DecodeError> {
+        ensure!(buf.remaining() >= 4, errors::Underflow);
+        let count = buf.get_u32() as usize;
+        let mut fields = vec![None; self.codecs.len()];
+        for _ in 0..count {
+            ensure!(buf.remaining() >= 8, errors::Underflow);
+            let index = buf.get_u32() as usize;
+            ensure!(index < self.codecs.len(), errors::InvalidIndex { index });
+            let length = buf.get_u32() as usize;
 
+            let value = self.codecs[index].decode(&buf[..length])?;
+            buf.advance(length);
+
+            fields[index] = Some(value);
+        }
         Ok(Value::Object {
             shape: self.shape.clone(),
             fields,
@@ -663,30 +671,30 @@ impl Codec for Input {
             Value::Object { shape, fields } => (shape, fields),
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
-        ensure!(shape == &self.shape, errors::ObjectShapeMismatch);
-        ensure!(self.codecs.len() == fields.len(),
-                errors::ObjectShapeMismatch);
-        debug_assert_eq!(self.codecs.len(), shape.0.elements.len());
-        buf.reserve(4 + 8*self.codecs.len());
-        buf.put_u32(self.codecs.len().try_into()
-                    .ok().context(errors::TooManyElements)?);
-        for (codec, field) in self.codecs.iter().zip(fields) {
-            buf.reserve(8);
-            buf.put_u32(0);
-            match field {
-                Some(v) => {
-                    let pos = buf.len();
-                    buf.put_i32(0);  // replaced after serializing a value
-                    codec.encode(buf, v)?;
-                    let len = buf.len()-pos-4;
-                    buf[pos..pos+4].copy_from_slice(&i32::try_from(len)
-                            .ok().context(errors::ElementTooLong)?
-                            .to_be_bytes());
-                }
-                None => {
-                    buf.put_i32(-1);
+        let mut items = Vec::with_capacity(self.codecs.len());
+        let dest_els = &self.shape.0.elements;
+        for (fld, el) in fields.iter().zip(&shape.0.elements) {
+            if let Some(value) = fld {
+                if let Some(index) =
+                    dest_els.iter().position(|x| x.name == el.name)
+                {
+                    items.push((index, value));
                 }
             }
+        }
+        buf.reserve(4 + 8*items.len());
+        buf.put_u32(items.len().try_into()
+                    .ok().context(errors::TooManyElements)?);
+        for (index, value) in items {
+            buf.reserve(8);
+            buf.put_u32(index as u32);
+            let pos = buf.len();
+            buf.put_i32(0);  // replaced after serializing a value
+            self.codecs[index].encode(buf, value)?;
+            let len = buf.len()-pos-4;
+            buf[pos..pos+4].copy_from_slice(&i32::try_from(len)
+                    .ok().context(errors::ElementTooLong)?
+                    .to_be_bytes());
         }
         Ok(())
     }
