@@ -13,7 +13,7 @@ use snafu::{ensure, OptionExt};
 use crate::common::Cardinality;
 use crate::descriptors::{self, Descriptor, TypePos};
 use crate::errors::{self, CodecError, DecodeError, EncodeError};
-use crate::value::Value;
+use crate::value::{Value, SparseObject};
 use crate::model;
 use crate::serialization::decode::{RawCodec, DecodeTupleLike, DecodeArrayLike};
 use crate::serialization::decode::{DecodeRange};
@@ -49,7 +49,7 @@ pub trait Codec: fmt::Debug + Send + Sync + 'static {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnumValue(Arc<str>);
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ObjectShape(Arc<ObjectShapeInfo>);
+pub struct ObjectShape(pub(crate) Arc<ObjectShapeInfo>);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NamedTupleShape(Arc<NamedTupleShapeInfo>);
 
@@ -652,28 +652,31 @@ impl Codec for Input {
             ensure!(buf.remaining() >= 8, errors::Underflow);
             let index = buf.get_u32() as usize;
             ensure!(index < self.codecs.len(), errors::InvalidIndex { index });
-            let length = buf.get_u32() as usize;
-
-            let value = self.codecs[index].decode(&buf[..length])?;
-            buf.advance(length);
-
-            fields[index] = Some(value);
+            let length = buf.get_i32();
+            if length < 0 {
+                fields[index] = Some(None);
+            } else {
+                let length = length as usize;
+                let value = self.codecs[index].decode(&buf[..length])?;
+                buf.advance(length);
+                fields[index] = Some(Some(value));
+            }
         }
-        Ok(Value::Object {
+        Ok(Value::SparseObject(SparseObject {
             shape: self.shape.clone(),
             fields,
-        })
+        }))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
     {
-        let (shape, fields) = match val {
-            Value::Object { shape, fields } => (shape, fields),
+        let ob = match val {
+            Value::SparseObject(ob) => ob,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         let mut items = Vec::with_capacity(self.codecs.len());
         let dest_els = &self.shape.0.elements;
-        for (fld, el) in fields.iter().zip(&shape.0.elements) {
+        for (fld, el) in ob.fields.iter().zip(&ob.shape.0.elements) {
             if let Some(value) = fld {
                 if let Some(index) =
                     dest_els.iter().position(|x| x.name == el.name)
@@ -689,12 +692,16 @@ impl Codec for Input {
             buf.reserve(8);
             buf.put_u32(index as u32);
             let pos = buf.len();
-            buf.put_i32(0);  // replaced after serializing a value
-            self.codecs[index].encode(buf, value)?;
-            let len = buf.len()-pos-4;
-            buf[pos..pos+4].copy_from_slice(&i32::try_from(len)
-                    .ok().context(errors::ElementTooLong)?
-                    .to_be_bytes());
+            if let Some(value) = value {
+                buf.put_i32(0);  // replaced after serializing a value
+                self.codecs[index].encode(buf, value)?;
+                let len = buf.len()-pos-4;
+                buf[pos..pos+4].copy_from_slice(&i32::try_from(len)
+                        .ok().context(errors::ElementTooLong)?
+                        .to_be_bytes());
+            } else {
+                buf.put_i32(-1);
+            }
         }
         Ok(())
     }
