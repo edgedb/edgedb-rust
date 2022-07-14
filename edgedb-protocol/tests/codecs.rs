@@ -8,9 +8,8 @@ use bytes::Bytes;
 
 use edgedb_protocol::codec::{build_codec};
 use edgedb_protocol::codec::{Codec, ObjectShape};
-use edgedb_protocol::common::Cardinality;
 use edgedb_protocol::features::ProtocolVersion;
-use edgedb_protocol::value::{Value};
+use edgedb_protocol::value::{Value, SparseObject};
 use edgedb_protocol::model::{LocalDatetime, LocalDate, LocalTime, Duration};
 use edgedb_protocol::model::{Datetime, RelativeDuration};
 use edgedb_protocol::descriptors::{Descriptor, TypePos};
@@ -333,59 +332,6 @@ fn object_codec() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn input_codec() -> Result<(), Box<dyn Error>> {
-    let common = ShapeElement {
-        flag_implicit: false,
-        flag_link_property: false,
-        flag_link: false,
-        cardinality: Some(Cardinality::AtMostOne),
-        name: String::from(""),
-        type_pos: TypePos(0), //unused
-    };
-    let elements = vec![
-        ShapeElement { name: String::from("module"), ..common },
-        ShapeElement { name: String::from("aliases"), ..common },
-        ShapeElement { name: String::from("globals"), ..common },
-        ShapeElement { name: String::from("config"), ..common },
-    ];
-    let globals_shape = vec![
-        ShapeElement { name: String::from("default::my_globalvar_1"),
-                       ..common },
-    ];
-    let config_shape = vec![
-        ShapeElement { name: String::from("durprop"), ..common },
-        ShapeElement { name: String::from("__pg_max_connections"), ..common },
-        ShapeElement { name: String::from("query_execution_timeout"),
-                       ..common },
-        ShapeElement {
-            name: String::from("multiprop"),
-            cardinality: Some(Cardinality::Many),
-            ..common
-        },
-        ShapeElement { name: String::from("__internal_no_const_folding"),
-                       ..common },
-        ShapeElement {
-            name: String::from("sysobj"),
-            cardinality: Some(Cardinality::Many),
-            ..common
-        },
-        ShapeElement { name: String::from("memprop"), ..common },
-        ShapeElement { name: String::from("__internal_testmode"), ..common },
-        ShapeElement { name: String::from("apply_access_policies"), ..common },
-        ShapeElement { name: String::from("session_idle_transaction_timeout"),
-                       ..common },
-        ShapeElement { name: String::from("allow_bare_ddl"), ..common },
-        ShapeElement { name: String::from("singleprop"), ..common },
-        ShapeElement { name: String::from("allow_dml_in_functions"),
-                       ..common },
-        ShapeElement { name: String::from("__internal_sess_testvalue"),
-                       ..common },
-        ShapeElement {
-            name: String::from("sessobj"),
-            cardinality: Some(Cardinality::Many),
-            ..common
-        },
-        ShapeElement { name: String::from("enumprop"), ..common },
-    ];
     let sdd = StateDataDescription {
         typedesc_id: "fd6c3b17504a714858ec2282431ce72c".parse()?,
         typedesc: Bytes::from_static(b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
@@ -421,9 +367,6 @@ fn input_codec() -> Result<(), Box<dyn Error>> {
             o\0\0\0\x06config\0\x0e"),
     };
     let out_desc = sdd.parse(&ProtocolVersion::current())?;
-    let shape = elements.as_slice().into();
-    let globals_shape = globals_shape.as_slice().into();
-    let config_shape = config_shape.as_slice().into();
     let codec = build_codec(Some(TypePos(16)),
         &out_desc.descriptors(),
     )?;
@@ -432,27 +375,18 @@ fn input_codec() -> Result<(), Box<dyn Error>> {
             \0\0\0\x01\0\0\0\0\0\0\0\x10GLOBAL VAR VALUE\
             \0\0\0\x03\0\0\0\x1c\0\0\0\x01\0\0\0\t\0\0\0\x10\
             \0\0\0\0\x11\xe1\xa3\0\0\0\0\0\0\0\0\0",
-        Value::Object {
-            shape,
-            fields: vec![
-                Some(Value::Str("default".into())),
-                None,
-                Some(Value::Object {
-                    shape: globals_shape,
-                    fields: vec![Some(Value::Str("GLOBAL VAR VALUE".into()))],
-                }),
-                Some(Value::Object {
-                    shape: config_shape,
-                    fields: vec![
-                        None, None, None, None, None, None, None, None, None,
-                        Some(Value::Duration(
-                                Duration::from_micros(300_000_000)
-                        )),
-                        None, None, None, None, None, None,
-                    ],
-                }),
-            ],
-    });
+        Value::SparseObject(SparseObject::from_pairs([
+            ("module", Some(Value::Str("default".into()))),
+            ("globals", Some(Value::SparseObject(SparseObject::from_pairs([
+                ("default::my_globalvar_1",
+                 Some(Value::Str("GLOBAL VAR VALUE".into()))),
+            ])))),
+            ("config", Some(Value::SparseObject(SparseObject::from_pairs([
+                ("session_idle_transaction_timeout",
+                 Some(Value::Duration(Duration::from_micros(300_000_000)))),
+            ])))),
+        ]))
+    );
     Ok(())
 }
 
