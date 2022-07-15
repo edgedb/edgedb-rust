@@ -732,6 +732,29 @@ impl Decode for RestoreBlock {
     }
 }
 
+impl Parse {
+    pub fn new(opts: &CompilationOptions, query: &str) -> Parse {
+        let mut cflags = CompilationFlags::empty();
+        if opts.implicit_typenames {
+            cflags |= CompilationFlags::INJECT_OUTPUT_TYPE_NAMES;
+        }
+        if opts.implicit_typeids {
+            cflags |= CompilationFlags::INJECT_OUTPUT_TYPE_IDS;
+        }
+        Parse {
+            annotations: HashMap::new(),
+            allowed_capabilities: opts.allow_capabilities,
+            compilation_flags: cflags,
+            implicit_limit: opts.implicit_limit,
+            output_format: opts.io_format,
+            expected_cardinality: opts.expected_cardinality,
+            command_text: query.into(),
+            state_typedesc_id: Uuid::from_u128(0),  // TODO(tailhook)
+            state_data: Bytes::new(),
+        }
+    }
+}
+
 impl Prepare {
     pub fn new(flags: &CompilationOptions, query: &str) -> Prepare {
         let mut headers = KeyValues::new();

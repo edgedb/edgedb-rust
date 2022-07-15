@@ -30,7 +30,7 @@ pub enum ServerMessage {
     CommandComplete1(CommandComplete1),
     PrepareComplete(PrepareComplete),
     CommandDataDescription0(CommandDataDescription0), // protocol < 1.0
-    CommandDataDescription1(CommandDataDescription1), // protocol < 1.0
+    CommandDataDescription1(CommandDataDescription1), // protocol >= 1.0
     StateDataDescription(StateDataDescription),
     Data(Data),
     RestoreReady(RestoreReady),
@@ -1028,7 +1028,9 @@ impl PrepareComplete {
             if bytes.len() == 8 {
                 let mut array = [0u8; 8];
                 array.copy_from_slice(bytes);
-                Capabilities::from_bits(u64::from_be_bytes(array))
+                Some(unsafe { Capabilities::from_bits_unchecked(
+                    u64::from_be_bytes(array)
+                )})
             } else {
                 None
             }
