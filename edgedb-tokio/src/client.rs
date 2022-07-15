@@ -81,8 +81,7 @@ impl Client {
             io_format: IoFormat::Binary,
             expected_cardinality: Cardinality::Many,
         };
-        let _prepare = conn.prepare(&flags, query).await?;
-        let desc = conn.describe_data().await?;
+        let desc = conn.parse(&flags, query).await?;
         let inp_desc = desc.input()
             .map_err(ProtocolEncodingError::with_source)?;
 
@@ -92,7 +91,7 @@ impl Client {
             &mut arg_buf,
         ))?;
 
-        let data = conn.execute(&arg_buf.freeze()).await?;
+        let data = conn.execute(&flags, query, &desc, &arg_buf.freeze()).await?;
 
         let out_desc = desc.output()
             .map_err(ProtocolEncodingError::with_source)?;
@@ -142,8 +141,7 @@ impl Client {
             io_format: IoFormat::Binary,
             expected_cardinality: Cardinality::AtMostOne,
         };
-        let _prepare = conn.prepare(&flags, query).await?;
-        let desc = conn.describe_data().await?;
+        let desc = conn.parse(&flags, query).await?;
         let inp_desc = desc.input()
             .map_err(ProtocolEncodingError::with_source)?;
 
@@ -153,7 +151,7 @@ impl Client {
             &mut arg_buf,
         ))?;
 
-        let data = conn.execute(&arg_buf.freeze()).await?;
+        let data = conn.execute(&flags, query, &desc, &arg_buf.freeze()).await?;
 
         let out_desc = desc.output()
             .map_err(ProtocolEncodingError::with_source)?;
@@ -223,8 +221,7 @@ impl Client {
             io_format: IoFormat::Json,
             expected_cardinality: Cardinality::Many,
         };
-        let _prepare = conn.prepare(&flags, query).await?;
-        let desc = conn.describe_data().await?;
+        let desc = conn.parse(&flags, query).await?;
         let inp_desc = desc.input()
             .map_err(ProtocolEncodingError::with_source)?;
 
@@ -234,7 +231,7 @@ impl Client {
             &mut arg_buf,
         ))?;
 
-        let data = conn.execute(&arg_buf.freeze()).await?;
+        let data = conn.execute(&flags, query, &desc, &arg_buf.freeze()).await?;
 
         let out_desc = desc.output()
             .map_err(ProtocolEncodingError::with_source)?;
@@ -279,8 +276,7 @@ impl Client {
             io_format: IoFormat::Json,
             expected_cardinality: Cardinality::AtMostOne,
         };
-        let _prepare = conn.prepare(&flags, query).await?;
-        let desc = conn.describe_data().await?;
+        let desc = conn.parse(&flags, query).await?;
         let inp_desc = desc.input()
             .map_err(ProtocolEncodingError::with_source)?;
 
@@ -290,7 +286,7 @@ impl Client {
             &mut arg_buf,
         ))?;
 
-        let data = conn.execute(&arg_buf.freeze()).await?;
+        let data = conn.execute(&flags, query, &desc, &arg_buf.freeze()).await?;
 
         let out_desc = desc.output()
             .map_err(ProtocolEncodingError::with_source)?;
