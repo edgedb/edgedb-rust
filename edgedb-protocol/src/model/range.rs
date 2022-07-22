@@ -2,8 +2,8 @@ use crate::value::Value;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Range<T> {
-    pub(crate) lower: Box<Option<T>>,
-    pub(crate) upper: Box<Option<T>>,
+    pub(crate) lower: Option<T>,
+    pub(crate) upper: Option<T>,
     pub(crate) inc_lower: bool,
     pub(crate) inc_upper: bool,
     pub(crate) empty: bool,
@@ -12,8 +12,8 @@ pub struct Range<T> {
 impl<T> From<std::ops::Range<T>> for Range<T> {
     fn from(src: std::ops::Range<T>) -> Range<T> {
         Range {
-            lower: Box::new(Some(src.start)),
-            upper: Box::new(Some(src.end)),
+            lower: Some(src.start),
+            upper: Some(src.end),
             inc_lower: true,
             inc_upper: false,
             empty: false,
@@ -31,18 +31,18 @@ impl<T> Range<T> {
     /// Constructor of the empty range
     pub fn empty() -> Range<T> {
         Range {
-            lower: Box::new(None),
-            upper: Box::new(None),
+            lower: None,
+            upper: None,
             inc_lower: true,
             inc_upper: false,
             empty: true,
         }
     }
     pub fn lower(&self) -> Option<&T> {
-        self.lower.as_ref().as_ref()
+        self.lower.as_ref()
     }
     pub fn upper(&self) -> Option<&T> {
-        self.upper.as_ref().as_ref()
+        self.upper.as_ref()
     }
     pub fn inc_lower(&self) -> bool {
         self.inc_lower
@@ -58,8 +58,8 @@ impl<T> Range<T> {
 impl<T: Into<Value>> Range<T> {
     pub fn into_value(self) -> Value {
         Value::Range(Range {
-            lower: Box::new(self.lower.map(|v| v.into())),
-            upper: Box::new(self.upper.map(|v| v.into())),
+            lower: self.lower.map(|v| Box::new(v.into())),
+            upper: self.upper.map(|v| Box::new(v.into())),
             inc_lower: self.inc_lower,
             inc_upper: self.inc_upper,
             empty: self.empty,

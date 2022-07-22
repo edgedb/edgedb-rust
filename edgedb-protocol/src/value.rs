@@ -36,7 +36,7 @@ pub enum Value {
     NamedTuple { shape: NamedTupleShape, fields: Vec<Value> },
     Array(Vec<Value>),
     Enum(EnumValue),
-    Range(Range<Value>),
+    Range(Range<Box<Value>>),
 }
 
 #[derive(Clone, Debug)]

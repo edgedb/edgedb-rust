@@ -1179,12 +1179,16 @@ impl Codec for Range {
 
         let mut range = DecodeRange::new(buf)?;
 
-        let lower = Box::new(if has_lower {
-            Some(self.element.decode(range.read()?)?)
-        } else { None });
-        let upper = Box::new(if has_upper {
-            Some(self.element.decode(range.read()?)?)
-        } else { None });
+        let lower = if has_lower {
+            Some(Box::new(self.element.decode(range.read()?)?))
+        } else {
+            None
+        };
+        let upper = if has_upper {
+            Some(Box::new(self.element.decode(range.read()?)?))
+        } else {
+            None
+        };
 
         Ok(Value::Range(model::Range {
             lower,
@@ -1212,7 +1216,7 @@ impl Codec for Range {
         buf.reserve(1);
         buf.put_u8(flags as u8);
 
-        if let Some(lower) = &*rng.lower {
+        if let Some(lower) = &rng.lower {
             let pos = buf.len();
             buf.reserve(4);
             buf.put_u32(0);  // replaced after serializing a value
@@ -1224,7 +1228,7 @@ impl Codec for Range {
                     .to_be_bytes());
         }
 
-        if let Some(upper) = &*rng.upper {
+        if let Some(upper) = &rng.upper {
             let pos = buf.len();
             buf.reserve(4);
             buf.put_u32(0);  // replaced after serializing a value
