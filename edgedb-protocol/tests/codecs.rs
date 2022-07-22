@@ -21,6 +21,7 @@ use edgedb_protocol::descriptors::{TupleTypeDescriptor};
 use edgedb_protocol::descriptors::{NamedTupleTypeDescriptor, TupleElement};
 use edgedb_protocol::descriptors::ArrayTypeDescriptor;
 use edgedb_protocol::descriptors::EnumerationTypeDescriptor;
+use edgedb_protocol::descriptors::RangeTypeDescriptor;
 use edgedb_protocol::server_message::StateDataDescription;
 
 mod base;
@@ -939,5 +940,26 @@ fn set_of_arrays() -> Result<(), Box<dyn Error>> {
                 ]))
             ]
         });
+    Ok(())
+}
+
+#[test]
+fn range() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(Some(TypePos(1)),
+        &[
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-000000000105".parse()?,
+            }),
+            Descriptor::Range(RangeTypeDescriptor {
+                id: "7f8919fd845bb1badae19d40d96ea0a8".parse().unwrap(),
+                type_pos: TypePos(0),
+            }),
+        ]
+    )?;
+
+    encoding_eq!(&codec,
+        b"\x02\0\0\0\x08\0\0\0\0\0\0\0\x07\0\0\0\x08\0\0\0\0\0\0\0'",
+        std::ops::Range { start: 7i64, end: 39 }.into()
+    );
     Ok(())
 }
