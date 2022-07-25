@@ -24,7 +24,7 @@ use crate::raw::Options;
 /// gets database connection configuration from environment). You can also use
 /// [`Builder`](crate::Builder) to [`build`](`crate::Builder::build`) custom
 /// [`Config`] and [create a client](Client::new) using that config.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Client {
     options: Arc<Options>,
     pool: Pool,
