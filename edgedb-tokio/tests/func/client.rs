@@ -1,5 +1,6 @@
 use edgedb_tokio::Client;
 use edgedb_errors::NoDataError;
+use futures_util::stream::{self, StreamExt};
 
 use crate::server::SERVER;
 
@@ -37,6 +38,27 @@ async fn simple() -> anyhow::Result<()> {
     let err = client.query_required_single_json(
         "SELECT <int64>{}", &()).await.unwrap_err();
     assert!(err.is::<NoDataError>());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn parallel_queries() -> anyhow::Result<()> {
+    let client = Client::new(&SERVER.config);
+    client.ensure_connected().await?;
+
+    let result = stream::iter(0..10i64).map(|idx| {
+        let cli = client.clone();
+        async move {
+            cli.query_required_single::<i64, _>(
+                "SELECT <int64>$0*10", &(idx,)
+            ).await
+        }
+    }).buffer_unordered(7).collect::<Vec<_>>().await;
+    let mut result: Vec<_> = result.into_iter().collect::<Result<_, _>>()?;
+    result.sort();
+
+    assert_eq!(result, (0..100).step_by(10).collect::<Vec<_>>());
 
     Ok(())
 }
