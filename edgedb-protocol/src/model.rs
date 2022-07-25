@@ -1,16 +1,18 @@
 //! # EdgeDB Types Used for Data Modelling
 
 mod bignum;
-mod time;
 mod json;
 mod memory;
+mod range;
+mod time;
 
-pub use self::time::{ LocalDatetime, LocalDate, LocalTime, Duration, Datetime };
-pub use self::time::{RelativeDuration,DateDuration};
+pub use memory::ConfigMemory;
+pub use range::Range;
 pub use self::bignum:: {BigInt, Decimal};
 pub use self::json::Json;
+pub use self::time::{LocalDatetime, LocalDate, LocalTime, Duration, Datetime};
+pub use self::time::{RelativeDuration,DateDuration};
 pub use uuid::Uuid;
-pub use memory::ConfigMemory;
 
 use std::fmt;
 use std::num::ParseIntError;

@@ -1179,35 +1179,44 @@ impl Codec for Range {
 
         let mut range = DecodeRange::new(buf)?;
 
-        let lower = Box::new(if has_lower {
-            Some(self.element.decode(range.read()?)?)
-        } else { None });
-        let upper = Box::new(if has_upper {
-            Some(self.element.decode(range.read()?)?)
-        } else { None });
+        let lower = if has_lower {
+            Some(Box::new(self.element.decode(range.read()?)?))
+        } else {
+            None
+        };
+        let upper = if has_upper {
+            Some(Box::new(self.element.decode(range.read()?)?))
+        } else {
+            None
+        };
 
-        return Ok(Value::Range { lower, upper, inc_lower, inc_upper, empty })
+        Ok(Value::Range(model::Range {
+            lower,
+            upper,
+            inc_lower,
+            inc_upper,
+            empty,
+        }))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
     {
-        let (lower, upper, inc_lower, inc_upper, empty) = match val {
-            Value::Range { lower, upper, inc_lower, inc_upper, empty } =>
-                (lower, upper, inc_lower, inc_upper, empty),
+        let rng = match val {
+            Value::Range(rng) => rng,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
 
         let flags =
-            if *empty { RANGE_EMPTY } else {
-                (if *inc_lower { RANGE_LB_INC } else { 0 }) |
-                (if *inc_upper { RANGE_UB_INC } else { 0 }) |
-                (if lower.is_none() { RANGE_LB_INF } else { 0 }) |
-                (if upper.is_none() { RANGE_UB_INF } else { 0 })
+            if rng.empty { RANGE_EMPTY } else {
+                (if rng.inc_lower { RANGE_LB_INC } else { 0 }) |
+                (if rng.inc_upper { RANGE_UB_INC } else { 0 }) |
+                (if rng.lower.is_none() { RANGE_LB_INF } else { 0 }) |
+                (if rng.upper.is_none() { RANGE_UB_INF } else { 0 })
             };
         buf.reserve(1);
         buf.put_u8(flags as u8);
 
-        if let Some(lower) = &**lower {
+        if let Some(lower) = &rng.lower {
             let pos = buf.len();
             buf.reserve(4);
             buf.put_u32(0);  // replaced after serializing a value
@@ -1219,7 +1228,7 @@ impl Codec for Range {
                     .to_be_bytes());
         }
 
-        if let Some(upper) = &**upper {
+        if let Some(upper) = &rng.upper {
             let pos = buf.len();
             buf.reserve(4);
             buf.put_u32(0);  // replaced after serializing a value

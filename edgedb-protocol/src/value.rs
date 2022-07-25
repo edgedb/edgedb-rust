@@ -2,7 +2,7 @@ use std::iter::IntoIterator;
 
 use crate::codec::{NamedTupleShape, ObjectShape, EnumValue, ShapeElement};
 use crate::common::{Cardinality};
-use crate::model::{BigInt, Decimal, Uuid, ConfigMemory };
+use crate::model::{BigInt, Decimal, Uuid, ConfigMemory, Range};
 use crate::model::{LocalDatetime, LocalDate, LocalTime, Duration, Datetime};
 use crate::model::{RelativeDuration, DateDuration};
 
@@ -36,13 +36,7 @@ pub enum Value {
     NamedTuple { shape: NamedTupleShape, fields: Vec<Value> },
     Array(Vec<Value>),
     Enum(EnumValue),
-    Range {
-        lower: Box<Option<Value>>,
-        upper: Box<Option<Value>>,
-        inc_lower: bool,
-        inc_upper: bool,
-        empty: bool,
-    },
+    Range(Range<Box<Value>>),
 }
 
 #[derive(Clone, Debug)]
@@ -149,5 +143,29 @@ impl PartialEq for SparseObject {
         }
         let other_num = other.fields.iter().filter(|e| e.is_some()).count();
         return num == other_num;
+    }
+}
+
+impl From<String> for Value {
+    fn from(s: String) -> Value {
+        Value::Str(s)
+    }
+}
+
+impl From<i16> for Value {
+    fn from(s: i16) -> Value {
+        Value::Int16(s)
+    }
+}
+
+impl From<i32> for Value {
+    fn from(s: i32) -> Value {
+        Value::Int32(s)
+    }
+}
+
+impl From<i64> for Value {
+    fn from(s: i64) -> Value {
+        Value::Int64(s)
     }
 }
