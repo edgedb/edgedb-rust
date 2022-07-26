@@ -69,7 +69,7 @@ define_errors![
     (struct UnexpectedMessageError, 0x03010003u32, 0x00000000),
     (struct InputDataError, 0x03020000u32, 0x00000000),
     (struct ParameterTypeMismatchError, 0x03020100u32, 0x00000000),
-    (struct StateMismatchError, 0x03020200u32, 0x00000000),
+    (struct StateMismatchError, 0x03020200u32, 0x00000002),
     (struct ResultCardinalityMismatchError, 0x03030000u32, 0x00000000),
     (struct CapabilityError, 0x03040000u32, 0x00000000),
     (struct UnsupportedCapabilityError, 0x03040100u32, 0x00000000),
