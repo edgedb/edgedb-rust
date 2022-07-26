@@ -1,12 +1,13 @@
 [package]
 name = "edgedb-errors"
 license = "MIT/Apache-2.0"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["MagicStack Inc. <hello@magic.io>"]
 edition = "2018"
 description = """
     Error types for EdgeDB database client.
 """
+readme = "README.md"
 
 [dependencies]
 bytes = "1.0.1"
