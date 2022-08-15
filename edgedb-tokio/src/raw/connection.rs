@@ -41,7 +41,7 @@ use crate::server_params::{SystemConfig};
 const MAX_MESSAGE_SIZE: usize = 1_048_576;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub(crate) enum State {
+pub(crate) enum Mode {
     Normal {
         idle_since: Instant,
     },
@@ -53,7 +53,7 @@ pub(crate) enum State {
 
 impl ConnInner {
     pub fn is_consistent(&self) -> bool {
-        matches!(self.state, State::Normal {..})
+        matches!(self.mode, Mode::Normal {..})
     }
     pub async fn connect(config: &Config) -> Result<Self, Error> {
         connect(config).await.map_err(|e| {
@@ -293,7 +293,7 @@ async fn connect4(cfg: &Config, mut stream: TlsStream)
     Ok(ConnInner {
         proto,
         params: server_params,
-        state: State::Normal { idle_since: Instant::now() },
+        mode: Mode::Normal { idle_since: Instant::now() },
         in_buf,
         out_buf,
         stream,

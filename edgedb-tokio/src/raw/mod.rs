@@ -41,7 +41,7 @@ pub struct ConnInner {
     proto: ProtocolVersion,
     #[allow(dead_code)] // TODO
     params: typemap::TypeMap<dyn typemap::DebugAny + Send + Sync>,
-    state: connection::State,
+    mode: connection::Mode,
     in_buf: BytesMut,
     out_buf: BytesMut,
     stream: TlsStream,

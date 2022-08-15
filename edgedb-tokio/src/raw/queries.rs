@@ -17,25 +17,25 @@ use edgedb_protocol::server_message::{ServerMessage, Data};
 use crate::errors::{Error, ErrorKind};
 use crate::errors::{ProtocolOutOfOrderError, ClientInconsistentError};
 use crate::raw::{ConnInner, Connection};
-use crate::raw::connection::State;
+use crate::raw::connection::Mode;
 
 pub(crate) struct Guard;
 
 impl ConnInner {
     fn begin_request(&mut self) -> Result<Guard, Error> {
-        match self.state {
-            State::Normal { .. } => {
-                self.state = State::Dirty;
+        match self.mode {
+            Mode::Normal { .. } => {
+                self.mode = Mode::Dirty;
                 Ok(Guard)
             }
-            State::Transaction { dirty: ref mut dirty@false } => {
+            Mode::Transaction { dirty: ref mut dirty@false } => {
                 *dirty = true;
                 Ok(Guard)
             }
-            State::Transaction { dirty: true }
-            | State::Dirty => Err(ClientInconsistentError::build()),
+            Mode::Transaction { dirty: true }
+            | Mode::Dirty => Err(ClientInconsistentError::build()),
             // TODO(tailhook) technically we could just wait ping here
-            State::AwaitingPing => Err(ClientInconsistentError
+            Mode::AwaitingPing => Err(ClientInconsistentError
                                        ::with_message("interrupted ping")),
         }
     }
@@ -48,12 +48,12 @@ impl ConnInner {
                     drop(guard);
                     match ready.transaction_state {
                         NotInTransaction => {
-                            self.state = State::Normal {
+                            self.mode = Mode::Normal {
                                 idle_since: Instant::now()
                             };
                         },
                         InTransaction | InFailedTransaction => {
-                            self.state = State::Transaction { dirty: false };
+                            self.mode = Mode::Transaction { dirty: false };
                         }
                     }
                     // TODO(tailhook) update transaction state
