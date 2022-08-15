@@ -11,12 +11,13 @@ use crate::codec;
 use crate::descriptors::TypePos;
 use crate::errors::{self, DecodeError};
 use crate::model::{BigInt, Decimal};
+use crate::model::{ConfigMemory};
 use crate::model::{Duration, LocalDate, LocalTime, LocalDatetime, Datetime};
 use crate::model::{Json, Uuid};
-use crate::model::{ConfigMemory};
 use crate::model::{RelativeDuration, DateDuration};
 use crate::query_arg::{ScalarArg, Encoder, DescriptorContext};
 use crate::serialization::decode::queryable::scalars::DecodeScalar;
+use crate::value::Value;
 
 
 pub trait RawCodec<'t>: Sized {
@@ -70,6 +71,9 @@ impl ScalarArg for String {
     {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::Str(self.clone()))
+    }
 }
 
 impl ScalarArg for &'_ str {
@@ -83,6 +87,9 @@ impl ScalarArg for &'_ str {
         -> Result<(), Error>
     {
         check_scalar(ctx, pos, String::uuid(), String::typename())
+    }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::Str(self.to_string()))
     }
 }
 
@@ -106,6 +113,9 @@ impl ScalarArg for Json {
         -> Result<(), Error>
     {
         check_scalar(ctx, pos, Json::uuid(), Json::typename())
+    }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::Json(self.clone()))
     }
 }
 
@@ -142,6 +152,9 @@ impl ScalarArg for Uuid {
     {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::Uuid(self.clone()))
+    }
 }
 
 impl<'t> RawCodec<'t> for bool {
@@ -172,6 +185,9 @@ impl ScalarArg for bool {
     {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::Bool(self.clone()))
+    }
 }
 
 impl<'t> RawCodec<'t> for i16 {
@@ -194,6 +210,9 @@ impl ScalarArg for i16 {
     {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::Int16(self.clone()))
+    }
 }
 
 impl<'t> RawCodec<'t> for i32 {
@@ -215,6 +234,9 @@ impl ScalarArg for i32 {
         -> Result<(), Error>
     {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
+    }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::Int32(self.clone()))
     }
 }
 
@@ -245,6 +267,9 @@ impl ScalarArg for i64 {
     {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::Int64(self.clone()))
+    }
 }
 
 impl<'t> RawCodec<'t> for f32 {
@@ -266,6 +291,9 @@ impl ScalarArg for f32 {
         -> Result<(), Error>
     {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
+    }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::Float32(self.clone()))
     }
 }
 
@@ -289,6 +317,9 @@ impl ScalarArg for f64 {
     {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::Float64(self.clone()))
+    }
 }
 
 impl<'t> RawCodec<'t> for &'t [u8] {
@@ -309,6 +340,9 @@ impl ScalarArg for &'_ [u8] {
     {
         check_scalar(ctx, pos, codec::STD_BYTES, "std::bytes")
     }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::Bytes(self.to_vec()))
+    }
 }
 
 impl<'t> RawCodec<'t> for Vec<u8> {
@@ -328,6 +362,9 @@ impl ScalarArg for Vec<u8> {
         -> Result<(), Error>
     {
         check_scalar(ctx, pos, codec::STD_BYTES, "std::bytes")
+    }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::Bytes(self.clone()))
     }
 }
 
@@ -376,6 +413,9 @@ impl ScalarArg for Decimal {
     {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::Decimal(self.clone()))
+    }
 }
 
 #[cfg(feature="num-bigint")]
@@ -404,6 +444,9 @@ impl ScalarArg for bigdecimal::BigDecimal {
         -> Result<(), Error>
     {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
+    }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::Uuid(self.clone()))
     }
 }
 
@@ -442,6 +485,9 @@ impl ScalarArg for BigInt {
     {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::BigInt(self.clone()))
+    }
 }
 
 #[cfg(feature="bigdecimal")]
@@ -459,6 +505,12 @@ impl ScalarArg for num_bigint::BigInt {
         -> Result<(), Error>
     {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
+    }
+    fn to_value(&self) -> Result<Value, Error> {
+        let val = self.clone().try_into()
+            .map_err(|e| ClientEncodingError::with_source(e)
+                .context("cannot serialize BigInt value"))?;
+        Ok(Value::BigInt(val))
     }
 }
 
@@ -484,6 +536,9 @@ impl ScalarArg for Duration {
         -> Result<(), Error>
     {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
+    }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::Duration(self.clone()))
     }
 }
 
@@ -520,6 +575,9 @@ impl ScalarArg for RelativeDuration {
     {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::RelativeDuration(self.clone()))
+    }
 }
 
 impl<'t> RawCodec<'t> for SystemTime {
@@ -553,6 +611,12 @@ impl ScalarArg for SystemTime {
     {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
+    fn to_value(&self) -> Result<Value, Error> {
+        let val = self.clone().try_into()
+            .map_err(|e| ClientEncodingError::with_source(e)
+                .context("cannot serialize SystemTime value"))?;
+        Ok(Value::Datetime(val))
+    }
 }
 
 impl<'t> RawCodec<'t> for Datetime {
@@ -575,6 +639,9 @@ impl ScalarArg for Datetime {
     {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::Datetime(self.clone()))
+    }
 }
 
 impl<'t> RawCodec<'t> for LocalDatetime {
@@ -595,6 +662,9 @@ impl ScalarArg for LocalDatetime {
         -> Result<(), Error>
     {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
+    }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::LocalDatetime(self.clone()))
     }
 }
 
@@ -617,6 +687,9 @@ impl ScalarArg for LocalDate {
     {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::LocalDate(self.clone()))
+    }
 }
 
 impl<'t> RawCodec<'t> for LocalTime {
@@ -638,5 +711,8 @@ impl ScalarArg for LocalTime {
         -> Result<(), Error>
     {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
+    }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::LocalTime(self.clone()))
     }
 }

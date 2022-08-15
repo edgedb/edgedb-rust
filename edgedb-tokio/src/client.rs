@@ -15,6 +15,7 @@ use crate::errors::{ProtocolEncodingError, NoResultExpected, NoDataError};
 use crate::transaction::{Transaction, transaction};
 use crate::options::{TransactionOptions, RetryOptions};
 use crate::raw::Options;
+use crate::state::{AliasesDelta, VariablesDelta, State};
 
 /// EdgeDB Client
 ///
@@ -377,6 +378,7 @@ impl Client {
             options: Arc::new(Options {
                 transaction: options,
                 retry: self.options.retry.clone(),
+                state: self.options.state.clone(),
             }),
             pool: self.pool.clone(),
         }
@@ -396,8 +398,53 @@ impl Client {
             options: Arc::new(Options {
                 transaction: self.options.transaction.clone(),
                 retry: options,
+                state: self.options.state.clone(),
             }),
             pool: self.pool.clone(),
         }
+    }
+
+    fn with_state(&self, f: impl FnOnce(&State) -> State) -> Self {
+        Client {
+            options: Arc::new(Options {
+                transaction: self.options.transaction.clone(),
+                retry: self.options.retry.clone(),
+                state: Arc::new(f(&self.options.state)),
+            }),
+            pool: self.pool.clone(),
+        }
+    }
+
+    /// Returns the client with the specified global variables set
+    ///
+    /// This method returns a "shallow copy" of the current client
+    /// with modified global variables
+    ///
+    /// Both ``self`` and returned client can be used after, but when using
+    /// them transaction options applied will be different.
+    pub fn with_globals(&self, globals: impl VariablesDelta) -> Self {
+        self.with_state(|s| s.with_globals(globals))
+    }
+
+    /// Returns the client with the specified aliases set
+    ///
+    /// This method returns a "shallow copy" of the current client
+    /// with modified aliases.
+    ///
+    /// Both ``self`` and returned client can be used after, but when using
+    /// them transaction options applied will be different.
+    pub fn with_aliases(&self, aliases: impl AliasesDelta) -> Self {
+        self.with_state(|s| s.with_aliases(aliases))
+    }
+
+    /// Returns the client with the default module set or unset
+    ///
+    /// This method returns a "shallow copy" of the current client
+    /// with modified default module.
+    ///
+    /// Both ``self`` and returned client can be used after, but when using
+    /// them transaction options applied will be different.
+    pub fn with_default_module(&self, module: Option<String>) -> Self {
+        self.with_state(|s| s.with_default_module(module))
     }
 }

@@ -6,6 +6,7 @@ use syn::{self, parse_macro_input};
 mod attrib;
 mod json;
 mod shape;
+mod variables;
 
 
 /// Derive macro that allows structs and enums to be populated by database
@@ -89,4 +90,18 @@ fn derive(item: &syn::Item) -> syn::Result<proc_macro2::TokenStream> {
             }
         }
     }
+}
+
+#[proc_macro_derive(VariablesDelta, attributes(edgedb))]
+pub fn variables_delta(input: TokenStream) -> TokenStream {
+    let s = parse_macro_input!(input as syn::ItemStruct);
+    match variables::derive(&s) {
+        Ok(stream) => stream.into(),
+        Err(e) => e.to_compile_error().into(),
+    }
+}
+
+#[proc_macro_derive(Globals, attributes(edgedb))]
+pub fn globals(input: TokenStream) -> TokenStream {
+    variables_delta(input)
 }

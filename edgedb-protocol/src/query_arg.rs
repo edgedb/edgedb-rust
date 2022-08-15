@@ -25,8 +25,9 @@ pub struct Encoder<'a> {
 pub trait QueryArg: Send + Sync + Sized {
     fn encode_slot(&self, encoder: &mut Encoder)
         -> Result<(), Error>;
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
+    fn check_descriptor(&self, ctx: &DescriptorContext, pos: TypePos)
         -> Result<(), Error>;
+    fn to_value(&self) -> Result<Value, Error>;
 }
 
 pub trait ScalarArg: Send + Sync + Sized {
@@ -34,6 +35,7 @@ pub trait ScalarArg: Send + Sync + Sized {
         -> Result<(), Error>;
     fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
         -> Result<(), Error>;
+    fn to_value(&self) -> Result<Value, Error>;
 }
 
 /// A tuple of query arguments.
@@ -101,6 +103,10 @@ impl<T: ScalarArg> ScalarArg for &T {
     {
         T::check_descriptor(ctx, pos)
     }
+
+    fn to_value(&self) -> Result<Value, Error> {
+        (*self).to_value()
+    }
 }
 
 impl QueryArgs for () {
@@ -131,6 +137,29 @@ impl QueryArgs for () {
     }
 }
 
+impl QueryArg for Value {
+    fn encode_slot(&self, enc: &mut Encoder)
+        -> Result<(), Error>
+    {
+        if self == &Value::Nothing {
+            enc.buf.reserve(4);
+            enc.buf.put_i32(-1);
+            Ok(())
+        } else {
+            todo!();
+        }
+    }
+    fn check_descriptor(&self, ctx: &DescriptorContext, pos: TypePos)
+        -> Result<(), Error>
+    {
+        todo!();
+    }
+    fn to_value(&self) -> Result<Value, Error>
+    {
+        Ok(self.clone())
+    }
+}
+
 impl QueryArgs for Value {
     fn encode(&self, enc: &mut Encoder)
         -> Result<(), Error>
@@ -154,10 +183,13 @@ impl<T: ScalarArg> QueryArg for T {
                 .to_be_bytes());
         Ok(())
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
+    fn check_descriptor(&self, ctx: &DescriptorContext, pos: TypePos)
         -> Result<(), Error>
     {
         T::check_descriptor(ctx, pos)
+    }
+    fn to_value(&self) -> Result<Value, Error> {
+        ScalarArg::to_value(self)
     }
 }
 
@@ -171,10 +203,16 @@ impl<T: ScalarArg> QueryArg for Option<T> {
             Ok(())
         }
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
+    fn check_descriptor(&self, ctx: &DescriptorContext, pos: TypePos)
         -> Result<(), Error>
     {
         T::check_descriptor(ctx, pos)
+    }
+    fn to_value(&self) -> Result<Value, Error> {
+        match self.as_ref() {
+            Some(v) => ScalarArg::to_value(v),
+            None => Ok(Value::Nothing),
+        }
     }
 }
 
@@ -199,6 +237,7 @@ macro_rules! implement_tuple {
                                 $count, desc.elements.len()));
                         }
                         let mut els = desc.elements.iter().enumerate();
+                        let ($(ref $name,)+) = self;
                         $(
                             let (idx, el) = els.next().unwrap();
                             if el.name.parse() != Ok(idx) {
@@ -207,7 +246,7 @@ macro_rules! implement_tuple {
                                              got {} instead of {}",
                                              el.name, idx)));
                             }
-                            $name::check_descriptor(enc.ctx, el.type_pos)?;
+                            $name.check_descriptor(enc.ctx, el.type_pos)?;
                         )+
                     }
                     Descriptor::Tuple(desc) if enc.ctx.proto.is_at_most(0, 11)
@@ -217,9 +256,10 @@ macro_rules! implement_tuple {
                                 $count, desc.element_types.len()));
                         }
                         let mut els = desc.element_types.iter();
+                        let ($(ref $name,)+) = self;
                         $(
                             let type_pos = els.next().unwrap();
-                            $name::check_descriptor(enc.ctx, *type_pos)?;
+                            $name.check_descriptor(enc.ctx, *type_pos)?;
                         )+
                     }
                     _ => return Err(enc.ctx.wrong_type(desc,

@@ -4,7 +4,7 @@ use crate::codec::{NamedTupleShape, ObjectShape, EnumValue, ShapeElement};
 use crate::common::{Cardinality};
 use crate::model::{BigInt, Decimal, Uuid, ConfigMemory, Range};
 use crate::model::{LocalDatetime, LocalDate, LocalTime, Duration, Datetime};
-use crate::model::{RelativeDuration, DateDuration};
+use crate::model::{RelativeDuration, DateDuration, Json};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
@@ -28,7 +28,7 @@ pub enum Value {
     Duration(Duration),
     RelativeDuration(RelativeDuration),
     DateDuration(DateDuration),
-    Json(String),  // or should we use serde::Json?
+    Json(Json),
     Set(Vec<Value>),
     Object { shape: ObjectShape, fields: Vec<Option<Value>> },
     SparseObject(SparseObject),
