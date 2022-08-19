@@ -442,6 +442,23 @@ impl Builder {
                 }
             };
         }
+        let tls_ca = get_env("EDGEDB_TLS_CA")?;
+        if let Some(tls_ca_file) = get_env("EDGEDB_TLS_CA_FILE")? {
+            if tls_ca.is_some() {
+                return Err(ClientError::with_message(
+                    "Environment variables EDGEDB_TLS_CA and \
+                     EDGEDB_TLS_CA_FILE are mutually exclusive"
+                ));
+            }
+            let pem = fs::read_to_string(&tls_ca_file).await
+                .map_err(|e| ClientError::with_source(e).context(
+                    format!("error reading TLS CA file {:?}", tls_ca_file)
+                ))?;
+            self.pem_certificates(&pem)?;
+        }
+        if let Some(pem) = tls_ca {
+            self.pem_certificates(&pem)?;
+        }
         self.read_extra_env_vars()?;
         Ok(self)
     }
