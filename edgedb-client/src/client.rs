@@ -43,7 +43,7 @@ use crate::server_params::{ServerParam, SystemConfig};
 
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub(crate) enum State {
+pub(crate) enum Mode {
     Normal {
         idle_since: Instant,
     },
@@ -84,13 +84,13 @@ pub struct Connection {
     pub(crate) version: ProtocolVersion,
     pub(crate) params: TypeMap<dyn typemap::DebugAny + Send + Sync>,
     pub(crate) transaction_state: TransactionState,
-    pub(crate) state: State,
+    pub(crate) mode: Mode,
     pub(crate) eql_state_desc: EdgeqlStateDesc,
     pub(crate) eql_state: EdgeqlState,
 }
 
 pub(crate) struct PartialState<'a> {
-    pub(crate) state: &'a mut State,
+    pub(crate) mode: &'a mut Mode,
     pub(crate) eql_state_desc: &'a mut EdgeqlStateDesc,
     pub(crate) eql_state: &'a mut EdgeqlState,
 }
@@ -196,7 +196,7 @@ impl<'a> Sequence<'a> {
 
     pub fn end_clean(&mut self) {
         self.active = false;
-        *self.state.state = State::Normal {
+        *self.state.mode = Mode::Normal {
             idle_since: Instant::now(),
         };
     }
@@ -246,7 +246,7 @@ impl Connection {
         let (_, mut reader, _) = self.split();
         reader.passive_wait().await.ok();
         // any erroneous or successful read (even 0) means need reconnect
-        self.state = State::Dirty;
+        self.mode = Mode::Dirty;
         pending::<()>().await;
         unreachable!();
     }
@@ -255,27 +255,27 @@ impl Connection {
 
         let (mut writer, mut reader, state) = self.split();
 
-        if *state.state == State::AwaitingPing {
-            Self::synchronize_ping(&mut reader, state.state).await?;
+        if *state.mode == Mode::AwaitingPing {
+            Self::synchronize_ping(&mut reader, state.mode).await?;
         }
 
-        while let State::Normal { idle_since: last_pong } = *state.state {
+        while let Mode::Normal { idle_since: last_pong } = *state.mode {
             match io::timeout(
                 interval.saturating_sub(Instant::now() - last_pong),
                 reader.passive_wait()
             ).await {
                 Err(e) if e.kind() == io::ErrorKind::TimedOut => (),
                 Err(e) => {
-                    *state.state = State::Dirty;
+                    *state.mode = Mode::Dirty;
                     return Err(ClientConnectionError::with_source(e))?;
                 }
                 Ok(_) => unreachable!(),
             }
 
-            *state.state = State::Dirty;
+            *state.mode = Mode::Dirty;
             writer.send_messages(&[ClientMessage::Sync]).await?;
-            *state.state = State::AwaitingPing;
-            Self::synchronize_ping(&mut reader, state.state).await?;
+            *state.mode = Mode::AwaitingPing;
+            Self::synchronize_ping(&mut reader, state.mode).await?;
         }
         Ok(())
     }
@@ -285,19 +285,19 @@ impl Connection {
                 log::info!("Connection error during background pings: {}", e)
             })
             .ok();
-        debug_assert_eq!(self.state, State::Dirty);
+        debug_assert_eq!(self.mode, Mode::Dirty);
         pending::<()>().await;
         unreachable!();
     }
     async fn synchronize_ping<'a>(
-        reader: &mut Reader<'a>, state: &mut State
+        reader: &mut Reader<'a>, mode: &mut Mode
     ) -> Result<(), Error> {
-        debug_assert_eq!(*state, State::AwaitingPing);
+        debug_assert_eq!(*mode, Mode::AwaitingPing);
         if let Err(e) = reader.wait_ready().await {
-            *state = State::Dirty;
+            *mode = Mode::Dirty;
             Err(e)
         } else {
-            *state = State::Normal { idle_since: Instant::now() };
+            *mode = Mode::Normal { idle_since: Instant::now() };
             Ok(())
         }
     }
@@ -350,7 +350,7 @@ impl Connection {
         }
         if let PingInterval::Interval(interval) = self.ping_interval {
             let rv = other.race(self.background_pings(interval)).await;
-            if self.state == State::AwaitingPing {
+            if self.mode == Mode::AwaitingPing {
                 let (_, ref mut reader, state) = self.split();
                 Self::synchronize_ping(reader, state.state).await.ok();
             }
@@ -360,7 +360,7 @@ impl Connection {
         }
     }
     pub fn is_consistent(&self) -> bool {
-        matches!(self.state, State::Normal {
+        matches!(self.mode, Mode::Normal {
             idle_since: _,
         })
     }
@@ -378,13 +378,13 @@ impl Connection {
         -> Result<Sequence<'x>, Error>
     {
         let (writer, reader, state) = self.split();
-        if !matches!(*state.state, State::Normal {
+        if !matches!(*state.mode, Mode::Normal {
             idle_since: _,
         }) {
             return Err(ClientInconsistentError::with_message(
                 "Connection is inconsistent state. Please reconnect."));
         }
-        *state.state = State::Dirty;
+        *state.mode = Mode::Dirty;
         Ok(Sequence {
             writer,
             reader,
@@ -415,7 +415,7 @@ impl Connection {
             stream: &mut self.output,
         };
         let state = PartialState {
-            state: &mut self.state,
+            mode: &mut self.mode,
             eql_state_desc: &mut self.eql_state_desc,
             eql_state: &mut self.eql_state,
         };

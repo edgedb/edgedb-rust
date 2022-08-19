@@ -37,7 +37,7 @@ use edgedb_protocol::server_message::ParameterStatus;
 use edgedb_protocol::value::Value;
 use edgedb_protocol::model;
 
-use crate::client::{Connection, Sequence, State, PingInterval};
+use crate::client::{Connection, Sequence, Mode, PingInterval};
 use crate::client::{EdgeqlState, EdgeqlStateDesc};
 use crate::credentials::{Credentials, TlsSecurity};
 use crate::errors::{ClientConnectionError, ProtocolError, ProtocolTlsError};
@@ -1218,7 +1218,7 @@ impl Config {
             output_buf: BytesMut::with_capacity(8192),
             params: TypeMap::custom(),
             transaction_state: TransactionState::NotInTransaction,
-            state: State::Normal {
+            mode: Mode::Normal {
                 idle_since: Instant::now(),
             },
             eql_state_desc: EdgeqlStateDesc::uninitialized(),
@@ -1317,7 +1317,7 @@ impl Config {
         }
         conn.version = version;
         conn.params = server_params;
-        conn.state = State::Normal {
+        conn.mode = Mode::Normal {
             idle_since: Instant::now()
         };
         Ok(conn)
