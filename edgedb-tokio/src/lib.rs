@@ -45,6 +45,7 @@ mod tls;
 mod transaction;
 
 pub use builder::{Builder, Config};
+pub use credentials::TlsSecurity;
 pub use client::Client;
 pub use errors::Error;
 pub use options::{TransactionOptions, RetryOptions};

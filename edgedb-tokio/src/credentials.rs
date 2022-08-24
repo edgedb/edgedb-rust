@@ -4,12 +4,23 @@ use std::default::Default;
 use serde::{ser, Serialize, Deserialize};
 
 
+/// TLS Client Security Mode
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all="snake_case")]
 pub enum TlsSecurity {
+    /// Allow any certificate for TLS connection
     Insecure,
+    /// Verify certificate against trusted chain but allow any host name
+    ///
+    /// This is useful for localhost (you can't make trusted chain certificate
+    /// for localhost). And when certificate of specific server is stored in
+    /// credentials file so it's secure regardless of which host name was used
+    /// to expose the server to the network.
     NoHostVerification,
+    /// Normal TLS certificate check (checks trusted chain and hostname)
     Strict,
+    /// If there is a specific certificate in credentials, do not check
+    /// the host name, otherwise use `Strict` mode
     Default,
 }
 
