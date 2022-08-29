@@ -14,6 +14,8 @@ use crate::features::ProtocolVersion;
 use crate::queryable;
 use crate::query_arg;
 
+pub use crate::common::RawTypedesc;
+
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct TypePos(pub u16);
@@ -33,7 +35,7 @@ pub enum Descriptor {
     TypeAnnotation(TypeAnnotationDescriptor),
 }
 
-pub struct OutputTypedesc {
+pub struct _OutputTypedesc {
     pub(crate) proto: ProtocolVersion,
     pub(crate) array: Vec<Descriptor>,
     #[allow(dead_code)] // TODO
@@ -41,11 +43,17 @@ pub struct OutputTypedesc {
     pub(crate) root_pos: Option<TypePos>,
 }
 
-pub struct InputTypedesc {
+pub struct _InputTypedesc {
     pub(crate) proto: ProtocolVersion,
     pub(crate) array: Vec<Descriptor>,
     #[allow(dead_code)] // TODO
     pub(crate) root_id: Uuid,
+    pub(crate) root_pos: Option<TypePos>,
+}
+
+pub struct Typedesc {
+    pub(crate) proto: ProtocolVersion,
+    pub(crate) array: Vec<Descriptor>,
     pub(crate) root_pos: Option<TypePos>,
 }
 
@@ -132,7 +140,7 @@ pub struct TypeAnnotationDescriptor {
     pub annotation: String,
 }
 
-impl OutputTypedesc {
+impl _OutputTypedesc {
     pub fn as_queryable_context(&self) -> queryable::DescriptorContext {
         let mut ctx = queryable::DescriptorContext::new(self.descriptors());
         ctx.has_implicit_tid = self.proto.has_implicit_tid();
@@ -164,7 +172,7 @@ impl OutputTypedesc {
                 .context(errors::TooManyDescriptors { index: idx })?;
             Some(TypePos(pos))
         };
-        Ok(OutputTypedesc {
+        Ok(_OutputTypedesc {
             proto: buf.proto().clone(),
             array: descriptors,
             root_id,
@@ -174,7 +182,7 @@ impl OutputTypedesc {
 }
 
 
-impl InputTypedesc {
+impl _InputTypedesc {
     pub fn as_query_arg_context(&self) -> query_arg::DescriptorContext {
         query_arg::DescriptorContext {
             proto: &self.proto,
@@ -207,6 +215,63 @@ impl InputTypedesc {
     }
     pub fn proto(&self) -> &ProtocolVersion {
         &self.proto
+    }
+}
+
+impl Typedesc {
+    pub fn decode(raw: &RawTypedesc, proto: &ProtocolVersion)
+        -> Result<Self, DecodeError>
+    {
+        let ref mut cur = Input::new(proto.clone(), raw.data.clone());
+        Typedesc::decode_with_id(raw.id.clone(), cur)
+    }
+
+    pub fn descriptors(&self) -> &[Descriptor] {
+        &self.array
+    }
+    pub fn root_pos(&self) -> Option<TypePos> {
+        self.root_pos
+    }
+    pub fn build_codec(&self) -> Result<Arc<dyn Codec>, CodecError> {
+        build_codec(self.root_pos(), self.descriptors())
+    }
+
+    pub(crate) fn decode_with_id(root_id: Uuid, buf: &mut Input)
+        -> Result<Self, DecodeError>
+    {
+        let mut descriptors = Vec::new();
+        while buf.remaining() > 0 {
+            match Descriptor::decode(buf)? {
+                Descriptor::TypeAnnotation(_) => {}
+                item => descriptors.push(item),
+            }
+        }
+        let root_pos = if root_id == Uuid::from_u128(0) {
+            None
+        } else {
+            let idx = descriptors.iter().position(|x| *x.id() == root_id)
+                .context(errors::UuidNotFound { uuid: root_id })?;
+            let pos = idx.try_into().ok()
+                .context(errors::TooManyDescriptors { index: idx })?;
+            Some(TypePos(pos))
+        };
+        Ok(Typedesc {
+            proto: buf.proto().clone(),
+            array: descriptors,
+            root_pos,
+        })
+    }
+    pub fn as_query_arg_context(&self) -> query_arg::DescriptorContext {
+        query_arg::DescriptorContext {
+            proto: &self.proto,
+            descriptors: self.descriptors(),
+            root_pos: self.root_pos,
+        }
+    }
+    pub fn as_queryable_context(&self) -> queryable::DescriptorContext {
+        let mut ctx = queryable::DescriptorContext::new(self.descriptors());
+        ctx.has_implicit_tid = self.proto.has_implicit_tid();
+        ctx
     }
 }
 

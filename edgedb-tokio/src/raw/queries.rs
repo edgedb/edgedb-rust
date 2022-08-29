@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::time::Instant;
+use std::sync::Arc;
 
 use bytes::Bytes;
 use edgedb_protocol::model::Uuid;
@@ -18,6 +19,7 @@ use crate::errors::{Error, ErrorKind};
 use crate::errors::{ProtocolOutOfOrderError, ClientInconsistentError};
 use crate::raw::{ConnInner, Connection};
 use crate::raw::connection::Mode;
+use crate::state::State;
 
 pub(crate) struct Guard;
 
@@ -65,29 +67,37 @@ impl ConnInner {
             }
         }
     }
-    pub async fn parse(&mut self, flags: &CompilationOptions, query: &str)
+    pub async fn parse(&mut self, flags: &CompilationOptions, query: &str,
+                       state: &Arc<State>)
         -> Result<CommandDataDescription1, Error>
     {
         if self.proto.is_1() {
-            self._parse1(flags, query).await
+            self._parse1(flags, query, state).await
         } else {
             let pre = self._prepare0(flags, query).await?;
             self._describe0(pre).await
         }
     }
-    async fn _parse1(&mut self, flags: &CompilationOptions, query: &str)
+    async fn _parse1(&mut self, flags: &CompilationOptions, query: &str,
+                     state: &Arc<State>)
         -> Result<CommandDataDescription1, Error>
     {
         let guard = self.begin_request()?;
         self.send_messages(&[
-            ClientMessage::Parse(Parse::new(flags, query)),
+            ClientMessage::Parse(Parse::new(
+                flags,
+                query,
+                state.serialized(&self.state_desc)?,
+            )),
             ClientMessage::Sync,
         ]).await?;
 
         loop {
             let msg = self.message().await?;
             match msg {
-                ServerMessage::StateDataDescription(..) => {}
+                ServerMessage::StateDataDescription(d) => {
+                    self.state_desc = d.typedesc;
+                }
                 ServerMessage::CommandDataDescription1(data_desc) => {
                     self.expect_ready(guard).await?;
                     return Ok(data_desc);
@@ -169,30 +179,30 @@ impl ConnInner {
                 }
             }
         };
+        // normalize CommandDataDescription0 into Parse (proto 1.x) output
         Ok(CommandDataDescription1 {
-            proto: desc.proto,
             annotations: HashMap::new(),
             capabilities: prepare.get_capabilities()
                 .unwrap_or(Capabilities::ALL),
             result_cardinality: prepare.cardinality,
-            input_typedesc_id: desc.input_typedesc_id,
-            input_typedesc: desc.input_typedesc,
-            output_typedesc_id: desc.output_typedesc_id,
-            output_typedesc: desc.output_typedesc,
+            input: desc.input,
+            output: desc.output,
         })
     }
     pub async fn execute(&mut self, opts: &CompilationOptions, query: &str,
+                         state: &Arc<State>,
                          desc: &CommandDataDescription1, arguments: &Bytes)
         -> Result<Vec<Data>, Error>
     {
         if self.proto.is_1() {
-            self._execute1(opts, query, desc, arguments).await
+            self._execute1(opts, query, state, desc, arguments).await
         } else {
             self._execute0(arguments).await
         }
     }
 
     async fn _execute1(&mut self, opts: &CompilationOptions, query: &str,
+                       state: &Arc<State>,
                        desc: &CommandDataDescription1, arguments: &Bytes)
         -> Result<Vec<Data>, Error>
     {
@@ -213,10 +223,9 @@ impl ConnInner {
                 output_format: opts.io_format,
                 expected_cardinality: opts.expected_cardinality,
                 command_text: query.into(),
-                state_typedesc_id: Uuid::from_u128(0),  // TODO(tailhook)
-                state_data: Bytes::new(),
-                input_typedesc_id: desc.input_typedesc_id,
-                output_typedesc_id: desc.output_typedesc_id,
+                state: state.serialized(&self.state_desc)?,
+                input_typedesc_id: desc.input.id,
+                output_typedesc_id: desc.output.id,
                 arguments: arguments.clone(),
             }),
             ClientMessage::Sync,
@@ -226,7 +235,9 @@ impl ConnInner {
         loop {
             let msg = self.message().await?;
             match msg {
-                ServerMessage::StateDataDescription(..) => {}
+                ServerMessage::StateDataDescription(d) => {
+                    self.state_desc = d.typedesc;
+                }
                 ServerMessage::Data(data) => {
                     result.push(data);
                 }
@@ -287,17 +298,19 @@ impl ConnInner {
             }
         }
     }
-    pub async fn statement(&mut self, flags: &CompilationOptions, query: &str)
+    pub async fn statement(&mut self, flags: &CompilationOptions, query: &str,
+                           state: &Arc<State>)
         -> Result<(), Error>
     {
         if self.proto.is_1() {
-            self._statement1(flags, query).await
+            self._statement1(flags, query, state).await
         } else {
             self._statement0(flags, query).await
         }
     }
 
-    async fn _statement1(&mut self, opts: &CompilationOptions, query: &str)
+    async fn _statement1(&mut self, opts: &CompilationOptions, query: &str,
+                         state: &Arc<State>)
         -> Result<(), Error>
     {
         let guard = self.begin_request()?;
@@ -317,8 +330,7 @@ impl ConnInner {
                 output_format: opts.io_format,
                 expected_cardinality: opts.expected_cardinality,
                 command_text: query.into(),
-                state_typedesc_id: Uuid::from_u128(0),  // TODO(tailhook)
-                state_data: Bytes::new(),
+                state: state.serialized(&self.state_desc)?,
                 input_typedesc_id: Uuid::from_u128(0),
                 output_typedesc_id: Uuid::from_u128(0),
                 arguments: Bytes::new(),
@@ -330,7 +342,9 @@ impl ConnInner {
         loop {
             let msg = self.message().await?;
             match msg {
-                ServerMessage::StateDataDescription(..) => {}
+                ServerMessage::StateDataDescription(d) => {
+                    self.state_desc = d.typedesc;
+                }
                 ServerMessage::Data(data) => {
                     result.push(data);
                 }
@@ -393,20 +407,24 @@ impl ConnInner {
 }
 
 impl Connection {
-    pub async fn parse(&mut self, flags: &CompilationOptions, query: &str)
+    pub async fn parse(&mut self, flags: &CompilationOptions, query: &str,
+                       state: &Arc<State>)
         -> Result<CommandDataDescription1, Error>
     {
         self.inner.as_mut().expect("connection is not dropped")
-            .parse(flags, query).await
+            .parse(flags, query, state).await
     }
     pub async fn execute(&mut self, opts: &CompilationOptions, query: &str,
+                         state: &Arc<State>,
                          desc: &CommandDataDescription1, arguments: &Bytes)
         -> Result<Vec<Data>, Error>
     {
         self.inner.as_mut().expect("connection is not dropped")
-            .execute(opts, query, desc, arguments).await
+            .execute(opts, query, state, desc, arguments).await
     }
-    pub async fn statement(&mut self, query: &str) -> Result<(), Error> {
+    pub async fn statement(&mut self, query: &str, state: &Arc<State>)
+        -> Result<(), Error>
+    {
         let flags = CompilationOptions {
             implicit_limit: None,
             implicit_typenames: false,
@@ -417,7 +435,7 @@ impl Connection {
             expected_cardinality: Cardinality::Many, // no result is unsupported
         };
         self.inner.as_mut().expect("connection is not dropped")
-            .statement(&flags, query).await
+            .statement(&flags, query, state).await
     }
     pub fn proto(&self) -> &ProtocolVersion {
         &self.inner.as_ref().expect("connection is not dropped").proto

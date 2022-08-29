@@ -5,7 +5,7 @@ use std::error::Error;
 use uuid::Uuid;
 use bytes::{Bytes, BytesMut};
 
-use edgedb_protocol::common::{Capabilities};
+use edgedb_protocol::common::{Capabilities, State, RawTypedesc};
 use edgedb_protocol::encoding::{Input, Output};
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::server_message::{Authentication};
@@ -129,8 +129,10 @@ fn command_complete1() -> Result<(), Box<dyn Error>> {
         annotations: HashMap::new(),
         capabilities: Capabilities::MODIFICATIONS,
         status_data: Bytes::from_static(b"okay"),
-        state_typedesc_id: Uuid::from_u128(0),
-        state_data: Bytes::from_static(b""),
+        state: State {
+            typedesc_id: Uuid::from_u128(0),
+            data: Bytes::from_static(b""),
+        },
     }), b"C\0\0\0*\0\0\0\0\0\0\0\0\0\x01\0\0\0\x04okay\
           \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
           \0\0\0\0");
@@ -158,15 +160,20 @@ fn prepare_complete() -> Result<(), Box<dyn Error>> {
 fn command_data_description0() -> Result<(), Box<dyn Error>> {
     encoding_eq_ver!(0, 13,
         ServerMessage::CommandDataDescription0(CommandDataDescription0 {
-            proto: ProtocolVersion::new(0, 13),
             headers: HashMap::new(),
             result_cardinality: Cardinality::AtMostOne,
-            input_typedesc_id: Uuid::from_u128(0xFF),
-            input_typedesc: Bytes::from_static(
-                b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0"),
-            output_typedesc_id: Uuid::from_u128(0x105),
-            output_typedesc: Bytes::from_static(
-                b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"),
+            input: RawTypedesc {
+                proto: ProtocolVersion::new(0, 13),
+                id: Uuid::from_u128(0xFF),
+                data: Bytes::from_static(
+                    b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0"),
+            },
+            output: RawTypedesc {
+                proto: ProtocolVersion::new(0, 13),
+                id: Uuid::from_u128(0x105),
+                data: Bytes::from_static(
+                    b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"),
+            },
         }), bconcat!(b"T\0\0\0S\0\0o"
                      b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff"
                      b"\0\0\0\x13"
@@ -176,14 +183,19 @@ fn command_data_description0() -> Result<(), Box<dyn Error>> {
                      b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"));
     encoding_eq_ver!(0, 13,
         ServerMessage::CommandDataDescription0(CommandDataDescription0 {
-            proto: ProtocolVersion::new(0, 13),
             headers: HashMap::new(),
             result_cardinality: Cardinality::NoResult,
-            input_typedesc_id: Uuid::from_u128(0xFF),
-            input_typedesc: Bytes::from_static(
-                b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0"),
-            output_typedesc_id: Uuid::from_u128(0),
-            output_typedesc: Bytes::from_static(b""),
+            input: RawTypedesc {
+                proto: ProtocolVersion::new(0, 13),
+                id: Uuid::from_u128(0xFF),
+                data: Bytes::from_static(
+                    b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0"),
+            },
+            output: RawTypedesc {
+                proto: ProtocolVersion::new(0, 13),
+                id: Uuid::from_u128(0),
+                data: Bytes::from_static(b""),
+            },
         }), bconcat!(b"T\0\0\0B\0\0n"
                      b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff"
                      b"\0\0\0\x13"
@@ -196,16 +208,21 @@ fn command_data_description0() -> Result<(), Box<dyn Error>> {
 fn command_data_description1() -> Result<(), Box<dyn Error>> {
     encoding_eq_ver!(1, 0,
         ServerMessage::CommandDataDescription1(CommandDataDescription1 {
-            proto: ProtocolVersion::current(),
             annotations: HashMap::new(),
             capabilities: Capabilities::MODIFICATIONS,
             result_cardinality: Cardinality::AtMostOne,
-            input_typedesc_id: Uuid::from_u128(0xFF),
-            input_typedesc: Bytes::from_static(
-                b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0"),
-            output_typedesc_id: Uuid::from_u128(0x105),
-            output_typedesc: Bytes::from_static(
-                b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"),
+            input: RawTypedesc {
+                proto: ProtocolVersion::current(),
+                id: Uuid::from_u128(0xFF),
+                data: Bytes::from_static(
+                    b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0"),
+            },
+            output: RawTypedesc {
+                proto: ProtocolVersion::current(),
+                id: Uuid::from_u128(0x105),
+                data: Bytes::from_static(
+                    b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"),
+            },
         }), bconcat!(b"T\0\0\0[\0\0\0\0\0\0\0\0\0\x01o"
                      b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff"
                      b"\0\0\0\x13"
@@ -215,15 +232,20 @@ fn command_data_description1() -> Result<(), Box<dyn Error>> {
                      b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"));
     encoding_eq_ver!(1, 0,
         ServerMessage::CommandDataDescription1(CommandDataDescription1 {
-            proto: ProtocolVersion::current(),
             annotations: HashMap::new(),
             capabilities: Capabilities::MODIFICATIONS,
             result_cardinality: Cardinality::NoResult,
-            input_typedesc_id: Uuid::from_u128(0xFF),
-            input_typedesc: Bytes::from_static(
-                b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0"),
-            output_typedesc_id: Uuid::from_u128(0),
-            output_typedesc: Bytes::from_static(b""),
+            input: RawTypedesc {
+                proto: ProtocolVersion::current(),
+                id: Uuid::from_u128(0xFF),
+                data: Bytes::from_static(
+                    b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0"),
+            },
+            output: RawTypedesc {
+                proto: ProtocolVersion::current(),
+                id: Uuid::from_u128(0),
+                data: Bytes::from_static(b""),
+            },
         }), bconcat!(b"T\0\0\0J\0\0\0\0\0\0\0\0\0\x01n"
                      b"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff"
                      b"\0\0\0\x13"
@@ -289,9 +311,12 @@ fn log_message() -> Result<(), Box<dyn Error>> {
 fn state_data_description() -> Result<(), Box<dyn Error>> {
     encoding_eq!(
         ServerMessage::StateDataDescription(StateDataDescription {
-            typedesc_id: Uuid::from_u128(0x105),
-            typedesc: Bytes::from_static(
-                b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"),
+            typedesc: RawTypedesc {
+                proto: ProtocolVersion::current(),
+                id: Uuid::from_u128(0x105),
+                data: Bytes::from_static(
+                    b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"),
+            },
         }),
         b"s\0\0\0)\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05\0\0\0\
         \x11\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"

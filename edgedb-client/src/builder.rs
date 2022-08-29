@@ -29,16 +29,15 @@ use tls_api_not_tls::TlsConnector as PlainConnector;
 use typemap::{TypeMap, DebugAny};
 use webpki::DnsNameRef;
 
-use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
+use edgedb_protocol::client_message::{ClientMessage, ClientHandshake, State};
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use edgedb_protocol::server_message::{TransactionState, ServerHandshake};
-use edgedb_protocol::server_message::ParameterStatus;
+use edgedb_protocol::server_message::{ParameterStatus, RawTypedesc};
 use edgedb_protocol::value::Value;
 use edgedb_protocol::model;
 
 use crate::client::{Connection, Sequence, Mode, PingInterval};
-use crate::client::{EdgeqlState, EdgeqlStateDesc};
 use crate::credentials::{Credentials, TlsSecurity};
 use crate::errors::{ClientConnectionError, ProtocolError, ProtocolTlsError};
 use crate::errors::{ClientConnectionFailedError, AuthenticationError};
@@ -1221,8 +1220,8 @@ impl Config {
             mode: Mode::Normal {
                 idle_since: Instant::now(),
             },
-            eql_state_desc: EdgeqlStateDesc::uninitialized(),
-            eql_state: EdgeqlState::empty(),
+            state_desc: RawTypedesc::uninitialized(),
+            state: State::empty(),
             version: version.clone(),
         };
         let mut seq = conn.start_sequence().await?;

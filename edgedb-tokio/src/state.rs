@@ -2,20 +2,23 @@ use std::collections::{BTreeMap, HashMap};
 use std::default::Default;
 use std::sync::Arc;
 
-use tokio::sync::OnceCell;
-
-use edgedb_protocol::value::Value;
+use arc_swap::ArcSwapOption;
+use edgedb_protocol::client_message::{State as Cache};
 use edgedb_protocol::query_arg::QueryArg;
+use edgedb_protocol::value::Value;
+use edgedb_protocol::descriptors::RawTypedesc;
 
-use bytes::Bytes;
+use crate::errors::{ProtocolEncodingError, Error, ErrorKind};
 
 pub struct Unset<I>(pub I);
 pub struct Fn<F: FnOnce(&'_ mut VariablesModifier<'_>)>(pub F);
 
+
+// TODO(tailhook) this is probably only public for wasm, figure out!
 #[derive(Debug)]
-pub(crate) struct State {
+pub struct State {
     raw_state: RawState,
-    cache: OnceCell<Bytes>,
+    cache: ArcSwapOption<Cache>,
 }
 
 #[derive(Debug)]
@@ -170,7 +173,7 @@ impl State {
                 }),
                 globals: self.raw_state.globals.clone(),
             },
-            cache: OnceCell::new(),
+            cache: ArcSwapOption::new(None),
         }
     }
     pub fn with_globals(&self, delta: impl VariablesDelta) -> Self {
@@ -186,7 +189,7 @@ impl State {
                 common: self.raw_state.common.clone(),
                 globals,
             },
-            cache: OnceCell::new(),
+            cache: ArcSwapOption::new(None),
         }
     }
 
@@ -202,8 +205,22 @@ impl State {
                 }),
                 globals: self.raw_state.globals.clone(),
             },
-            cache: OnceCell::new(),
+            cache: ArcSwapOption::new(None),
         }
+    }
+
+    pub(crate) fn serialized(&self, desc: &RawTypedesc)
+        -> Result<Cache, Error>
+    {
+        if let Some(cache) = &*self.cache.load() {
+            if cache.typedesc_id == desc.id {
+                return Ok((**cache).clone());
+            }
+        }
+        // TODO(tailhook) network data can break this expectation
+        let typedesc = desc.decode()
+            .map_err(ProtocolEncodingError::with_source)?;
+        todo!();
     }
 }
 
@@ -218,7 +235,7 @@ impl Default for State {
                 }),
                 globals: Default::default(),
             },
-            cache: OnceCell::new(),
+            cache: ArcSwapOption::new(None),
         }
     }
 }

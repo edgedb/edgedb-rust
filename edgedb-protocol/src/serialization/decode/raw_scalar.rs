@@ -446,7 +446,9 @@ impl ScalarArg for bigdecimal::BigDecimal {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
-        Ok(Value::Uuid(self.clone()))
+        Ok(Value::Decimal(
+            self.clone().try_into().map_err(ClientEncodingError::with_source)?
+        ))
     }
 }
 

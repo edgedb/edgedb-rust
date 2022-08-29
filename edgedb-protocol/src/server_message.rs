@@ -10,8 +10,8 @@ use snafu::{OptionExt, ensure};
 use crate::features::ProtocolVersion;
 use crate::errors::{self, EncodeError, DecodeError};
 use crate::encoding::{Input, Output, KeyValues, Annotations, Decode, Encode};
-use crate::descriptors::{OutputTypedesc, InputTypedesc, Descriptor, TypePos};
-pub use crate::common::Cardinality;
+use crate::descriptors::Typedesc;
+pub use crate::common::{Cardinality, State, RawTypedesc};
 use crate::common::Capabilities;
 
 
@@ -130,8 +130,7 @@ pub struct CommandComplete1 {
     pub annotations: Annotations,
     pub capabilities: Capabilities,
     pub status_data: Bytes,
-    pub state_typedesc_id: Uuid,
-    pub state_data: Bytes,
+    pub state: State,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -152,31 +151,24 @@ pub struct ParseComplete {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandDataDescription0 {
-    pub proto: ProtocolVersion,
     pub headers: KeyValues,
     pub result_cardinality: Cardinality,
-    pub input_typedesc_id: Uuid,
-    pub input_typedesc: Bytes,
-    pub output_typedesc_id: Uuid,
-    pub output_typedesc: Bytes,
+    pub input: RawTypedesc,
+    pub output: RawTypedesc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandDataDescription1 {
-    pub proto: ProtocolVersion,
     pub annotations: Annotations,
     pub capabilities: Capabilities,
     pub result_cardinality: Cardinality,
-    pub input_typedesc_id: Uuid,
-    pub input_typedesc: Bytes,
-    pub output_typedesc_id: Uuid,
-    pub output_typedesc: Bytes,
+    pub input: RawTypedesc,
+    pub output: RawTypedesc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateDataDescription {
-    pub typedesc_id: Uuid,
-    pub typedesc: Bytes,
+    pub typedesc: RawTypedesc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -212,101 +204,31 @@ fn encode<T: Encode>(buf: &mut Output, code: u8, msg: &T)
 }
 
 impl CommandDataDescription0 {
-    pub fn output(&self) -> Result<OutputTypedesc, DecodeError> {
-        let ref mut cur = Input::new(
-            self.proto.clone(),
-            self.output_typedesc.clone(),
-        );
-        OutputTypedesc::decode_with_id(self.output_typedesc_id.clone(), cur)
+    pub fn output(&self) -> Result<Typedesc, DecodeError> {
+        self.output.decode()
     }
-    pub fn input(&self) -> Result<InputTypedesc, DecodeError> {
-        let ref mut cur = Input::new(
-            self.proto.clone(),
-            self.input_typedesc.clone(),
-        );
-        let mut descriptors = Vec::new();
-        while cur.remaining() > 0 {
-            match Descriptor::decode(cur)? {
-                Descriptor::TypeAnnotation(_) => {}
-                item => descriptors.push(item),
-            }
-        }
-        let root_id = self.input_typedesc_id.clone();
-        let root_pos = if root_id == Uuid::from_u128(0) {
-            None
-        } else {
-            let idx = descriptors.iter().position(|x| *x.id() == root_id)
-                .context(errors::UuidNotFound { uuid: root_id })?;
-            let pos = idx.try_into().ok()
-                .context(errors::TooManyDescriptors { index: idx })?;
-            Some(TypePos(pos))
-        };
-        Ok(InputTypedesc {
-            array: descriptors,
-            proto: self.proto.clone(),
-            root_id,
-            root_pos,
-        })
+    pub fn input(&self) -> Result<Typedesc, DecodeError> {
+        self.input.decode()
     }
 }
 
 impl CommandDataDescription1 {
-    pub fn output(&self) -> Result<OutputTypedesc, DecodeError> {
-        let ref mut cur = Input::new(
-            self.proto.clone(),
-            self.output_typedesc.clone(),
-        );
-        OutputTypedesc::decode_with_id(self.output_typedesc_id.clone(), cur)
+    pub fn output(&self) -> Result<Typedesc, DecodeError> {
+        self.output.decode()
     }
-    pub fn input(&self) -> Result<InputTypedesc, DecodeError> {
-        let ref mut cur = Input::new(
-            self.proto.clone(),
-            self.input_typedesc.clone(),
-        );
-        let mut descriptors = Vec::new();
-        while cur.remaining() > 0 {
-            match Descriptor::decode(cur)? {
-                Descriptor::TypeAnnotation(_) => {}
-                item => descriptors.push(item),
-            }
-        }
-        let root_id = self.input_typedesc_id.clone();
-        let root_pos = if root_id == Uuid::from_u128(0) {
-            None
-        } else {
-            let idx = descriptors.iter().position(|x| *x.id() == root_id)
-                .context(errors::UuidNotFound { uuid: root_id })?;
-            let pos = idx.try_into().ok()
-                .context(errors::TooManyDescriptors { index: idx })?;
-            Some(TypePos(pos))
-        };
-        Ok(InputTypedesc {
-            array: descriptors,
-            proto: self.proto.clone(),
-            root_id,
-            root_pos,
-        })
+    pub fn input(&self) -> Result<Typedesc, DecodeError> {
+        self.input.decode()
     }
 }
 
 impl StateDataDescription {
-    pub fn parse(self, proto: &ProtocolVersion)
-        -> Result<OutputTypedesc, DecodeError>
-    {
-        let ref mut typedesc_buf = Input::new(
-            proto.clone(),
-            self.typedesc,
-        );
-        let typedesc = OutputTypedesc::decode_with_id(
-            self.typedesc_id,
-            typedesc_buf,
-        )?;
-        Ok(typedesc)
+    pub fn parse(self) -> Result<Typedesc, DecodeError> {
+        self.typedesc.decode()
     }
 }
 
 impl ParameterStatus {
-    pub fn parse_system_config(self) -> Result<(OutputTypedesc, Bytes), DecodeError> {
+    pub fn parse_system_config(self) -> Result<(Typedesc, Bytes), DecodeError> {
         let ref mut cur = Input::new(
             self.proto.clone(),
             self.value,
@@ -319,7 +241,7 @@ impl ParameterStatus {
             typedesc_data,
         );
         let typedesc_id = Uuid::decode(typedesc_buf)?;
-        let typedesc = OutputTypedesc::decode_with_id(typedesc_id, typedesc_buf)?;
+        let typedesc = Typedesc::decode_with_id(typedesc_id, typedesc_buf)?;
         Ok((typedesc, data))
     }
 }
@@ -744,8 +666,8 @@ impl Encode for CommandComplete1 {
         }
         buf.put_u64(self.capabilities.bits());
         self.status_data.encode(buf)?;
-        self.state_typedesc_id.encode(buf)?;
-        self.state_data.encode(buf)?;
+        self.state.typedesc_id.encode(buf)?;
+        self.state.data.encode(buf)?;
         Ok(())
     }
 }
@@ -763,14 +685,15 @@ impl Decode for CommandComplete1 {
             Capabilities::from_bits_unchecked(buf.get_u64())
         };
         let status_data = Bytes::decode(buf)?;
-        let state_typedesc_id = Uuid::decode(buf)?;
-        let state_data = Bytes::decode(buf)?;
+        let state = State {
+            typedesc_id: Uuid::decode(buf)?,
+            data: Bytes::decode(buf)?,
+        };
         Ok(CommandComplete1 {
             annotations,
             capabilities,
             status_data,
-            state_typedesc_id,
-            state_data,
+            state,
         })
     }
 }
@@ -832,10 +755,10 @@ impl Encode for CommandDataDescription0 {
         }
         buf.reserve(41);
         buf.put_u8(self.result_cardinality as u8);
-        self.input_typedesc_id.encode(buf)?;
-        self.input_typedesc.encode(buf)?;
-        self.output_typedesc_id.encode(buf)?;
-        self.output_typedesc.encode(buf)?;
+        self.input.id.encode(buf)?;
+        self.input.data.encode(buf)?;
+        self.output.id.encode(buf)?;
+        self.output.data.encode(buf)?;
         Ok(())
     }
 }
@@ -851,19 +774,22 @@ impl Decode for CommandDataDescription0 {
         }
         ensure!(buf.remaining() >= 41, errors::Underflow);
         let result_cardinality = TryFrom::try_from(buf.get_u8())?;
-        let input_typedesc_id = Uuid::decode(buf)?;
-        let input_typedesc = Bytes::decode(buf)?;
-        let output_typedesc_id = Uuid::decode(buf)?;
-        let output_typedesc = Bytes::decode(buf)?;
+        let input = RawTypedesc {
+            proto: buf.proto().clone(),
+            id: Uuid::decode(buf)?,
+            data: Bytes::decode(buf)?,
+        };
+        let output = RawTypedesc {
+            proto: buf.proto().clone(),
+            id: Uuid::decode(buf)?,
+            data: Bytes::decode(buf)?,
+        };
 
         Ok(CommandDataDescription0 {
-            proto: buf.proto().clone(),
             headers,
             result_cardinality,
-            input_typedesc_id,
-            input_typedesc,
-            output_typedesc_id,
-            output_typedesc,
+            input,
+            output,
         })
     }
 }
@@ -884,10 +810,10 @@ impl Encode for CommandDataDescription1 {
         buf.reserve(49);
         buf.put_u64(self.capabilities.bits());
         buf.put_u8(self.result_cardinality as u8);
-        self.input_typedesc_id.encode(buf)?;
-        self.input_typedesc.encode(buf)?;
-        self.output_typedesc_id.encode(buf)?;
-        self.output_typedesc.encode(buf)?;
+        self.input.id.encode(buf)?;
+        self.input.data.encode(buf)?;
+        self.output.id.encode(buf)?;
+        self.output.data.encode(buf)?;
         Ok(())
     }
 }
@@ -907,20 +833,23 @@ impl Decode for CommandDataDescription1 {
             Capabilities::from_bits_unchecked(buf.get_u64())
         };
         let result_cardinality = TryFrom::try_from(buf.get_u8())?;
-        let input_typedesc_id = Uuid::decode(buf)?;
-        let input_typedesc = Bytes::decode(buf)?;
-        let output_typedesc_id = Uuid::decode(buf)?;
-        let output_typedesc = Bytes::decode(buf)?;
+        let input = RawTypedesc {
+            proto: buf.proto().clone(),
+            id: Uuid::decode(buf)?,
+            data: Bytes::decode(buf)?,
+        };
+        let output = RawTypedesc {
+            proto: buf.proto().clone(),
+            id: Uuid::decode(buf)?,
+            data: Bytes::decode(buf)?,
+        };
 
         Ok(CommandDataDescription1 {
-            proto: buf.proto().clone(),
             annotations,
             capabilities,
             result_cardinality,
-            input_typedesc_id,
-            input_typedesc,
-            output_typedesc_id,
-            output_typedesc,
+            input,
+            output,
         })
     }
 }
@@ -930,19 +859,21 @@ impl Encode for StateDataDescription {
         -> Result<(), EncodeError>
     {
         debug_assert!(buf.proto().is_1());
-        self.typedesc_id.encode(buf)?;
-        self.typedesc.encode(buf)?;
+        self.typedesc.id.encode(buf)?;
+        self.typedesc.data.encode(buf)?;
         Ok(())
     }
 }
 
 impl Decode for StateDataDescription {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
-        let typedesc_id = Uuid::decode(buf)?;
-        let typedesc = Bytes::decode(buf)?;
+        let typedesc = RawTypedesc {
+            proto: buf.proto().clone(),
+            id: Uuid::decode(buf)?,
+            data: Bytes::decode(buf)?,
+        };
 
         Ok(StateDataDescription {
-            typedesc_id,
             typedesc,
         })
     }
