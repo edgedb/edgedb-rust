@@ -13,8 +13,8 @@ commands:
     container: ubuntu
     run: |
       set -ex
-      cargo check --workspace --exclude=edgedb-tokio --exclude=globals-example
-      cargo check -p edgedb-tokio -p globals-example
+      cargo check --workspace --exclude=edgedb-tokio --exclude=globals-example --tests
+      cargo check -p edgedb-tokio -p globals-example --tests
 
   doc: !Command
     description: Build documentation
@@ -40,8 +40,8 @@ commands:
     container: ubuntu
     run: |
       set -ex
-      cargo test --workspace --exclude edgedb-tokio --all-features
-      cargo test -p edgedb-tokio --all-features
+      cargo test --workspace --exclude edgedb-tokio --exclude globals-example --all-features
+      cargo test -p edgedb-tokio -p globals-example --all-features
 
   test-all-types: !Command
     description: Run tests

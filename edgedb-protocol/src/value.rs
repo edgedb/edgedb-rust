@@ -1,5 +1,7 @@
 use std::iter::IntoIterator;
 
+use bytes::Bytes;
+
 use crate::codec::{NamedTupleShape, ObjectShape, EnumValue, ShapeElement};
 use crate::common::{Cardinality};
 use crate::model::{BigInt, Decimal, Uuid, ConfigMemory, Range};
@@ -11,7 +13,7 @@ pub enum Value {
     Nothing,
     Uuid(Uuid),
     Str(String),
-    Bytes(Vec<u8>),
+    Bytes(Bytes),
     Int16(i16),
     Int32(i32),
     Int64(i64),

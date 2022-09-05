@@ -1,21 +1,42 @@
+//! Connection state modification utilities
+
 use std::collections::{BTreeMap, HashMap};
 use std::default::Default;
 use std::sync::Arc;
 
 use arc_swap::ArcSwapOption;
 use edgedb_protocol::client_message::{State as Cache};
+use edgedb_protocol::descriptors::{RawTypedesc,StateBorrow};
 use edgedb_protocol::query_arg::QueryArg;
 use edgedb_protocol::value::Value;
-use edgedb_protocol::descriptors::RawTypedesc;
 
 use crate::errors::{ProtocolEncodingError, Error, ErrorKind};
 
+/// Unset a set of global or config variables
+///
+/// Accepts an iterator of names. Used with globals lie this:
+///
+/// ```rust,ingore
+/// conn.with_globals(Unset(["xxx", "yyy"]))
+/// ```
+#[derive(Debug)]
 pub struct Unset<I>(pub I);
+
+/// Use a closure to set or unset global or config variables
+///
+/// ```rust,ingore
+/// conn.with_globals(Fn(|m| {
+///     m.set("x", "x_value");
+///     m.unset("y");
+/// }));
+/// ```
+#[derive(Debug)]
 pub struct Fn<F: FnOnce(&'_ mut VariablesModifier<'_>)>(pub F);
 
 
 // TODO(tailhook) this is probably only public for wasm, figure out!
 #[derive(Debug)]
+#[doc(hidden)]
 pub struct State {
     raw_state: RawState,
     cache: ArcSwapOption<Cache>,
@@ -39,6 +60,9 @@ struct CommonState {
     config: BTreeMap<String, Value>,
 }
 
+/// Utility object used to modify globals and config variables
+///
+/// This object is passed to [`Fn`] closure and [`VariablesDelta::apply`].
 #[derive(Debug)]
 pub struct VariablesModifier<'a> {
     data: &'a mut BTreeMap<String, Value>,
@@ -46,20 +70,50 @@ pub struct VariablesModifier<'a> {
     aliases: &'a BTreeMap<String, String>,
 }
 
+/// Utility object used to modify aliases
+///
+/// This object is passed to [`AliasesDelta::apply`] to do the actual
+/// modification
 #[derive(Debug)]
 pub struct AliasesModifier<'a> {
     data: &'a mut BTreeMap<String, String>,
 }
 
+/// Trait that modifies global or config variables
 pub trait VariablesDelta {
+    /// Applies variables delta using specified modifier object
     fn apply(self, man: &mut VariablesModifier<'_>);
 }
 
+/// Trait that modifies module aliases
 pub trait AliasesDelta {
+    /// Applies variables delta using specified modifier object
     fn apply(self, man: &mut AliasesModifier);
 }
 
 impl VariablesModifier<'_> {
+    /// Set variable to a value
+    ///
+    /// For globals: if `key` doesn't contain module name (`::` to be more
+    /// specific) then the variable name is resolved using current module.
+    /// Otherwise, modules are resolved using aliases if any. Note: modules are
+    /// resolved at method call time. This means that a sequence like this:
+    /// ```rust,ignore
+    /// conn
+    ///     .with_globals(Fn(|m| m.set("var1", "value1")))
+    ///     .with_default_module("another_module")
+    ///     .with_globals(Fn(|m| m.set("var1", "value2")))
+    /// ```
+    /// Will set `var1` in `default` and in `another_module` to different
+    /// values.
+    ///
+    /// # Panics
+    ///
+    /// This methods panics if `value` cannot be converted into dynamically
+    /// typed `Value` (`QueryArg::to_value()` method returns error). To avoid
+    /// this panic use either native EdgeDB types (e.g.
+    /// `edgedb_protocol::model::Datetime` instead of `std::time::SystemTime`
+    /// or call `to_value` manually before passing to `set`.
     pub fn set<T: QueryArg>(&mut self, key: &str, value: T) {
         let value = value.to_value().expect("global can be encoded");
         if let Some(ns_off) = key.rfind("::") {
@@ -75,6 +129,15 @@ impl VariablesModifier<'_> {
             self.data.insert(format!("{}::{}", self.module, key), value);
         }
     }
+    /// Unset the variable
+    ///
+    /// In most cases this will effectively set the variable to a default
+    /// value.
+    ///
+    /// To set variable to the actual empty value use `set("name",
+    /// Value::Nothing)`.
+    ///
+    /// Note: same namespacing rules like for `set` are applied here.
     pub fn unset(&mut self, key: &str) {
         if let Some(ns_off) = key.rfind("::") {
             if let Some(alias) = self.aliases.get(&key[..ns_off]) {
@@ -90,9 +153,11 @@ impl VariablesModifier<'_> {
 }
 
 impl AliasesModifier<'_> {
+    /// Set a module alias
     pub fn set(&mut self, key: &str, value: &str) {
         self.data.insert(key.into(), value.into());
     }
+    /// Unsed a module alias
     pub fn unset(&mut self, key: &str) {
         self.data.remove(key);
     }
@@ -217,10 +282,14 @@ impl State {
                 return Ok((**cache).clone());
             }
         }
-        // TODO(tailhook) network data can break this expectation
         let typedesc = desc.decode()
             .map_err(ProtocolEncodingError::with_source)?;
-        todo!();
+        return typedesc.serialize_state(&StateBorrow {
+            module: &self.raw_state.common.module,
+            aliases: &self.raw_state.common.aliases,
+            config: &self.raw_state.common.config,
+            globals: &self.raw_state.globals,
+        });
     }
 }
 

@@ -1,4 +1,4 @@
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use std::sync::Arc;
 
 use bytes::{BytesMut, BufMut};
@@ -8,7 +8,7 @@ use uuid::Uuid;
 use edgedb_errors::{Error, ErrorKind};
 use edgedb_errors::{ClientEncodingError, ProtocolError, DescriptorMismatch};
 
-use crate::codec::{Codec, build_codec};
+use crate::codec::{self, Codec, build_codec};
 use crate::descriptors::Descriptor;
 use crate::descriptors::TypePos;
 use crate::errors;
@@ -17,8 +17,8 @@ use crate::value::Value;
 
 
 pub struct Encoder<'a> {
-    pub(crate) ctx: &'a DescriptorContext<'a>,
-    pub(crate) buf: &'a mut BytesMut,
+    pub ctx: &'a DescriptorContext<'a>,
+    pub buf: &'a mut BytesMut,
 }
 
 /// A single argument for a query.
@@ -60,6 +60,24 @@ impl<'a> Encoder<'a> {
         -> Encoder<'a>
     {
         Encoder { ctx, buf }
+    }
+    pub fn length_prefixed(&mut self,
+        f: impl FnOnce(&mut Encoder) -> Result<(), Error>)
+        -> Result<(), Error>
+    {
+        self.buf.reserve(4);
+        let pos = self.buf.len();
+        self.buf.put_u32(0);  // replaced after serializing a value
+                         //
+        f(self)?;
+
+        let len = self.buf.len()-pos-4;
+        self.buf[pos..pos+4].copy_from_slice(&u32::try_from(len)
+                .map_err(|_| ClientEncodingError::with_message(
+                        "alias is too long"))?
+                .to_be_bytes());
+
+        Ok(())
     }
 }
 
@@ -141,18 +159,96 @@ impl QueryArg for Value {
     fn encode_slot(&self, enc: &mut Encoder)
         -> Result<(), Error>
     {
-        if self == &Value::Nothing {
-            enc.buf.reserve(4);
-            enc.buf.put_i32(-1);
-            Ok(())
-        } else {
-            todo!();
+        use Value::*;
+        match self {
+            Nothing => {
+                enc.buf.reserve(4);
+                enc.buf.put_i32(-1);
+            }
+            Uuid(v) => v.encode_slot(enc)?,
+            Str(v) => v.encode_slot(enc)?,
+            Bytes(v) => v.encode_slot(enc)?,
+            Int16(v) => v.encode_slot(enc)?,
+            Int32(v) => v.encode_slot(enc)?,
+            Int64(v) => v.encode_slot(enc)?,
+            Float32(v) => v.encode_slot(enc)?,
+            Float64(v) => v.encode_slot(enc)?,
+            BigInt(v) => v.encode_slot(enc)?,
+            ConfigMemory(v) => v.encode_slot(enc)?,
+            Decimal(v) => v.encode_slot(enc)?,
+            Bool(v) => v.encode_slot(enc)?,
+            Datetime(v) => v.encode_slot(enc)?,
+            LocalDatetime(v) => v.encode_slot(enc)?,
+            LocalDate(v) => v.encode_slot(enc)?,
+            LocalTime(v) => v.encode_slot(enc)?,
+            Duration(v) => v.encode_slot(enc)?,
+            RelativeDuration(v) => v.encode_slot(enc)?,
+            DateDuration(v) => v.encode_slot(enc)?,
+            Json(v) => v.encode_slot(enc)?,
+            Set(_) => return Err(ClientEncodingError::with_message(
+                    "set cannot be query argument")),
+            Object {..} => return Err(ClientEncodingError::with_message(
+                    "object cannot be query argument")),
+            SparseObject(_) => return Err(ClientEncodingError::with_message(
+                    "sparse object cannot be query argument")),
+            Tuple(_) => return Err(ClientEncodingError::with_message(
+                    "tuple object cannot be query argument")),
+            NamedTuple {..} => return Err(ClientEncodingError::with_message(
+                    "named tuple object cannot be query argument")),
+            Array(v) => v.encode_slot(enc)?,
+            Enum(_) => todo!(), //v.encode_slot(enc)?,
+            Range(_) => todo!(), //v.encode_slot(enc)?,
         }
+
+        Ok(())
     }
     fn check_descriptor(&self, ctx: &DescriptorContext, pos: TypePos)
         -> Result<(), Error>
     {
-        todo!();
+        use Descriptor::*;
+        use Value::*;
+        let mut desc = ctx.get(pos)?;
+        if let Scalar(d) = desc {
+            desc = ctx.get(d.base_type_pos)?;
+        }
+        match (desc, self) {
+            (_, Nothing) => Ok(()),  // any descriptor works
+            (Scalar(_), _) => {
+                unreachable!("scalar dereference to a non-base type");
+            }
+            (BaseScalar(d), Uuid(_)) if d.id == codec::STD_UUID => Ok(()),
+            (BaseScalar(d), Str(_)) if d.id == codec::STD_STR => Ok(()),
+            (BaseScalar(d), Bytes(_)) if d.id == codec::STD_BYTES => Ok(()),
+            (BaseScalar(d), Int16(_)) if d.id == codec::STD_INT16 => Ok(()),
+            (BaseScalar(d), Int32(_)) if d.id == codec::STD_INT32 => Ok(()),
+            (BaseScalar(d), Int64(_)) if d.id == codec::STD_INT64 => Ok(()),
+            (BaseScalar(d), Float32(_)) if d.id == codec::STD_FLOAT32 => Ok(()),
+            (BaseScalar(d), Float64(_)) if d.id == codec::STD_FLOAT64 => Ok(()),
+            (BaseScalar(d), BigInt(_)) if d.id == codec::STD_BIGINT => Ok(()),
+            (BaseScalar(d), ConfigMemory(_))
+                if d.id == codec::CFG_MEMORY => Ok(()),
+            (BaseScalar(d), Decimal(_))
+                if d.id == codec::STD_DECIMAL => Ok(()),
+            (BaseScalar(d), Bool(_)) if d.id == codec::STD_BOOL => Ok(()),
+            (BaseScalar(d), Datetime(_))
+                if d.id == codec::STD_DATETIME => Ok(()),
+            (BaseScalar(d), LocalDatetime(_))
+                if d.id == codec::CAL_LOCAL_DATETIME => Ok(()),
+            (BaseScalar(d), LocalDate(_))
+                if d.id == codec::CAL_LOCAL_DATE => Ok(()),
+            (BaseScalar(d), LocalTime(_))
+                if d.id == codec::CAL_LOCAL_TIME => Ok(()),
+            (BaseScalar(d), Duration(_))
+                if d.id == codec::STD_DURATION => Ok(()),
+            (BaseScalar(d), RelativeDuration(_))
+                if d.id == codec::CAL_RELATIVE_DURATION => Ok(()),
+            (BaseScalar(d), DateDuration(_))
+                if d.id == codec::CAL_DATE_DURATION => Ok(()),
+            (BaseScalar(d), Json(_))
+                if d.id == codec::STD_JSON => Ok(()),
+            // TODO(tailhook) all types
+            (desc, _) => Err(ctx.wrong_type(desc, self.kind())),
+        }
     }
     fn to_value(&self) -> Result<Value, Error>
     {
@@ -215,6 +311,92 @@ impl<T: ScalarArg> QueryArg for Option<T> {
         }
     }
 }
+
+impl<T: ScalarArg> QueryArg for Vec<T> {
+    fn encode_slot(&self, enc: &mut Encoder) -> Result<(), Error> {
+        enc.buf.reserve(8);
+        enc.length_prefixed(|enc| {
+            if self.is_empty() {
+                enc.buf.reserve(12);
+                enc.buf.put_u32(0);  // ndims
+                enc.buf.put_u32(0);  // reserved0
+                enc.buf.put_u32(0);  // reserved1
+                return Ok(());
+            }
+            enc.buf.reserve(20);
+            enc.buf.put_u32(1);  // ndims
+            enc.buf.put_u32(0);  // reserved0
+            enc.buf.put_u32(0);  // reserved1
+            enc.buf.put_u32(self.len().try_into()
+                .map_err(|_| ClientEncodingError::with_message(
+                        "array is too long"))?);
+            enc.buf.put_u32(1);  // lower
+            for item in self {
+                enc.length_prefixed(|enc| item.encode(enc))?;
+            }
+            Ok(())
+        })
+    }
+    fn check_descriptor(&self, ctx: &DescriptorContext, pos: TypePos)
+        -> Result<(), Error>
+    {
+        let desc = ctx.get(pos)?;
+        if let Descriptor::Array(arr) = desc {
+            T::check_descriptor(ctx, arr.type_pos)
+        } else {
+            Err(ctx.wrong_type(desc, "array"))
+        }
+    }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::Array(self.iter().map(|v| v.to_value())
+                        .collect::<Result<_, _>>()?))
+    }
+}
+
+impl QueryArg for Vec<Value> {
+    fn encode_slot(&self, enc: &mut Encoder) -> Result<(), Error> {
+        enc.buf.reserve(8);
+        enc.length_prefixed(|enc| {
+            if self.is_empty() {
+                enc.buf.reserve(12);
+                enc.buf.put_u32(0);  // ndims
+                enc.buf.put_u32(0);  // reserved0
+                enc.buf.put_u32(0);  // reserved1
+                return Ok(());
+            }
+            enc.buf.reserve(20);
+            enc.buf.put_u32(1);  // ndims
+            enc.buf.put_u32(0);  // reserved0
+            enc.buf.put_u32(0);  // reserved1
+            enc.buf.put_u32(self.len().try_into()
+                .map_err(|_| ClientEncodingError::with_message(
+                        "array is too long"))?);
+            enc.buf.put_u32(1);  // lower
+            for item in self {
+                enc.length_prefixed(|enc| item.encode(enc))?;
+            }
+            Ok(())
+        })
+    }
+    fn check_descriptor(&self, ctx: &DescriptorContext, pos: TypePos)
+        -> Result<(), Error>
+    {
+        let desc = ctx.get(pos)?;
+        if let Descriptor::Array(arr) = desc {
+            for val in self {
+                val.check_descriptor(ctx, arr.type_pos)?
+            }
+            Ok(())
+        } else {
+            Err(ctx.wrong_type(desc, "array"))
+        }
+    }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::Array(self.iter().map(|v| v.to_value())
+                        .collect::<Result<_, _>>()?))
+    }
+}
+
 
 macro_rules! implement_tuple {
     ( $count:expr, $($name:ident,)+ ) => {

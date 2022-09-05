@@ -126,9 +126,10 @@ fn bytes() {
     encoding_eq!(&b"hello"[..], b"hello");
     encoding_eq!(&b""[..], b"");
     encoding_eq!(&b"\x00\x01\x02\x03\x81"[..], b"\x00\x01\x02\x03\x81");
-    encoding_eq!(b"hello".to_vec(), b"hello");
-    encoding_eq!(b"".to_vec(), b"");
-    encoding_eq!(b"\x00\x01\x02\x03\x81".to_vec(), b"\x00\x01\x02\x03\x81");
+    encoding_eq!(Bytes::copy_from_slice(b"hello"), b"hello");
+    encoding_eq!(Bytes::new(), b"");
+    encoding_eq!(Bytes::copy_from_slice(b"\x00\x01\x02\x03\x81"),
+                 b"\x00\x01\x02\x03\x81");
 }
 
 #[test]

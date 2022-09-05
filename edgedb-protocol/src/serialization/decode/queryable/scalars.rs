@@ -6,6 +6,7 @@ use crate::codec;
 use crate::descriptors::TypePos;
 use crate::model::{Duration, LocalDate, LocalTime, LocalDatetime, Datetime};
 use crate::model::{Json, Uuid, BigInt, Decimal, RelativeDuration};
+use crate::model::{ConfigMemory, DateDuration};
 use crate::serialization::decode::RawCodec;
 use std::time::SystemTime;
 
@@ -148,4 +149,14 @@ impl DecodeScalar for SystemTime {
 impl DecodeScalar for Datetime {
     fn uuid() -> Uuid { codec::STD_DATETIME }
     fn typename() -> &'static str { "std::datetime" }
+}
+
+impl DecodeScalar for ConfigMemory {
+    fn uuid() -> Uuid { codec::CFG_MEMORY }
+    fn typename() -> &'static str { "cfg::memory" }
+}
+
+impl DecodeScalar for DateDuration {
+    fn uuid() -> Uuid { codec::CAL_DATE_DURATION }
+    fn typename() -> &'static str { "cal::date_duration" }
 }

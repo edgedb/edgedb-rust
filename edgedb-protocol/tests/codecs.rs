@@ -203,10 +203,10 @@ fn bytes() -> Result<(), Box<dyn Error>> {
             })
         ]
     )?;
-    encoding_eq!(&codec, b"hello", Value::Bytes(b"hello".to_vec()));
-    encoding_eq!(&codec, b"", Value::Bytes(b"".to_vec()));
+    encoding_eq!(&codec, b"hello", Value::Bytes(b"hello"[..].into()));
+    encoding_eq!(&codec, b"", Value::Bytes(b""[..].into()));
     encoding_eq!(&codec, b"\x00\x01\x02\x03\x81",
-        Value::Bytes(b"\x00\x01\x02\x03\x81".to_vec()));
+        Value::Bytes(b"\x00\x01\x02\x03\x81"[..].into()));
     Ok(())
 }
 

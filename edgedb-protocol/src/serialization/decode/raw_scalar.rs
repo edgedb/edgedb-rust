@@ -3,7 +3,7 @@ use std::mem::size_of;
 use std::str;
 use std::time::SystemTime;
 
-use bytes::{Buf, BufMut};
+use bytes::{Bytes, Buf, BufMut};
 use edgedb_errors::{Error, ErrorKind, ClientEncodingError};
 use snafu::{ResultExt, ensure};
 
@@ -341,17 +341,17 @@ impl ScalarArg for &'_ [u8] {
         check_scalar(ctx, pos, codec::STD_BYTES, "std::bytes")
     }
     fn to_value(&self) -> Result<Value, Error> {
-        Ok(Value::Bytes(self.to_vec()))
+        Ok(Value::Bytes(Bytes::copy_from_slice(self)))
     }
 }
 
-impl<'t> RawCodec<'t> for Vec<u8> {
+impl<'t> RawCodec<'t> for Bytes {
     fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
-        Ok(buf.to_owned())
+        Ok(Bytes::copy_from_slice(buf))
     }
 }
 
-impl ScalarArg for Vec<u8> {
+impl ScalarArg for Bytes {
     fn encode(&self, encoder: &mut Encoder)
         -> Result<(), Error>
     {
@@ -365,6 +365,24 @@ impl ScalarArg for Vec<u8> {
     }
     fn to_value(&self) -> Result<Value, Error> {
         Ok(Value::Bytes(self.clone()))
+    }
+}
+
+impl ScalarArg for ConfigMemory {
+    fn encode(&self, encoder: &mut Encoder)
+        -> Result<(), Error>
+    {
+        encoder.buf.reserve(8);
+        encoder.buf.put_i64(self.0);
+        Ok(())
+    }
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
+        -> Result<(), Error>
+    {
+        check_scalar(ctx, pos, Self::uuid(), Self::typename())
+    }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::ConfigMemory(self.clone()))
     }
 }
 
@@ -699,6 +717,23 @@ impl<'t> RawCodec<'t> for LocalTime {
         let micros = i64::decode(buf)?;
         ensure!(micros >= 0 && micros < 86_400 * 1_000_000, errors::InvalidDate);
         Ok(LocalTime { micros: micros as u64 })
+    }
+}
+
+impl ScalarArg for DateDuration {
+    fn encode(&self, encoder: &mut Encoder)
+        -> Result<(), Error>
+    {
+        codec::encode_date_duration(encoder.buf, self)
+            .map_err(|e| ClientEncodingError::with_source(e))
+    }
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
+        -> Result<(), Error>
+    {
+        check_scalar(ctx, pos, Self::uuid(), Self::typename())
+    }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::DateDuration(self.clone()))
     }
 }
 
