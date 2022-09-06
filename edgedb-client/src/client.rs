@@ -23,14 +23,13 @@ use edgedb_protocol::client_message::{Execute0, Execute1, ExecuteScript};
 use edgedb_protocol::client_message::{Prepare, Parse, IoFormat, Cardinality};
 use edgedb_protocol::server_message::{RawTypedesc};
 use edgedb_protocol::descriptors::Typedesc;
-use edgedb_protocol::encoding::{Input, Output};
+use edgedb_protocol::encoding::Output;
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::model::Uuid;
 use edgedb_protocol::query_arg::{QueryArgs, Encoder};
 use edgedb_protocol::queryable::{Queryable};
 use edgedb_protocol::server_message::{ServerMessage, TransactionState};
 use edgedb_protocol::server_message::{StateDataDescription, CommandComplete1};
-use edgedb_protocol::value::Value;
 
 use crate::debug::PartialDebug;
 use crate::errors::{ClientConnectionError, ProtocolError};

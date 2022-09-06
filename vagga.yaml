@@ -189,7 +189,7 @@ containers:
       CARGO_HOME: /work/target
       RUST_BACKTRACE: 1
       PYTHON_SYS_EXECUTABLE: /usr/bin/python3.8
-      EDGEDB_MAJOR_VERSION: 1
+      EDGEDB_MAJOR_VERSION: 2
       # needed for musl build
       PATH: /musl/bin:/usr/local/bin:/usr/bin:/bin
       LD_LIBRARY_PATH: /musl/lib/rustlib/x86_64-unknown-linux-musl/lib

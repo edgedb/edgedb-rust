@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::codec::{Codec, build_codec};
 use crate::common::{Cardinality, State};
 use crate::encoding::{Decode, Input};
-use crate::errors::InvalidTypeDescriptor;
+use crate::errors::{InvalidTypeDescriptor, UnexpectedTypePos};
 use crate::errors::{self, DecodeError, CodecError};
 use crate::features::ProtocolVersion;
 use crate::query_arg::{self, QueryArg, Encoder};
@@ -149,6 +149,10 @@ impl Typedesc {
     pub fn build_codec(&self) -> Result<Arc<dyn Codec>, CodecError> {
         build_codec(self.root_pos(), self.descriptors())
     }
+    pub fn get(&self, type_pos: TypePos) -> Result<&Descriptor, CodecError> {
+        self.array.get(type_pos.0 as usize)
+            .context(UnexpectedTypePos { position: type_pos.0 })
+    }
     pub fn is_empty_tuple(&self) -> bool {
         match self.root() {
             Some(Descriptor::Tuple(t))
@@ -156,7 +160,7 @@ impl Typedesc {
             _ => false,
         }
     }
-    fn root(&self) -> Option<&Descriptor> {
+    pub fn root(&self) -> Option<&Descriptor> {
         self.root_pos.and_then(|pos| self.array.get(pos.0 as usize))
     }
     pub(crate) fn decode_with_id(root_id: Uuid, buf: &mut Input)
@@ -321,6 +325,9 @@ impl Typedesc {
             typedesc_id: self.root_id.clone(),
             data,
         })
+    }
+    pub fn proto(&self) -> &ProtocolVersion {
+        &self.proto
     }
 }
 

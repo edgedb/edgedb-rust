@@ -16,7 +16,9 @@ use crate::errors::{ProtocolEncodingError, Error, ErrorKind};
 ///
 /// Accepts an iterator of names. Used with globals lie this:
 ///
-/// ```rust,ingore
+/// ```rust,no-run
+/// # use edgedb_tokio::state::Unset;
+/// # let conn = edgedb_tokio::create_client();
 /// conn.with_globals(Unset(["xxx", "yyy"]))
 /// ```
 #[derive(Debug)]
@@ -24,7 +26,9 @@ pub struct Unset<I>(pub I);
 
 /// Use a closure to set or unset global or config variables
 ///
-/// ```rust,ingore
+/// ```rust,no-run
+/// # use edgedb_tokio::state::Fn;
+/// # let conn = edgedb_tokio::create_client();
 /// conn.with_globals(Fn(|m| {
 ///     m.set("x", "x_value");
 ///     m.unset("y");
