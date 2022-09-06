@@ -18,8 +18,8 @@ use crate::errors::{ProtocolEncodingError, Error, ErrorKind};
 ///
 /// ```rust,no-run
 /// # use edgedb_tokio::state::Unset;
-/// # let conn = edgedb_tokio::create_client();
-/// conn.with_globals(Unset(["xxx", "yyy"]))
+/// # let conn = edgedb_tokio::create_client().await.unwrap();
+/// let conn = conn.with_globals(Unset(["xxx", "yyy"]));
 /// ```
 #[derive(Debug)]
 pub struct Unset<I>(pub I);
@@ -28,8 +28,8 @@ pub struct Unset<I>(pub I);
 ///
 /// ```rust,no-run
 /// # use edgedb_tokio::state::Fn;
-/// # let conn = edgedb_tokio::create_client();
-/// conn.with_globals(Fn(|m| {
+/// # let conn = edgedb_tokio::create_client().await.unwrap();
+/// let conn = conn.with_globals(Fn(|m| {
 ///     m.set("x", "x_value");
 ///     m.unset("y");
 /// }));
@@ -103,10 +103,12 @@ impl VariablesModifier<'_> {
     /// Otherwise, modules are resolved using aliases if any. Note: modules are
     /// resolved at method call time. This means that a sequence like this:
     /// ```rust,ignore
-    /// conn
+    /// # use edgedb_tokio::state::Fn;
+    /// # let conn = edgedb_tokio::create_client().await.unwrap();
+    /// let conn = conn
     ///     .with_globals(Fn(|m| m.set("var1", "value1")))
     ///     .with_default_module("another_module")
-    ///     .with_globals(Fn(|m| m.set("var1", "value2")))
+    ///     .with_globals(Fn(|m| m.set("var1", "value2")));
     /// ```
     /// Will set `var1` in `default` and in `another_module` to different
     /// values.
