@@ -137,13 +137,9 @@ pub struct StateBorrow<'a> {
 }
 
 impl Typedesc {
-    pub fn decode(raw: &RawTypedesc, proto: &ProtocolVersion)
-        -> Result<Self, DecodeError>
-    {
-        let ref mut cur = Input::new(proto.clone(), raw.data.clone());
-        Typedesc::decode_with_id(raw.id.clone(), cur)
+    pub fn id(&self) -> &Uuid {
+        &self.root_id
     }
-
     pub fn descriptors(&self) -> &[Descriptor] {
         &self.array
     }
@@ -153,7 +149,16 @@ impl Typedesc {
     pub fn build_codec(&self) -> Result<Arc<dyn Codec>, CodecError> {
         build_codec(self.root_pos(), self.descriptors())
     }
-
+    pub fn is_empty_tuple(&self) -> bool {
+        match self.root() {
+            Some(Descriptor::Tuple(t))
+              => t.id == Uuid::from_u128(0xFF) && t.element_types.is_empty(),
+            _ => false,
+        }
+    }
+    fn root(&self) -> Option<&Descriptor> {
+        self.root_pos.and_then(|pos| self.array.get(pos.0 as usize))
+    }
     pub(crate) fn decode_with_id(root_id: Uuid, buf: &mut Input)
         -> Result<Self, DecodeError>
     {
