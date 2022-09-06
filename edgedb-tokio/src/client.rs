@@ -452,7 +452,9 @@ impl Client {
     ///
     /// Both ``self`` and returned client can be used after, but when using
     /// them transaction options applied will be different.
-    pub fn with_default_module(&self, module: Option<String>) -> Self {
-        self.with_state(|s| s.with_default_module(module))
+    pub fn with_default_module(&self, module: Option<impl Into<String>>)
+        -> Self
+    {
+        self.with_state(|s| s.with_default_module(module.map(|m| m.into())))
     }
 }
