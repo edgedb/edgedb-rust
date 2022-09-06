@@ -22,17 +22,17 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --workspace --exclude edgedb-tokio --all-features
+          args: --workspace --exclude edgedb-tokio --exclude globals-example --all-features
       - name: Test edgedb-tokio
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --package edgedb-tokio --all-features
+          args: --package edgedb-tokio --package globals-example --all-features
       - name: Check no default features (no tokio)
         uses: actions-rs/cargo@v1
         with:
           command: check
-          args: --no-default-features --workspace --exclude edgedb-tokio
+          args: --no-default-features --workspace --exclude edgedb-tokio --exclude globals-example
       - name: Check no default features tokio
         uses: actions-rs/cargo@v1
         with:
@@ -52,7 +52,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: check
-          args: --all-features --workspace --exclude edgedb-tokio
+          args: --all-features --workspace --exclude edgedb-tokio --exclude globals-example
       - name: Check all features
         uses: actions-rs/cargo@v1
         with:
