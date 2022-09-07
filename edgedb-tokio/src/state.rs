@@ -30,11 +30,11 @@ pub struct Unset<I>(pub I);
 /// Use a closure to set or unset global or config variables
 ///
 /// ```rust,no_run
-/// # use edgedb_tokio::state::Fn;
+/// # use edgedb_tokio::state::{Fn, GlobalsModifier};
 /// # #[tokio::main]
 /// # async fn main() {
 /// # let conn = edgedb_tokio::create_client().await.unwrap();
-/// let conn = conn.with_globals(Fn(|m| {
+/// let conn = conn.with_globals(Fn(|m: &mut GlobalsModifier| {
 ///     m.set("x", "x_value");
 ///     m.unset("y");
 /// }));
@@ -128,9 +128,9 @@ impl GlobalsModifier<'_> {
     /// # async fn main() {
     /// # let conn = edgedb_tokio::create_client().await.unwrap();
     /// let conn = conn
-    ///     .with_globals(Fn(|m| m.set("var1", "value1")))
+    ///     .with_globals_fn(|m| m.set("var1", "value1"))
     ///     .with_default_module(Some("another_module"))
-    ///     .with_globals(Fn(|m| m.set("var1", "value2")));
+    ///     .with_globals_fn(|m| m.set("var1", "value2"));
     /// # }
     /// ```
     /// Will set `var1` in `default` and in `another_module` to different
