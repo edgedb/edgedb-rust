@@ -9,3 +9,6 @@ mod client;
 
 #[cfg(not(windows))]
 mod transactions;
+
+#[cfg(not(windows))]
+mod globals;
