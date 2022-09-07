@@ -332,6 +332,12 @@ impl Client {
     /// but also executing the whole function, so the transaction code must be
     /// prepared to be idempotent.
     ///
+    /// # Returning custom errors
+    ///
+    /// See [this example](https://github.com/edgedb/edgedb-rust/blob/master/edgedb-tokio/examples/transaction_errors.rs)
+    /// and [the documentation of the `edgedb_errors` crate](https://docs.rs/edgedb-errors/latest/edgedb_errors/)
+    /// for how to return custom error types.
+    ///
     /// # Panics
     ///
     /// Function panics when transaction object passed to the closure is not
