@@ -426,7 +426,7 @@ impl Client {
 
     /// Returns the client with the specified global variables set
     ///
-    /// Most commonly used with `#[derive(Globals)]`.
+    /// Most commonly used with `#[derive(GlobalsDelta)]`.
     ///
     /// Note: this method is incremental, i.e. it adds (or removes) globals
     /// instead of setting a definite set of variables. Use
@@ -514,7 +514,7 @@ impl Client {
 
     /// Returns the client with the specified config
     ///
-    /// Most commonly used with `#[derive(Config)]`.
+    /// Most commonly used with `#[derive(ConfigDelta)]`.
     ///
     /// This method returns a "shallow copy" of the current client
     /// with modified global variables

@@ -1,6 +1,6 @@
-use edgedb_derive::Globals;
+use edgedb_derive::GlobalsDelta;
 
-#[derive(Globals)]
+#[derive(GlobalsDelta)]
 struct Globals<'a> {
     str_global: &'a str,
 }
