@@ -15,7 +15,8 @@ use crate::errors::{ProtocolEncodingError, NoResultExpected, NoDataError};
 use crate::transaction::{Transaction, transaction};
 use crate::options::{TransactionOptions, RetryOptions};
 use crate::raw::Options;
-use crate::state::{AliasesDelta, VariablesDelta, State};
+use crate::state::{AliasesDelta, GlobalsDelta, ConfigDelta, State};
+use crate::state::{AliasesModifier, GlobalsModifier, ConfigModifier, Fn};
 
 /// EdgeDB Client
 ///
@@ -425,13 +426,35 @@ impl Client {
 
     /// Returns the client with the specified global variables set
     ///
+    /// Most commonly used with `#[derive(Globals)]`.
+    ///
+    /// Note: this method is incremental, i.e. it adds (or removes) globals
+    /// instead of setting a definite set of variables. Use
+    /// `.with_globals(Unset(["name1", "name2"]))` to unset some variables.
+    ///
     /// This method returns a "shallow copy" of the current client
     /// with modified global variables
     ///
     /// Both ``self`` and returned client can be used after, but when using
     /// them transaction options applied will be different.
-    pub fn with_globals(&self, globals: impl VariablesDelta) -> Self {
+    pub fn with_globals(&self, globals: impl GlobalsDelta) -> Self {
         self.with_state(|s| s.with_globals(globals))
+    }
+
+    /// Returns the client with the specified global variables set
+    ///
+    /// This method returns a "shallow copy" of the current client
+    /// with modified global variables
+    ///
+    /// Both ``self`` and returned client can be used after, but when using
+    /// them transaction options applied will be different.
+    ///
+    /// This is equivalent to `.with_globals(Fn(f))` but more ergonomic as it
+    /// allows type inference for lambda.
+    pub fn with_globals_fn(&self, f: impl FnOnce(&mut GlobalsModifier))
+        -> Self
+    {
+        self.with_state(|s| s.with_globals(Fn(f)))
     }
 
     /// Returns the client with the specified aliases set
@@ -445,6 +468,22 @@ impl Client {
         self.with_state(|s| s.with_aliases(aliases))
     }
 
+    /// Returns the client with the specified aliases set
+    ///
+    /// This method returns a "shallow copy" of the current client
+    /// with modified aliases.
+    ///
+    /// Both ``self`` and returned client can be used after, but when using
+    /// them transaction options applied will be different.
+    ///
+    /// This is equivalent to `.with_aliases(Fn(f))` but more ergonomic as it
+    /// allows type inference for lambda.
+    pub fn with_aliases_fn(&self, f: impl FnOnce(&mut AliasesModifier))
+        -> Self
+    {
+        self.with_state(|s| s.with_aliases(Fn(f)))
+    }
+
     /// Returns the client with the default module set or unset
     ///
     /// This method returns a "shallow copy" of the current client
@@ -456,5 +495,38 @@ impl Client {
         -> Self
     {
         self.with_state(|s| s.with_default_module(module.map(|m| m.into())))
+    }
+
+    /// Returns the client with the specified config
+    ///
+    /// Note: this method is incremental, i.e. it adds (or removes) individual
+    /// settings instead of setting a definite configuration. Use
+    /// `.with_config(Unset(["name1", "name2"]))` to unset some settings.
+    ///
+    /// This method returns a "shallow copy" of the current client
+    /// with modified global variables
+    ///
+    /// Both ``self`` and returned client can be used after, but when using
+    /// them transaction options applied will be different.
+    pub fn with_config(&self, cfg: impl ConfigDelta) -> Self {
+        self.with_state(|s| s.with_config(cfg))
+    }
+
+    /// Returns the client with the specified config
+    ///
+    /// Most commonly used with `#[derive(Config)]`.
+    ///
+    /// This method returns a "shallow copy" of the current client
+    /// with modified global variables
+    ///
+    /// Both ``self`` and returned client can be used after, but when using
+    /// them transaction options applied will be different.
+    ///
+    /// This is equivalent to `.with_config(Fn(f))` but more ergonomic as it
+    /// allows type inference for lambda.
+    pub fn with_config_fn(&self, f: impl FnOnce(&mut ConfigModifier))
+        -> Self
+    {
+        self.with_state(|s| s.with_config(Fn(f)))
     }
 }

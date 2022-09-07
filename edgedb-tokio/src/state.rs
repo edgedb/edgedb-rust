@@ -41,7 +41,7 @@ pub struct Unset<I>(pub I);
 /// # }
 /// ```
 #[derive(Debug)]
-pub struct Fn<F: FnOnce(&'_ mut VariablesModifier<'_>)>(pub F);
+pub struct Fn<F>(pub F);
 
 
 // TODO(tailhook) this is probably only public for wasm, figure out!
@@ -70,14 +70,22 @@ struct CommonState {
     config: BTreeMap<String, Value>,
 }
 
-/// Utility object used to modify globals and config variables
+/// Utility object used to modify globals
 ///
-/// This object is passed to [`Fn`] closure and [`VariablesDelta::apply`].
+/// This object is passed to [`Fn`] closure and [`GlobalsDelta::apply`].
 #[derive(Debug)]
-pub struct VariablesModifier<'a> {
-    data: &'a mut BTreeMap<String, Value>,
+pub struct GlobalsModifier<'a> {
+    globals: &'a mut BTreeMap<String, Value>,
     module: &'a str,
     aliases: &'a BTreeMap<String, String>,
+}
+
+/// Utility object used to modify config
+///
+/// This object is passed to [`Fn`] closure and [`ConfigDelta::apply`].
+#[derive(Debug)]
+pub struct ConfigModifier<'a> {
+    config: &'a mut BTreeMap<String, Value>,
 }
 
 /// Utility object used to modify aliases
@@ -89,10 +97,16 @@ pub struct AliasesModifier<'a> {
     data: &'a mut BTreeMap<String, String>,
 }
 
-/// Trait that modifies global or config variables
-pub trait VariablesDelta {
+/// Trait that modifies global variables
+pub trait GlobalsDelta {
     /// Applies variables delta using specified modifier object
-    fn apply(self, man: &mut VariablesModifier<'_>);
+    fn apply(self, man: &mut GlobalsModifier<'_>);
+}
+
+/// Trait that modifies config variables
+pub trait ConfigDelta {
+    /// Applies variables delta using specified modifier object
+    fn apply(self, man: &mut ConfigModifier<'_>);
 }
 
 /// Trait that modifies module aliases
@@ -101,10 +115,10 @@ pub trait AliasesDelta {
     fn apply(self, man: &mut AliasesModifier);
 }
 
-impl VariablesModifier<'_> {
-    /// Set variable to a value
+impl GlobalsModifier<'_> {
+    /// Set global variable to a value
     ///
-    /// For globals: if `key` doesn't contain module name (`::` to be more
+    /// If `key` doesn't contain module name (`::` to be more
     /// specific) then the variable name is resolved using current module.
     /// Otherwise, modules are resolved using aliases if any. Note: modules are
     /// resolved at method call time. This means that a sequence like this:
@@ -133,18 +147,18 @@ impl VariablesModifier<'_> {
         let value = value.to_value().expect("global can be encoded");
         if let Some(ns_off) = key.rfind("::") {
             if let Some(alias) = self.aliases.get(&key[..ns_off]) {
-                self.data.insert(
+                self.globals.insert(
                     format!("{alias}::{suffix}", suffix=&key[ns_off+2..]),
                     value,
                 );
             } else {
-                self.data.insert(key.into(), value);
+                self.globals.insert(key.into(), value);
             }
         } else {
-            self.data.insert(format!("{}::{}", self.module, key), value);
+            self.globals.insert(format!("{}::{}", self.module, key), value);
         }
     }
-    /// Unset the variable
+    /// Unset the global variable
     ///
     /// In most cases this will effectively set the variable to a default
     /// value.
@@ -156,14 +170,40 @@ impl VariablesModifier<'_> {
     pub fn unset(&mut self, key: &str) {
         if let Some(ns_off) = key.rfind("::") {
             if let Some(alias) = self.aliases.get(&key[..ns_off]) {
-                self.data.remove(
+                self.globals.remove(
                     &format!("{alias}::{suffix}", suffix=&key[ns_off+2..]));
             } else {
-                self.data.remove(key);
+                self.globals.remove(key);
             }
         } else {
-            self.data.remove(&format!("{}::{}", self.module, key));
+            self.globals.remove(&format!("{}::{}", self.module, key));
         }
+    }
+}
+
+impl ConfigModifier<'_> {
+    /// Set configuration setting to a value
+    ///
+    /// # Panics
+    ///
+    /// This methods panics if `value` cannot be converted into dynamically
+    /// typed `Value` (`QueryArg::to_value()` method returns error). To avoid
+    /// this panic use either native EdgeDB types (e.g.
+    /// `edgedb_protocol::model::Datetime` instead of `std::time::SystemTime`
+    /// or call `to_value` manually before passing to `set`.
+    pub fn set<T: QueryArg>(&mut self, key: &str, value: T) {
+        let value = value.to_value().expect("config can be encoded");
+        self.config.insert(key.into(), value);
+    }
+    /// Unset the global variable
+    ///
+    /// In most cases this will effectively set the variable to a default
+    /// value.
+    ///
+    /// To set setting to the actual empty value use `set("name",
+    /// Value::Nothing)`.
+    pub fn unset(&mut self, key: &str) {
+        self.config.remove(key);
     }
 }
 
@@ -179,8 +219,16 @@ impl AliasesModifier<'_> {
 }
 
 
-impl<S: AsRef<str>, I: IntoIterator<Item=S>> VariablesDelta for Unset<I> {
-    fn apply(self, man: &mut VariablesModifier) {
+impl<S: AsRef<str>, I: IntoIterator<Item=S>> GlobalsDelta for Unset<I> {
+    fn apply(self, man: &mut GlobalsModifier) {
+        for key in self.0.into_iter() {
+            man.unset(key.as_ref());
+        }
+    }
+}
+
+impl<S: AsRef<str>, I: IntoIterator<Item=S>> ConfigDelta for Unset<I> {
+    fn apply(self, man: &mut ConfigModifier) {
         for key in self.0.into_iter() {
             man.unset(key.as_ref());
         }
@@ -195,8 +243,20 @@ impl<S: AsRef<str>, I: IntoIterator<Item=S>> AliasesDelta for Unset<I> {
     }
 }
 
-impl<F: FnOnce(&'_ mut VariablesModifier<'_>)> VariablesDelta for Fn<F> {
-    fn apply(self, man: &mut VariablesModifier) {
+impl<F: FnOnce(&'_ mut GlobalsModifier<'_>)> GlobalsDelta for Fn<F> {
+    fn apply(self, man: &mut GlobalsModifier) {
+        self.0(man)
+    }
+}
+
+impl<F: FnOnce(&'_ mut ConfigModifier<'_>)> ConfigDelta for Fn<F> {
+    fn apply(self, man: &mut ConfigModifier) {
+        self.0(man)
+    }
+}
+
+impl<F: FnOnce(&'_ mut AliasesModifier<'_>)> AliasesDelta for Fn<F> {
+    fn apply(self, man: &mut AliasesModifier) {
         self.0(man)
     }
 }
@@ -233,8 +293,17 @@ impl<K: AsRef<str>, V: AsRef<str>> AliasesDelta for &'_ HashMap<K, V> {
     }
 }
 
-impl<K: AsRef<str>, V: QueryArg> VariablesDelta for BTreeMap<K, V> {
-    fn apply(self, man: &mut VariablesModifier) {
+impl<K: AsRef<str>, V: QueryArg> GlobalsDelta for BTreeMap<K, V> {
+    fn apply(self, man: &mut GlobalsModifier) {
+        for (key, value) in self {
+            let value = value.to_value().expect("global can be encoded");
+            man.set(key.as_ref(), value);
+        }
+    }
+}
+
+impl<K: AsRef<str>, V: QueryArg> ConfigDelta for BTreeMap<K, V> {
+    fn apply(self, man: &mut ConfigModifier) {
         for (key, value) in self {
             let value = value.to_value().expect("global can be encoded");
             man.set(key.as_ref(), value);
@@ -258,18 +327,35 @@ impl State {
             cache: ArcSwapOption::new(None),
         }
     }
-    pub fn with_globals(&self, delta: impl VariablesDelta) -> Self {
+    pub fn with_globals(&self, delta: impl GlobalsDelta) -> Self {
         let mut globals = self.raw_state.globals.clone();
-        delta.apply(&mut VariablesModifier {
+        delta.apply(&mut GlobalsModifier {
             module: self.raw_state.common.module
                 .as_deref().unwrap_or("default"),
             aliases: &self.raw_state.common.aliases,
-            data: &mut globals,
+            globals: &mut globals,
         });
         State {
             raw_state: RawState {
                 common: self.raw_state.common.clone(),
                 globals,
+            },
+            cache: ArcSwapOption::new(None),
+        }
+    }
+    pub fn with_config(&self, delta: impl ConfigDelta) -> Self {
+        let mut config = self.raw_state.common.config.clone();
+        delta.apply(&mut ConfigModifier {
+            config: &mut config,
+        });
+        State {
+            raw_state: RawState {
+                common: Arc::new(CommonState {
+                    module: self.raw_state.common.module.clone(),
+                    aliases: self.raw_state.common.aliases.clone(),
+                    config,
+                }),
+                globals: self.raw_state.globals.clone(),
             },
             cache: ArcSwapOption::new(None),
         }

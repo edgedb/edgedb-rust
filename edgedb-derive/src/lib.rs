@@ -92,16 +92,20 @@ fn derive(item: &syn::Item) -> syn::Result<proc_macro2::TokenStream> {
     }
 }
 
-#[proc_macro_derive(VariablesDelta, attributes(edgedb))]
-pub fn variables_delta(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(Globals, attributes(edgedb))]
+pub fn globals(input: TokenStream) -> TokenStream {
     let s = parse_macro_input!(input as syn::ItemStruct);
-    match variables::derive(&s) {
+    match variables::derive_globals(&s) {
         Ok(stream) => stream.into(),
         Err(e) => e.to_compile_error().into(),
     }
 }
 
-#[proc_macro_derive(Globals, attributes(edgedb))]
-pub fn globals(input: TokenStream) -> TokenStream {
-    variables_delta(input)
+#[proc_macro_derive(Config, attributes(edgedb))]
+pub fn config(input: TokenStream) -> TokenStream {
+    let s = parse_macro_input!(input as syn::ItemStruct);
+    match variables::derive_config(&s) {
+        Ok(stream) => stream.into(),
+        Err(e) => e.to_compile_error().into(),
+    }
 }
