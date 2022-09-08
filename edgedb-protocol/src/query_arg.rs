@@ -14,6 +14,7 @@ use crate::descriptors::TypePos;
 use crate::errors;
 use crate::features::ProtocolVersion;
 use crate::value::Value;
+use crate::model::range;
 
 
 pub struct Encoder<'a> {
@@ -197,7 +198,7 @@ impl QueryArg for Value {
                     "named tuple object cannot be query argument")),
             Array(v) => v.encode_slot(enc)?,
             Enum(v) => v.encode_slot(enc)?,
-            Range(_) => todo!(), //v.encode_slot(enc)?,
+            Range(v) => v.encode_slot(enc)?,
         }
 
         Ok(())
@@ -394,6 +395,56 @@ impl QueryArg for Vec<Value> {
     fn to_value(&self) -> Result<Value, Error> {
         Ok(Value::Array(self.iter().map(|v| v.to_value())
                         .collect::<Result<_, _>>()?))
+    }
+}
+
+impl QueryArg for range::Range<Box<Value>> {
+    fn encode_slot(&self, encoder: &mut Encoder)
+        -> Result<(), Error>
+    {
+        encoder.length_prefixed(|encoder| {
+            let flags =
+                if self.empty { range::EMPTY } else {
+                    (if self.inc_lower { range::LB_INC } else { 0 }) |
+                    (if self.inc_upper { range::UB_INC } else { 0 }) |
+                    (if self.lower.is_none() { range::LB_INF } else { 0 }) |
+                    (if self.upper.is_none() { range::UB_INF } else { 0 })
+                };
+            encoder.buf.reserve(1);
+            encoder.buf.put_u8(flags as u8);
+
+            if let Some(lower) = &self.lower {
+                encoder.length_prefixed(|encoder| {
+                    lower.encode(encoder)
+                })?
+            }
+
+            if let Some(upper) = &self.upper {
+                encoder.length_prefixed(|encoder| {
+                    upper.encode(encoder)
+                })?;
+            }
+            Ok(())
+        })
+    }
+    fn check_descriptor(&self, ctx: &DescriptorContext, pos: TypePos)
+        -> Result<(), Error>
+    {
+        let desc = ctx.get(pos)?;
+        if let Descriptor::Range(rng) = desc {
+            self.lower.as_ref()
+                .map(|v| v.check_descriptor(ctx, rng.type_pos))
+                .transpose()?;
+            self.upper.as_ref()
+                .map(|v| v.check_descriptor(ctx, rng.type_pos))
+                .transpose()?;
+            Ok(())
+        } else {
+            Err(ctx.wrong_type(desc, "range"))
+        }
+    }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::Range(self.clone()))
     }
 }
 

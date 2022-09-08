@@ -1,5 +1,12 @@
 use crate::value::Value;
 
+pub(crate) const EMPTY: usize = 0x01;
+pub(crate) const LB_INC: usize = 0x02;
+pub(crate) const UB_INC: usize = 0x04;
+pub(crate) const LB_INF: usize = 0x08;
+pub(crate) const UB_INF: usize = 0x10;
+
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Range<T> {
     pub(crate) lower: Option<T>,

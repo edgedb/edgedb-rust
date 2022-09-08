@@ -17,6 +17,7 @@ use crate::value::{Value, SparseObject};
 use crate::model;
 use crate::serialization::decode::{RawCodec, DecodeTupleLike, DecodeArrayLike};
 use crate::serialization::decode::{DecodeRange};
+use crate::model::range;
 
 pub const STD_UUID: UuidVal = UuidVal::from_u128(0x100);
 pub const STD_STR: UuidVal = UuidVal::from_u128(0x101);
@@ -1160,22 +1161,16 @@ impl Codec for Array {
     }
 }
 
-const RANGE_EMPTY: usize = 0x01;
-const RANGE_LB_INC: usize = 0x02;
-const RANGE_UB_INC: usize = 0x04;
-const RANGE_LB_INF: usize = 0x08;
-const RANGE_UB_INF: usize = 0x10;
-
 impl Codec for Range {
     fn decode(&self, mut buf: &[u8]) -> Result<Value, DecodeError> {
         ensure!(buf.remaining() >= 1, errors::Underflow);
         let flags = buf.get_u8() as usize;
 
-        let empty = (flags & RANGE_EMPTY) != 0;
-        let inc_lower = (flags & RANGE_LB_INC) != 0;
-        let inc_upper = (flags & RANGE_UB_INC) != 0;
-        let has_lower = (flags & (RANGE_EMPTY | RANGE_LB_INF)) == 0;
-        let has_upper = (flags & (RANGE_EMPTY | RANGE_UB_INF)) == 0;
+        let empty = (flags & range::EMPTY) != 0;
+        let inc_lower = (flags & range::LB_INC) != 0;
+        let inc_upper = (flags & range::UB_INC) != 0;
+        let has_lower = (flags & (range::EMPTY | range::LB_INF)) == 0;
+        let has_upper = (flags & (range::EMPTY | range::UB_INF)) == 0;
 
         let mut range = DecodeRange::new(buf)?;
 
@@ -1207,11 +1202,11 @@ impl Codec for Range {
         };
 
         let flags =
-            if rng.empty { RANGE_EMPTY } else {
-                (if rng.inc_lower { RANGE_LB_INC } else { 0 }) |
-                (if rng.inc_upper { RANGE_UB_INC } else { 0 }) |
-                (if rng.lower.is_none() { RANGE_LB_INF } else { 0 }) |
-                (if rng.upper.is_none() { RANGE_UB_INF } else { 0 })
+            if rng.empty { range::EMPTY } else {
+                (if rng.inc_lower { range::LB_INC } else { 0 }) |
+                (if rng.inc_upper { range::UB_INC } else { 0 }) |
+                (if rng.lower.is_none() { range::LB_INF } else { 0 }) |
+                (if rng.upper.is_none() { range::UB_INF } else { 0 })
             };
         buf.reserve(1);
         buf.put_u8(flags as u8);
