@@ -17,7 +17,7 @@ use crate::model::{Json, Uuid};
 use crate::model::{RelativeDuration, DateDuration};
 use crate::query_arg::{ScalarArg, Encoder, DescriptorContext};
 use crate::serialization::decode::queryable::scalars::DecodeScalar;
-use crate::value::Value;
+use crate::value::{Value, EnumValue};
 
 
 pub trait RawCodec<'t>: Sized {
@@ -751,5 +751,33 @@ impl ScalarArg for LocalTime {
     }
     fn to_value(&self) -> Result<Value, Error> {
         Ok(Value::LocalTime(self.clone()))
+    }
+}
+
+impl ScalarArg for EnumValue {
+    fn encode(&self, encoder: &mut Encoder)
+        -> Result<(), Error>
+    {
+        encoder.buf.extend(self.as_bytes());
+        Ok(())
+    }
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
+        -> Result<(), Error>
+    {
+        use crate::descriptors::Descriptor::Enumeration;
+
+        let desc = ctx.get(pos)?;
+        match desc {
+            Enumeration(_) => {
+                // Should we check enum members?
+                // Should we override `QueryArg` check descriptor for that?
+                // Or maybe implement just `QueryArg` for enum?
+            }
+            _ => {}
+        }
+        Err(ctx.wrong_type(desc, "enum"))
+    }
+    fn to_value(&self) -> Result<Value, Error> {
+        Ok(Value::Enum(self.clone()))
     }
 }

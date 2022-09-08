@@ -2,11 +2,12 @@ use std::iter::IntoIterator;
 
 use bytes::Bytes;
 
-use crate::codec::{NamedTupleShape, ObjectShape, EnumValue, ShapeElement};
+use crate::codec::{NamedTupleShape, ObjectShape, ShapeElement};
 use crate::common::{Cardinality};
 use crate::model::{BigInt, Decimal, Uuid, ConfigMemory, Range};
 use crate::model::{LocalDatetime, LocalDate, LocalTime, Duration, Datetime};
 use crate::model::{RelativeDuration, DateDuration, Json};
+pub use crate::codec::EnumValue;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {

@@ -196,7 +196,7 @@ impl QueryArg for Value {
             NamedTuple {..} => return Err(ClientEncodingError::with_message(
                     "named tuple object cannot be query argument")),
             Array(v) => v.encode_slot(enc)?,
-            Enum(_) => todo!(), //v.encode_slot(enc)?,
+            Enum(v) => v.encode_slot(enc)?,
             Range(_) => todo!(), //v.encode_slot(enc)?,
         }
 
