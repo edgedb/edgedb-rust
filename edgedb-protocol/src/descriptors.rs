@@ -1,18 +1,23 @@
 use std::convert::{TryFrom, TryInto};
 use std::sync::Arc;
+use std::collections::{BTreeMap, BTreeSet};
 
-use bytes::Buf;
-use uuid::Uuid;
+use bytes::{Buf, BufMut, BytesMut};
+use edgedb_errors::{Error, ErrorKind, DescriptorMismatch, ClientEncodingError};
 use snafu::{ensure, OptionExt};
+use uuid::Uuid;
 
 use crate::codec::{Codec, build_codec};
-use crate::common::Cardinality;
+use crate::common::{Cardinality, State};
 use crate::encoding::{Decode, Input};
 use crate::errors::{InvalidTypeDescriptor, UnexpectedTypePos};
 use crate::errors::{self, DecodeError, CodecError};
 use crate::features::ProtocolVersion;
+use crate::query_arg::{self, QueryArg, Encoder};
 use crate::queryable;
-use crate::query_arg;
+use crate::value::Value;
+
+pub use crate::common::RawTypedesc;
 
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -33,18 +38,10 @@ pub enum Descriptor {
     TypeAnnotation(TypeAnnotationDescriptor),
 }
 
-pub struct OutputTypedesc {
+#[derive(Debug)]
+pub struct Typedesc {
     pub(crate) proto: ProtocolVersion,
     pub(crate) array: Vec<Descriptor>,
-    #[allow(dead_code)] // TODO
-    pub(crate) root_id: Uuid,
-    pub(crate) root_pos: Option<TypePos>,
-}
-
-pub struct InputTypedesc {
-    pub(crate) proto: ProtocolVersion,
-    pub(crate) array: Vec<Descriptor>,
-    #[allow(dead_code)] // TODO
     pub(crate) root_id: Uuid,
     pub(crate) root_pos: Option<TypePos>,
 }
@@ -132,22 +129,43 @@ pub struct TypeAnnotationDescriptor {
     pub annotation: String,
 }
 
-impl OutputTypedesc {
-    pub fn as_queryable_context(&self) -> queryable::DescriptorContext {
-        let mut ctx = queryable::DescriptorContext::new(self.descriptors());
-        ctx.has_implicit_tid = self.proto.has_implicit_tid();
-        ctx
+pub struct StateBorrow<'a> {
+    pub module: &'a Option<String>,
+    pub aliases: &'a BTreeMap<String, String>,
+    pub config: &'a BTreeMap<String, Value>,
+    pub globals: &'a BTreeMap<String, Value>,
+}
+
+impl Typedesc {
+    pub fn id(&self) -> &Uuid {
+        &self.root_id
     }
     pub fn descriptors(&self) -> &[Descriptor] {
         &self.array
     }
-    pub fn build_codec(&self) -> Result<Arc<dyn Codec>, CodecError> {
-        build_codec(self.root_pos(), self.descriptors())
-    }
     pub fn root_pos(&self) -> Option<TypePos> {
         self.root_pos
     }
-    pub fn decode_with_id(root_id: Uuid, buf: &mut Input) -> Result<Self, DecodeError> {
+    pub fn build_codec(&self) -> Result<Arc<dyn Codec>, CodecError> {
+        build_codec(self.root_pos(), self.descriptors())
+    }
+    pub fn get(&self, type_pos: TypePos) -> Result<&Descriptor, CodecError> {
+        self.array.get(type_pos.0 as usize)
+            .context(UnexpectedTypePos { position: type_pos.0 })
+    }
+    pub fn is_empty_tuple(&self) -> bool {
+        match self.root() {
+            Some(Descriptor::Tuple(t))
+              => t.id == Uuid::from_u128(0xFF) && t.element_types.is_empty(),
+            _ => false,
+        }
+    }
+    pub fn root(&self) -> Option<&Descriptor> {
+        self.root_pos.and_then(|pos| self.array.get(pos.0 as usize))
+    }
+    pub(crate) fn decode_with_id(root_id: Uuid, buf: &mut Input)
+        -> Result<Self, DecodeError>
+    {
         let mut descriptors = Vec::new();
         while buf.remaining() > 0 {
             match Descriptor::decode(buf)? {
@@ -164,17 +182,13 @@ impl OutputTypedesc {
                 .context(errors::TooManyDescriptors { index: idx })?;
             Some(TypePos(pos))
         };
-        Ok(OutputTypedesc {
+        Ok(Typedesc {
             proto: buf.proto().clone(),
             array: descriptors,
-            root_id,
+            root_id: root_id.clone(),
             root_pos,
         })
     }
-}
-
-
-impl InputTypedesc {
     pub fn as_query_arg_context(&self) -> query_arg::DescriptorContext {
         query_arg::DescriptorContext {
             proto: &self.proto,
@@ -182,32 +196,183 @@ impl InputTypedesc {
             root_pos: self.root_pos,
         }
     }
-    pub fn descriptors(&self) -> &[Descriptor] {
-        &self.array
+    pub fn as_queryable_context(&self) -> queryable::DescriptorContext {
+        let mut ctx = queryable::DescriptorContext::new(self.descriptors());
+        ctx.has_implicit_tid = self.proto.has_implicit_tid();
+        ctx
     }
-    pub fn build_codec(&self) -> Result<Arc<dyn Codec>, CodecError> {
-        build_codec(self.root_pos(), self.descriptors())
-    }
-    pub fn root(&self) -> Option<&Descriptor> {
-        self.root_pos.and_then(|pos| self.array.get(pos.0 as usize))
-    }
-    pub fn root_pos(&self) -> Option<TypePos> {
-        self.root_pos
-    }
-    pub fn get(&self, type_pos: TypePos) -> Result<&Descriptor, CodecError> {
-        self.array.get(type_pos.0 as usize)
-            .context(UnexpectedTypePos { position: type_pos.0 })
-    }
-    pub fn is_empty_tuple(&self) -> bool {
-        match self.root() {
-            Some(Descriptor::Tuple(t))
-              => t.id == Uuid::from_u128(0xFF) && t.element_types.is_empty(),
-            _ => false,
+    pub fn serialize_state(&self, state: &StateBorrow)
+        -> Result<State, Error>
+    {
+        #[derive(Debug)]
+        struct Indices {
+            module: (u32, TypePos),
+            aliases: (u32, TypePos),
+            config: (u32, TypePos),
+            globals: (u32, TypePos),
         }
+        let mut buf = BytesMut::with_capacity(128);
+        let ctx = self.as_query_arg_context();
+        let mut enc = Encoder::new(&ctx, &mut buf);
+
+        let root = enc.ctx.root_pos
+            .ok_or_else(|| DescriptorMismatch::with_message(
+                "invalid state descriptor"))
+            .and_then(|p| enc.ctx.get(p))?;
+        let indices = match root {
+            Descriptor::InputShape(desc) => {
+                let mut module = None;
+                let mut aliases = None;
+                let mut config = None;
+                let mut globals = None;
+                for (i, elem) in desc.elements.iter().enumerate() {
+                    let i = i as u32;
+                    match &elem.name[..] {
+                        "module" => module = Some((i, elem.type_pos)),
+                        "aliases" => aliases = Some((i, elem.type_pos)),
+                        "config" => config = Some((i, elem.type_pos)),
+                        "globals" => globals = Some((i, elem.type_pos)),
+                        _ => {}
+                    }
+                }
+                Indices {
+                    module: module.ok_or_else(|| {
+                        DescriptorMismatch::with_message(
+                            "no `module` field in state")
+                    })?,
+                    aliases: aliases.ok_or_else(|| {
+                        DescriptorMismatch::with_message(
+                            "no `aliases` field in state")
+                    })?,
+                    config: config.ok_or_else(|| {
+                        DescriptorMismatch::with_message(
+                            "no `config` field in state")
+                    })?,
+                    globals: globals.ok_or_else(|| {
+                        DescriptorMismatch::with_message(
+                            "no `globals` field in state")
+                    })?,
+                }
+            }
+            _ => return Err(DescriptorMismatch::with_message(
+                    "invalid state descriptor")),
+        };
+
+        enc.buf.reserve(4 + 8*4);
+        enc.buf.put_u32(4);
+
+        let module = state.module.as_deref().unwrap_or("default");
+        module.check_descriptor(enc.ctx, indices.module.1)?;
+
+        enc.buf.reserve(8);
+        enc.buf.put_u32(indices.module.0);
+        module.encode_slot(&mut enc)?;
+
+        match enc.ctx.get(indices.aliases.1)? {
+            Descriptor::Array(arr) => match enc.ctx.get(arr.type_pos)? {
+                Descriptor::Tuple(tup) => {
+                    if tup.element_types.len() != 2 {
+                        return Err(DescriptorMismatch::with_message(
+                            "invalid type descriptor for aliases"));
+                    }
+                    "".check_descriptor(enc.ctx, tup.element_types[0])?;
+                    "".check_descriptor(enc.ctx, tup.element_types[1])?;
+                }
+                _ => {
+                    return Err(DescriptorMismatch::with_message(
+                        "invalid type descriptor for aliases"));
+                }
+            },
+            _ => {
+                return Err(DescriptorMismatch::with_message(
+                    "invalid type descriptor for aliases"));
+            }
+        }
+
+        enc.buf.reserve(4 + 16 + state.aliases.len()*(4+(8+4)*2));
+        enc.buf.put_u32(indices.aliases.0);
+        enc.length_prefixed(|enc| {
+            enc.buf.put_u32(state.aliases.len().try_into()
+                .map_err(|_| ClientEncodingError::with_message(
+                        "too many aliases"))?);
+            for (key, value) in state.aliases {
+                enc.length_prefixed(|enc| {
+                    enc.buf.reserve(4 + (8+4)*2);
+                    enc.buf.put_u32(2);
+                    enc.buf.put_u32(0); // reserved
+
+                    key.encode_slot(enc)?;
+                    value.encode_slot(enc)?;
+                    Ok(())
+                })?;
+            }
+            Ok(())
+        })?;
+
+        enc.buf.reserve(4);
+        enc.buf.put_u32(indices.config.0);
+        enc.length_prefixed(|enc| {
+            serialize_variables(enc, state.config, indices.config.1, "config")
+        })?;
+        enc.buf.reserve(4);
+        enc.buf.put_u32(indices.globals.0);
+        enc.length_prefixed(|enc| {
+            serialize_variables(enc,
+                                state.globals, indices.globals.1, "globals")
+        })?;
+        let data = buf.freeze();
+        Ok(State {
+            typedesc_id: self.root_id.clone(),
+            data,
+        })
     }
     pub fn proto(&self) -> &ProtocolVersion {
         &self.proto
     }
+}
+
+fn serialize_variables(enc: &mut Encoder, variables: &BTreeMap<String, Value>,
+
+                       type_pos: TypePos, tag: &str)
+    -> Result<(), Error>
+{
+    enc.buf.reserve(4 + variables.len()*(4 + 4));
+    enc.buf.put_u32(variables.len().try_into()
+                    .map_err(|_| ClientEncodingError::with_message(
+                            format!("too many items in {}", tag)))?);
+
+
+    let desc = match enc.ctx.get(type_pos)? {
+        Descriptor::InputShape(desc) => desc,
+        _ => {
+            return Err(DescriptorMismatch::with_message(
+                format!("invalid type descriptor for {}", tag)));
+        }
+    };
+
+    let mut serialized = 0;
+    for (idx, el) in desc.elements.iter().enumerate() {
+        if let Some(value) = variables.get(&el.name) {
+            value.check_descriptor(&enc.ctx, el.type_pos)?;
+            serialized += 1;
+            enc.buf.reserve(8);
+            enc.buf.put_u32(idx as u32);
+            value.encode_slot(enc)?;
+        }
+    }
+
+    if serialized != variables.len() {
+        let mut extra_vars = variables.keys().collect::<BTreeSet<_>>();
+        for el in &desc.elements {
+            extra_vars.remove(&el.name);
+        }
+        return Err(ClientEncodingError::with_message(format!(
+            "non-existing entries {} of {}",
+            extra_vars.into_iter().map(|x| &x[..]).collect::<Vec<_>>().join(", "),
+            tag)));
+    }
+
+    Ok(())
 }
 
 impl Descriptor {

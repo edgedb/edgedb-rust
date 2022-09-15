@@ -13,8 +13,8 @@ commands:
     container: ubuntu
     run: |
       set -ex
-      cargo build --workspace --exclude=edgedb-tokio
-      cargo build -p edgedb-tokio
+      cargo check --workspace --exclude=edgedb-tokio --exclude=globals-example --tests
+      cargo check -p edgedb-tokio -p globals-example --tests
 
   doc: !Command
     description: Build documentation
@@ -40,8 +40,8 @@ commands:
     container: ubuntu
     run: |
       set -ex
-      cargo test --workspace --exclude edgedb-tokio --all-features
-      cargo test -p edgedb-tokio --all-features
+      cargo test --workspace --exclude edgedb-tokio --exclude globals-example --all-features
+      cargo test -p edgedb-tokio -p globals-example --all-features
 
   test-all-types: !Command
     description: Run tests
@@ -118,6 +118,14 @@ commands:
       EDGEDB_HOST: localhost
     run: [cargo, run, --package=edgedb-client, --example]
 
+  example-globals: !Command
+    description: Run named tokio example
+    container: ubuntu
+    environ:
+      EDGEDB_CLIENT_TLS_SECURITY: insecure
+      EDGEDB_HOST: localhost
+    run: [cargo, run, --package=globals-example]
+
   gen-errors: !Command
     description: Generate error codes
     container: ubuntu
@@ -174,14 +182,14 @@ containers:
       suite: focal
       components: [main]
       trusted: true
-    - !Install [edgedb-1]
+    - !Install [edgedb-2]
 
     environ: &environ
       HOME: /work/target
       CARGO_HOME: /work/target
       RUST_BACKTRACE: 1
       PYTHON_SYS_EXECUTABLE: /usr/bin/python3.8
-      EDGEDB_MAJOR_VERSION: 1
+      EDGEDB_MAJOR_VERSION: 2
       # needed for musl build
       PATH: /musl/bin:/usr/local/bin:/usr/bin:/bin
       LD_LIBRARY_PATH: /musl/lib/rustlib/x86_64-unknown-linux-musl/lib

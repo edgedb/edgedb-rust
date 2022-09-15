@@ -6,23 +6,24 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 
-use edgedb_protocol::codec::{build_codec};
 use edgedb_protocol::codec::{Codec, ObjectShape};
-use edgedb_protocol::features::ProtocolVersion;
-use edgedb_protocol::value::{Value, SparseObject};
-use edgedb_protocol::model::{LocalDatetime, LocalDate, LocalTime, Duration};
-use edgedb_protocol::model::{Datetime, RelativeDuration};
-use edgedb_protocol::descriptors::{Descriptor, TypePos};
-use edgedb_protocol::descriptors::BaseScalarTypeDescriptor;
-use edgedb_protocol::descriptors::{ObjectShapeDescriptor, ShapeElement};
-use edgedb_protocol::descriptors::{SetDescriptor};
-use edgedb_protocol::descriptors::{ScalarTypeDescriptor};
-use edgedb_protocol::descriptors::{TupleTypeDescriptor};
-use edgedb_protocol::descriptors::{NamedTupleTypeDescriptor, TupleElement};
+use edgedb_protocol::codec::{build_codec};
+use edgedb_protocol::common::RawTypedesc;
 use edgedb_protocol::descriptors::ArrayTypeDescriptor;
+use edgedb_protocol::descriptors::BaseScalarTypeDescriptor;
 use edgedb_protocol::descriptors::EnumerationTypeDescriptor;
 use edgedb_protocol::descriptors::RangeTypeDescriptor;
+use edgedb_protocol::descriptors::{Descriptor, TypePos};
+use edgedb_protocol::descriptors::{NamedTupleTypeDescriptor, TupleElement};
+use edgedb_protocol::descriptors::{ObjectShapeDescriptor, ShapeElement};
+use edgedb_protocol::descriptors::{ScalarTypeDescriptor};
+use edgedb_protocol::descriptors::{SetDescriptor};
+use edgedb_protocol::descriptors::{TupleTypeDescriptor};
+use edgedb_protocol::features::ProtocolVersion;
+use edgedb_protocol::model::{Datetime, RelativeDuration, Json};
+use edgedb_protocol::model::{LocalDatetime, LocalDate, LocalTime, Duration};
 use edgedb_protocol::server_message::StateDataDescription;
+use edgedb_protocol::value::{Value, SparseObject};
 
 mod base;
 
@@ -202,10 +203,10 @@ fn bytes() -> Result<(), Box<dyn Error>> {
             })
         ]
     )?;
-    encoding_eq!(&codec, b"hello", Value::Bytes(b"hello".to_vec()));
-    encoding_eq!(&codec, b"", Value::Bytes(b"".to_vec()));
+    encoding_eq!(&codec, b"hello", Value::Bytes(b"hello"[..].into()));
+    encoding_eq!(&codec, b"", Value::Bytes(b""[..].into()));
     encoding_eq!(&codec, b"\x00\x01\x02\x03\x81",
-        Value::Bytes(b"\x00\x01\x02\x03\x81".to_vec()));
+        Value::Bytes(b"\x00\x01\x02\x03\x81"[..].into()));
     Ok(())
 }
 
@@ -334,8 +335,10 @@ fn object_codec() -> Result<(), Box<dyn Error>> {
 #[test]
 fn input_codec() -> Result<(), Box<dyn Error>> {
     let sdd = StateDataDescription {
-        typedesc_id: "fd6c3b17504a714858ec2282431ce72c".parse()?,
-        typedesc: Bytes::from_static(b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+        typedesc: RawTypedesc {
+            proto: ProtocolVersion::current(),
+            id: "fd6c3b17504a714858ec2282431ce72c".parse()?,
+            data: Bytes::from_static(b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
             \x01\x01\x04\xcf\x9d\xce6\x17\xf05O\t%g\x8eW\xa1\x842\0\x02\
             \0\0\0\0\x06\xc6R\xf3\xf1\xdd\xe7\0a?\x07|=&\x0b\xfbt\0\x01\
             \0\x01\xff\xff\xff\xff\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\
@@ -366,8 +369,9 @@ fn input_codec() -> Result<(), Box<dyn Error>> {
             C\x1c\xe7,\0\x04\0\0\0\0o\0\0\0\x06module\0\0\0\0\0\0o\
             \0\0\0\x07aliases\0\x02\0\0\0\0o\0\0\0\x07globals\0\x0f\0\0\0\0\
             o\0\0\0\x06config\0\x0e"),
+        },
     };
-    let out_desc = sdd.parse(&ProtocolVersion::current())?;
+    let out_desc = sdd.parse()?;
     let codec = build_codec(Some(TypePos(16)),
         &out_desc.descriptors(),
     )?;
@@ -696,7 +700,7 @@ fn json() -> Result<(), Box<dyn Error>> {
     )?;
 
     encoding_eq!(&codec, b"\x01\"txt\"",
-        Value::Json(String::from(r#""txt""#)));
+        Value::Json(unsafe { Json::new_unchecked(String::from(r#""txt""#)) }));
     Ok(())
 }
 

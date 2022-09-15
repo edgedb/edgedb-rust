@@ -15,6 +15,8 @@ use crate::errors::{ProtocolEncodingError, NoResultExpected, NoDataError};
 use crate::transaction::{Transaction, transaction};
 use crate::options::{TransactionOptions, RetryOptions};
 use crate::raw::Options;
+use crate::state::{AliasesDelta, GlobalsDelta, ConfigDelta, State};
+use crate::state::{AliasesModifier, GlobalsModifier, ConfigModifier, Fn};
 
 /// EdgeDB Client
 ///
@@ -81,7 +83,7 @@ impl Client {
             io_format: IoFormat::Binary,
             expected_cardinality: Cardinality::Many,
         };
-        let desc = conn.parse(&flags, query).await?;
+        let desc = conn.parse(&flags, query, &self.options.state).await?;
         let inp_desc = desc.input()
             .map_err(ProtocolEncodingError::with_source)?;
 
@@ -91,7 +93,9 @@ impl Client {
             &mut arg_buf,
         ))?;
 
-        let data = conn.execute(&flags, query, &desc, &arg_buf.freeze()).await?;
+        let data = conn.execute(
+                &flags, query, &self.options.state, &desc, &arg_buf.freeze()
+            ).await?;
 
         let out_desc = desc.output()
             .map_err(ProtocolEncodingError::with_source)?;
@@ -141,7 +145,7 @@ impl Client {
             io_format: IoFormat::Binary,
             expected_cardinality: Cardinality::AtMostOne,
         };
-        let desc = conn.parse(&flags, query).await?;
+        let desc = conn.parse(&flags, query, &self.options.state).await?;
         let inp_desc = desc.input()
             .map_err(ProtocolEncodingError::with_source)?;
 
@@ -151,7 +155,9 @@ impl Client {
             &mut arg_buf,
         ))?;
 
-        let data = conn.execute(&flags, query, &desc, &arg_buf.freeze()).await?;
+        let data = conn.execute(
+            &flags, query, &self.options.state, &desc, &arg_buf.freeze(),
+        ).await?;
 
         let out_desc = desc.output()
             .map_err(ProtocolEncodingError::with_source)?;
@@ -221,7 +227,7 @@ impl Client {
             io_format: IoFormat::Json,
             expected_cardinality: Cardinality::Many,
         };
-        let desc = conn.parse(&flags, query).await?;
+        let desc = conn.parse(&flags, query, &self.options.state).await?;
         let inp_desc = desc.input()
             .map_err(ProtocolEncodingError::with_source)?;
 
@@ -231,7 +237,9 @@ impl Client {
             &mut arg_buf,
         ))?;
 
-        let data = conn.execute(&flags, query, &desc, &arg_buf.freeze()).await?;
+        let data = conn.execute(
+                &flags, query, &self.options.state, &desc, &arg_buf.freeze(),
+            ).await?;
 
         let out_desc = desc.output()
             .map_err(ProtocolEncodingError::with_source)?;
@@ -276,7 +284,7 @@ impl Client {
             io_format: IoFormat::Json,
             expected_cardinality: Cardinality::AtMostOne,
         };
-        let desc = conn.parse(&flags, query).await?;
+        let desc = conn.parse(&flags, query, &self.options.state).await?;
         let inp_desc = desc.input()
             .map_err(ProtocolEncodingError::with_source)?;
 
@@ -286,7 +294,9 @@ impl Client {
             &mut arg_buf,
         ))?;
 
-        let data = conn.execute(&flags, query, &desc, &arg_buf.freeze()).await?;
+        let data = conn.execute(
+                &flags, query, &self.options.state, &desc, &arg_buf.freeze(),
+            ).await?;
 
         let out_desc = desc.output()
             .map_err(ProtocolEncodingError::with_source)?;
@@ -383,6 +393,7 @@ impl Client {
             options: Arc::new(Options {
                 transaction: options,
                 retry: self.options.retry.clone(),
+                state: self.options.state.clone(),
             }),
             pool: self.pool.clone(),
         }
@@ -402,8 +413,126 @@ impl Client {
             options: Arc::new(Options {
                 transaction: self.options.transaction.clone(),
                 retry: options,
+                state: self.options.state.clone(),
             }),
             pool: self.pool.clone(),
         }
+    }
+
+    fn with_state(&self, f: impl FnOnce(&State) -> State) -> Self {
+        Client {
+            options: Arc::new(Options {
+                transaction: self.options.transaction.clone(),
+                retry: self.options.retry.clone(),
+                state: Arc::new(f(&self.options.state)),
+            }),
+            pool: self.pool.clone(),
+        }
+    }
+
+    /// Returns the client with the specified global variables set
+    ///
+    /// Most commonly used with `#[derive(GlobalsDelta)]`.
+    ///
+    /// Note: this method is incremental, i.e. it adds (or removes) globals
+    /// instead of setting a definite set of variables. Use
+    /// `.with_globals(Unset(["name1", "name2"]))` to unset some variables.
+    ///
+    /// This method returns a "shallow copy" of the current client
+    /// with modified global variables
+    ///
+    /// Both ``self`` and returned client can be used after, but when using
+    /// them transaction options applied will be different.
+    pub fn with_globals(&self, globals: impl GlobalsDelta) -> Self {
+        self.with_state(|s| s.with_globals(globals))
+    }
+
+    /// Returns the client with the specified global variables set
+    ///
+    /// This method returns a "shallow copy" of the current client
+    /// with modified global variables
+    ///
+    /// Both ``self`` and returned client can be used after, but when using
+    /// them transaction options applied will be different.
+    ///
+    /// This is equivalent to `.with_globals(Fn(f))` but more ergonomic as it
+    /// allows type inference for lambda.
+    pub fn with_globals_fn(&self, f: impl FnOnce(&mut GlobalsModifier))
+        -> Self
+    {
+        self.with_state(|s| s.with_globals(Fn(f)))
+    }
+
+    /// Returns the client with the specified aliases set
+    ///
+    /// This method returns a "shallow copy" of the current client
+    /// with modified aliases.
+    ///
+    /// Both ``self`` and returned client can be used after, but when using
+    /// them transaction options applied will be different.
+    pub fn with_aliases(&self, aliases: impl AliasesDelta) -> Self {
+        self.with_state(|s| s.with_aliases(aliases))
+    }
+
+    /// Returns the client with the specified aliases set
+    ///
+    /// This method returns a "shallow copy" of the current client
+    /// with modified aliases.
+    ///
+    /// Both ``self`` and returned client can be used after, but when using
+    /// them transaction options applied will be different.
+    ///
+    /// This is equivalent to `.with_aliases(Fn(f))` but more ergonomic as it
+    /// allows type inference for lambda.
+    pub fn with_aliases_fn(&self, f: impl FnOnce(&mut AliasesModifier))
+        -> Self
+    {
+        self.with_state(|s| s.with_aliases(Fn(f)))
+    }
+
+    /// Returns the client with the default module set or unset
+    ///
+    /// This method returns a "shallow copy" of the current client
+    /// with modified default module.
+    ///
+    /// Both ``self`` and returned client can be used after, but when using
+    /// them transaction options applied will be different.
+    pub fn with_default_module(&self, module: Option<impl Into<String>>)
+        -> Self
+    {
+        self.with_state(|s| s.with_default_module(module.map(|m| m.into())))
+    }
+
+    /// Returns the client with the specified config
+    ///
+    /// Note: this method is incremental, i.e. it adds (or removes) individual
+    /// settings instead of setting a definite configuration. Use
+    /// `.with_config(Unset(["name1", "name2"]))` to unset some settings.
+    ///
+    /// This method returns a "shallow copy" of the current client
+    /// with modified global variables
+    ///
+    /// Both ``self`` and returned client can be used after, but when using
+    /// them transaction options applied will be different.
+    pub fn with_config(&self, cfg: impl ConfigDelta) -> Self {
+        self.with_state(|s| s.with_config(cfg))
+    }
+
+    /// Returns the client with the specified config
+    ///
+    /// Most commonly used with `#[derive(ConfigDelta)]`.
+    ///
+    /// This method returns a "shallow copy" of the current client
+    /// with modified global variables
+    ///
+    /// Both ``self`` and returned client can be used after, but when using
+    /// them transaction options applied will be different.
+    ///
+    /// This is equivalent to `.with_config(Fn(f))` but more ergonomic as it
+    /// allows type inference for lambda.
+    pub fn with_config_fn(&self, f: impl FnOnce(&mut ConfigModifier))
+        -> Self
+    {
+        self.with_state(|s| s.with_config(Fn(f)))
     }
 }

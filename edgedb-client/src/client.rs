@@ -17,19 +17,19 @@ use typemap::TypeMap;
 
 use edgedb_protocol::QueryResult;
 use edgedb_protocol::client_message::ClientMessage;
-use edgedb_protocol::client_message::{Capabilities, CompilationFlags};
+use edgedb_protocol::client_message::{Capabilities, CompilationFlags, State};
 use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
 use edgedb_protocol::client_message::{Execute0, Execute1, ExecuteScript};
 use edgedb_protocol::client_message::{Prepare, Parse, IoFormat, Cardinality};
-use edgedb_protocol::descriptors::OutputTypedesc;
-use edgedb_protocol::encoding::{Input, Output};
+use edgedb_protocol::server_message::{RawTypedesc};
+use edgedb_protocol::descriptors::Typedesc;
+use edgedb_protocol::encoding::Output;
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::model::Uuid;
 use edgedb_protocol::query_arg::{QueryArgs, Encoder};
 use edgedb_protocol::queryable::{Queryable};
 use edgedb_protocol::server_message::{ServerMessage, TransactionState};
 use edgedb_protocol::server_message::{StateDataDescription, CommandComplete1};
-use edgedb_protocol::value::Value;
 
 use crate::debug::PartialDebug;
 use crate::errors::{ClientConnectionError, ProtocolError};
@@ -43,7 +43,7 @@ use crate::server_params::{ServerParam, SystemConfig};
 
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub(crate) enum State {
+pub(crate) enum Mode {
     Normal {
         idle_since: Instant,
     },
@@ -59,20 +59,6 @@ pub(crate) enum PingInterval {
     Interval(Duration),
 }
 
-#[derive(Debug, Clone)]
-pub struct EdgeqlStateDesc {
-    pub(crate) proto: ProtocolVersion,
-    pub(crate) descriptor_id: Uuid,
-    pub(crate) descriptor: Bytes,
-}
-
-#[derive(Debug, Clone)]
-pub struct EdgeqlState {
-    pub(crate) descriptor_id: Uuid,
-    pub(crate) data: Bytes,
-}
-
-
 #[derive(Debug)]
 /// A single connection to the EdgeDB server.
 pub struct Connection {
@@ -84,15 +70,15 @@ pub struct Connection {
     pub(crate) version: ProtocolVersion,
     pub(crate) params: TypeMap<dyn typemap::DebugAny + Send + Sync>,
     pub(crate) transaction_state: TransactionState,
+    pub(crate) mode: Mode,
+    pub(crate) state_desc: RawTypedesc,
     pub(crate) state: State,
-    pub(crate) eql_state_desc: EdgeqlStateDesc,
-    pub(crate) eql_state: EdgeqlState,
 }
 
 pub(crate) struct PartialState<'a> {
+    pub(crate) mode: &'a mut Mode,
+    pub(crate) state_desc: &'a mut RawTypedesc,
     pub(crate) state: &'a mut State,
-    pub(crate) eql_state_desc: &'a mut EdgeqlStateDesc,
-    pub(crate) eql_state: &'a mut EdgeqlState,
 }
 
 pub struct Sequence<'a> {
@@ -185,18 +171,15 @@ impl<'a> Sequence<'a> {
     pub fn process_complete(&mut self, cmp: &CommandComplete1)
         -> Result<(), Error>
     {
-        if cmp.state_data.len() != 0 {
-            *self.state.eql_state = EdgeqlState {
-                descriptor_id: cmp.state_typedesc_id,
-                data: cmp.state_data.clone(),
-            };
+        if cmp.state.data.len() != 0 {
+            *self.state.state = cmp.state.clone();
         }
         Ok(())
     }
 
     pub fn end_clean(&mut self) {
         self.active = false;
-        *self.state.state = State::Normal {
+        *self.state.mode = Mode::Normal {
             idle_since: Instant::now(),
         };
     }
@@ -204,40 +187,30 @@ impl<'a> Sequence<'a> {
     pub fn set_state_description(&mut self, descr: StateDataDescription)
         -> Result<(), Error>
     {
-        let descriptor_id = descr.typedesc_id;
-        let descriptor = descr.typedesc.clone();
-        *self.state.eql_state_desc = EdgeqlStateDesc {
-            proto: self.writer.proto.clone(),
-            descriptor_id,
-            descriptor,
-        };
+        *self.state.state_desc = descr.typedesc;
         Ok(())
     }
 
-    pub fn get_state_typedesc_id(&self) -> Uuid {
-        self.state.eql_state.descriptor_id
-    }
-
-    pub fn get_state_data(&self) -> Bytes {
-        self.state.eql_state.data.clone()
+    pub fn get_state(&self) -> &State {
+        &self.state.state
     }
 }
 
 impl Connection {
     #[cfg(feature="unstable")]
     /// Set state of this connection
-    pub fn set_state(&mut self, state: EdgeqlState) {
-        self.eql_state = state;
+    pub fn set_state(&mut self, state: State) {
+        self.state = state;
     }
     #[cfg(feature="unstable")]
     /// Get state of this connection
-    pub fn get_state(&self) -> EdgeqlState {
-        self.eql_state.clone()
+    pub fn get_state(&self) -> State {
+        self.state.clone()
     }
     #[cfg(feature="unstable")]
     /// Get state descriptor of this connection
-    pub fn get_state_desc(&self) -> EdgeqlStateDesc {
-        self.eql_state_desc.clone()
+    pub fn get_state_desc(&self) -> RawTypedesc {
+        self.state_desc.clone()
     }
     pub fn protocol(&self) -> &ProtocolVersion {
         return &self.version
@@ -246,7 +219,7 @@ impl Connection {
         let (_, mut reader, _) = self.split();
         reader.passive_wait().await.ok();
         // any erroneous or successful read (even 0) means need reconnect
-        self.state = State::Dirty;
+        self.mode = Mode::Dirty;
         pending::<()>().await;
         unreachable!();
     }
@@ -255,27 +228,27 @@ impl Connection {
 
         let (mut writer, mut reader, state) = self.split();
 
-        if *state.state == State::AwaitingPing {
-            Self::synchronize_ping(&mut reader, state.state).await?;
+        if *state.mode == Mode::AwaitingPing {
+            Self::synchronize_ping(&mut reader, state.mode).await?;
         }
 
-        while let State::Normal { idle_since: last_pong } = *state.state {
+        while let Mode::Normal { idle_since: last_pong } = *state.mode {
             match io::timeout(
                 interval.saturating_sub(Instant::now() - last_pong),
                 reader.passive_wait()
             ).await {
                 Err(e) if e.kind() == io::ErrorKind::TimedOut => (),
                 Err(e) => {
-                    *state.state = State::Dirty;
+                    *state.mode = Mode::Dirty;
                     return Err(ClientConnectionError::with_source(e))?;
                 }
                 Ok(_) => unreachable!(),
             }
 
-            *state.state = State::Dirty;
+            *state.mode = Mode::Dirty;
             writer.send_messages(&[ClientMessage::Sync]).await?;
-            *state.state = State::AwaitingPing;
-            Self::synchronize_ping(&mut reader, state.state).await?;
+            *state.mode = Mode::AwaitingPing;
+            Self::synchronize_ping(&mut reader, state.mode).await?;
         }
         Ok(())
     }
@@ -285,19 +258,19 @@ impl Connection {
                 log::info!("Connection error during background pings: {}", e)
             })
             .ok();
-        debug_assert_eq!(self.state, State::Dirty);
+        debug_assert_eq!(self.mode, Mode::Dirty);
         pending::<()>().await;
         unreachable!();
     }
     async fn synchronize_ping<'a>(
-        reader: &mut Reader<'a>, state: &mut State
+        reader: &mut Reader<'a>, mode: &mut Mode
     ) -> Result<(), Error> {
-        debug_assert_eq!(*state, State::AwaitingPing);
+        debug_assert_eq!(*mode, Mode::AwaitingPing);
         if let Err(e) = reader.wait_ready().await {
-            *state = State::Dirty;
+            *mode = Mode::Dirty;
             Err(e)
         } else {
-            *state = State::Normal { idle_since: Instant::now() };
+            *mode = Mode::Normal { idle_since: Instant::now() };
             Ok(())
         }
     }
@@ -350,9 +323,9 @@ impl Connection {
         }
         if let PingInterval::Interval(interval) = self.ping_interval {
             let rv = other.race(self.background_pings(interval)).await;
-            if self.state == State::AwaitingPing {
+            if self.mode == Mode::AwaitingPing {
                 let (_, ref mut reader, state) = self.split();
-                Self::synchronize_ping(reader, state.state).await.ok();
+                Self::synchronize_ping(reader, state.mode).await.ok();
             }
             rv
         } else {
@@ -360,7 +333,7 @@ impl Connection {
         }
     }
     pub fn is_consistent(&self) -> bool {
-        matches!(self.state, State::Normal {
+        matches!(self.mode, Mode::Normal {
             idle_since: _,
         })
     }
@@ -378,13 +351,13 @@ impl Connection {
         -> Result<Sequence<'x>, Error>
     {
         let (writer, reader, state) = self.split();
-        if !matches!(*state.state, State::Normal {
+        if !matches!(*state.mode, Mode::Normal {
             idle_since: _,
         }) {
             return Err(ClientInconsistentError::with_message(
                 "Connection is inconsistent state. Please reconnect."));
         }
-        *state.state = State::Dirty;
+        *state.mode = Mode::Dirty;
         Ok(Sequence {
             writer,
             reader,
@@ -415,9 +388,9 @@ impl Connection {
             stream: &mut self.output,
         };
         let state = PartialState {
+            mode: &mut self.mode,
+            state_desc: &mut self.state_desc,
             state: &mut self.state,
-            eql_state_desc: &mut self.eql_state_desc,
-            eql_state: &mut self.eql_state,
         };
         (writer, reader, state)
     }
@@ -508,7 +481,7 @@ impl<'a> Sequence<'a> {
 
     pub(crate) async fn _query<A>(&mut self, request: &str, arguments: &A,
         bld: &StatementParams)
-        -> Result<OutputTypedesc, Error>
+        -> Result<Typedesc, Error>
         where A: QueryArgs + ?Sized,
     {
         assert!(self.active);  // TODO(tailhook) maybe debug_assert
@@ -521,7 +494,7 @@ impl<'a> Sequence<'a> {
 
     async fn _query_0<A>(&mut self, request: &str, arguments: &A,
         bld: &StatementParams)
-        -> Result<OutputTypedesc, Error>
+        -> Result<Typedesc, Error>
         where A: QueryArgs + ?Sized,
     {
         let statement_name = Bytes::from_static(b"");
@@ -602,7 +575,7 @@ impl<'a> Sequence<'a> {
 
     async fn _query_1<A>(&mut self, request: &str, arguments: &A,
         bld: &StatementParams)
-        -> Result<OutputTypedesc, Error>
+        -> Result<Typedesc, Error>
         where A: QueryArgs + ?Sized,
     {
         self.send_messages(&[
@@ -614,8 +587,7 @@ impl<'a> Sequence<'a> {
                 output_format: bld.io_format,
                 expected_cardinality: bld.cardinality,
                 command_text: String::from(request),
-                state_typedesc_id: self.get_state_typedesc_id(),
-                state_data: self.get_state_data(),
+                state: self.get_state().clone(),
             }),
             ClientMessage::Flush,
         ]).await?;
@@ -657,10 +629,9 @@ impl<'a> Sequence<'a> {
                 output_format: bld.io_format,
                 expected_cardinality: bld.cardinality,
                 command_text: String::from(request),
-                state_typedesc_id: self.get_state_typedesc_id(),
-                state_data: self.get_state_data(),
-                input_typedesc_id: data_description.input_typedesc_id,
-                output_typedesc_id: data_description.output_typedesc_id,
+                state: self.get_state().clone(),
+                input_typedesc_id: data_description.input.id,
+                output_typedesc_id: data_description.output.id,
                 arguments: arg_buf.freeze(),
             }),
             ClientMessage::Sync,
@@ -724,8 +695,7 @@ impl Connection {
                 output_format: IoFormat::None,
                 expected_cardinality: Cardinality::Many,
                 command_text: request.to_string(),
-                state_typedesc_id: seq.get_state_typedesc_id(),
-                state_data: seq.get_state_data(),
+                state: seq.get_state().clone(),
                 input_typedesc_id: Uuid::from_u128(0),
                 output_typedesc_id: Uuid::from_u128(0),
                 arguments: Bytes::new(),
@@ -877,62 +847,5 @@ impl Connection {
     pub async fn get_version(&mut self) -> Result<String, Error> {
         self.query_row("SELECT sys::get_version_as_str()", &()).await
         .context("cannot fetch database version")
-    }
-}
-
-impl EdgeqlState {
-    pub fn empty() -> EdgeqlState {
-        EdgeqlState {
-            descriptor_id: Uuid::from_u128(0),
-            data: Bytes::new(),
-        }
-    }
-    pub fn descriptor_id(&self) -> Uuid {
-        self.descriptor_id
-    }
-}
-
-impl EdgeqlStateDesc {
-    pub fn uninitialized() -> EdgeqlStateDesc {
-        EdgeqlStateDesc {
-            proto: ProtocolVersion::current(),
-            descriptor_id: Uuid::from_u128(0),
-            descriptor: Bytes::new(),
-        }
-    }
-    pub fn descriptor_id(&self) -> Uuid {
-        self.descriptor_id
-    }
-    pub fn decoded(&self) -> Result<OutputTypedesc, Error> {
-        let ref mut typedesc_buf = Input::new(
-            self.proto.clone(),
-            self.descriptor.clone(),
-        );
-        OutputTypedesc::decode_with_id(
-            self.descriptor_id,
-            typedesc_buf,
-        ).map_err(ProtocolEncodingError::with_source)
-    }
-    pub fn decode(&self, state: &EdgeqlState) -> Result<Option<Value>, Error> {
-        if self.descriptor_id != state.descriptor_id {
-            return Ok(None);
-        }
-        let typedesc = self.decoded()?;
-        let codec = typedesc.build_codec()
-            .map_err(ProtocolEncodingError::with_source)?;
-        let value = codec.decode(&state.data)
-            .map_err(ProtocolEncodingError::with_source)?;
-        Ok(Some(value))
-    }
-    pub fn encode(&self, value: &Value) -> Result<EdgeqlState, Error> {
-        let codec = self.decoded()?.build_codec()
-            .map_err(ProtocolEncodingError::with_source)?;
-        let mut dest = BytesMut::new();
-        codec.encode(&mut dest, value)
-            .map_err(ClientEncodingError::with_source)?;
-        Ok(EdgeqlState {
-            descriptor_id: self.descriptor_id,
-            data: dest.freeze(),
-        })
     }
 }

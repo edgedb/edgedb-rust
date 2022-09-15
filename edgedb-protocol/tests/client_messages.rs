@@ -5,7 +5,7 @@ use uuid::Uuid;
 use bytes::{Bytes, BytesMut};
 
 use edgedb_protocol::encoding::{Input, Output};
-use edgedb_protocol::common::{Capabilities, CompilationFlags};
+use edgedb_protocol::common::{Capabilities, CompilationFlags, State};
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
 use edgedb_protocol::client_message::{ExecuteScript, Execute0, Execute1};
@@ -85,8 +85,10 @@ fn parse() -> Result<(), Box<dyn Error>> {
         output_format: IoFormat::Binary,
         expected_cardinality: Cardinality::AtMostOne,
         command_text: String::from("SELECT 1;"),
-        state_typedesc_id: Uuid::from_u128(0),
-        state_data: Bytes::from(""),
+        state: State {
+            typedesc_id: Uuid::from_u128(0),
+            data: Bytes::from(""),
+        },
     }), b"P\0\0\0A\0\0\0\0\0\0\0\0\0\x01\0\0\0\0\0\0\0\x02\0\0\0\0\0\0\0Mbo\
           \0\0\0\tSELECT 1;\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
     Ok(())
@@ -122,8 +124,10 @@ fn execute1() -> Result<(), Box<dyn Error>> {
         output_format: IoFormat::Binary,
         expected_cardinality: Cardinality::AtMostOne,
         command_text: String::from("SELECT 1;"),
-        state_typedesc_id: Uuid::from_u128(0),
-        state_data: Bytes::new(),
+        state: State {
+            typedesc_id: Uuid::from_u128(0),
+            data: Bytes::from(""),
+        },
         input_typedesc_id: Uuid::from_u128(123),
         output_typedesc_id: Uuid::from_u128(456),
         arguments: Bytes::new(),

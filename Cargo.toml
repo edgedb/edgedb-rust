@@ -5,6 +5,7 @@ members = [
     "edgedb-protocol",
     "edgedb-client",
     "edgedb-tokio",
+    "examples/globals"
 ]
 
 [profile.release]

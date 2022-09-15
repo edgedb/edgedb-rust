@@ -12,6 +12,7 @@ use tls_api::{TlsStream};
 use tokio::sync::{self, Semaphore};
 
 use edgedb_protocol::features::ProtocolVersion;
+use edgedb_protocol::common::RawTypedesc;
 
 use crate::errors::{Error, ErrorKind, ClientError};
 use crate::builder::Config;
@@ -41,7 +42,8 @@ pub struct ConnInner {
     proto: ProtocolVersion,
     #[allow(dead_code)] // TODO
     params: typemap::TypeMap<dyn typemap::DebugAny + Send + Sync>,
-    state: connection::State,
+    mode: connection::Mode,
+    state_desc: RawTypedesc,
     in_buf: BytesMut,
     out_buf: BytesMut,
     stream: TlsStream,

@@ -2,7 +2,7 @@ use bytes::Bytes;
 
 use edgedb_protocol::QueryResult;
 use edgedb_protocol::query_arg::QueryArgs;
-use edgedb_protocol::descriptors::OutputTypedesc;
+use edgedb_protocol::descriptors::Typedesc;
 use edgedb_protocol::client_message::{Cardinality, IoFormat};
 
 use crate::errors::{Error, NoResultExpected, NoDataError, ErrorKind};
@@ -25,7 +25,7 @@ struct Statement<'a, A> {
 }
 
 pub struct GenericResult {
-    pub(crate) descriptor: OutputTypedesc,
+    pub(crate) descriptor: Typedesc,
     pub(crate) data: Vec<Bytes>,
     pub(crate) completion: Bytes,
 }

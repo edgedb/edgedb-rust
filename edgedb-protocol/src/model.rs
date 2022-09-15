@@ -3,8 +3,9 @@
 mod bignum;
 mod json;
 mod memory;
-mod range;
 mod time;
+
+pub(crate) mod range;
 
 pub use memory::ConfigMemory;
 pub use range::Range;

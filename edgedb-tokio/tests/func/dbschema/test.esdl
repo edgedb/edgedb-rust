@@ -7,4 +7,7 @@ module test {
             default := 0;
         }
     }
+
+    global str_val -> str;
+    global int_val -> int32;
 }

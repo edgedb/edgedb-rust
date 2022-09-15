@@ -41,6 +41,7 @@ mod errors;
 mod options;
 mod sealed;
 mod server_params;
+pub mod state;
 mod tls;
 mod transaction;
 

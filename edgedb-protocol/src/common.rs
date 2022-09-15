@@ -1,4 +1,11 @@
 use crate::errors;
+use crate::model::Uuid;
+use bytes::Bytes;
+
+use crate::descriptors::Typedesc;
+use crate::encoding::Input;
+use crate::errors::DecodeError;
+use crate::features::ProtocolVersion;
 
 pub use crate::client_message::IoFormat;
 
@@ -42,6 +49,36 @@ pub struct CompilationOptions {
     pub expected_cardinality: Cardinality,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct State {
+    pub typedesc_id: Uuid,
+    pub data: Bytes,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawTypedesc {
+    pub proto: ProtocolVersion,
+    pub id: Uuid,
+    pub data: Bytes,
+}
+
+impl RawTypedesc {
+    pub fn uninitialized() -> RawTypedesc {
+        RawTypedesc {
+            proto: ProtocolVersion::current(),
+            id: Uuid::from_u128(0),
+            data: Bytes::new(),
+        }
+    }
+    pub fn decode(&self) -> Result<Typedesc, DecodeError> {
+        let ref mut cur = Input::new(
+            self.proto.clone(),
+            self.data.clone(),
+        );
+        Typedesc::decode_with_id(self.id, cur)
+    }
+}
+
 impl std::convert::TryFrom<u8> for Cardinality {
     type Error = errors::DecodeError;
     fn try_from(cardinality: u8) -> Result<Cardinality, errors::DecodeError> {
@@ -66,5 +103,17 @@ impl Cardinality {
             Many => true,
             AtLeastOne => false,
         }
+    }
+}
+
+impl State {
+    pub fn empty() -> State {
+        State {
+            typedesc_id: Uuid::from_u128(0),
+            data: Bytes::new(),
+        }
+    }
+    pub fn descriptor_id(&self) -> Uuid {
+        self.typedesc_id
     }
 }

@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::sync::Arc;
 
 use bytes::BytesMut;
 use edgedb_protocol::QueryResult;
@@ -13,6 +14,7 @@ use crate::errors::{ClientError};
 use crate::errors::{Error, ErrorKind, SHOULD_RETRY};
 use crate::errors::{ProtocolEncodingError, NoResultExpected, NoDataError};
 use crate::raw::{Pool, Connection, Options};
+use crate::state::State;
 
 
 /// Transaction object passed to the closure via
@@ -25,6 +27,7 @@ use crate::raw::{Pool, Connection, Options};
 #[derive(Debug)]
 pub struct Transaction {
     iteration: u32,
+    state: Arc<State>,
     inner: Option<Inner>,
 }
 
@@ -67,6 +70,7 @@ pub(crate) async fn transaction<T, B, F>(pool: &Pool, options: &Options,
         let (tx, mut rx) = oneshot::channel();
         let tran = Transaction {
             iteration,
+            state: options.state.clone(),
             inner: Some(Inner {
                 started: false,
                 conn,
@@ -81,14 +85,14 @@ pub(crate) async fn transaction<T, B, F>(pool: &Pool, options: &Options,
             Ok(val) => {
                 log::debug!("Comitting transaction");
                 if started {
-                    conn.statement("COMMIT").await?;
+                    conn.statement("COMMIT", &options.state).await?;
                 }
                 return Ok(val)
             }
             Err(e) => {
                 log::debug!("Rolling back transaction on error");
                 if started {
-                    conn.statement("ROLLBACK").await?;
+                    conn.statement("ROLLBACK", &options.state).await?;
                 }
                 for e in e.chain() {
                     if let Some(e) = e.downcast_ref::<Error>() {
@@ -121,7 +125,7 @@ impl Transaction {
     async fn ensure_started(&mut self) -> anyhow::Result<(), Error> {
         if let Some(inner) = &mut self.inner {
             if !inner.started {
-                inner.conn.statement("START TRANSACTION").await?;
+                inner.conn.statement("START TRANSACTION", &self.state).await?;
                 inner.started = true;
             }
             return Ok(());
@@ -160,8 +164,9 @@ impl Transaction {
             io_format: IoFormat::Binary,
             expected_cardinality: Cardinality::Many,
         };
+        let state = self.state.clone(); // TODO: optimize, by careful borrow
         let ref mut conn = self.inner().conn;
-        let desc = conn.parse(&flags, query).await?;
+        let desc = conn.parse(&flags, query, &state).await?;
         let inp_desc = desc.input()
             .map_err(ProtocolEncodingError::with_source)?;
 
@@ -171,7 +176,9 @@ impl Transaction {
             &mut arg_buf,
         ))?;
 
-        let data = conn.execute(&flags, query, &desc, &arg_buf.freeze()).await?;
+        let data = conn.execute(
+                &flags, query, &state, &desc, &arg_buf.freeze(),
+            ).await?;
 
         let out_desc = desc.output()
             .map_err(ProtocolEncodingError::with_source)?;
@@ -220,8 +227,9 @@ impl Transaction {
             io_format: IoFormat::Binary,
             expected_cardinality: Cardinality::AtMostOne,
         };
+        let state = self.state.clone(); // TODO optimize using careful borrow
         let ref mut conn = self.inner().conn;
-        let desc = conn.parse(&flags, query).await?;
+        let desc = conn.parse(&flags, query, &state).await?;
         let inp_desc = desc.input()
             .map_err(ProtocolEncodingError::with_source)?;
 
@@ -231,7 +239,9 @@ impl Transaction {
             &mut arg_buf,
         ))?;
 
-        let data = conn.execute(&flags, query, &desc, &arg_buf.freeze()).await?;
+        let data = conn.execute(
+                &flags, query, &state, &desc, &arg_buf.freeze(),
+            ).await?;
 
         let out_desc = desc.output()
             .map_err(ProtocolEncodingError::with_source)?;
@@ -300,8 +310,9 @@ impl Transaction {
             io_format: IoFormat::Json,
             expected_cardinality: Cardinality::Many,
         };
+        let state = self.state.clone(); // TODO optimize using careful borrow
         let ref mut conn = self.inner().conn;
-        let desc = conn.parse(&flags, query).await?;
+        let desc = conn.parse(&flags, query, &state).await?;
         let inp_desc = desc.input()
             .map_err(ProtocolEncodingError::with_source)?;
 
@@ -311,7 +322,9 @@ impl Transaction {
             &mut arg_buf,
         ))?;
 
-        let data = conn.execute(&flags, query, &desc, &arg_buf.freeze()).await?;
+        let data = conn.execute(
+                &flags, query, &state, &desc, &arg_buf.freeze(),
+            ).await?;
 
         let out_desc = desc.output()
             .map_err(ProtocolEncodingError::with_source)?;
@@ -355,8 +368,9 @@ impl Transaction {
             io_format: IoFormat::Json,
             expected_cardinality: Cardinality::AtMostOne,
         };
+        let state = self.state.clone(); // TODO optimize using careful borrow
         let ref mut conn = self.inner().conn;
-        let desc = conn.parse(&flags, query).await?;
+        let desc = conn.parse(&flags, query, &state).await?;
         let inp_desc = desc.input()
             .map_err(ProtocolEncodingError::with_source)?;
 
@@ -366,7 +380,9 @@ impl Transaction {
             &mut arg_buf,
         ))?;
 
-        let data = conn.execute(&flags, query, &desc, &arg_buf.freeze()).await?;
+        let data = conn.execute(
+            &flags, query, &state, &desc, &arg_buf.freeze(),
+        ).await?;
 
         let out_desc = desc.output()
             .map_err(ProtocolEncodingError::with_source)?;

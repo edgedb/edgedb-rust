@@ -11,6 +11,7 @@ use crate::encoding::{Annotations, KeyValues};
 use crate::errors::{self, EncodeError, DecodeError};
 pub use crate::common::{Cardinality, CompilationFlags, Capabilities};
 pub use crate::common::{CompilationOptions};
+pub use crate::common::{State, RawTypedesc};
 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,8 +80,7 @@ pub struct Parse {
     pub output_format: IoFormat,
     pub expected_cardinality: Cardinality,
     pub command_text: String,
-    pub state_typedesc_id: Uuid,
-    pub state_data: Bytes,
+    pub state: State,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -106,8 +106,7 @@ pub struct Execute1 {
     pub output_format: IoFormat,
     pub expected_cardinality: Cardinality,
     pub command_text: String,
-    pub state_typedesc_id: Uuid,
-    pub state_data: Bytes,
+    pub state: State,
     pub input_typedesc_id: Uuid,
     pub output_typedesc_id: Uuid,
     pub arguments: Bytes,
@@ -153,7 +152,6 @@ pub enum IoFormat {
     JsonElements = 0x4a,
     None = 0x6e,
 }
-
 
 struct Empty;
 impl ClientMessage {
@@ -596,8 +594,8 @@ impl Encode for Execute1 {
         buf.put_u8(self.output_format as u8);
         buf.put_u8(self.expected_cardinality as u8);
         self.command_text.encode(buf)?;
-        self.state_typedesc_id.encode(buf)?;
-        self.state_data.encode(buf)?;
+        self.state.typedesc_id.encode(buf)?;
+        self.state.data.encode(buf)?;
         self.input_typedesc_id.encode(buf)?;
         self.output_typedesc_id.encode(buf)?;
         self.arguments.encode(buf)?;
@@ -629,8 +627,10 @@ impl Decode for Execute1 {
         };
         let expected_cardinality = TryFrom::try_from(buf.get_u8())?;
         let command_text = String::decode(buf)?;
-        let state_typedesc_id = Uuid::decode(buf)?;
-        let state_data = Bytes::decode(buf)?;
+        let state = State {
+            typedesc_id: Uuid::decode(buf)?,
+            data: Bytes::decode(buf)?,
+        };
         let input_typedesc_id = Uuid::decode(buf)?;
         let output_typedesc_id = Uuid::decode(buf)?;
         let arguments = Bytes::decode(buf)?;
@@ -642,8 +642,7 @@ impl Decode for Execute1 {
             output_format,
             expected_cardinality,
             command_text,
-            state_typedesc_id,
-            state_data,
+            state,
             input_typedesc_id,
             output_typedesc_id,
             arguments,
@@ -733,7 +732,7 @@ impl Decode for RestoreBlock {
 }
 
 impl Parse {
-    pub fn new(opts: &CompilationOptions, query: &str) -> Parse {
+    pub fn new(opts: &CompilationOptions, query: &str, state: State) -> Parse {
         let mut cflags = CompilationFlags::empty();
         if opts.implicit_typenames {
             cflags |= CompilationFlags::INJECT_OUTPUT_TYPE_NAMES;
@@ -749,8 +748,7 @@ impl Parse {
             output_format: opts.io_format,
             expected_cardinality: opts.expected_cardinality,
             command_text: query.into(),
-            state_typedesc_id: Uuid::from_u128(0),  // TODO(tailhook)
-            state_data: Bytes::new(),
+            state,
         }
     }
 }
@@ -818,8 +816,10 @@ impl Decode for Parse {
         };
         let expected_cardinality = TryFrom::try_from(buf.get_u8())?;
         let command_text = String::decode(buf)?;
-        let state_typedesc_id = Uuid::decode(buf)?;
-        let state_data = Bytes::decode(buf)?;
+        let state = State {
+            typedesc_id: Uuid::decode(buf)?,
+            data: Bytes::decode(buf)?,
+        };
         Ok(Parse {
             annotations,
             allowed_capabilities,
@@ -828,8 +828,7 @@ impl Decode for Parse {
             output_format,
             expected_cardinality,
             command_text,
-            state_typedesc_id,
-            state_data,
+            state,
         })
     }
 }
@@ -854,8 +853,8 @@ impl Encode for Parse {
         buf.put_u8(self.output_format as u8);
         buf.put_u8(self.expected_cardinality as u8);
         self.command_text.encode(buf)?;
-        self.state_typedesc_id.encode(buf)?;
-        self.state_data.encode(buf)?;
+        self.state.typedesc_id.encode(buf)?;
+        self.state.data.encode(buf)?;
         Ok(())
     }
 }

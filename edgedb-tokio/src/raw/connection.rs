@@ -22,26 +22,26 @@ use webpki::DnsNameRef;
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
 use edgedb_protocol::encoding::{Input, Output};
 use edgedb_protocol::features::ProtocolVersion;
-use edgedb_protocol::server_message::ParameterStatus;
+use edgedb_protocol::server_message::{ParameterStatus, RawTypedesc};
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
 use edgedb_protocol::server_message::{ServerHandshake};
 use edgedb_protocol::value::Value;
 
-use crate::raw::ConnInner;
-use crate::tls;
 use crate::builder::{Config, Address};
-use crate::errors::{Error, ClientError, ErrorKind};
-use crate::errors::{ClientConnectionFailedTemporarilyError, ProtocolTlsError};
-use crate::errors::{ClientConnectionError, ClientConnectionFailedError};
-use crate::errors::{ClientEncodingError, ClientConnectionEosError};
-use crate::errors::{ProtocolEncodingError, ProtocolError};
 use crate::errors::{AuthenticationError, PasswordRequired};
+use crate::errors::{ClientConnectionError, ClientConnectionFailedError};
+use crate::errors::{ClientConnectionFailedTemporarilyError, ProtocolTlsError};
+use crate::errors::{ClientEncodingError, ClientConnectionEosError};
+use crate::errors::{Error, ClientError, ErrorKind};
+use crate::errors::{ProtocolEncodingError, ProtocolError};
+use crate::raw::ConnInner;
 use crate::server_params::{SystemConfig};
+use crate::tls;
 
 const MAX_MESSAGE_SIZE: usize = 1_048_576;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub(crate) enum State {
+pub(crate) enum Mode {
     Normal {
         idle_since: Instant,
     },
@@ -51,9 +51,10 @@ pub(crate) enum State {
     AwaitingPing,
 }
 
+
 impl ConnInner {
     pub fn is_consistent(&self) -> bool {
-        matches!(self.state, State::Normal {..})
+        matches!(self.mode, Mode::Normal {..})
     }
     pub async fn connect(config: &Config) -> Result<Self, Error> {
         connect(config).await.map_err(|e| {
@@ -253,6 +254,7 @@ async fn connect4(cfg: &Config, mut stream: TlsStream)
     }
 
     let mut server_params = TypeMap::custom();
+    let mut state_desc = RawTypedesc::uninitialized();
     loop {
         let msg = wait_message(&mut stream, &mut in_buf, &proto).await?;
         match msg {
@@ -285,6 +287,9 @@ async fn connect4(cfg: &Config, mut stream: TlsStream)
                     _ => {}
                 }
             }
+            ServerMessage::StateDataDescription(d) => {
+                state_desc = d.typedesc;
+            }
             _ => {
                 log::warn!("unsolicited message {:?}", msg);
             }
@@ -293,7 +298,8 @@ async fn connect4(cfg: &Config, mut stream: TlsStream)
     Ok(ConnInner {
         proto,
         params: server_params,
-        state: State::Normal { idle_since: Instant::now() },
+        mode: Mode::Normal { idle_since: Instant::now() },
+        state_desc,
         in_buf,
         out_buf,
         stream,
