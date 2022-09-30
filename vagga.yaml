@@ -102,12 +102,21 @@ commands:
     run: [cargo, run, --package=edgedb-tokio, --example]
 
   example-globals: !Command
-    description: Run named tokio example
+    description: Run tokio example
     container: ubuntu
     environ:
       EDGEDB_CLIENT_TLS_SECURITY: insecure
       EDGEDB_HOST: localhost
     run: [cargo, run, --package=globals-example]
+
+  example-query-error: !Command
+    description: Run query error example
+    container: ubuntu
+    environ:
+      EDGEDB_CLIENT_TLS_SECURITY: insecure
+      EDGEDB_HOST: localhost
+      LANG: en_US.utf8
+    run: [cargo, run, --package=query-error-example]
 
   gen-errors: !Command
     description: Generate error codes

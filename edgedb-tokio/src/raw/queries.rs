@@ -87,8 +87,10 @@ impl ConnInner {
     {
         if self.proto.is_1() {
             self._parse1(flags, query, state).await
+                .map_err(|e| e.add_source_code(query))
         } else {
-            let pre = self._prepare0(flags, query).await?;
+            let pre = self._prepare0(flags, query).await
+                .map_err(|e| e.add_source_code(query))?;
             self._describe0(pre).await
         }
     }
@@ -210,8 +212,10 @@ impl ConnInner {
     {
         if self.proto.is_1() {
             self._execute1(opts, query, state, desc, arguments).await
+                .map_err(|e| e.add_source_code(query))
         } else {
             self._execute0(arguments).await
+                .map_err(|e| e.add_source_code(query))
         }
     }
 
