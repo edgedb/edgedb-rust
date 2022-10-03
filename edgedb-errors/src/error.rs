@@ -177,6 +177,9 @@ impl fmt::Display for Error {
                 write!(f, "{}", kind)?;
             }
         }
+        if let Some((line, col)) = self.line().zip(self.column()) {
+            write!(f, " (on line {}, column {})", line, col)?;
+        }
         if let Some(hint) = self.hint() {
             write!(f, "\n  Hint: {}", hint)?;
         }
