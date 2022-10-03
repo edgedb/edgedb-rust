@@ -10,6 +10,7 @@ use crate::descriptors::{Descriptor, TypePos};
 
 #[non_exhaustive]
 pub struct Decoder {
+    pub has_implicit_id: bool,
     pub has_implicit_tid: bool,
     pub has_implicit_tname: bool,
 }
@@ -17,6 +18,7 @@ pub struct Decoder {
 impl Default for Decoder {
     fn default() -> Decoder {
         Decoder {
+            has_implicit_id: false,
             has_implicit_tid: false,
             has_implicit_tname: false,
         }
@@ -52,6 +54,7 @@ pub enum DescriptorMismatch {
 }
 
 pub struct DescriptorContext<'a> {
+    pub has_implicit_id: bool,
     pub has_implicit_tid: bool,
     pub has_implicit_tname: bool,
     descriptors: &'a [Descriptor],
@@ -61,6 +64,7 @@ impl DescriptorContext<'_> {
     pub(crate) fn new(descriptors: &[Descriptor]) -> DescriptorContext {
         DescriptorContext {
             descriptors,
+            has_implicit_id: false,
             has_implicit_tid: false,
             has_implicit_tname: false,
         }

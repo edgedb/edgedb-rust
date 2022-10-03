@@ -12,3 +12,6 @@ mod transactions;
 
 #[cfg(not(windows))]
 mod globals;
+
+#[cfg(not(windows))]
+mod derive;
