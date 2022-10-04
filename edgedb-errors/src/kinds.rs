@@ -115,7 +115,7 @@ define_errors![
     (struct DuplicateConstraintDefinitionError, 0x04050209u32, 0x00000000),
     (struct DuplicateCastDefinitionError, 0x0405020Au32, 0x00000000),
     (struct SessionTimeoutError, 0x04060000u32, 0x00000000),
-    (struct IdleSessionTimeoutError, 0x04060100u32, 0x00000000),
+    (struct IdleSessionTimeoutError, 0x04060100u32, 0x00000002),
     (struct QueryTimeoutError, 0x04060200u32, 0x00000000),
     (struct TransactionTimeoutError, 0x04060A00u32, 0x00000000),
     (struct IdleTransactionTimeoutError, 0x04060A01u32, 0x00000000),

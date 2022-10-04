@@ -7,10 +7,11 @@ use edgedb_protocol::common::CompilationOptions;
 use edgedb_protocol::common::{IoFormat, Capabilities, Cardinality};
 use edgedb_protocol::query_arg::{QueryArgs, Encoder};
 use edgedb_protocol::QueryResult;
+use tokio::time::sleep;
 
 use crate::raw::Pool;
 use crate::builder::Config;
-use crate::errors::{Error, ErrorKind};
+use crate::errors::{Error, ErrorKind, SHOULD_RETRY};
 use crate::errors::{ProtocolEncodingError, NoResultExpected, NoDataError};
 use crate::transaction::{Transaction, transaction};
 use crate::options::{TransactionOptions, RetryOptions};
@@ -72,44 +73,83 @@ impl Client {
         where A: QueryArgs,
               R: QueryResult,
     {
-        let mut conn = self.pool.acquire().await?;
+        let mut iteration = 0;
+        loop {
+            let mut conn = self.pool.acquire().await?;
 
-        let flags = CompilationOptions {
-            implicit_limit: None,
-            implicit_typenames: false,
-            implicit_typeids: false,
-            explicit_objectids: true,
-            allow_capabilities: Capabilities::MODIFICATIONS,
-            io_format: IoFormat::Binary,
-            expected_cardinality: Cardinality::Many,
-        };
-        let desc = conn.parse(&flags, query, &self.options.state).await?;
-        let inp_desc = desc.input()
-            .map_err(ProtocolEncodingError::with_source)?;
+            let flags = CompilationOptions {
+                implicit_limit: None,
+                implicit_typenames: false,
+                implicit_typeids: false,
+                explicit_objectids: true,
+                allow_capabilities: Capabilities::MODIFICATIONS,
+                io_format: IoFormat::Binary,
+                expected_cardinality: Cardinality::Many,
+            };
+            let desc;
+            match conn.parse(&flags, query, &self.options.state).await {
+                Ok(parsed) => desc = parsed,
+                Err(e) => {
+                    if e.has_tag(SHOULD_RETRY) {
+                        let rule = self.options.retry.get_rule(&e);
+                        iteration += 1;
+                        if iteration < rule.attempts {
+                            let duration = (rule.backoff)(iteration);
+                            log::info!("Error: {:#}. Retrying in {:?}...",
+                                       e, duration);
+                            sleep(duration).await;
+                            continue;
+                        }
+                    }
+                    return Err(e);
+                }
+            };
+            let inp_desc = desc.input()
+                .map_err(ProtocolEncodingError::with_source)?;
 
-        let mut arg_buf = BytesMut::with_capacity(8);
-        arguments.encode(&mut Encoder::new(
-            &inp_desc.as_query_arg_context(),
-            &mut arg_buf,
-        ))?;
+            let mut arg_buf = BytesMut::with_capacity(8);
+            arguments.encode(&mut Encoder::new(
+                &inp_desc.as_query_arg_context(),
+                &mut arg_buf,
+            ))?;
 
-        let data = conn.execute(
-                &flags, query, &self.options.state, &desc, &arg_buf.freeze()
-            ).await?;
+            let res = conn.execute(
+                    &flags, query, &self.options.state, &desc, &arg_buf.freeze()
+                ).await;
+            let data = match res {
+                Ok(data) => data,
+                Err(e) => {
+                    if desc.capabilities == Capabilities::empty() &&
+                        e.has_tag(SHOULD_RETRY)
+                    {
+                        let rule = self.options.retry.get_rule(&e);
+                        iteration += 1;
+                        if iteration < rule.attempts {
+                            let duration = (rule.backoff)(iteration);
+                            log::info!("Error: {:#}. Retrying in {:?}...",
+                                       e, duration);
+                            sleep(duration).await;
+                            continue;
+                        }
+                    }
+                    return Err(e);
+                }
+            };
 
-        let out_desc = desc.output()
-            .map_err(ProtocolEncodingError::with_source)?;
-        match out_desc.root_pos() {
-            Some(root_pos) => {
-                let ctx = out_desc.as_queryable_context();
-                let mut state = R::prepare(&ctx, root_pos)?;
-                let rows = data.into_iter()
-                    .flat_map(|chunk| chunk.data)
-                    .map(|chunk| R::decode(&mut state, &chunk))
-                    .collect::<Result<_, _>>()?;
-                Ok(rows)
+            let out_desc = desc.output()
+                .map_err(ProtocolEncodingError::with_source)?;
+            match out_desc.root_pos() {
+                Some(root_pos) => {
+                    let ctx = out_desc.as_queryable_context();
+                    let mut state = R::prepare(&ctx, root_pos)?;
+                    let rows = data.into_iter()
+                        .flat_map(|chunk| chunk.data)
+                        .map(|chunk| R::decode(&mut state, &chunk))
+                        .collect::<Result<_, _>>()?;
+                    return Ok(rows)
+                }
+                None => return Err(NoResultExpected::build()),
             }
-            None => Err(NoResultExpected::build()),
         }
     }
 
@@ -134,46 +174,85 @@ impl Client {
         where A: QueryArgs,
               R: QueryResult,
     {
-        let mut conn = self.pool.acquire().await?;
+        let mut iteration = 0;
+        loop {
+            let mut conn = self.pool.acquire().await?;
 
-        let flags = CompilationOptions {
-            implicit_limit: None,
-            implicit_typenames: false,
-            implicit_typeids: false,
-            explicit_objectids: true,
-            allow_capabilities: Capabilities::MODIFICATIONS,
-            io_format: IoFormat::Binary,
-            expected_cardinality: Cardinality::AtMostOne,
-        };
-        let desc = conn.parse(&flags, query, &self.options.state).await?;
-        let inp_desc = desc.input()
-            .map_err(ProtocolEncodingError::with_source)?;
-
-        let mut arg_buf = BytesMut::with_capacity(8);
-        arguments.encode(&mut Encoder::new(
-            &inp_desc.as_query_arg_context(),
-            &mut arg_buf,
-        ))?;
-
-        let data = conn.execute(
-            &flags, query, &self.options.state, &desc, &arg_buf.freeze(),
-        ).await?;
-
-        let out_desc = desc.output()
-            .map_err(ProtocolEncodingError::with_source)?;
-        match out_desc.root_pos() {
-            Some(root_pos) => {
-                let ctx = out_desc.as_queryable_context();
-                let mut state = R::prepare(&ctx, root_pos)?;
-                let bytes = data.into_iter().next()
-                    .and_then(|chunk| chunk.data.into_iter().next());
-                if let Some(bytes) = bytes {
-                    Ok(Some(R::decode(&mut state, &bytes)?))
-                } else {
-                    Ok(None)
+            let flags = CompilationOptions {
+                implicit_limit: None,
+                implicit_typenames: false,
+                implicit_typeids: false,
+                explicit_objectids: true,
+                allow_capabilities: Capabilities::MODIFICATIONS,
+                io_format: IoFormat::Binary,
+                expected_cardinality: Cardinality::AtMostOne,
+            };
+            let desc;
+            match conn.parse(&flags, query, &self.options.state).await {
+                Ok(parsed) => desc = parsed,
+                Err(e) => {
+                    if e.has_tag(SHOULD_RETRY) {
+                        let rule = self.options.retry.get_rule(&e);
+                        iteration += 1;
+                        if iteration < rule.attempts {
+                            let duration = (rule.backoff)(iteration);
+                            log::info!("Error: {:#}. Retrying in {:?}...",
+                                       e, duration);
+                            sleep(duration).await;
+                            continue;
+                        }
+                    }
+                    return Err(e);
                 }
+            };
+            let inp_desc = desc.input()
+                .map_err(ProtocolEncodingError::with_source)?;
+
+            let mut arg_buf = BytesMut::with_capacity(8);
+            arguments.encode(&mut Encoder::new(
+                &inp_desc.as_query_arg_context(),
+                &mut arg_buf,
+            ))?;
+
+            let res = conn.execute(
+                &flags, query, &self.options.state, &desc, &arg_buf.freeze(),
+            ).await;
+            let data = match res {
+                Ok(data) => data,
+                Err(e) => {
+                    if desc.capabilities == Capabilities::empty() &&
+                        e.has_tag(SHOULD_RETRY)
+                    {
+                        let rule = self.options.retry.get_rule(&e);
+                        iteration += 1;
+                        if iteration < rule.attempts {
+                            let duration = (rule.backoff)(iteration);
+                            log::info!("Error: {:#}. Retrying in {:?}...",
+                                       e, duration);
+                            sleep(duration).await;
+                            continue;
+                        }
+                    }
+                    return Err(e);
+                }
+            };
+
+            let out_desc = desc.output()
+                .map_err(ProtocolEncodingError::with_source)?;
+            match out_desc.root_pos() {
+                Some(root_pos) => {
+                    let ctx = out_desc.as_queryable_context();
+                    let mut state = R::prepare(&ctx, root_pos)?;
+                    let bytes = data.into_iter().next()
+                        .and_then(|chunk| chunk.data.into_iter().next());
+                    if let Some(bytes) = bytes {
+                        return Ok(Some(R::decode(&mut state, &bytes)?))
+                    } else {
+                        return Ok(None)
+                    }
+                }
+                None => return Err(NoResultExpected::build()),
             }
-            None => Err(NoResultExpected::build()),
         }
     }
 
@@ -216,50 +295,90 @@ impl Client {
     pub async fn query_json(&self, query: &str, arguments: &impl QueryArgs)
         -> Result<Json, Error>
     {
-        let mut conn = self.pool.acquire().await?;
+        let mut iteration = 0;
+        loop {
+            let mut conn = self.pool.acquire().await?;
 
-        let flags = CompilationOptions {
-            implicit_limit: None,
-            implicit_typenames: false,
-            implicit_typeids: false,
-            explicit_objectids: true,
-            allow_capabilities: Capabilities::MODIFICATIONS,
-            io_format: IoFormat::Json,
-            expected_cardinality: Cardinality::Many,
-        };
-        let desc = conn.parse(&flags, query, &self.options.state).await?;
-        let inp_desc = desc.input()
-            .map_err(ProtocolEncodingError::with_source)?;
-
-        let mut arg_buf = BytesMut::with_capacity(8);
-        arguments.encode(&mut Encoder::new(
-            &inp_desc.as_query_arg_context(),
-            &mut arg_buf,
-        ))?;
-
-        let data = conn.execute(
-                &flags, query, &self.options.state, &desc, &arg_buf.freeze(),
-            ).await?;
-
-        let out_desc = desc.output()
-            .map_err(ProtocolEncodingError::with_source)?;
-        match out_desc.root_pos() {
-            Some(root_pos) => {
-                let ctx = out_desc.as_queryable_context();
-                // JSON objects are returned as strings :(
-                let mut state = String::prepare(&ctx, root_pos)?;
-                let bytes = data.into_iter().next()
-                    .and_then(|chunk| chunk.data.into_iter().next());
-                if let Some(bytes) = bytes {
-                    // we trust database to produce valid json
-                    let s = String::decode(&mut state, &bytes)?;
-                    Ok(unsafe { Json::new_unchecked(s) })
-                } else {
-                    Err(NoDataError::with_message(
-                        "query row returned zero results"))
+            let flags = CompilationOptions {
+                implicit_limit: None,
+                implicit_typenames: false,
+                implicit_typeids: false,
+                explicit_objectids: true,
+                allow_capabilities: Capabilities::MODIFICATIONS,
+                io_format: IoFormat::Json,
+                expected_cardinality: Cardinality::Many,
+            };
+            let desc;
+            match conn.parse(&flags, query, &self.options.state).await {
+                Ok(parsed) => desc = parsed,
+                Err(e) => {
+                    if e.has_tag(SHOULD_RETRY) {
+                        let rule = self.options.retry.get_rule(&e);
+                        iteration += 1;
+                        if iteration < rule.attempts {
+                            let duration = (rule.backoff)(iteration);
+                            log::info!("Error: {:#}. Retrying in {:?}...",
+                                       e, duration);
+                            sleep(duration).await;
+                            continue;
+                        }
+                    }
+                    return Err(e);
                 }
+            };
+            let inp_desc = desc.input()
+                .map_err(ProtocolEncodingError::with_source)?;
+
+            let mut arg_buf = BytesMut::with_capacity(8);
+            arguments.encode(&mut Encoder::new(
+                &inp_desc.as_query_arg_context(),
+                &mut arg_buf,
+            ))?;
+
+            let res = conn.execute(
+                    &flags, query, &self.options.state, &desc, &arg_buf.freeze(),
+                ).await;
+            let data = match res {
+                Ok(data) => data,
+                Err(e) => {
+                    dbg!(&e, e.has_tag(SHOULD_RETRY));
+                    if desc.capabilities == Capabilities::empty() &&
+                        e.has_tag(SHOULD_RETRY)
+                    {
+                        let rule = self.options.retry.get_rule(&e);
+                        iteration += 1;
+                        if iteration < rule.attempts {
+                            let duration = (rule.backoff)(iteration);
+                            log::info!("Error: {:#}. Retrying in {:?}...",
+                                       e, duration);
+                            sleep(duration).await;
+                            continue;
+                        }
+                    }
+                    return Err(e);
+                }
+            };
+
+            let out_desc = desc.output()
+                .map_err(ProtocolEncodingError::with_source)?;
+            match out_desc.root_pos() {
+                Some(root_pos) => {
+                    let ctx = out_desc.as_queryable_context();
+                    // JSON objects are returned as strings :(
+                    let mut state = String::prepare(&ctx, root_pos)?;
+                    let bytes = data.into_iter().next()
+                        .and_then(|chunk| chunk.data.into_iter().next());
+                    if let Some(bytes) = bytes {
+                        // we trust database to produce valid json
+                        let s = String::decode(&mut state, &bytes)?;
+                        return Ok(unsafe { Json::new_unchecked(s) })
+                    } else {
+                        return Err(NoDataError::with_message(
+                            "query row returned zero results"))
+                    }
+                }
+                None => return Err(NoResultExpected::build()),
             }
-            None => Err(NoResultExpected::build()),
         }
     }
 
@@ -273,49 +392,88 @@ impl Client {
                                    query: &str, arguments: &impl QueryArgs)
         -> Result<Option<Json>, Error>
     {
-        let mut conn = self.pool.acquire().await?;
+        let mut iteration = 0;
+        loop {
+            let mut conn = self.pool.acquire().await?;
 
-        let flags = CompilationOptions {
-            implicit_limit: None,
-            implicit_typenames: false,
-            implicit_typeids: false,
-            explicit_objectids: true,
-            allow_capabilities: Capabilities::MODIFICATIONS,
-            io_format: IoFormat::Json,
-            expected_cardinality: Cardinality::AtMostOne,
-        };
-        let desc = conn.parse(&flags, query, &self.options.state).await?;
-        let inp_desc = desc.input()
-            .map_err(ProtocolEncodingError::with_source)?;
-
-        let mut arg_buf = BytesMut::with_capacity(8);
-        arguments.encode(&mut Encoder::new(
-            &inp_desc.as_query_arg_context(),
-            &mut arg_buf,
-        ))?;
-
-        let data = conn.execute(
-                &flags, query, &self.options.state, &desc, &arg_buf.freeze(),
-            ).await?;
-
-        let out_desc = desc.output()
-            .map_err(ProtocolEncodingError::with_source)?;
-        match out_desc.root_pos() {
-            Some(root_pos) => {
-                let ctx = out_desc.as_queryable_context();
-                // JSON objects are returned as strings :(
-                let mut state = String::prepare(&ctx, root_pos)?;
-                let bytes = data.into_iter().next()
-                    .and_then(|chunk| chunk.data.into_iter().next());
-                if let Some(bytes) = bytes {
-                    // we trust database to produce valid json
-                    let s = String::decode(&mut state, &bytes)?;
-                    Ok(Some(unsafe { Json::new_unchecked(s) }))
-                } else {
-                    Ok(None)
+            let flags = CompilationOptions {
+                implicit_limit: None,
+                implicit_typenames: false,
+                implicit_typeids: false,
+                explicit_objectids: true,
+                allow_capabilities: Capabilities::MODIFICATIONS,
+                io_format: IoFormat::Json,
+                expected_cardinality: Cardinality::AtMostOne,
+            };
+            let desc;
+            match conn.parse(&flags, query, &self.options.state).await {
+                Ok(parsed) => desc = parsed,
+                Err(e) => {
+                    if e.has_tag(SHOULD_RETRY) {
+                        let rule = self.options.retry.get_rule(&e);
+                        iteration += 1;
+                        if iteration < rule.attempts {
+                            let duration = (rule.backoff)(iteration);
+                            log::info!("Error: {:#}. Retrying in {:?}...",
+                                       e, duration);
+                            sleep(duration).await;
+                            continue;
+                        }
+                    }
+                    return Err(e);
                 }
+            };
+            let inp_desc = desc.input()
+                .map_err(ProtocolEncodingError::with_source)?;
+
+            let mut arg_buf = BytesMut::with_capacity(8);
+            arguments.encode(&mut Encoder::new(
+                &inp_desc.as_query_arg_context(),
+                &mut arg_buf,
+            ))?;
+
+            let res = conn.execute(
+                    &flags, query, &self.options.state, &desc, &arg_buf.freeze(),
+                ).await;
+            let data = match res {
+                Ok(data) => data,
+                Err(e) => {
+                    if desc.capabilities == Capabilities::empty() &&
+                        e.has_tag(SHOULD_RETRY)
+                    {
+                        let rule = self.options.retry.get_rule(&e);
+                        iteration += 1;
+                        if iteration < rule.attempts {
+                            let duration = (rule.backoff)(iteration);
+                            log::info!("Error: {:#}. Retrying in {:?}...",
+                                       e, duration);
+                            sleep(duration).await;
+                            continue;
+                        }
+                    }
+                    return Err(e);
+                }
+            };
+
+            let out_desc = desc.output()
+                .map_err(ProtocolEncodingError::with_source)?;
+            match out_desc.root_pos() {
+                Some(root_pos) => {
+                    let ctx = out_desc.as_queryable_context();
+                    // JSON objects are returned as strings :(
+                    let mut state = String::prepare(&ctx, root_pos)?;
+                    let bytes = data.into_iter().next()
+                        .and_then(|chunk| chunk.data.into_iter().next());
+                    if let Some(bytes) = bytes {
+                        // we trust database to produce valid json
+                        let s = String::decode(&mut state, &bytes)?;
+                        return Ok(Some(unsafe { Json::new_unchecked(s) }))
+                    } else {
+                        return Ok(None)
+                    }
+                }
+                None => return Err(NoResultExpected::build()),
             }
-            None => Err(NoResultExpected::build()),
         }
     }
 
