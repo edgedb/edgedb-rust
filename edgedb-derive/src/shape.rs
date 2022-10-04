@@ -35,10 +35,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
     };
     let fieldname = fields.iter()
         .map(|f| f.name.clone()).collect::<Vec<_>>();
-    let has_id = fieldname.iter()
-        .find(|x| x.to_string() == "id").is_some();
-    let base_fields = fields.len()
-        + if has_id { 0 } else { 1 };
+    let base_fields = fields.len();
     let type_id_block = Some(quote! {
         if decoder.has_implicit_tid {
             elements.skip_element()?;
@@ -49,13 +46,11 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
             elements.skip_element()?;
         }
     });
-    let id_block = if has_id {
-        None
-    } else {
-        Some(quote! {
+    let id_block = Some(quote! {
+        if decoder.has_implicit_id {
             elements.skip_element()?;
-        })
-    };
+        }
+    });
     let type_id_check = Some(quote! {
         if ctx.has_implicit_tid {
             if(!shape.elements[idx].flag_implicit) {
@@ -67,21 +62,19 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
     let type_name_check = Some(quote! {
         if ctx.has_implicit_tname {
             if(!shape.elements[idx].flag_implicit) {
-                return Err(ctx.expected("implicit __tid__"));
+                return Err(ctx.expected("implicit __tname__"));
             }
             idx += 1;
         }
     });
-    let id_check = if has_id {
-        None
-    } else {
-        Some(quote! {
+    let id_check = Some(quote! {
+        if ctx.has_implicit_id {
             if(!shape.elements[idx].flag_implicit) {
                 return Err(ctx.expected("implicit id"));
             }
             idx += 1;
-        })
-    };
+        }
+    });
     let field_decoders = fields.iter().map(|field| {
         let ref fieldname = field.name;
         if field.attrs.json {
@@ -133,6 +126,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
                 -> Result<Self, ::edgedb_protocol::errors::DecodeError>
             {
                 let nfields = #base_fields
+                    + if decoder.has_implicit_id { 1 } else { 0 }
                     + if decoder.has_implicit_tid { 1 } else { 0 }
                     + if decoder.has_implicit_tname { 1 } else { 0 };
                 let mut elements =

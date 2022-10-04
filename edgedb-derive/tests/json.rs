@@ -23,6 +23,7 @@ struct JsonRow {
 
 fn old_decoder() -> Decoder {
     let mut dec = Decoder::default();
+    dec.has_implicit_id = true;
     dec.has_implicit_tid = true;
     return dec;
 }

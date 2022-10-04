@@ -40,6 +40,7 @@ impl<T: Queryable> QueryResult for T {
         T::check_descriptor(ctx, root_pos)
             .map_err(DescriptorMismatch::with_source)?;
         Ok(Decoder {
+            has_implicit_id: ctx.has_implicit_id,
             has_implicit_tid: ctx.has_implicit_tid,
             has_implicit_tname: ctx.has_implicit_tname,
         })

@@ -10,19 +10,20 @@ struct ScalarType {
 
 fn old_decoder() -> Decoder {
     let mut dec = Decoder::default();
+    dec.has_implicit_id = true;
     dec.has_implicit_tid = true;
     return dec;
 }
 
 #[test]
 fn decode_new() {
-    let data = b"\0\0\0\x04\0\0\x0b\x86\0\0\0\x10\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
-        \x01\x0c\0\0\0\x19\0\0\0\x0fcal::local_date\
-        \0\0\0\x19\0\0\0\x0estd::anyscalar\0\0\0\x19\0\0\0\x06normal";
+    let data = b"\0\0\0\x03\0\0\0\x19\0\0\0\x0fcal::local_date\
+               \0\0\0\x19\0\0\0 std::anyscalar, std::anydiscrete\
+               \0\0\0\x19\0\0\0\x06normal";
     let res = ScalarType::decode(&Decoder::default(), data);
     assert_eq!(res.unwrap(), ScalarType {
         name: "cal::local_date".into(),
-        extending: "std::anyscalar".into(),
+        extending: "std::anyscalar, std::anydiscrete".into(),
         kind: "normal".into(),
     });
 }
