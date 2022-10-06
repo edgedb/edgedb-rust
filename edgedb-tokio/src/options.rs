@@ -5,12 +5,22 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rand::{thread_rng, Rng};
+use once_cell::sync::Lazy;
 
-use edgedb_errors::Error;
+use crate::errors::{Error, IdleSessionTimeoutError};
 
 trait Assert: Send + Sync + 'static {}
 impl Assert for RetryOptions {}
 impl Assert for TransactionOptions {}
+
+
+/// Single immediate retry on idle is fine
+///
+/// This doesn't have to be configured.
+static IDLE_TIMEOUT_RULE: Lazy<RetryRule> = Lazy::new(|| RetryRule {
+    attempts: 2,
+    backoff: Arc::new(|_| { Duration::new(0, 0) }),
+});
 
 
 /// Transaction isolation level
@@ -144,7 +154,9 @@ impl RetryOptions {
         use edgedb_errors::{TransactionConflictError, ClientError};
         use RetryCondition::*;
 
-        if err.is::<TransactionConflictError>() {
+        if err.is::<IdleSessionTimeoutError>() {
+            return &*IDLE_TIMEOUT_RULE;
+        } else if err.is::<TransactionConflictError>() {
             self.0.overrides.get(&TransactionConflict)
                 .unwrap_or(&self.0.default)
         } else if err.is::<ClientError>() {

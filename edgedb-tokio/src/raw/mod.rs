@@ -81,8 +81,11 @@ impl PoolInner {
         let permit = self.semaphore.clone().acquire_owned().await
             .map_err(|e| ClientError::with_source(e)
                      .context("cannot acquire connection"))?;
-        if let Some(conn) = self._next_conn(&permit) {
+        while let Some(mut conn) = self._next_conn(&permit) {
             assert!(conn.is_consistent());
+            if conn.is_connection_reset().await {
+                continue;
+            }
             return Ok(Connection {
                 inner: Some(conn),
                 permit,

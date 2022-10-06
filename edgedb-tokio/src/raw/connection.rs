@@ -1,9 +1,12 @@
 use std::borrow::Cow;
+use std::cmp::min;
 use std::collections::HashMap;
 use std::error::Error as _;
-use std::future::Future;
+use std::future::{self, Future};
 use std::io;
+use std::pin::Pin;
 use std::str;
+use std::task::{Poll, Context};
 use std::time::{Duration, Instant};
 
 use bytes::{Bytes, BytesMut};
@@ -33,6 +36,7 @@ use crate::errors::{ClientConnectionError, ClientConnectionFailedError};
 use crate::errors::{ClientConnectionFailedTemporarilyError, ProtocolTlsError};
 use crate::errors::{ClientEncodingError, ClientConnectionEosError};
 use crate::errors::{Error, ClientError, ErrorKind};
+use crate::errors::{IdleSessionTimeoutError};
 use crate::errors::{ProtocolEncodingError, ProtocolError};
 use crate::raw::ConnInner;
 use crate::server_params::{SystemConfig};
@@ -51,10 +55,59 @@ pub(crate) enum Mode {
     AwaitingPing,
 }
 
+struct PollOnce<F>(F);
+
+impl<T, F: Future<Output=T>> Future for PollOnce<Pin<&mut F>> {
+    type Output = Option<T>;
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>)
+        -> Poll<Self::Output>
+    {
+        match Pin::new(&mut self.0).poll(cx) {
+            Poll::Ready(data) => Poll::Ready(Some(data)),
+            Poll::Pending => Poll::Ready(None),
+        }
+    }
+}
+
 
 impl ConnInner {
     pub fn is_consistent(&self) -> bool {
         matches!(self.mode, Mode::Normal {..})
+    }
+    pub async fn is_connection_reset(&mut self) -> bool {
+        tokio::select!{ biased;
+            msg = wait_message(&mut self.stream, &mut self.in_buf, &self.proto)
+            => {
+                match msg {
+                    Ok(ServerMessage::ErrorResponse(e)) => {
+                        let e: Error = e.into();
+                        if e.is::<IdleSessionTimeoutError>() {
+                            log::debug!("Connection reset due to inactivity.");
+                        } else {
+                            log::warn!("Unexpected error: {:#}", e);
+                        }
+                        true
+                    }
+                    Ok(m) => {
+                        log::warn!("Unsolicited message: {:?}", m);
+                        true
+                    }
+                    Err(e) => {
+                        log::debug!("I/O error: {:#}", e);
+                        true
+                    }
+                }
+            }
+            _ = future::ready(()) => {
+                if self.in_buf.is_empty() {
+                    false
+                } else {
+                    log::warn!("Unsolicited partial data {:?}",
+                               &self.in_buf[..min(self.in_buf.len(), 16)]);
+                    true
+                }
+            }
+        }
     }
     pub async fn connect(config: &Config) -> Result<Self, Error> {
         connect(config).await.map_err(|e| {

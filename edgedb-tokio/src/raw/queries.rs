@@ -17,6 +17,7 @@ use edgedb_protocol::server_message::{ServerMessage, Data};
 
 use crate::errors::{Error, ErrorKind};
 use crate::errors::{ProtocolOutOfOrderError, ClientInconsistentError};
+use crate::errors::{ClientConnectionEosError};
 use crate::raw::{ConnInner, Connection};
 use crate::raw::connection::Mode;
 use crate::state::State;
@@ -67,6 +68,19 @@ impl ConnInner {
             }
         }
     }
+
+    async fn expect_ready_or_eos(&mut self, guard: Guard)
+        -> Result<(), Error>
+    {
+        match self.expect_ready(guard).await {
+            Ok(()) => Ok(()),
+            Err(e) if e.is::<ClientConnectionEosError>() => {
+                assert!(!self.is_consistent());
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
+    }
     pub async fn parse(&mut self, flags: &CompilationOptions, query: &str,
                        state: &Arc<State>)
         -> Result<CommandDataDescription1, Error>
@@ -103,7 +117,7 @@ impl ConnInner {
                     return Ok(data_desc);
                 }
                 ServerMessage::ErrorResponse(err) => {
-                    self.expect_ready(guard).await
+                    self.expect_ready_or_eos(guard).await
                         .map_err(|e| log::warn!(
                             "Error waiting for Ready after error: {e:#}"))
                         .ok();
@@ -133,7 +147,7 @@ impl ConnInner {
                     return Ok(data);
                 }
                 ServerMessage::ErrorResponse(err) => {
-                    self.expect_ready(guard).await
+                    self.expect_ready_or_eos(guard).await
                         .map_err(|e| log::warn!(
                             "Error waiting for Ready after error: {e:#}"))
                         .ok();
@@ -167,7 +181,7 @@ impl ConnInner {
                     break data_desc;
                 }
                 ServerMessage::ErrorResponse(err) => {
-                    self.expect_ready(guard).await
+                    self.expect_ready_or_eos(guard).await
                         .map_err(|e| log::warn!(
                             "Error waiting for Ready after error: {e:#}"))
                         .ok();
@@ -246,7 +260,7 @@ impl ConnInner {
                     return Ok(result);
                 }
                 ServerMessage::ErrorResponse(err) => {
-                    self.expect_ready(guard).await
+                    self.expect_ready_or_eos(guard).await
                         .map_err(|e| log::warn!(
                             "Error waiting for Ready after error: {e:#}"))
                         .ok();
@@ -285,7 +299,7 @@ impl ConnInner {
                     return Ok(result);
                 }
                 ServerMessage::ErrorResponse(err) => {
-                    self.expect_ready(guard).await
+                    self.expect_ready_or_eos(guard).await
                         .map_err(|e| log::warn!(
                             "Error waiting for Ready after error: {e:#}"))
                         .ok();
@@ -353,7 +367,7 @@ impl ConnInner {
                     return Ok(());
                 }
                 ServerMessage::ErrorResponse(err) => {
-                    self.expect_ready(guard).await
+                    self.expect_ready_or_eos(guard).await
                         .map_err(|e| log::warn!(
                             "Error waiting for Ready after error: {e:#}"))
                         .ok();
@@ -391,7 +405,7 @@ impl ConnInner {
                     return Ok(());
                 }
                 ServerMessage::ErrorResponse(err) => {
-                    self.expect_ready(guard).await
+                    self.expect_ready_or_eos(guard).await
                         .map_err(|e| log::warn!(
                             "Error waiting for Ready after error: {e:#}"))
                         .ok();
