@@ -77,6 +77,7 @@
 //! ```toml
 //! [dependencies]
 //! miette = { version="5.3.0", features=["fancy"] }
+//! edgedb-tokio = { version="*", features=["miette-errors"] }
 //! ```
 //!
 //! Then if you use `miette` all the way through your application, it just

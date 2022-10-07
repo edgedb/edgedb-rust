@@ -56,3 +56,4 @@ env = ["fs"]
 admin_socket = []
 unstable = ["serde_json"]  # features for CLI and Wasm
 fs = ["tokio/fs", "dirs", "serde_json"]
+miette-errors = ["edgedb-errors/miette"]
