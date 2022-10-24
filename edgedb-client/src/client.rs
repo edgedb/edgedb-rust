@@ -355,7 +355,7 @@ impl Connection {
             idle_since: _,
         }) {
             return Err(ClientInconsistentError::with_message(
-                "Connection is inconsistent state. Please reconnect."));
+                "Connection is in an inconsistent state. Please reconnect."));
         }
         *state.mode = Mode::Dirty;
         Ok(Sequence {
