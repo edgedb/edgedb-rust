@@ -18,26 +18,16 @@ jobs:
           profile: minimal
           toolchain: ${{ matrix.rust_version }}
           default: true
-      - name: Test no-tokio
+      - name: Test all reatures
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --workspace --exclude edgedb-tokio --exclude globals-example --all-features
-      - name: Test edgedb-tokio
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --package edgedb-tokio --package globals-example --all-features
-      - name: Check no default features (no tokio)
+          args: --workspace --all-features
+      - name: Check no default features
         uses: actions-rs/cargo@v1
         with:
           command: check
-          args: --no-default-features --workspace --exclude edgedb-tokio --exclude globals-example
-      - name: Check no default features tokio
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --no-default-features --package edgedb-tokio
+          args: --no-default-features --workspace
       - name: Check with `fs` feature (edgedb-tokio)
         uses: actions-rs/cargo@v1
         with:
@@ -48,17 +38,6 @@ jobs:
         with:
           command: check
           args: --features=env --package edgedb-tokio
-      - name: Check all features (no edgedb-tokio)
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --all-features --workspace --exclude edgedb-tokio --exclude globals-example
-      - name: Check all features
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --all-features --package edgedb-tokio
-
       - name: Test protocol without default features
         working-directory: ./edgedb-protocol
         run: |
