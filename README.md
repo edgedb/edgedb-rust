@@ -8,7 +8,7 @@ docs can currently be found on docs.rs:
 * [edgedb-derive](https://docs.rs/edgedb-derive) -- derive macro for data
   structures fetched from the database
 * Async-std bindings [edgedb-client](https://docs.rs/edgedb-client) (currently
-  deprecated)
+  deprecated, and moved to CLI tool repository)
 
 
 Running Tests
@@ -17,8 +17,7 @@ Running Tests
 Due to cargo's limitation on propagation of "features", tests can only be
 run as few separate command-lines:
 ```
-cargo test --workspace --exclude edgedb-tokio
-cargo test -p edgeql-tokio
+cargo test --workspace
 cd edgedb-protocol; cargo test --no-default-features
 ```
 
