@@ -29,6 +29,13 @@ impl ProtocolVersion {
     pub fn has_implicit_tid(&self) -> bool {
         self.version_tuple() <= (0, 8)
     }
+    pub fn has_implicit_id(&self) -> bool {
+        // Some of pre 1.0 protocols required implicit id.
+        // Later it was opt out. In 1.0 it's opt-in.
+        // We never opt-in or opt-out so whether it's present only on pre 1.0
+        // portocols.
+        !self.is_1()
+    }
     pub fn is_at_least(&self, major_ver: u16, minor_ver: u16) -> bool {
         self.major_ver > major_ver ||
         self.major_ver == major_ver && self.minor_ver >= minor_ver
