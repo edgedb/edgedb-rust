@@ -1453,7 +1453,7 @@ impl Display for DateDuration {
             return write!(f, "PT0D"); // XXX
         }
         write!(f, "P")?;
-        if self.months.abs() > 12 {
+        if self.months.abs() >= 12 {
             write!(f, "{}Y", self.months / 12)?;
         }
         if (self.months % 12).abs() > 0 {
@@ -1720,5 +1720,19 @@ mod chrono_interop {
                 }
             }
         }
+
+        #[test]
+        fn date_duration() -> Result<(), Box<dyn std::error::Error>> {
+            assert_eq!(DateDuration::from_years(1).to_string(), "P1Y");
+            assert_eq!(DateDuration::from_months(1).to_string(), "P1M");
+            assert_eq!(DateDuration::from_days(1).to_string(), "P1D");
+            assert_eq!(DateDuration::from_months(10).to_string(), "P10M");
+            assert_eq!(DateDuration::from_months(20).to_string(), "P1Y8M");
+            assert_eq!(DateDuration::from_days(131).to_string(), "P131D");
+            assert_eq!((DateDuration::from_months(7) +
+                        DateDuration::from_days(131)).to_string(), "P7M131D");
+            Ok(())
+        }
     }
 }
+
