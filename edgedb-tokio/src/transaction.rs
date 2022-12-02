@@ -95,24 +95,25 @@ pub(crate) async fn transaction<T, B, F>(pool: &Pool, options: &Options,
                     conn.statement("ROLLBACK", &options.state).await?;
                 }
 
-                let some_retry = outer.chain().find_map(|e| e.downcast_ref::<Error>().and_then(|e| {
-                    if e.has_tag(SHOULD_RETRY) {
-                        Some(e)
-                    }else{
-                        None
-                    }
-                }));
+                let some_retry = outer.chain().find_map(|e| {
+                    e.downcast_ref::<Error>().and_then(|e| {
+                        if e.has_tag(SHOULD_RETRY) {
+                            Some(e)
+                        } else {
+                            None
+                        }
+                    })
+                });
 
-                if some_retry.is_none() { 
+                if some_retry.is_none() {
                     return Err(outer);
-                }else {
+                } else {
                     let e = some_retry.unwrap();
                     let rule = options.retry.get_rule(e);
                     if iteration >= rule.attempts {
-                        return Err(outer)
-                    }else {
-                        log::info!("Retrying transaction on {:#}",
-                        e);
+                        return Err(outer);
+                    } else {
+                        log::info!("Retrying transaction on {:#}", e);
                         iteration += 1;
                         sleep((rule.backoff)(iteration)).await;
                         continue 'transaction;
