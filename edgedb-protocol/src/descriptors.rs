@@ -198,6 +198,7 @@ impl Typedesc {
     }
     pub fn as_queryable_context(&self) -> queryable::DescriptorContext {
         let mut ctx = queryable::DescriptorContext::new(self.descriptors());
+        ctx.has_implicit_id = self.proto.has_implicit_id();
         ctx.has_implicit_tid = self.proto.has_implicit_tid();
         ctx
     }

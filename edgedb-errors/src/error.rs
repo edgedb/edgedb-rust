@@ -45,6 +45,7 @@ pub(crate) struct Inner {
     pub messages: Vec<Cow<'static, str>>,
     pub error: Option<Source>,
     pub headers: HashMap<u16, bytes::Bytes>,
+    pub source_code: Option<String>,
 }
 
 trait Assert: Send + Sync + 'static {}
@@ -137,6 +138,7 @@ impl Error {
             messages: Vec::new(),
             error: None,
             headers: HashMap::new(),
+            source_code: None,
         }))
     }
     pub fn code(&self) -> u32 {
@@ -144,6 +146,10 @@ impl Error {
     }
     pub fn refine_kind<T: ErrorKind>(mut self) -> Error {
         self.0.code = T::CODE;
+        self
+    }
+    pub fn add_source_code(mut self, text: impl Into<String>) -> Error {
+        self.0.source_code = Some(text.into());
         self
     }
 }
@@ -170,6 +176,9 @@ impl fmt::Display for Error {
             } else {
                 write!(f, "{}", kind)?;
             }
+        }
+        if let Some((line, col)) = self.line().zip(self.column()) {
+            write!(f, " (on line {}, column {})", line, col)?;
         }
         if let Some(hint) = self.hint() {
             write!(f, "\n  Hint: {}", hint)?;

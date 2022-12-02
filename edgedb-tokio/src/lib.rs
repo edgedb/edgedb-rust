@@ -45,6 +45,8 @@ pub mod state;
 mod tls;
 mod transaction;
 
+pub use edgedb_derive::{Queryable, GlobalsDelta, ConfigDelta};
+
 pub use builder::{Builder, Config};
 pub use credentials::TlsSecurity;
 pub use client::Client;
