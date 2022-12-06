@@ -54,6 +54,9 @@ pub use errors::Error;
 pub use options::{TransactionOptions, RetryOptions};
 pub use transaction::{Transaction};
 
+#[cfg(feature="unstable")]
+pub use builder::get_project_dir;
+
 /// Create a connection to the database with default parameters
 ///
 /// It's expected that connection parameters are set up using environment
