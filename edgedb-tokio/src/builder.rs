@@ -1,3 +1,4 @@
+use std::env;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::str;
@@ -94,6 +95,38 @@ impl fmt::Display for DisplayAddr<'_> {
             }
         }
     }
+}
+
+#[cfg(feature="env")]
+/// Searches for project dir either from current dir or from specified
+pub async fn get_project_dir(override_dir: Option<&Path>, search_parents: bool)
+    -> Result<Option<PathBuf>, Error>
+{
+    use std::borrow::Cow;
+    use tokio::fs;
+
+    let dir = match override_dir {
+        Some(v) => Cow::Borrowed(v.as_ref()),
+        None => {
+            Cow::Owned(env::current_dir()
+                .map_err(|e| ClientError::with_source(e)
+                    .context("failed to get current directory"))?
+                .into())
+        }
+    };
+
+    if search_parents {
+        if let Some(ancestor) = search_dir(&dir).await? {
+            return Ok(Some(ancestor.into()));
+        } else {
+            return Ok(None);
+        }
+    } else {
+        if !fs::metadata(&dir.join("edgedb.toml")).await.is_ok() {
+            return Ok(None)
+        }
+        return Ok(Some(dir.to_path_buf().into()))
+    };
 }
 
 #[cfg(feature="env")]
@@ -291,29 +324,10 @@ impl Builder {
         -> Result<&mut Self, Error>
     {
         use tokio::fs;
-        use std::borrow::Cow;
 
-        let dir = match override_dir {
-            Some(v) => Cow::Borrowed(v.as_ref()),
-            None => {
-                Cow::Owned(std::env::current_dir()
-                    .map_err(|e| ClientError::with_source(e)
-                        .context("failed to get current directory"))?
-                    .into())
-            }
-        };
-
-        let dir = if search_parents {
-            if let Some(ancestor) = search_dir(&dir).await? {
-                Cow::Borrowed(ancestor)
-            } else {
-                return Ok(self);
-            }
-        } else {
-            if !fs::metadata(&dir.join("edgedb.toml")).await.is_ok() {
-                return Ok(self);
-            }
-            dir
+        let dir = match get_project_dir(override_dir, search_parents).await? {
+            Some(dir) => dir,
+            None => return Ok(self),
         };
         let canon = fs::canonicalize(&dir).await
             .map_err(|e| ClientError::with_source(e).context(
