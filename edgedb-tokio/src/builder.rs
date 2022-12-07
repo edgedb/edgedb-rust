@@ -81,15 +81,15 @@ pub(crate) struct ConfigInner {
     pub max_connections: usize,
 }
 
-struct DisplayAddr<'a>(&'a Builder);
+struct DisplayAddr<'a>(bool, &'a Address);
 
 impl fmt::Display for DisplayAddr<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if !self.0.initialized {
+        if !self.0 {
             write!(f, "<no address>")
         // TODO
         } else {
-            match &self.0.addr {
+            match &self.1 {
                 Address::Unix(path) => write!(f, "{}", path.display()),
                 Address::Tcp((host, port)) => write!(f, "{}:{}", host, port),
             }
@@ -276,11 +276,19 @@ fn is_valid_instance_name(name: &str) -> bool {
     return true;
 }
 
+impl Config {
+
+    /// A displayable form for an address.
+    pub fn display_addr<'x>(&'x self) -> impl fmt::Display + 'x {
+        DisplayAddr(true, &self.0.address)
+    }
+}
+
 impl Builder {
 
     /// A displayable form for an address.
     pub fn display_addr<'x>(&'x self) -> impl fmt::Display + 'x {
-        DisplayAddr(self)
+        DisplayAddr(self.initialized, &self.addr)
     }
     /// Indicates whether credentials are set for this builder.
     pub fn is_initialized(&self) -> bool {

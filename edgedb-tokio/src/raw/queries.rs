@@ -18,13 +18,13 @@ use edgedb_protocol::server_message::{ServerMessage, Data};
 use crate::errors::{Error, ErrorKind};
 use crate::errors::{ProtocolOutOfOrderError, ClientInconsistentError};
 use crate::errors::{ClientConnectionEosError};
-use crate::raw::{ConnInner, Connection};
+use crate::raw::{Connection, PoolConnection};
 use crate::raw::connection::Mode;
 use crate::state::State;
 
 pub(crate) struct Guard;
 
-impl ConnInner {
+impl Connection {
     fn begin_request(&mut self) -> Result<Guard, Error> {
         match self.mode {
             Mode::Normal { .. } => {
@@ -424,7 +424,7 @@ impl ConnInner {
     }
 }
 
-impl Connection {
+impl PoolConnection {
     pub async fn parse(&mut self, flags: &CompilationOptions, query: &str,
                        state: &Arc<State>)
         -> Result<CommandDataDescription1, Error>
