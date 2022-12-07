@@ -30,19 +30,28 @@
 
 #[cfg(feature="unstable")]
 pub mod raw;
+#[cfg(feature="unstable")]
+pub mod server_params;
+#[cfg(feature="unstable")]
+pub mod credentials;
+#[cfg(feature="unstable")]
+pub mod tls;
 
 #[cfg(not(feature="unstable"))]
 mod raw;
+#[cfg(not(feature="unstable"))]
+mod server_params;
+#[cfg(not(feature="unstable"))]
+mod credentials;
+#[cfg(not(feature="unstable"))]
+mod tls;
 
 mod builder;
 mod client;
-mod credentials;
 mod errors;
 mod options;
 mod sealed;
-mod server_params;
 pub mod state;
-mod tls;
 mod transaction;
 
 pub use edgedb_derive::{Queryable, GlobalsDelta, ConfigDelta};

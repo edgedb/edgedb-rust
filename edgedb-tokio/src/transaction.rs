@@ -13,7 +13,7 @@ use tokio::time::sleep;
 use crate::errors::{ClientError};
 use crate::errors::{Error, ErrorKind, SHOULD_RETRY};
 use crate::errors::{ProtocolEncodingError, NoResultExpected, NoDataError};
-use crate::raw::{Pool, Connection, Options};
+use crate::raw::{Pool, PoolConnection, Options};
 use crate::state::State;
 
 
@@ -33,14 +33,14 @@ pub struct Transaction {
 
 #[derive(Debug)]
 pub struct TransactionResult {
-    conn: Connection,
+    conn: PoolConnection,
     started: bool,
 }
 
 #[derive(Debug)]
 pub struct Inner {
     started: bool,
-    conn: Connection,
+    conn: PoolConnection,
     return_conn: oneshot::Sender<TransactionResult>,
 }
 

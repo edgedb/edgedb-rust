@@ -26,19 +26,19 @@ pub struct Pool(Arc<PoolInner>);
 struct PoolInner {
     pub config: Config,
     pub semaphore: Arc<Semaphore>,
-    pub queue: BlockingMutex<VecDeque<ConnInner>>,
+    pub queue: BlockingMutex<VecDeque<Connection>>,
 }
 
 #[derive(Debug)]
-pub struct Connection {
-    inner: Option<ConnInner>,
+pub struct PoolConnection {
+    inner: Option<Connection>,
     #[allow(dead_code)]  // needed only for Drop side effect
     permit: sync::OwnedSemaphorePermit,
     pool: Arc<PoolInner>,
 }
 
 #[derive(Debug)]
-pub struct ConnInner {
+pub struct Connection {
     proto: ProtocolVersion,
     #[allow(dead_code)] // TODO
     params: typemap::TypeMap<dyn typemap::DebugAny + Send + Sync>,
@@ -50,7 +50,7 @@ pub struct ConnInner {
 }
 
 trait AssertConn: Send + 'static {}
-impl AssertConn for Connection {}
+impl AssertConn for PoolConnection {}
 
 trait AssertPool: Send + Sync + 'static {}
 impl AssertPool for Pool {}
@@ -64,20 +64,20 @@ impl Pool {
             config: config.clone(),
         }))
     }
-    pub async fn acquire(&self) -> Result<Connection, Error> {
+    pub async fn acquire(&self) -> Result<PoolConnection, Error> {
         self.0.acquire().await
     }
 }
 
 impl PoolInner {
     fn _next_conn(&self, _permit: &sync::OwnedSemaphorePermit)
-        -> Option<ConnInner>
+        -> Option<Connection>
     {
         self.queue.lock()
             .expect("pool shared state mutex is not poisoned")
             .pop_front()
     }
-    async fn acquire(self: &Arc<Self>) -> Result<Connection, Error> {
+    async fn acquire(self: &Arc<Self>) -> Result<PoolConnection, Error> {
         let permit = self.semaphore.clone().acquire_owned().await
             .map_err(|e| ClientError::with_source(e)
                      .context("cannot acquire connection"))?;
@@ -86,17 +86,17 @@ impl PoolInner {
             if conn.is_connection_reset().await {
                 continue;
             }
-            return Ok(Connection {
+            return Ok(PoolConnection {
                 inner: Some(conn),
                 permit,
                 pool: self.clone(),
             });
         }
-        let conn = ConnInner::connect(&self.config).await?;
+        let conn = Connection::connect(&self.config).await?;
         // Make sure that connection is wrapped before we commit,
         // so that connection is returned into a pool if we fail
         // to commit because of async stuff
-        return Ok(Connection {
+        return Ok(PoolConnection {
             inner: Some(conn),
             permit,
             pool: self.clone(),
@@ -104,13 +104,13 @@ impl PoolInner {
     }
 }
 
-impl Connection {
+impl PoolConnection {
     pub fn is_consistent(&self) -> bool {
         self.inner.as_ref().map(|c| c.is_consistent()).unwrap_or(false)
     }
 }
 
-impl Drop for Connection {
+impl Drop for PoolConnection {
     fn drop(&mut self) {
         if let Some(conn) = self.inner.take() {
             if conn.is_consistent() {

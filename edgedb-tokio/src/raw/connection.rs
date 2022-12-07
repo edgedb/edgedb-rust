@@ -38,7 +38,7 @@ use crate::errors::{ClientEncodingError, ClientConnectionEosError};
 use crate::errors::{Error, ClientError, ErrorKind};
 use crate::errors::{IdleSessionTimeoutError};
 use crate::errors::{ProtocolEncodingError, ProtocolError};
-use crate::raw::ConnInner;
+use crate::raw::Connection;
 use crate::server_params::{SystemConfig};
 use crate::tls;
 
@@ -70,7 +70,7 @@ impl<T, F: Future<Output=T>> Future for PollOnce<Pin<&mut F>> {
 }
 
 
-impl ConnInner {
+impl Connection {
     pub fn is_consistent(&self) -> bool {
         matches!(self.mode, Mode::Normal {..})
     }
@@ -130,7 +130,7 @@ impl ConnInner {
     }
 }
 
-async fn connect(cfg: &Config) -> Result<ConnInner, Error> {
+async fn connect(cfg: &Config) -> Result<Connection, Error> {
     let tls = tls::connector(cfg.0.verifier.clone())
         .map_err(|e| ClientError::with_source_ref(e)
                  .context("cannot create TLS connector"))?;
@@ -171,7 +171,7 @@ async fn connect(cfg: &Config) -> Result<ConnInner, Error> {
 }
 
 async fn connect2(cfg: &Config, tls: &TlsConnectorBox, warned: &mut bool)
-    -> Result<ConnInner, Error>
+    -> Result<Connection, Error>
 {
     let stream = match connect3(cfg, tls).await {
         Err(e) if e.is::<ProtocolTlsError>() => {
@@ -252,7 +252,7 @@ async fn connect3(cfg: &Config, tls: &TlsConnectorBox)
 }
 
 async fn connect4(cfg: &Config, mut stream: TlsStream)
-    -> Result<ConnInner, Error>
+    -> Result<Connection, Error>
 {
     let mut proto = ProtocolVersion::current();
     let mut out_buf = BytesMut::with_capacity(8192);
@@ -348,7 +348,7 @@ async fn connect4(cfg: &Config, mut stream: TlsStream)
             }
         }
     }
-    Ok(ConnInner {
+    Ok(Connection {
         proto,
         params: server_params,
         mode: Mode::Normal { idle_since: Instant::now() },
