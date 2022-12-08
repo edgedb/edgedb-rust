@@ -149,6 +149,7 @@ mod traits;
 
 pub mod display;
 pub mod kinds;
+pub mod fields;
 
 #[cfg(feature="miette")]
 pub mod miette;

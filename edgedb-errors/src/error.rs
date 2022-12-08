@@ -1,3 +1,4 @@
+use std::any::{Any, TypeId};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::error::Error as StdError;
@@ -6,7 +7,7 @@ use std::str;
 
 use crate::kinds::{tag_check, error_name};
 use crate::kinds::{UserError};
-use crate::traits::ErrorKind;
+use crate::traits::{ErrorKind, Field};
 
 
 const FIELD_HINT: u16 = 0x_00_01;
@@ -39,13 +40,17 @@ pub(crate) enum Source {
     >),
 }
 
+
+
 #[derive(Debug)]
 pub(crate) struct Inner {
     pub code: u32,
+    // TODO(tailhook) possibly put message into the fields too
     pub messages: Vec<Cow<'static, str>>,
     pub error: Option<Source>,
+    // TODO(tailhook) put headers into the fields
     pub headers: HashMap<u16, bytes::Bytes>,
-    pub source_code: Option<String>,
+    pub fields: HashMap<(&'static str, TypeId), Box<dyn Any + Send + Sync>>,
 }
 
 trait Assert: Send + Sync + 'static {}
@@ -138,7 +143,7 @@ impl Error {
             messages: Vec::new(),
             error: None,
             headers: HashMap::new(),
-            source_code: None,
+            fields: HashMap::new(),
         }))
     }
     pub fn code(&self) -> u32 {
@@ -148,9 +153,16 @@ impl Error {
         self.0.code = T::CODE;
         self
     }
-    pub fn add_source_code(mut self, text: impl Into<String>) -> Error {
-        self.0.source_code = Some(text.into());
+    pub fn set<T: Field>(mut self, value: impl Into<T::Value>) -> Error {
+        self.0.fields.insert(
+            (T::NAME, TypeId::of::<T::Value>()),
+            Box::new(value.into()),
+        );
         self
+    }
+    pub fn get<T: Field>(&self) -> Option<&T::Value> {
+        self.0.fields.get(&(T::NAME, TypeId::of::<T::Value>()))
+            .and_then(|bx| bx.downcast_ref::<T::Value>())
     }
 }
 
