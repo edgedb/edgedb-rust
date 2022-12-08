@@ -14,6 +14,7 @@ use edgedb_protocol::common::{IoFormat, Cardinality, Capabilities};
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::server_message::{PrepareComplete, CommandDataDescription1};
 use edgedb_protocol::server_message::{ServerMessage, Data};
+use edgedb_errors::fields::QueryText;
 
 use crate::errors::{Error, ErrorKind};
 use crate::errors::{ProtocolOutOfOrderError, ClientInconsistentError};
@@ -87,10 +88,10 @@ impl Connection {
     {
         if self.proto.is_1() {
             self._parse1(flags, query, state).await
-                .map_err(|e| e.add_source_code(query))
+                .map_err(|e| e.set::<QueryText>(query))
         } else {
             let pre = self._prepare0(flags, query).await
-                .map_err(|e| e.add_source_code(query))?;
+                .map_err(|e| e.set::<QueryText>(query))?;
             self._describe0(pre).await
         }
     }
@@ -212,10 +213,10 @@ impl Connection {
     {
         if self.proto.is_1() {
             self._execute1(opts, query, state, desc, arguments).await
-                .map_err(|e| e.add_source_code(query))
+                .map_err(|e| e.set::<QueryText>(query))
         } else {
             self._execute0(arguments).await
-                .map_err(|e| e.add_source_code(query))
+                .map_err(|e| e.set::<QueryText>(query))
         }
     }
 
