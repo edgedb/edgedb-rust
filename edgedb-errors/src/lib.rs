@@ -154,6 +154,6 @@ pub mod fields;
 #[cfg(feature="miette")]
 pub mod miette;
 
-pub use traits::{ErrorKind, ResultExt};
+pub use traits::{ErrorKind, ResultExt, Field};
 pub use error::{Error, Tag};
 pub use kinds::*;

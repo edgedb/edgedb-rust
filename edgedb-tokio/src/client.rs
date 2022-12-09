@@ -9,7 +9,7 @@ use edgedb_protocol::query_arg::{QueryArgs, Encoder};
 use edgedb_protocol::QueryResult;
 use tokio::time::sleep;
 
-use crate::raw::Pool;
+use crate::raw::{Pool, QueryCapabilities};
 use crate::builder::Config;
 use crate::errors::{Error, ErrorKind, SHOULD_RETRY};
 use crate::errors::{ProtocolEncodingError, NoResultExpected, NoDataError};
@@ -177,21 +177,18 @@ impl Client {
         let mut iteration = 0;
         loop {
             let mut conn = self.pool.acquire().await?;
-
-            let flags = CompilationOptions {
-                implicit_limit: None,
-                implicit_typenames: false,
-                implicit_typeids: false,
-                explicit_objectids: true,
-                allow_capabilities: Capabilities::MODIFICATIONS | Capabilities::DDL,
-                io_format: IoFormat::Binary,
-                expected_cardinality: Cardinality::AtMostOne,
-            };
-            let desc;
-            match conn.parse(&flags, query, &self.options.state).await {
-                Ok(parsed) => desc = parsed,
+            let state = &self.options.state;
+            match conn.inner().query_single(query, arguments, &state).await {
+                Ok(value) => return Ok(value),
                 Err(e) => {
-                    if e.has_tag(SHOULD_RETRY) {
+                    let allow_retry = match e.get::<QueryCapabilities>() {
+                        // Error from a weird source, or just a bug
+                        // Let's keep on the safe side
+                        None => false,
+                        Some(QueryCapabilities::Unparsed) => true,
+                        Some(QueryCapabilities::Parsed(c)) => c.is_empty(),
+                    };
+                    if allow_retry && e.has_tag(SHOULD_RETRY) {
                         let rule = self.options.retry.get_rule(&e);
                         iteration += 1;
                         if iteration < rule.attempts {
@@ -204,54 +201,6 @@ impl Client {
                     }
                     return Err(e);
                 }
-            };
-            let inp_desc = desc.input()
-                .map_err(ProtocolEncodingError::with_source)?;
-
-            let mut arg_buf = BytesMut::with_capacity(8);
-            arguments.encode(&mut Encoder::new(
-                &inp_desc.as_query_arg_context(),
-                &mut arg_buf,
-            ))?;
-
-            let res = conn.execute(
-                &flags, query, &self.options.state, &desc, &arg_buf.freeze(),
-            ).await;
-            let data = match res {
-                Ok(data) => data,
-                Err(e) => {
-                    if desc.capabilities == Capabilities::empty() &&
-                        e.has_tag(SHOULD_RETRY)
-                    {
-                        let rule = self.options.retry.get_rule(&e);
-                        iteration += 1;
-                        if iteration < rule.attempts {
-                            let duration = (rule.backoff)(iteration);
-                            log::info!("Error: {:#}. Retrying in {:?}...",
-                                       e, duration);
-                            sleep(duration).await;
-                            continue;
-                        }
-                    }
-                    return Err(e);
-                }
-            };
-
-            let out_desc = desc.output()
-                .map_err(ProtocolEncodingError::with_source)?;
-            match out_desc.root_pos() {
-                Some(root_pos) => {
-                    let ctx = out_desc.as_queryable_context();
-                    let mut state = R::prepare(&ctx, root_pos)?;
-                    let bytes = data.into_iter().next()
-                        .and_then(|chunk| chunk.data.into_iter().next());
-                    if let Some(bytes) = bytes {
-                        return Ok(Some(R::decode(&mut state, &bytes)?))
-                    } else {
-                        return Ok(None)
-                    }
-                }
-                None => return Err(NoResultExpected::build()),
             }
         }
     }

@@ -4,15 +4,15 @@ mod connection;
 mod options;
 mod queries;
 
-use std::sync::{Arc, Mutex as BlockingMutex};
 use std::collections::VecDeque;
+use std::sync::{Arc, Mutex as BlockingMutex};
 
 use bytes::BytesMut;
 use tls_api::{TlsStream};
 use tokio::sync::{self, Semaphore};
 
 use edgedb_protocol::features::ProtocolVersion;
-use edgedb_protocol::common::RawTypedesc;
+use edgedb_protocol::common::{RawTypedesc, Capabilities};
 
 use crate::errors::{Error, ErrorKind, ClientError};
 use crate::builder::Config;
@@ -21,6 +21,11 @@ pub use options::Options;
 
 #[derive(Clone, Debug)]
 pub struct Pool(Arc<PoolInner>);
+
+pub enum QueryCapabilities {
+    Unparsed,
+    Parsed(Capabilities),
+}
 
 #[derive(Debug)]
 struct PoolInner {
@@ -40,6 +45,7 @@ pub struct PoolConnection {
 #[derive(Debug)]
 pub struct Connection {
     proto: ProtocolVersion,
+    server_version: Option<String>,
     #[allow(dead_code)] // TODO
     params: typemap::TypeMap<dyn typemap::DebugAny + Send + Sync>,
     mode: connection::Mode,
@@ -54,6 +60,11 @@ impl AssertConn for PoolConnection {}
 
 trait AssertPool: Send + Sync + 'static {}
 impl AssertPool for Pool {}
+
+impl edgedb_errors::Field for QueryCapabilities {
+    const NAME: &'static str = "capabilities";
+    type Value = QueryCapabilities;
+}
 
 impl Pool {
     pub fn new(config: &Config) -> Pool {
