@@ -2,24 +2,27 @@ use std::collections::HashMap;
 use std::time::Instant;
 use std::sync::Arc;
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use edgedb_protocol::model::Uuid;
 
+use edgedb_errors::fields::QueryText;
+use edgedb_protocol::QueryResult;
 use edgedb_protocol::client_message::{ClientMessage, Parse, Prepare};
-use edgedb_protocol::client_message::{Execute0, Execute1};
 use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
+use edgedb_protocol::client_message::{Execute0, Execute1};
 use edgedb_protocol::client_message::{OptimisticExecute};
 use edgedb_protocol::common::{CompilationOptions, CompilationFlags};
 use edgedb_protocol::common::{IoFormat, Cardinality, Capabilities};
 use edgedb_protocol::features::ProtocolVersion;
+use edgedb_protocol::query_arg::{QueryArgs, Encoder};
 use edgedb_protocol::server_message::{PrepareComplete, CommandDataDescription1};
 use edgedb_protocol::server_message::{ServerMessage, Data};
-use edgedb_errors::fields::QueryText;
 
 use crate::errors::{Error, ErrorKind};
 use crate::errors::{ProtocolOutOfOrderError, ClientInconsistentError};
-use crate::errors::{ClientConnectionEosError};
-use crate::raw::{Connection, PoolConnection};
+use crate::errors::{ClientConnectionEosError, ProtocolEncodingError};
+use crate::errors::{NoResultExpected, NoDataError};
+use crate::raw::{Connection, PoolConnection, QueryCapabilities};
 use crate::raw::connection::Mode;
 use crate::state::State;
 
@@ -423,6 +426,77 @@ impl Connection {
             }
         }
     }
+
+    pub async fn query_single<R, A>(&mut self, query: &str, arguments: &A,
+                                    state: &Arc<State>)
+        -> Result<Option<R>, Error>
+        where A: QueryArgs,
+              R: QueryResult,
+    {
+        let mut caps = QueryCapabilities::Unparsed;
+        let result = async {
+            let flags = CompilationOptions {
+                implicit_limit: None,
+                implicit_typenames: false,
+                implicit_typeids: false,
+                explicit_objectids: true,
+                allow_capabilities: Capabilities::MODIFICATIONS,
+                io_format: IoFormat::Binary,
+                expected_cardinality: Cardinality::AtMostOne,
+            };
+            let desc = self.parse(&flags, query, &state).await?;
+            caps = QueryCapabilities::Parsed(desc.capabilities);
+            let inp_desc = desc.input()
+                .map_err(ProtocolEncodingError::with_source)?;
+
+            let mut arg_buf = BytesMut::with_capacity(8);
+            arguments.encode(&mut Encoder::new(
+                &inp_desc.as_query_arg_context(),
+                &mut arg_buf,
+            ))?;
+
+            let res = self.execute(
+                &flags, query, &state, &desc, &arg_buf.freeze(),
+            ).await;
+            let data = match res {
+                Ok(data) => data,
+                Err(e) => {
+                    return Err(e.set::<QueryCapabilities>(
+                            QueryCapabilities::Parsed(desc.capabilities))
+                    );
+                }
+            };
+
+            let out_desc = desc.output()
+                .map_err(ProtocolEncodingError::with_source)?;
+            match out_desc.root_pos() {
+                Some(root_pos) => {
+                    let ctx = out_desc.as_queryable_context();
+                    let mut state = R::prepare(&ctx, root_pos)?;
+                    let bytes = data.into_iter().next()
+                        .and_then(|chunk| chunk.data.into_iter().next());
+                    if let Some(bytes) = bytes {
+                        return Ok(Some(R::decode(&mut state, &bytes)?))
+                    } else {
+                        return Ok(None)
+                    }
+                }
+                None => return Err(NoResultExpected::build()),
+            }
+        }.await;
+        return result.map_err(|e| e.set::<QueryCapabilities>(caps));
+    }
+
+    pub async fn query_required_single<R, A>(
+        &mut self, query: &str, arguments: &A, state: &Arc<State>)
+        -> Result<R, Error>
+        where A: QueryArgs,
+              R: QueryResult,
+    {
+        self.query_single(query, arguments, state).await?
+            .ok_or_else(|| NoDataError::with_message(
+                        "query row returned zero results"))
+    }
 }
 
 impl PoolConnection {
@@ -430,16 +504,14 @@ impl PoolConnection {
                        state: &Arc<State>)
         -> Result<CommandDataDescription1, Error>
     {
-        self.inner.as_mut().expect("connection is not dropped")
-            .parse(flags, query, state).await
+        self.inner().parse(flags, query, state).await
     }
     pub async fn execute(&mut self, opts: &CompilationOptions, query: &str,
                          state: &Arc<State>,
                          desc: &CommandDataDescription1, arguments: &Bytes)
         -> Result<Vec<Data>, Error>
     {
-        self.inner.as_mut().expect("connection is not dropped")
-            .execute(opts, query, state, desc, arguments).await
+        self.inner().execute(opts, query, state, desc, arguments).await
     }
     pub async fn statement(&mut self, query: &str, state: &Arc<State>)
         -> Result<(), Error>
@@ -453,10 +525,12 @@ impl PoolConnection {
             io_format: IoFormat::Binary,
             expected_cardinality: Cardinality::Many, // no result is unsupported
         };
-        self.inner.as_mut().expect("connection is not dropped")
-            .statement(&flags, query, state).await
+        self.inner().statement(&flags, query, state).await
     }
     pub fn proto(&self) -> &ProtocolVersion {
         &self.inner.as_ref().expect("connection is not dropped").proto
+    }
+    pub fn inner(&mut self) -> &mut Connection {
+        self.inner.as_mut().expect("connection is not dropped")
     }
 }
