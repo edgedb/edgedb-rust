@@ -6,7 +6,6 @@ use std::future::{self, Future};
 use std::io;
 use std::pin::Pin;
 use std::str;
-use std::sync::Arc;
 use std::task::{Poll, Context};
 use std::time::{Duration, Instant};
 
@@ -36,12 +35,11 @@ use crate::errors::{AuthenticationError, PasswordRequired};
 use crate::errors::{ClientConnectionError, ClientConnectionFailedError};
 use crate::errors::{ClientConnectionFailedTemporarilyError, ProtocolTlsError};
 use crate::errors::{ClientEncodingError, ClientConnectionEosError};
-use crate::errors::{Error, ClientError, ErrorKind, ResultExt};
+use crate::errors::{Error, ClientError, ErrorKind};
 use crate::errors::{IdleSessionTimeoutError};
 use crate::errors::{ProtocolEncodingError, ProtocolError};
 use crate::raw::Connection;
 use crate::server_params::{SystemConfig};
-use crate::state::State;
 use crate::tls;
 
 const MAX_MESSAGE_SIZE: usize = 1_048_576;
@@ -73,16 +71,6 @@ impl<T, F: Future<Output=T>> Future for PollOnce<Pin<&mut F>> {
 
 
 impl Connection {
-    pub async fn get_version(&mut self) -> Result<&str, Error> {
-        if self.server_version.is_some() {
-            return Ok(self.server_version.as_ref().unwrap());
-        }
-        let ver = self.query_required_single(
-            "SELECT sys::get_version_as_str()", &(),
-            &Arc::new(State::default()),
-        ).await.context("cannot fetch database version")?;
-        Ok(self.server_version.insert(ver))
-    }
     pub fn is_consistent(&self) -> bool {
         matches!(self.mode, Mode::Normal {..})
     }
@@ -362,7 +350,6 @@ async fn connect4(cfg: &Config, mut stream: TlsStream)
     }
     Ok(Connection {
         proto,
-        server_version: None,
         params: server_params,
         mode: Mode::Normal { idle_since: Instant::now() },
         state_desc,
