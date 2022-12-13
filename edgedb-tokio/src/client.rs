@@ -19,6 +19,7 @@ use crate::raw::Options;
 use crate::state::{AliasesDelta, GlobalsDelta, ConfigDelta, State};
 use crate::state::{AliasesModifier, GlobalsModifier, ConfigModifier, Fn};
 
+
 /// EdgeDB Client
 ///
 /// Internally it contains a connection pool.
@@ -77,20 +78,20 @@ impl Client {
         loop {
             let mut conn = self.pool.acquire().await?;
 
-            let flags = CompilationOptions {
-                implicit_limit: None,
-                implicit_typenames: false,
-                implicit_typeids: false,
-                explicit_objectids: true,
-                allow_capabilities: Capabilities::MODIFICATIONS | Capabilities::DDL,
-                io_format: IoFormat::Binary,
-                expected_cardinality: Cardinality::Many,
-            };
-            let desc;
-            match conn.parse(&flags, query, &self.options.state).await {
-                Ok(parsed) => desc = parsed,
+            let conn = conn.inner();
+            let state = &self.options.state;
+            let caps = Capabilities::MODIFICATIONS | Capabilities::DDL;
+            match conn.query(query, arguments, &state, caps).await {
+                Ok(value) => return Ok(value),
                 Err(e) => {
-                    if e.has_tag(SHOULD_RETRY) {
+                    let allow_retry = match e.get::<QueryCapabilities>() {
+                        // Error from a weird source, or just a bug
+                        // Let's keep on the safe side
+                        None => false,
+                        Some(QueryCapabilities::Unparsed) => true,
+                        Some(QueryCapabilities::Parsed(c)) => c.is_empty(),
+                    };
+                    if allow_retry && e.has_tag(SHOULD_RETRY) {
                         let rule = self.options.retry.get_rule(&e);
                         iteration += 1;
                         if iteration < rule.attempts {
@@ -103,52 +104,6 @@ impl Client {
                     }
                     return Err(e);
                 }
-            };
-            let inp_desc = desc.input()
-                .map_err(ProtocolEncodingError::with_source)?;
-
-            let mut arg_buf = BytesMut::with_capacity(8);
-            arguments.encode(&mut Encoder::new(
-                &inp_desc.as_query_arg_context(),
-                &mut arg_buf,
-            ))?;
-
-            let res = conn.execute(
-                    &flags, query, &self.options.state, &desc, &arg_buf.freeze()
-                ).await;
-            let data = match res {
-                Ok(data) => data,
-                Err(e) => {
-                    if desc.capabilities == Capabilities::empty() &&
-                        e.has_tag(SHOULD_RETRY)
-                    {
-                        let rule = self.options.retry.get_rule(&e);
-                        iteration += 1;
-                        if iteration < rule.attempts {
-                            let duration = (rule.backoff)(iteration);
-                            log::info!("Error: {:#}. Retrying in {:?}...",
-                                       e, duration);
-                            sleep(duration).await;
-                            continue;
-                        }
-                    }
-                    return Err(e);
-                }
-            };
-
-            let out_desc = desc.output()
-                .map_err(ProtocolEncodingError::with_source)?;
-            match out_desc.root_pos() {
-                Some(root_pos) => {
-                    let ctx = out_desc.as_queryable_context();
-                    let mut state = R::prepare(&ctx, root_pos)?;
-                    let rows = data.into_iter()
-                        .flat_map(|chunk| chunk.data)
-                        .map(|chunk| R::decode(&mut state, &chunk))
-                        .collect::<Result<_, _>>()?;
-                    return Ok(rows)
-                }
-                None => return Err(NoResultExpected::build()),
             }
         }
     }
@@ -177,8 +132,10 @@ impl Client {
         let mut iteration = 0;
         loop {
             let mut conn = self.pool.acquire().await?;
+            let conn = conn.inner();
             let state = &self.options.state;
-            match conn.inner().query_single(query, arguments, &state).await {
+            let caps = Capabilities::MODIFICATIONS | Capabilities::DDL;
+            match conn.query_single(query, arguments, &state, caps).await {
                 Ok(value) => return Ok(value),
                 Err(e) => {
                     let allow_retry = match e.get::<QueryCapabilities>() {

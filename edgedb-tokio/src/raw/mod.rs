@@ -7,12 +7,13 @@ mod queries;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex as BlockingMutex};
 
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use tls_api::{TlsStream};
 use tokio::sync::{self, Semaphore};
 
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::common::{RawTypedesc, Capabilities};
+use edgedb_protocol::server_message::Data;
 
 use crate::errors::{Error, ErrorKind, ClientError};
 use crate::builder::Config;
@@ -45,7 +46,6 @@ pub struct PoolConnection {
 #[derive(Debug)]
 pub struct Connection {
     proto: ProtocolVersion,
-    server_version: Option<String>,
     #[allow(dead_code)] // TODO
     params: typemap::TypeMap<dyn typemap::DebugAny + Send + Sync>,
     mode: connection::Mode,
@@ -53,6 +53,13 @@ pub struct Connection {
     in_buf: BytesMut,
     out_buf: BytesMut,
     stream: TlsStream,
+}
+
+#[derive(Debug)]
+pub struct Response {
+    pub status_data: Bytes,
+    new_state: Option<edgedb_protocol::common::State>,
+    data: Vec<Data>,
 }
 
 trait AssertConn: Send + 'static {}
