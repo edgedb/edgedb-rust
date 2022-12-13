@@ -17,6 +17,7 @@ use edgedb_protocol::server_message::Data;
 
 use crate::errors::{Error, ErrorKind, ClientError};
 use crate::builder::Config;
+use crate::server_params::ServerParams;
 
 pub use options::Options;
 
@@ -46,8 +47,7 @@ pub struct PoolConnection {
 #[derive(Debug)]
 pub struct Connection {
     proto: ProtocolVersion,
-    #[allow(dead_code)] // TODO
-    params: typemap::TypeMap<dyn typemap::DebugAny + Send + Sync>,
+    server_params: ServerParams,
     mode: connection::Mode,
     state_desc: RawTypedesc,
     in_buf: BytesMut,

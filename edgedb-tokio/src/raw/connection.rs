@@ -19,7 +19,6 @@ use tokio::io::{AsyncReadExt};
 use tokio::io::{AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time::sleep;
-use typemap::{TypeMap, DebugAny};
 use webpki::DnsNameRef;
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
@@ -39,7 +38,7 @@ use crate::errors::{Error, ClientError, ErrorKind};
 use crate::errors::{IdleSessionTimeoutError};
 use crate::errors::{ProtocolEncodingError, ProtocolError};
 use crate::raw::Connection;
-use crate::server_params::{SystemConfig};
+use crate::server_params::{ServerParams, ServerParam, SystemConfig};
 use crate::tls;
 
 const MAX_MESSAGE_SIZE: usize = 1_048_576;
@@ -127,6 +126,9 @@ impl Connection {
     }
     pub async fn message(&mut self) -> Result<ServerMessage, Error> {
         wait_message(&mut self.stream, &mut self.in_buf, &self.proto).await
+    }
+    pub fn get_server_param<T: ServerParam>(&self) -> Option<&T::Value> {
+        self.server_params.get::<T>()
     }
 }
 
@@ -306,7 +308,7 @@ async fn connect4(cfg: &Config, mut stream: TlsStream)
         }
     }
 
-    let mut server_params = TypeMap::custom();
+    let mut server_params = ServerParams::new();
     let mut state_desc = RawTypedesc::uninitialized();
     loop {
         let msg = wait_message(&mut stream, &mut in_buf, &proto).await?;
@@ -332,7 +334,7 @@ async fn connect4(cfg: &Config, mut stream: TlsStream)
                                 continue;
                             }
                         };
-                        server_params.insert::<PostgresAddress>(pgaddr);
+                        server_params.set::<PostgresAddress>(pgaddr);
                     }
                     b"system_config" => {
                         handle_system_config(par, &mut server_params)?;
@@ -350,7 +352,7 @@ async fn connect4(cfg: &Config, mut stream: TlsStream)
     }
     Ok(Connection {
         proto,
-        params: server_params,
+        server_params,
         mode: Mode::Normal { idle_since: Instant::now() },
         state_desc,
         in_buf,
@@ -435,7 +437,7 @@ async fn scram(
 
 fn handle_system_config(
     param_status: ParameterStatus,
-    server_params: &mut TypeMap<dyn DebugAny + Send + Sync>
+    server_params: &mut ServerParams,
 ) -> Result<(), Error> {
     let (typedesc, data) = param_status.parse_system_config()
         .map_err(ProtocolEncodingError::with_source)?;
@@ -469,7 +471,7 @@ fn handle_system_config(
                 }
             }
         }
-        server_params.insert::<SystemConfig>(config);
+        server_params.set::<SystemConfig>(config);
     } else {
         log::warn!("Received empty system config message.");
     }
