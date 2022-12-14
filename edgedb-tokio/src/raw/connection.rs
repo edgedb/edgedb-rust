@@ -7,7 +7,7 @@ use std::io;
 use std::pin::Pin;
 use std::str;
 use std::task::{Poll, Context};
-use std::time::{Duration, Instant};
+use std::time::{Duration};
 
 use bytes::{Bytes, BytesMut};
 use rand::{thread_rng, Rng};
@@ -18,7 +18,7 @@ use tls_api_not_tls::TlsConnector as PlainConnector;
 use tokio::io::{AsyncReadExt};
 use tokio::io::{AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::time::sleep;
+use tokio::time::{Instant, sleep, timeout_at};
 use webpki::DnsNameRef;
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
@@ -27,6 +27,7 @@ use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::server_message::{ParameterStatus, RawTypedesc};
 use edgedb_protocol::server_message::{ServerHandshake};
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
+use edgedb_protocol::server_message::{TransactionState};
 use edgedb_protocol::value::Value;
 
 use crate::builder::{Config, Address};
@@ -37,7 +38,8 @@ use crate::errors::{ClientEncodingError, ClientConnectionEosError};
 use crate::errors::{Error, ClientError, ErrorKind};
 use crate::errors::{IdleSessionTimeoutError};
 use crate::errors::{ProtocolEncodingError, ProtocolError};
-use crate::raw::Connection;
+use crate::raw::{Connection, PingInterval};
+use crate::raw::queries::Guard;
 use crate::server_params::{ServerParams, ServerParam, SystemConfig};
 use crate::tls;
 
@@ -48,9 +50,7 @@ pub(crate) enum Mode {
     Normal {
         idle_since: Instant,
     },
-    Transaction { dirty: bool },
     Dirty,
-    #[allow(dead_code)] // TODO
     AwaitingPing,
 }
 
@@ -129,6 +129,133 @@ impl Connection {
     }
     pub fn get_server_param<T: ServerParam>(&self) -> Option<&T::Value> {
         self.server_params.get::<T>()
+    }
+    #[cfg(feature="unstable")]
+    pub async fn ping_while<T, F>(&mut self, other: F) -> T
+        where F: Future<Output = T>
+    {
+        if self.ping_interval == PingInterval::Unknown {
+            self.ping_interval = self.calc_ping_interval();
+        }
+        if let PingInterval::Interval(interval) = self.ping_interval {
+            let result = tokio::select! { biased;
+                _ = self.background_pings(interval) => unreachable!(),
+                res = other => res,
+            };
+            if self.mode == Mode::AwaitingPing {
+                self.synchronize_ping().await.ok();
+            }
+            result
+        } else {
+            other.await
+        }
+    }
+    async fn do_pings(&mut self, interval: Duration) -> Result<(), Error> {
+        if self.mode == Mode::AwaitingPing {
+            self.synchronize_ping().await?;
+        }
+
+        while let Mode::Normal { idle_since: last_pong } = self.mode {
+            match timeout_at(last_pong + interval, self.passive_wait()).await {
+                Err(_) => {},
+                Ok(Err(e)) => {
+                    self.mode = Mode::Dirty;
+                    return Err(ClientConnectionError::with_source(e))?;
+                }
+                Ok(Ok(_)) => unreachable!(),
+            }
+
+            self.mode = Mode::Dirty;
+            self.send_messages(&[ClientMessage::Sync]).await?;
+            self.mode = Mode::AwaitingPing;
+            self.synchronize_ping().await?;
+        }
+        Ok(())
+    }
+    async fn background_pings<T>(&mut self, interval: Duration) -> T {
+        self.do_pings(interval).await
+            .map_err(|e| {
+                log::info!("Connection error during background pings: {}", e)
+            })
+            .ok();
+        debug_assert_eq!(self.mode, Mode::Dirty);
+        future::pending::<()>().await;
+        unreachable!();
+    }
+    async fn synchronize_ping<'a>(&mut self) -> Result<(), Error> {
+        debug_assert_eq!(self.mode, Mode::AwaitingPing);
+
+        // Guard mechanism was invented for real queries, so we have to
+        // make a little bit of workaround just for Pings
+        let spurious_guard = Guard;
+        self.expect_ready(spurious_guard).await?;
+        Ok(())
+    }
+    pub async fn passive_wait(&mut self) -> io::Result<()> {
+        loop {
+            let msg = self
+                .message()
+                .await
+                .map_err(|_| io::ErrorKind::InvalidData)?;
+            match msg {
+                // TODO(tailhook) update parameters?
+                ServerMessage::ParameterStatus(_) => {},
+                _ => return Err(io::ErrorKind::InvalidData)?,
+            }
+        }
+    }
+    fn calc_ping_interval(&self) -> PingInterval {
+        if let Some(config) = self.server_params.get::<SystemConfig>() {
+            if let Some(timeout) = config.session_idle_timeout {
+                if timeout.is_zero() {
+                    log::info!(
+                        "Server disabled session_idle_timeout; \
+                         pings are disabled."
+                    );
+                    PingInterval::Disabled
+                } else {
+                    let interval = Duration::from_secs(
+                        (
+                            timeout.saturating_sub(
+                                Duration::from_secs(1)
+                            ).as_secs_f64() * 0.9
+                        ).ceil() as u64
+                    );
+                    if interval.is_zero() {
+                        log::warn!(
+                            "session_idle_timeout={:?} is too short; \
+                             pings are disabled.",
+                            timeout,
+                        );
+                        PingInterval::Disabled
+                    } else {
+                        log::info!(
+                            "Setting ping interval to {:?} as \
+                             session_idle_timeout={:?}",
+                            interval, timeout,
+                        );
+                        PingInterval::Interval(interval)
+                    }
+                }
+            } else {
+                PingInterval::Unknown
+            }
+        } else {
+            PingInterval::Unknown
+        }
+    }
+    pub async fn terminate(mut self) -> Result<(), Error> {
+        let _ = self.begin_request()?;  // not need to cleanup after that
+        self.send_messages(&[ClientMessage::Terminate]).await?;
+        match self.message().await {
+            Err(e) if e.is::<ClientConnectionEosError>() => Ok(()),
+            Err(e) => Err(e),
+            Ok(msg) => Err(ProtocolError::with_message(format!(
+                "unsolicited message {:?}", msg))),
+        }
+    }
+    pub fn transaction_state(&self) -> TransactionState {
+        self.transaction_state
     }
 }
 
@@ -313,7 +440,9 @@ async fn connect4(cfg: &Config, mut stream: TlsStream)
     loop {
         let msg = wait_message(&mut stream, &mut in_buf, &proto).await?;
         match msg {
-            ServerMessage::ReadyForCommand(_) => {
+            ServerMessage::ReadyForCommand(ready) => {
+                assert_eq!(ready.transaction_state,
+                           TransactionState::NotInTransaction);
                 break;
             }
             ServerMessage::ServerKeyData(_) => {
@@ -354,10 +483,12 @@ async fn connect4(cfg: &Config, mut stream: TlsStream)
         proto,
         server_params,
         mode: Mode::Normal { idle_since: Instant::now() },
+        transaction_state: TransactionState::NotInTransaction,
         state_desc,
         in_buf,
         out_buf,
         stream,
+        ping_interval: PingInterval::Unknown,
     })
 }
 

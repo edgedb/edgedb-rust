@@ -6,6 +6,7 @@ mod queries;
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex as BlockingMutex};
+use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
 use tls_api::{TlsStream};
@@ -13,7 +14,7 @@ use tokio::sync::{self, Semaphore};
 
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::common::{RawTypedesc, Capabilities};
-use edgedb_protocol::server_message::Data;
+use edgedb_protocol::server_message::{Data, TransactionState};
 
 use crate::errors::{Error, ErrorKind, ClientError};
 use crate::builder::Config;
@@ -49,10 +50,12 @@ pub struct Connection {
     proto: ProtocolVersion,
     server_params: ServerParams,
     mode: connection::Mode,
+    transaction_state: TransactionState,
     state_desc: RawTypedesc,
     in_buf: BytesMut,
     out_buf: BytesMut,
     stream: TlsStream,
+    ping_interval: PingInterval,
 }
 
 #[derive(Debug)]
@@ -60,6 +63,13 @@ pub struct Response {
     pub status_data: Bytes,
     new_state: Option<edgedb_protocol::common::State>,
     data: Vec<Data>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub(crate) enum PingInterval {
+    Unknown,
+    Disabled,
+    Interval(Duration),
 }
 
 trait AssertConn: Send + 'static {}
