@@ -1,9 +1,8 @@
 use std::collections::HashMap;
-use std::time::Instant;
 use std::sync::Arc;
 
 use bytes::{Bytes, BytesMut};
-use edgedb_protocol::model::Uuid;
+use tokio::time::Instant;
 
 use edgedb_errors::fields::QueryText;
 use edgedb_protocol::QueryResult;
@@ -14,6 +13,7 @@ use edgedb_protocol::client_message::{OptimisticExecute};
 use edgedb_protocol::common::{CompilationOptions, CompilationFlags};
 use edgedb_protocol::common::{IoFormat, Cardinality, Capabilities};
 use edgedb_protocol::features::ProtocolVersion;
+use edgedb_protocol::model::Uuid;
 use edgedb_protocol::query_arg::{QueryArgs, Encoder};
 use edgedb_protocol::server_message::{PrepareComplete, CommandDataDescription1};
 use edgedb_protocol::server_message::{ServerMessage, Data};
@@ -30,45 +30,34 @@ pub(crate) struct Guard;
 
 
 impl Connection {
-    fn begin_request(&mut self) -> Result<Guard, Error> {
+    pub(crate) fn begin_request(&mut self) -> Result<Guard, Error> {
         match self.mode {
             Mode::Normal { .. } => {
                 self.mode = Mode::Dirty;
                 Ok(Guard)
             }
-            Mode::Transaction { dirty: ref mut dirty@false } => {
-                *dirty = true;
-                Ok(Guard)
-            }
-            Mode::Transaction { dirty: true }
-            | Mode::Dirty => Err(ClientInconsistentError::build()),
+            Mode::Dirty => Err(ClientInconsistentError::build()),
             // TODO(tailhook) technically we could just wait ping here
             Mode::AwaitingPing => Err(ClientInconsistentError
-                                       ::with_message("interrupted ping")),
+                                      ::with_message("interrupted ping")),
         }
     }
-    async fn expect_ready(&mut self, guard: Guard) -> Result<(), Error> {
-        use edgedb_protocol::server_message::TransactionState::*;
+    pub(crate) async fn expect_ready(&mut self, guard: Guard)
+        -> Result<(), Error>
+    {
         loop {
             let msg = self.message().await?;
             match msg {
                 ServerMessage::ReadyForCommand(ready) => {
                     drop(guard);
-                    match ready.transaction_state {
-                        NotInTransaction => {
-                            self.mode = Mode::Normal {
-                                idle_since: Instant::now()
-                            };
-                        },
-                        InTransaction | InFailedTransaction => {
-                            self.mode = Mode::Transaction { dirty: false };
-                        }
-                    }
-                    // TODO(tailhook) update transaction state
+                    self.transaction_state = ready.transaction_state;
+                    self.mode = Mode::Normal {
+                        idle_since: Instant::now()
+                    };
                     return Ok(())
                 }
                 // TODO(tailhook) should we react on messages somehow?
-                //                At list parse LogMessage's?
+                //                At least parse LogMessage's?
                 _ => {},
             }
         }
