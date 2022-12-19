@@ -13,8 +13,7 @@ use tokio::time::sleep;
 use crate::errors::{ClientError};
 use crate::errors::{Error, ErrorKind, SHOULD_RETRY};
 use crate::errors::{ProtocolEncodingError, NoResultExpected, NoDataError};
-use crate::raw::{Pool, PoolConnection, Options};
-use crate::state::State;
+use crate::raw::{Pool, PoolConnection, Options, PoolState};
 
 
 /// Transaction object passed to the closure via
@@ -27,7 +26,7 @@ use crate::state::State;
 #[derive(Debug)]
 pub struct Transaction {
     iteration: u32,
-    state: Arc<State>,
+    state: Arc<PoolState>,
     inner: Option<Inner>,
 }
 

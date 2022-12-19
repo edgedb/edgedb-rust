@@ -257,6 +257,12 @@ impl Connection {
     pub fn transaction_state(&self) -> TransactionState {
         self.transaction_state
     }
+    pub fn state_descriptor(&self) -> &RawTypedesc {
+        &self.state_desc
+    }
+    pub fn protocol(&self) -> &ProtocolVersion {
+        &self.proto
+    }
 }
 
 async fn connect(cfg: &Config) -> Result<Connection, Error> {

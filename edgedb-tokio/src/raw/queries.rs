@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use bytes::{Bytes, BytesMut};
 use tokio::time::Instant;
@@ -23,8 +22,8 @@ use crate::errors::{ProtocolOutOfOrderError, ClientInconsistentError};
 use crate::errors::{ClientConnectionEosError, ProtocolEncodingError};
 use crate::errors::{NoResultExpected, NoDataError};
 use crate::raw::{Connection, PoolConnection, QueryCapabilities, Response};
+use crate::raw::{State};
 use crate::raw::connection::Mode;
-use crate::state::State;
 
 pub(crate) struct Guard;
 
@@ -76,7 +75,7 @@ impl Connection {
         }
     }
     async fn _parse(&mut self, flags: &CompilationOptions, query: &str,
-                    state: &Arc<State>)
+                    state: &dyn State)
         -> Result<CommandDataDescription1, Error>
     {
         if self.proto.is_1() {
@@ -89,7 +88,7 @@ impl Connection {
         }
     }
     async fn _parse1(&mut self, flags: &CompilationOptions, query: &str,
-                     state: &Arc<State>)
+                     state: &dyn State)
         -> Result<CommandDataDescription1, Error>
     {
         let guard = self.begin_request()?;
@@ -97,7 +96,7 @@ impl Connection {
             ClientMessage::Parse(Parse::new(
                 flags,
                 query,
-                state.serialized(&self.state_desc)?,
+                state.encode(&self.state_desc)?,
             )),
             ClientMessage::Sync,
         ]).await?;
@@ -200,9 +199,9 @@ impl Connection {
         })
     }
     async fn _execute(&mut self, opts: &CompilationOptions, query: &str,
-                      state: &Arc<State>,
+                      state: &dyn State,
                       desc: &CommandDataDescription1, arguments: &Bytes)
-        -> Result<Response, Error>
+        -> Result<Response<Vec<Data>>, Error>
     {
         if self.proto.is_1() {
             self._execute1(opts, query, state, desc, arguments).await
@@ -214,9 +213,9 @@ impl Connection {
     }
 
     async fn _execute1(&mut self, opts: &CompilationOptions, query: &str,
-                       state: &Arc<State>,
+                       state: &dyn State,
                        desc: &CommandDataDescription1, arguments: &Bytes)
-        -> Result<Response, Error>
+        -> Result<Response<Vec<Data>>, Error>
     {
         let guard = self.begin_request()?;
         let mut cflags = CompilationFlags::empty();
@@ -235,7 +234,7 @@ impl Connection {
                 output_format: opts.io_format,
                 expected_cardinality: opts.expected_cardinality,
                 command_text: query.into(),
-                state: state.serialized(&self.state_desc)?,
+                state: state.encode(&self.state_desc)?,
                 input_typedesc_id: desc.input.id,
                 output_typedesc_id: desc.output.id,
                 arguments: arguments.clone(),
@@ -277,7 +276,7 @@ impl Connection {
     }
 
     async fn _execute0(&mut self, arguments: &Bytes)
-        -> Result<Response, Error>
+        -> Result<Response<Vec<Data>>, Error>
     {
         let guard = self.begin_request()?;
         self.send_messages(&[
@@ -319,7 +318,7 @@ impl Connection {
         }
     }
     pub async fn statement(&mut self, flags: &CompilationOptions, query: &str,
-                           state: &Arc<State>)
+                           state: &dyn State)
         -> Result<(), Error>
     {
         if self.proto.is_1() {
@@ -330,7 +329,7 @@ impl Connection {
     }
 
     async fn _statement1(&mut self, opts: &CompilationOptions, query: &str,
-                         state: &Arc<State>)
+                         state: &dyn State)
         -> Result<(), Error>
     {
         let guard = self.begin_request()?;
@@ -350,7 +349,7 @@ impl Connection {
                 output_format: opts.io_format,
                 expected_cardinality: opts.expected_cardinality,
                 command_text: query.into(),
-                state: state.serialized(&self.state_desc)?,
+                state: state.encode(&self.state_desc)?,
                 input_typedesc_id: Uuid::from_u128(0),
                 output_typedesc_id: Uuid::from_u128(0),
                 arguments: Bytes::new(),
@@ -423,8 +422,8 @@ impl Connection {
     }
 
     pub async fn query<R, A>(&mut self, query: &str, arguments: &A,
-        state: &Arc<State>, allow_capabilities: Capabilities)
-        -> Result<Vec<R>, Error>
+        state: &dyn State, allow_capabilities: Capabilities)
+        -> Result<Response<Vec<R>>, Error>
         where A: QueryArgs,
               R: QueryResult,
     {
@@ -451,7 +450,7 @@ impl Connection {
             ))?;
 
             let response = self._execute(
-                &flags, query, &state, &desc, &arg_buf.freeze()
+                &flags, query, state, &desc, &arg_buf.freeze()
             ).await?;
 
             let out_desc = desc.output()
@@ -460,10 +459,12 @@ impl Connection {
                 Some(root_pos) => {
                     let ctx = out_desc.as_queryable_context();
                     let mut state = R::prepare(&ctx, root_pos)?;
-                    let rows = response.data.into_iter()
+                    let rows = response.map(|data| {
+                        data.into_iter()
                         .flat_map(|chunk| chunk.data)
                         .map(|chunk| R::decode(&mut state, &chunk))
-                        .collect::<Result<_, _>>()?;
+                        .collect::<Result<_, _>>()
+                    })?;
                     return Ok(rows)
                 }
                 None => return Err(NoResultExpected::build()),
@@ -473,8 +474,8 @@ impl Connection {
     }
 
     pub async fn query_single<R, A>(&mut self, query: &str, arguments: &A,
-        state: &Arc<State>, allow_capabilities: Capabilities)
-        -> Result<Option<R>, Error>
+        state: &dyn State, allow_capabilities: Capabilities)
+        -> Result<Response<Option<R>>, Error>
         where A: QueryArgs,
               R: QueryResult,
     {
@@ -489,7 +490,7 @@ impl Connection {
                 io_format: IoFormat::Binary,
                 expected_cardinality: Cardinality::AtMostOne,
             };
-            let desc = self._parse(&flags, query, &state).await?;
+            let desc = self._parse(&flags, query, state).await?;
             caps = QueryCapabilities::Parsed(desc.capabilities);
             let inp_desc = desc.input()
                 .map_err(ProtocolEncodingError::with_source)?;
@@ -501,7 +502,7 @@ impl Connection {
             ))?;
 
             let response = self._execute(
-                &flags, query, &state, &desc, &arg_buf.freeze(),
+                &flags, query, state, &desc, &arg_buf.freeze(),
             ).await?;
 
             let out_desc = desc.output()
@@ -510,13 +511,15 @@ impl Connection {
                 Some(root_pos) => {
                     let ctx = out_desc.as_queryable_context();
                     let mut state = R::prepare(&ctx, root_pos)?;
-                    let bytes = response.data.into_iter().next()
+                    return response.map(|data| {
+                        let bytes = data.into_iter().next()
                         .and_then(|chunk| chunk.data.into_iter().next());
-                    if let Some(bytes) = bytes {
-                        return Ok(Some(R::decode(&mut state, &bytes)?))
-                    } else {
-                        return Ok(None)
-                    }
+                        if let Some(bytes) = bytes {
+                            Ok(Some(R::decode(&mut state, &bytes)?))
+                        } else {
+                            Ok(None)
+                        }
+                    });
                 }
                 None => return Err(NoResultExpected::build()),
             }
@@ -526,19 +529,21 @@ impl Connection {
 
     pub async fn query_required_single<R, A>(
         &mut self, query: &str, arguments: &A,
-        state: &Arc<State>, allow_capabilities: Capabilities)
-        -> Result<R, Error>
+        state: &dyn State, allow_capabilities: Capabilities)
+        -> Result<Response<R>, Error>
         where A: QueryArgs,
               R: QueryResult,
     {
         self.query_single(query, arguments, state, allow_capabilities).await?
-            .ok_or_else(|| NoDataError::with_message(
-                        "query row returned zero results"))
+            .map(|val| {
+                val.ok_or_else(|| NoDataError::with_message(
+                    "query row returned zero results"))
+            })
     }
 
     pub async fn execute<A>(&mut self, query: &str, arguments: &A,
-        state: &Arc<State>, allow_capabilities: Capabilities)
-        -> Result<Bytes, Error>
+        state: &dyn State, allow_capabilities: Capabilities)
+        -> Result<Response<()>, Error>
         where A: QueryArgs,
     {
         let mut caps = QueryCapabilities::Unparsed;
@@ -552,7 +557,7 @@ impl Connection {
                 io_format: IoFormat::Binary,
                 expected_cardinality: Cardinality::Many,
             };
-            let desc = self._parse(&flags, query, &state).await?;
+            let desc = self._parse(&flags, query, state).await?;
             caps = QueryCapabilities::Parsed(desc.capabilities);
             let inp_desc = desc.input()
                 .map_err(ProtocolEncodingError::with_source)?;
@@ -564,9 +569,9 @@ impl Connection {
             ))?;
 
             let res = self._execute(
-                &flags, query, &state, &desc, &arg_buf.freeze(),
+                &flags, query, state, &desc, &arg_buf.freeze(),
             ).await?;
-            Ok(res.status_data)
+            Ok(res.map(|_| Ok::<_, Error>(()))?)
         }.await;
         return result.map_err(|e| e.set::<QueryCapabilities>(caps));
     }
@@ -574,20 +579,20 @@ impl Connection {
 
 impl PoolConnection {
     pub async fn parse(&mut self, flags: &CompilationOptions, query: &str,
-                       state: &Arc<State>)
+                       state: &dyn State)
         -> Result<CommandDataDescription1, Error>
     {
         self.inner()._parse(flags, query, state).await
     }
     pub async fn execute(&mut self, opts: &CompilationOptions, query: &str,
-                         state: &Arc<State>,
+                         state: &dyn State,
                          desc: &CommandDataDescription1, arguments: &Bytes)
         -> Result<Vec<Data>, Error>
     {
         self.inner()._execute(opts, query, state, desc, arguments).await
             .map(|r| r.data)
     }
-    pub async fn statement(&mut self, query: &str, state: &Arc<State>)
+    pub async fn statement(&mut self, query: &str, state: &dyn State)
         -> Result<(), Error>
     {
         let flags = CompilationOptions {

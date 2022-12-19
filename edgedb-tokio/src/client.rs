@@ -15,8 +15,8 @@ use crate::errors::{Error, ErrorKind, SHOULD_RETRY};
 use crate::errors::{ProtocolEncodingError, NoResultExpected, NoDataError};
 use crate::transaction::{Transaction, transaction};
 use crate::options::{TransactionOptions, RetryOptions};
-use crate::raw::Options;
-use crate::state::{AliasesDelta, GlobalsDelta, ConfigDelta, State};
+use crate::raw::{Options, PoolState};
+use crate::state::{AliasesDelta, GlobalsDelta, ConfigDelta};
 use crate::state::{AliasesModifier, GlobalsModifier, ConfigModifier, Fn};
 
 
@@ -81,8 +81,8 @@ impl Client {
             let conn = conn.inner();
             let state = &self.options.state;
             let caps = Capabilities::MODIFICATIONS | Capabilities::DDL;
-            match conn.query(query, arguments, &state, caps).await {
-                Ok(value) => return Ok(value),
+            match conn.query(query, arguments, state, caps).await {
+                Ok(resp) => return Ok(resp.data),
                 Err(e) => {
                     let allow_retry = match e.get::<QueryCapabilities>() {
                         // Error from a weird source, or just a bug
@@ -135,8 +135,8 @@ impl Client {
             let conn = conn.inner();
             let state = &self.options.state;
             let caps = Capabilities::MODIFICATIONS | Capabilities::DDL;
-            match conn.query_single(query, arguments, &state, caps).await {
-                Ok(value) => return Ok(value),
+            match conn.query_single(query, arguments, state, caps).await {
+                Ok(resp) => return Ok(resp.data),
                 Err(e) => {
                     let allow_retry = match e.get::<QueryCapabilities>() {
                         // Error from a weird source, or just a bug
@@ -483,7 +483,7 @@ impl Client {
         }
     }
 
-    fn with_state(&self, f: impl FnOnce(&State) -> State) -> Self {
+    fn with_state(&self, f: impl FnOnce(&PoolState) -> PoolState) -> Self {
         Client {
             options: Arc::new(Options {
                 transaction: self.options.transaction.clone(),

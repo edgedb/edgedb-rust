@@ -3,6 +3,7 @@
 mod connection;
 mod options;
 mod queries;
+pub mod state;
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex as BlockingMutex};
@@ -14,13 +15,14 @@ use tokio::sync::{self, Semaphore};
 
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::common::{RawTypedesc, Capabilities};
-use edgedb_protocol::server_message::{Data, TransactionState};
+use edgedb_protocol::server_message::{TransactionState};
 
 use crate::errors::{Error, ErrorKind, ClientError};
 use crate::builder::Config;
 use crate::server_params::ServerParams;
 
 pub use options::Options;
+pub use state::{State, PoolState};
 
 #[derive(Clone, Debug)]
 pub struct Pool(Arc<PoolInner>);
@@ -59,10 +61,10 @@ pub struct Connection {
 }
 
 #[derive(Debug)]
-pub struct Response {
+pub struct Response<T> {
     pub status_data: Bytes,
-    new_state: Option<edgedb_protocol::common::State>,
-    data: Vec<Data>,
+    pub new_state: Option<edgedb_protocol::common::State>,
+    pub data: T,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -147,5 +149,17 @@ impl Drop for PoolConnection {
                     .push_back(conn);
             }
         }
+    }
+}
+
+impl<T> Response<T> {
+    fn map<U, R>(self, f: impl FnOnce(T) -> Result<U, R>)
+        -> Result<Response<U>, R>
+    {
+        Ok(Response {
+            status_data: self.status_data,
+            new_state: self.new_state,
+            data: f(self.data)?,
+        })
     }
 }
