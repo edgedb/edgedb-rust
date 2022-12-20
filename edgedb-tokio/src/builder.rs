@@ -872,7 +872,12 @@ impl Builder {
         self.insecure_dev_mode || self.tls_security == Insecure
     }
 
-    fn root_cert_store(&self) -> Result<rustls::RootCertStore, Error> {
+    #[cfg(feature="unstable")]
+    pub fn root_cert_store(&self) -> Result<rustls::RootCertStore, Error> {
+        self._root_cert_store()
+    }
+
+    fn _root_cert_store(&self) -> Result<rustls::RootCertStore, Error> {
         let mut roots = rustls::RootCertStore::empty();
         if self.pem.is_some() {
             roots.add_server_trust_anchors(
@@ -899,9 +904,16 @@ impl Builder {
     }
 
     /// Create configuration object that can be used for connections
-    pub fn build(&self) -> Result<Config, Error> {
-        use TlsSecurity::*;
-
+    #[cfg(feature="unstable")]
+    pub fn build_with_cert_verifier(&self,
+                                    verifier: Arc<dyn ServerCertVerifier>)
+        -> Result<Config, Error>
+    {
+        self._build_with_cert_verifier(verifier)
+    }
+    fn _build_with_cert_verifier(&self, verifier: Arc<dyn ServerCertVerifier>)
+        -> Result<Config, Error>
+    {
         if !self.initialized {
             return Err(ClientNoCredentialsError::with_message(
                 "EdgeDB connection options are not initialized. \
@@ -909,34 +921,6 @@ impl Builder {
                 to configure connection."));
         }
         let address = self.addr.clone();
-        let verifier = match self.tls_security {
-            _ if self.insecure() => Arc::new(tls::NullVerifier) as Verifier,
-            Insecure => Arc::new(tls::NullVerifier) as Verifier,
-            NoHostVerification => {
-                Arc::new(tls::NoHostnameVerifier::new(
-                        self.trust_anchors()?
-                )) as Verifier
-            }
-            Strict => {
-                Arc::new(rustls::client::WebPkiVerifier::new(
-                    self.root_cert_store()?,
-                    None,
-                )) as Verifier
-            }
-            Default => match self.pem {
-                Some(_) => {
-                    Arc::new(tls::NoHostnameVerifier::new(
-                            self.trust_anchors()?
-                    )) as Verifier
-                }
-                None => {
-                    Arc::new(rustls::client::WebPkiVerifier::new(
-                        self.root_cert_store()?,
-                        None,
-                    )) as Verifier
-                }
-            },
-        };
 
         Ok(Config(Arc::new(ConfigInner {
             address,
@@ -953,6 +937,41 @@ impl Builder {
             // Pool configuration
             max_connections: self.max_connections,
         })))
+    }
+
+    /// Create configuration object that can be used for connections
+    pub fn build(&self) -> Result<Config, Error> {
+        use TlsSecurity::*;
+
+        let verifier = match self.tls_security {
+            _ if self.insecure() => Arc::new(tls::NullVerifier) as Verifier,
+            Insecure => Arc::new(tls::NullVerifier) as Verifier,
+            NoHostVerification => {
+                Arc::new(tls::NoHostnameVerifier::new(
+                        self.trust_anchors()?
+                )) as Verifier
+            }
+            Strict => {
+                Arc::new(rustls::client::WebPkiVerifier::new(
+                    self._root_cert_store()?,
+                    None,
+                )) as Verifier
+            }
+            Default => match self.pem {
+                Some(_) => {
+                    Arc::new(tls::NoHostnameVerifier::new(
+                            self.trust_anchors()?
+                    )) as Verifier
+                }
+                None => {
+                    Arc::new(rustls::client::WebPkiVerifier::new(
+                        self._root_cert_store()?,
+                        None,
+                    )) as Verifier
+                }
+            },
+        };
+        return self._build_with_cert_verifier(verifier);
     }
 }
 

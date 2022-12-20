@@ -76,6 +76,7 @@ pub(crate) enum PingInterval {
 
 trait AssertConn: Send + 'static {}
 impl AssertConn for PoolConnection {}
+impl AssertConn for Connection {}
 
 trait AssertPool: Send + Sync + 'static {}
 impl AssertPool for Pool {}
