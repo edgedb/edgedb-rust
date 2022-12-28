@@ -58,12 +58,15 @@ impl Drop for Transaction {
     }
 }
 
-pub(crate) async fn transaction<T, B, F>(pool: &Pool, options: &Options,
-                                         mut body: B)
-    -> Result<T, Error>
-        where B: FnMut(Transaction) -> F,
-              F: Future<Output=Result<T, Error>>,
-{
+pub(crate) async fn transaction<T, B, F>(
+    pool: &Pool,
+    options: &Options,
+    mut body: B,
+) -> Result<T, Error>
+where
+    B: FnMut(Transaction) -> F,
+    F: Future<Output = Result<T, Error>>,
+    {
     let mut iteration = 0;
     'transaction: loop {
         let conn = pool.acquire().await?;
@@ -75,19 +78,20 @@ pub(crate) async fn transaction<T, B, F>(pool: &Pool, options: &Options,
                 started: false,
                 conn,
                 return_conn: tx,
-            })
+            }),
         };
         let result = body(tran).await;
-        let TransactionResult { mut conn, started } =
-            rx.try_recv().expect("Transaction object must \
-            be dropped by the time transaction body finishes.");
+        let TransactionResult { mut conn, started } = rx.try_recv().expect(
+            "Transaction object must \
+            be dropped by the time transaction body finishes.",
+        );
         match result {
             Ok(val) => {
                 log::debug!("Comitting transaction");
                 if started {
                     conn.statement("COMMIT", &options.state).await?;
                 }
-                return Ok(val)
+                return Ok(val);
             }
             Err(outer) => {
                 log::debug!("Rolling back transaction on error");
@@ -431,3 +435,13 @@ impl Transaction {
                         "query row returned zero results"))
     }
 }
+
+#[allow(dead_code, unreachable_code)]
+fn _transaction_assertions() {
+    let _cli: crate::Client = unimplemented!();
+    assert_send(
+        _cli.transaction(|mut tx| async move { tx.query_json("SELECT 'hello'", &()).await }),
+    );
+}
+
+fn assert_send<T: Send>(_: T) {}
