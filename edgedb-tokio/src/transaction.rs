@@ -58,12 +58,15 @@ impl Drop for Transaction {
     }
 }
 
-pub(crate) async fn transaction<T, B, F>(pool: &Pool, options: &Options,
-                                         mut body: B)
-    -> Result<T, Error>
-        where B: FnMut(Transaction) -> F,
-              F: Future<Output=Result<T, Error>>,
-{
+pub(crate) async fn transaction<T, B, F>(
+    pool: &Pool,
+    options: &Options,
+    mut body: B,
+) -> Result<T, Error>
+where
+    B: FnMut(Transaction) -> F,
+    F: Future<Output = Result<T, Error>>,
+    {
     let mut iteration = 0;
     'transaction: loop {
         let conn = pool.acquire().await?;
@@ -75,40 +78,51 @@ pub(crate) async fn transaction<T, B, F>(pool: &Pool, options: &Options,
                 started: false,
                 conn,
                 return_conn: tx,
-            })
+            }),
         };
         let result = body(tran).await;
-        let TransactionResult { mut conn, started } =
-            rx.try_recv().expect("Transaction object must \
-            be dropped by the time transaction body finishes.");
+        let TransactionResult { mut conn, started } = rx.try_recv().expect(
+            "Transaction object must \
+            be dropped by the time transaction body finishes.",
+        );
         match result {
             Ok(val) => {
                 log::debug!("Comitting transaction");
                 if started {
                     conn.statement("COMMIT", &options.state).await?;
                 }
-                return Ok(val)
+                return Ok(val);
             }
-            Err(e) => {
+            Err(outer) => {
                 log::debug!("Rolling back transaction on error");
                 if started {
                     conn.statement("ROLLBACK", &options.state).await?;
                 }
-                for e in e.chain() {
-                    if let Some(e) = e.downcast_ref::<Error>() {
+
+                let some_retry = outer.chain().find_map(|e| {
+                    e.downcast_ref::<Error>().and_then(|e| {
                         if e.has_tag(SHOULD_RETRY) {
-                            let rule = options.retry.get_rule(e);
-                            if iteration < rule.attempts {
-                                log::info!("Retrying transaction on {:#}",
-                                           e);
-                                iteration += 1;
-                                sleep((rule.backoff)(iteration)).await;
-                                continue 'transaction;
-                            }
+                            Some(e)
+                        } else {
+                            None
                         }
+                    })
+                });
+
+                if some_retry.is_none() {
+                    return Err(outer);
+                } else {
+                    let e = some_retry.unwrap();
+                    let rule = options.retry.get_rule(e);
+                    if iteration >= rule.attempts {
+                        return Err(outer);
+                    } else {
+                        log::info!("Retrying transaction on {:#}", e);
+                        iteration += 1;
+                        sleep((rule.backoff)(iteration)).await;
+                        continue 'transaction;
                     }
                 }
-                return Err(e);
             }
         }
     }
@@ -421,3 +435,13 @@ impl Transaction {
                         "query row returned zero results"))
     }
 }
+
+#[allow(dead_code, unreachable_code)]
+fn _transaction_assertions() {
+    let _cli: crate::Client = unimplemented!();
+    assert_send(
+        _cli.transaction(|mut tx| async move { tx.query_json("SELECT 'hello'", &()).await }),
+    );
+}
+
+fn assert_send<T: Send>(_: T) {}
