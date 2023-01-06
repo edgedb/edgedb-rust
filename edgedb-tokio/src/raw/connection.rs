@@ -4,9 +4,7 @@ use std::collections::HashMap;
 use std::error::Error as _;
 use std::future::{self, Future};
 use std::io;
-use std::pin::Pin;
 use std::str;
-use std::task::{Poll, Context};
 use std::time::{Duration};
 
 use bytes::{Bytes, BytesMut};
@@ -52,20 +50,6 @@ pub(crate) enum Mode {
     },
     Dirty,
     AwaitingPing,
-}
-
-struct PollOnce<F>(F);
-
-impl<T, F: Future<Output=T>> Future for PollOnce<Pin<&mut F>> {
-    type Output = Option<T>;
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>)
-        -> Poll<Self::Output>
-    {
-        match Pin::new(&mut self.0).poll(cx) {
-            Poll::Ready(data) => Poll::Ready(Some(data)),
-            Poll::Pending => Poll::Ready(None),
-        }
-    }
 }
 
 

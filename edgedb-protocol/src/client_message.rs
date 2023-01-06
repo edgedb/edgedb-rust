@@ -733,17 +733,10 @@ impl Decode for RestoreBlock {
 
 impl Parse {
     pub fn new(opts: &CompilationOptions, query: &str, state: State) -> Parse {
-        let mut cflags = CompilationFlags::empty();
-        if opts.implicit_typenames {
-            cflags |= CompilationFlags::INJECT_OUTPUT_TYPE_NAMES;
-        }
-        if opts.implicit_typeids {
-            cflags |= CompilationFlags::INJECT_OUTPUT_TYPE_IDS;
-        }
         Parse {
             annotations: HashMap::new(),
             allowed_capabilities: opts.allow_capabilities,
-            compilation_flags: cflags,
+            compilation_flags: opts.flags(),
             implicit_limit: opts.implicit_limit,
             output_format: opts.io_format,
             expected_cardinality: opts.expected_cardinality,
