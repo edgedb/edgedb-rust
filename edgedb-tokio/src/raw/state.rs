@@ -9,6 +9,7 @@ use edgedb_protocol::client_message::{State as EncodedState};
 use edgedb_protocol::descriptors::{RawTypedesc,StateBorrow};
 use edgedb_protocol::query_arg::QueryArg;
 use edgedb_protocol::value::Value;
+use edgedb_protocol::model::Uuid;
 
 use crate::errors::{ClientError, ProtocolEncodingError, Error, ErrorKind};
 
@@ -423,7 +424,9 @@ impl SealedState for EncodedState {
     fn encode(&self, desc: &RawTypedesc)
         -> Result<EncodedState, Error>
     {
-        if self.typedesc_id == desc.id {
+        if self.typedesc_id == Uuid::from_u128(0) ||
+            self.typedesc_id == desc.id
+        {
             return Ok((*self).clone());
         }
         return Err(ClientError::with_message(

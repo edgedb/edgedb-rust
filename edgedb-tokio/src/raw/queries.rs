@@ -9,7 +9,7 @@ use edgedb_protocol::client_message::{ClientMessage, Parse, Prepare};
 use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
 use edgedb_protocol::client_message::{Execute0, Execute1};
 use edgedb_protocol::client_message::{OptimisticExecute};
-use edgedb_protocol::common::{CompilationOptions, CompilationFlags};
+use edgedb_protocol::common::{CompilationOptions};
 use edgedb_protocol::common::{IoFormat, Cardinality, Capabilities};
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::model::Uuid;
@@ -21,8 +21,8 @@ use crate::errors::{Error, ErrorKind};
 use crate::errors::{ProtocolOutOfOrderError, ClientInconsistentError};
 use crate::errors::{ClientConnectionEosError, ProtocolEncodingError};
 use crate::errors::{NoResultExpected, NoDataError};
-use crate::raw::{Connection, PoolConnection, QueryCapabilities, Response};
-use crate::raw::{State};
+use crate::raw::{Connection, PoolConnection, QueryCapabilities};
+use crate::raw::{State, Response, ResponseStream};
 use crate::raw::connection::Mode;
 
 pub(crate) struct Guard;
@@ -62,7 +62,7 @@ impl Connection {
         }
     }
 
-    async fn expect_ready_or_eos(&mut self, guard: Guard)
+    pub(crate) async fn expect_ready_or_eos(&mut self, guard: Guard)
         -> Result<(), Error>
     {
         match self.expect_ready(guard).await {
@@ -74,8 +74,8 @@ impl Connection {
             Err(e) => Err(e),
         }
     }
-    async fn _parse(&mut self, flags: &CompilationOptions, query: &str,
-                    state: &dyn State)
+    pub async fn parse(&mut self, flags: &CompilationOptions, query: &str,
+                       state: &dyn State)
         -> Result<CommandDataDescription1, Error>
     {
         if self.proto.is_1() {
@@ -218,18 +218,11 @@ impl Connection {
         -> Result<Response<Vec<Data>>, Error>
     {
         let guard = self.begin_request()?;
-        let mut cflags = CompilationFlags::empty();
-        if opts.implicit_typenames {
-            cflags |= CompilationFlags::INJECT_OUTPUT_TYPE_NAMES;
-        }
-        if opts.implicit_typeids {
-            cflags |= CompilationFlags::INJECT_OUTPUT_TYPE_IDS;
-        }
         self.send_messages(&[
             ClientMessage::Execute1(Execute1 {
                 annotations: HashMap::new(),
                 allowed_capabilities: opts.allow_capabilities,
-                compilation_flags: cflags,
+                compilation_flags: opts.flags(),
                 implicit_limit: opts.implicit_limit,
                 output_format: opts.io_format,
                 expected_cardinality: opts.expected_cardinality,
@@ -317,6 +310,55 @@ impl Connection {
             }
         }
     }
+    pub async fn execute_stream<R, A>(&mut self,
+        opts: &CompilationOptions, query: &str,
+        state: &dyn State, desc: &CommandDataDescription1, arguments: &A)
+        -> Result<ResponseStream<R>, Error>
+        where A: QueryArgs,
+              R: QueryResult,
+              R::State: Unpin,
+    {
+        let inp_desc = desc.input()
+            .map_err(ProtocolEncodingError::with_source)?;
+
+        let mut arg_buf = BytesMut::with_capacity(8);
+        arguments.encode(&mut Encoder::new(
+            &inp_desc.as_query_arg_context(),
+            &mut arg_buf,
+        ))?;
+
+        let guard = self.begin_request()?;
+        if self.proto.is_1() {
+            self.send_messages(&[
+                ClientMessage::Execute1(Execute1 {
+                    annotations: HashMap::new(),
+                    allowed_capabilities: opts.allow_capabilities,
+                    compilation_flags: opts.flags(),
+                    implicit_limit: opts.implicit_limit,
+                    output_format: opts.io_format,
+                    expected_cardinality: opts.expected_cardinality,
+                    command_text: query.into(),
+                    state: state.encode(&self.state_desc)?,
+                    input_typedesc_id: desc.input.id,
+                    output_typedesc_id: desc.output.id,
+                    arguments: arg_buf.freeze(),
+                }),
+                ClientMessage::Sync,
+            ]).await?;
+        } else {
+            // TODO(tailhook) maybe use OptimisticExecute instead?
+            self.send_messages(&[
+                ClientMessage::Execute0(Execute0 {
+                    headers: HashMap::new(),
+                    statement_name: Bytes::from(""),
+                    arguments: arg_buf.freeze(),
+                }),
+                ClientMessage::Sync,
+            ]).await?;
+        }
+
+        return ResponseStream::new(self, desc, guard);
+    }
     pub async fn statement(&mut self, flags: &CompilationOptions, query: &str,
                            state: &dyn State)
         -> Result<(), Error>
@@ -333,18 +375,11 @@ impl Connection {
         -> Result<(), Error>
     {
         let guard = self.begin_request()?;
-        let mut cflags = CompilationFlags::empty();
-        if opts.implicit_typenames {
-            cflags |= CompilationFlags::INJECT_OUTPUT_TYPE_NAMES;
-        }
-        if opts.implicit_typeids {
-            cflags |= CompilationFlags::INJECT_OUTPUT_TYPE_IDS;
-        }
         self.send_messages(&[
             ClientMessage::Execute1(Execute1 {
                 annotations: HashMap::new(),
                 allowed_capabilities: opts.allow_capabilities,
-                compilation_flags: cflags,
+                compilation_flags: opts.flags(),
                 implicit_limit: opts.implicit_limit,
                 output_format: opts.io_format,
                 expected_cardinality: opts.expected_cardinality,
@@ -357,16 +392,13 @@ impl Connection {
             ClientMessage::Sync,
         ]).await?;
 
-        let mut result = Vec::new();
         loop {
             let msg = self.message().await?;
             match msg {
                 ServerMessage::StateDataDescription(d) => {
                     self.state_desc = d.typedesc;
                 }
-                ServerMessage::Data(data) => {
-                    result.push(data);
-                }
+                ServerMessage::Data(_) => {}
                 ServerMessage::CommandComplete1(..) => {
                     self.expect_ready(guard).await?;
                     return Ok(());
@@ -438,7 +470,7 @@ impl Connection {
                 io_format: IoFormat::Binary,
                 expected_cardinality: Cardinality::Many,
             };
-            let desc = self._parse(&flags, query, state).await?;
+            let desc = self.parse(&flags, query, state).await?;
             caps = QueryCapabilities::Parsed(desc.capabilities);
             let inp_desc = desc.input()
                 .map_err(ProtocolEncodingError::with_source)?;
@@ -490,7 +522,7 @@ impl Connection {
                 io_format: IoFormat::Binary,
                 expected_cardinality: Cardinality::AtMostOne,
             };
-            let desc = self._parse(&flags, query, state).await?;
+            let desc = self.parse(&flags, query, state).await?;
             caps = QueryCapabilities::Parsed(desc.capabilities);
             let inp_desc = desc.input()
                 .map_err(ProtocolEncodingError::with_source)?;
@@ -557,7 +589,7 @@ impl Connection {
                 io_format: IoFormat::Binary,
                 expected_cardinality: Cardinality::Many,
             };
-            let desc = self._parse(&flags, query, state).await?;
+            let desc = self.parse(&flags, query, state).await?;
             caps = QueryCapabilities::Parsed(desc.capabilities);
             let inp_desc = desc.input()
                 .map_err(ProtocolEncodingError::with_source)?;
@@ -575,6 +607,7 @@ impl Connection {
         }.await;
         return result.map_err(|e| e.set::<QueryCapabilities>(caps));
     }
+
 }
 
 impl PoolConnection {
@@ -582,7 +615,7 @@ impl PoolConnection {
                        state: &dyn State)
         -> Result<CommandDataDescription1, Error>
     {
-        self.inner()._parse(flags, query, state).await
+        self.inner().parse(flags, query, state).await
     }
     pub async fn execute(&mut self, opts: &CompilationOptions, query: &str,
                          state: &dyn State,

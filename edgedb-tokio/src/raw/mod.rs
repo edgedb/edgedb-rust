@@ -3,6 +3,7 @@
 mod connection;
 mod options;
 mod queries;
+mod response;
 pub mod state;
 
 use std::collections::VecDeque;
@@ -22,6 +23,7 @@ use crate::builder::Config;
 use crate::server_params::ServerParams;
 
 pub use options::Options;
+pub use response::{ResponseStream};
 pub use state::{State, PoolState};
 
 #[derive(Clone, Debug)]
