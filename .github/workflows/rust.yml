@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        rust_version: [1.59, stable, beta]
+        rust_version: [1.65, stable, beta]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@master

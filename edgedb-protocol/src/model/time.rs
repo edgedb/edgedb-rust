@@ -757,6 +757,14 @@ impl TryFrom<std::time::Duration> for Duration {
     type Error = OutOfRangeError;
 
     fn try_from(value: std::time::Duration) -> Result<Self, Self::Error> {
+        TryFrom::try_from(&value)
+    }
+}
+
+impl TryFrom<&std::time::Duration> for Duration {
+    type Error = OutOfRangeError;
+
+    fn try_from(value: &std::time::Duration) -> Result<Self, Self::Error> {
         let secs = value.as_secs();
         let subsec_nanos = value.subsec_nanos();
         let subsec_micros = nanos_to_micros(subsec_nanos.into());
@@ -823,25 +831,18 @@ impl TryFrom<SystemTime> for Datetime {
 impl std::ops::Add<&'_ std::time::Duration> for Datetime {
     type Output = Datetime;
     fn add(self, other: &std::time::Duration) -> Datetime {
-        let micros = match other.as_micros().try_into() {
-            Ok(m) => m,
-            Err(_) => {
-                // crash in debug mode
-                debug_assert!(false,
-                    "resulting datetime is out of range");
-                // saturate in release mode
-                return Datetime::MAX;
-            }
-        };
-        let micros = self.micros.saturating_add(micros);
-        if micros > Datetime::MAX.micros {
-            // crash in debug mode
+        let Ok(duration) = Duration::try_from(other) else {
             debug_assert!(false,
-                "resulting datetime is out of range");
-            // saturate in release mode
+                "duration is out of range");
+            return Datetime::MAX;
+        };
+        if let Some(micros) = self.micros.checked_add(duration.micros) {
+            return Datetime { micros };
+        } else {
+            debug_assert!(false,
+                "duration is out of range");
             return Datetime::MAX;
         }
-        return Datetime { micros };
     }
 }
 
@@ -1187,6 +1188,20 @@ mod test {
         );
         assert_error("PT1M1H", 4, "EOF");
         assert_error("PT1S1M", 4, "EOF");
+    }
+
+    #[test]
+    fn add_duration_rounding() {
+        // round down
+        assert_eq!(
+            Datetime::UNIX_EPOCH + std::time::Duration::new(17, 500),
+            Datetime::UNIX_EPOCH + std::time::Duration::new(17, 0),
+        );
+        // round up
+        assert_eq!(
+            Datetime::UNIX_EPOCH + std::time::Duration::new(12345, 1500),
+            Datetime::UNIX_EPOCH + std::time::Duration::new(12345, 2000),
+        );
     }
 }
 
