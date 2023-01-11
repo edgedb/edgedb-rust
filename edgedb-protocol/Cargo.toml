@@ -9,6 +9,7 @@ description = """
     Use edgedb-tokio for applications instead.
 """
 readme = "README.md"
+rust-version = "1.65"
 
 [dependencies]
 bytes = "1.0.1"
