@@ -38,7 +38,7 @@ anyhow = "1.0.53"  # needed for tls-api
 dirs = { version="4.0.0", optional=true }
 arc-swap = "1.5.1"
 once_cell = "1.9.0"
-tokio-stream = "0.1.11"
+tokio-stream = {version="0.1.11", optional=true}
 
 [dev-dependencies]
 nix = "0.23.1"
@@ -54,6 +54,6 @@ default = ["derive", "env"]
 derive = ["edgedb-derive"]
 env = ["fs"]
 admin_socket = []
-unstable = ["serde_json"]  # features for CLI and Wasm
+unstable = ["serde_json", "tokio-stream"]  # features for CLI and Wasm
 fs = ["tokio/fs", "dirs", "serde_json"]
 miette-errors = ["edgedb-errors/miette"]

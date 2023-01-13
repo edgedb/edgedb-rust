@@ -41,6 +41,12 @@ impl Connection {
                                       ::with_message("interrupted ping")),
         }
     }
+    pub(crate) fn end_request(&mut self, guard: Guard) {
+        drop(guard);
+        self.mode = Mode::Normal {
+            idle_since: Instant::now()
+        };
+    }
     pub(crate) async fn expect_ready(&mut self, guard: Guard)
         -> Result<(), Error>
     {
@@ -48,11 +54,8 @@ impl Connection {
             let msg = self.message().await?;
             match msg {
                 ServerMessage::ReadyForCommand(ready) => {
-                    drop(guard);
                     self.transaction_state = ready.transaction_state;
-                    self.mode = Mode::Normal {
-                        idle_since: Instant::now()
-                    };
+                    self.end_request(guard);
                     return Ok(())
                 }
                 // TODO(tailhook) should we react on messages somehow?

@@ -203,14 +203,4 @@ impl<'a, T: QueryResult> ResponseStream<'a, T>
             Reset => panic!("stream is already complete"),
         }
     }
-    async fn next(&mut self) -> Option<Result<T, Error>> {
-        if let Some(el) = self.next_element().await {
-            Some(Ok(el))
-        } else {
-            match self.process_complete().await {
-                Ok(_) => None,
-                Err(e) => Some(Err(e)),
-            }
-        }
-    }
 }
