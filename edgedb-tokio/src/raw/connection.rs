@@ -13,8 +13,8 @@ use scram::ScramClient;
 use tls_api::{TlsConnector, TlsConnectorBox, TlsStream, TlsStreamDyn};
 use tls_api::{TlsConnectorBuilder};
 use tls_api_not_tls::TlsConnector as PlainConnector;
-use tokio::io::{AsyncReadExt};
-use tokio::io::{AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time::{Instant, sleep, timeout_at};
 use webpki::DnsNameRef;
@@ -599,8 +599,8 @@ fn handle_system_config(
     Ok(())
 }
 
-async fn send_messages<'x>(
-    stream: &mut TlsStream,
+pub(crate) async fn send_messages<'x>(
+    stream: &mut (impl AsyncWrite + Unpin),
     buf: &mut BytesMut,
     proto: &ProtocolVersion,
     messages: impl IntoIterator<Item=&'x ClientMessage>
@@ -619,8 +619,8 @@ fn conn_err(err: io::Error) -> Error {
     ClientConnectionError::with_source(err)
 }
 
-async fn wait_message<'x>(stream: &mut TlsStream,
-                          buf: &mut BytesMut, proto: &ProtocolVersion)
+pub async fn wait_message<'x>(stream: &mut (impl AsyncRead + Unpin),
+                              buf: &mut BytesMut, proto: &ProtocolVersion)
     -> Result<ServerMessage, Error>
 {
     while buf.len() < 5 {

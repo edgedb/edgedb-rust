@@ -5,6 +5,7 @@ mod options;
 mod queries;
 mod response;
 pub mod state;
+#[cfg(feature="unstable")] mod dumps;
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex as BlockingMutex};
