@@ -9,6 +9,7 @@ description = """
     Use edgedb-tokio for applications instead.
 """
 readme = "README.md"
+rust-version = "1.65"
 
 [dependencies]
 bytes = "1.0.1"
@@ -31,5 +32,7 @@ all-types = ["with-num-bigint", "with-bigdecimal", "with-chrono"]
 [dev-dependencies]
 rand = "0.8"
 pretty_assertions = "1.2.1"
+test-case = "2.2.2"
+humantime = "2.1.0"
 
 [lib]

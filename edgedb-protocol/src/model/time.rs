@@ -1,6 +1,6 @@
 use crate::model::{OutOfRangeError, ParseDurationError};
 use std::convert::{TryFrom, TryInto};
-use std::time::SystemTime;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::fmt::{self, Debug, Display};
 use std::str::FromStr;
 
@@ -61,10 +61,10 @@ const MICROS_PER_DAY : u64 = SECS_PER_DAY * 1_000_000;
 // leap years repeat every 400 years
 const DAYS_IN_400_YEARS : u32 = 400 * 365 + 97;
 
-const MIN_YEAR : i32 = -4713; // starts at 4713-11-24
-const MAX_YEAR : i32 = 294_276; // ends at +294276-12-31
+const MIN_YEAR : i32 = 1;
+const MAX_YEAR : i32 = 9999;
 
-// year -4800 is a multiple of 400 smaller than the minimum supported year (-4713)
+// year -4800 is a multiple of 400 smaller than the minimum supported year
 const BASE_YEAR : i32 = -4800;
 
 #[allow(dead_code)] // only used by specific features
@@ -79,8 +79,8 @@ const MICROS_PER_MINUTE : i64 = MICROS_PER_SECOND * 60;
 const MICROS_PER_HOUR : i64 = MICROS_PER_MINUTE * 60;
 
 impl Duration {
-    pub const MIN : LocalDatetime = LocalDatetime { micros: i64::MIN };
-    pub const MAX : LocalDatetime = LocalDatetime { micros: i64::MAX };
+    pub const MIN : Duration = Duration { micros: i64::MIN };
+    pub const MAX : Duration = Duration { micros: i64::MAX };
 
     pub fn from_micros(micros: i64) -> Duration {
         Duration { micros }
@@ -450,11 +450,10 @@ impl FromStr for Duration {
 }
 
 impl LocalDatetime {
-    pub const MIN : LocalDatetime = LocalDatetime { micros: LocalDate::MIN.days as i64 * MICROS_PER_DAY as i64 };
-    pub const MAX : LocalDatetime = LocalDatetime {
-        micros: LocalDate::MAX.days as i64 * MICROS_PER_DAY as i64
-         + LocalTime::MAX.micros as i64
-    };
+    // 0001-01-01T00:00:00
+    pub const MIN: LocalDatetime = LocalDatetime { micros: -63082281600000000 };
+    // 9999-12-31T23:59:59.999999
+    pub const MAX: LocalDatetime = LocalDatetime { micros: 252455615999999999 };
 
     fn try_from_micros(micros: i64) -> Result<LocalDatetime, OutOfRangeError> {
         if micros < Self::MIN.micros || micros > Self::MAX.micros {
@@ -499,6 +498,7 @@ impl Debug for LocalDatetime {
 }
 
 impl LocalTime {
+    pub const MIN : LocalTime = LocalTime { micros: 0 };
     pub const MIDNIGHT : LocalTime = LocalTime { micros: 0 };
     pub const MAX : LocalTime = LocalTime { micros: MICROS_PER_DAY - 1 };
 
@@ -576,8 +576,8 @@ impl Debug for LocalTime {
 }
 
 impl LocalDate {
-    pub const MIN : LocalDate = LocalDate { days: -((2000 - (MIN_YEAR + 1)) * 365 + 1665) }; // -4713-11-24 in proleptic Gregorian or -4712-01-01 in Julian
-    pub const MAX : LocalDate = LocalDate { days: (MAX_YEAR - 2000) * 365 + 71_242 }; // +294276-12-31
+    pub const MIN : LocalDate = LocalDate { days: -730119 }; // 0001-01-01
+    pub const MAX : LocalDate = LocalDate { days: 2921939 }; // 9999-12-31
     pub const UNIX_EPOCH : LocalDate = LocalDate { days: -(30 * 365 + 7) }; // 1970-01-01
 
     fn try_from_days(days: i32) -> Result<LocalDate, OutOfRangeError> {
@@ -719,35 +719,9 @@ impl Datetime {
     }
 
     fn postgres_epoch_unix() -> SystemTime {
-        use std::time::{ Duration, UNIX_EPOCH };
+        use std::time::Duration;
         // postgres epoch starts at 2020-01-01
         UNIX_EPOCH + Duration::from_micros((-Datetime::UNIX_EPOCH.micros) as u64)
-    }
-
-    // I believe this never fails on Linux
-    // On Windows it has a smaller maximum value than EdgeDB's native Datetime type
-    fn to_system_time(self) -> Result<SystemTime, OutOfRangeError> {
-        use std::time::Duration;
-
-        if self.micros > 0 {
-            Self::postgres_epoch_unix().checked_add(Duration::from_micros(self.micros as u64))
-        } else {
-            Self::postgres_epoch_unix().checked_sub(Duration::from_micros((-self.micros) as u64))
-        }.ok_or(OutOfRangeError)
-    }
-
-    // I believe this can fail on both Windows and Linux, since Postgres can "only" store dates starting 4713 BC
-    fn from_system_time(time:SystemTime) -> Result<Datetime, OutOfRangeError> {
-        let postgres_epoch = Self::postgres_epoch_unix();
-
-        let nanos = if time >= postgres_epoch {
-            time.duration_since(postgres_epoch).unwrap().as_nanos() as i128
-        } else {
-            -(postgres_epoch.duration_since(time).unwrap().as_nanos() as i128)
-        };
-        let micros = nanos.wrapping_div_euclid(1000);
-        let micros = i64::try_from(micros).map_err(|_| OutOfRangeError)?;
-        Ok(Datetime::from_micros(micros))
     }
 }
 
@@ -767,7 +741,48 @@ impl TryFrom<Datetime> for SystemTime {
     type Error = OutOfRangeError;
 
     fn try_from(value: Datetime) -> Result<Self, Self::Error> {
-        Datetime::to_system_time(value)
+        use std::time::Duration;
+
+        if value.micros > 0 {
+            Datetime::postgres_epoch_unix()
+                .checked_add(Duration::from_micros(value.micros as u64))
+        } else {
+            Datetime::postgres_epoch_unix()
+                .checked_sub(Duration::from_micros((-value.micros) as u64))
+        }.ok_or(OutOfRangeError)
+    }
+}
+
+impl TryFrom<std::time::Duration> for Duration {
+    type Error = OutOfRangeError;
+
+    fn try_from(value: std::time::Duration) -> Result<Self, Self::Error> {
+        TryFrom::try_from(&value)
+    }
+}
+
+impl TryFrom<&std::time::Duration> for Duration {
+    type Error = OutOfRangeError;
+
+    fn try_from(value: &std::time::Duration) -> Result<Self, Self::Error> {
+        let secs = value.as_secs();
+        let subsec_nanos = value.subsec_nanos();
+        let subsec_micros = nanos_to_micros(subsec_nanos.into());
+        let micros = i64::try_from(secs).ok()
+            .and_then(|x| x.checked_mul(1_000_000))
+            .and_then(|x| x.checked_add(subsec_micros))
+            .ok_or(OutOfRangeError)?;
+        Ok(Duration { micros })
+    }
+}
+
+impl TryInto<std::time::Duration> for Duration {
+    type Error = OutOfRangeError;
+
+    fn try_into(self) -> Result<std::time::Duration, Self::Error> {
+        let micros = self.micros.try_into()
+            .map_err(|_| OutOfRangeError)?;
+        Ok(std::time::Duration::from_micros(micros))
     }
 }
 
@@ -775,31 +790,59 @@ impl TryFrom<SystemTime> for Datetime {
     type Error = OutOfRangeError;
 
     fn try_from(value: SystemTime) -> Result<Self, Self::Error> {
-        Datetime::from_system_time(value)
+
+        match value.duration_since(UNIX_EPOCH) {
+            Ok(duration) => {
+                let secs = duration.as_secs();
+                let subsec_nanos = duration.subsec_nanos();
+                let subsec_micros = nanos_to_micros(subsec_nanos.into());
+                let micros = i64::try_from(secs).ok()
+                    .and_then(|x| x.checked_mul(1_000_000))
+                    .and_then(|x| x.checked_add(subsec_micros))
+                    .and_then(|x| x.checked_add(Datetime::UNIX_EPOCH.micros))
+                    .ok_or(OutOfRangeError)?;
+                if micros > Datetime::MAX.micros {
+                    return Err(OutOfRangeError);
+                }
+                Ok(Datetime { micros })
+            }
+            Err(e) => {
+                let mut secs = e.duration().as_secs();
+                let mut subsec_nanos = e.duration().subsec_nanos();
+                if subsec_nanos > 0 {
+                    secs = secs.checked_add(1).ok_or(OutOfRangeError)?;
+                    subsec_nanos = 1_000_000_000 - subsec_nanos;
+                }
+                let subsec_micros = nanos_to_micros(subsec_nanos.into());
+                let micros = i64::try_from(secs).ok()
+                    .and_then(|x| x.checked_mul(1_000_000))
+                    .and_then(|x| Datetime::UNIX_EPOCH.micros.checked_sub(x))
+                    .and_then(|x| x.checked_add(subsec_micros))
+                    .ok_or(OutOfRangeError)?;
+                if micros < Datetime::MIN.micros {
+                    return Err(OutOfRangeError);
+                }
+                Ok(Datetime { micros })
+            }
+        }
     }
 }
+
 impl std::ops::Add<&'_ std::time::Duration> for Datetime {
     type Output = Datetime;
     fn add(self, other: &std::time::Duration) -> Datetime {
-        let micros = match other.as_micros().try_into() {
-            Ok(m) => m,
-            Err(_) => {
-                // crash in debug mode
-                debug_assert!(false,
-                    "resulting datetime is out of range");
-                // saturate in release mode
-                return Datetime::MAX;
-            }
-        };
-        let micros = self.micros.saturating_add(micros);
-        if micros > Datetime::MAX.micros {
-            // crash in debug mode
+        let Ok(duration) = Duration::try_from(other) else {
             debug_assert!(false,
-                "resulting datetime is out of range");
-            // saturate in release mode
+                "duration is out of range");
+            return Datetime::MAX;
+        };
+        if let Some(micros) = self.micros.checked_add(duration.micros) {
+            return Datetime { micros };
+        } else {
+            debug_assert!(false,
+                "duration is out of range");
             return Datetime::MAX;
         }
-        return Datetime { micros };
     }
 }
 
@@ -912,12 +955,7 @@ mod test {
     pub const CHRONO_MAX_YEAR : i32 = 262_143;
 
     fn extended_test_dates() -> impl Iterator<Item=(i32, u8, u8)> {
-        const YEARS :[i32; 41]= [
-            MIN_YEAR + 1,
-            -4700,
-            -4400,
-            -1,
-            0,
+        const YEARS :[i32; 36]= [
             1,
             2,
             1000,
@@ -1010,15 +1048,8 @@ mod test {
     #[test]
     fn format_local_date() {
         assert_eq!("2000-01-01", LocalDate::from_days(0).to_string());
-        assert_eq!("0000-01-01", LocalDate::from_days(-DAYS_IN_2000_YEARS).to_string());
-        assert_eq!("0001-01-01", LocalDate::from_days(-DAYS_IN_2000_YEARS + 366).to_string());
-        assert_eq!("-0001-01-01", LocalDate::from_days(-DAYS_IN_2000_YEARS - 365).to_string());
-        assert_eq!("-4000-01-01", LocalDate::from_days(-3 * DAYS_IN_2000_YEARS as i32).to_string());
-        assert_eq!("+10000-01-01", LocalDate::from_days(4 * DAYS_IN_2000_YEARS as i32).to_string());
-        assert_eq!("9999-12-31", LocalDate::from_days(4 * DAYS_IN_2000_YEARS as i32 - 1).to_string());
-        assert_eq!("+10001-01-01", LocalDate::from_days(4 * DAYS_IN_2000_YEARS as i32 + 366).to_string());
-        assert_eq!("-4713-11-24", LocalDate::MIN.to_string());
-        assert_eq!("+294276-12-31", LocalDate::MAX.to_string());
+        assert_eq!("0001-01-01", LocalDate::MIN.to_string());
+        assert_eq!("9999-12-31", LocalDate::MAX.to_string());
     }
 
     #[test]
@@ -1038,11 +1069,11 @@ mod test {
         assert_eq!("2039-02-13 23:31:30.123456", LocalDatetime::from_micros(1_234_567_890_123_456).to_string());
         assert_eq!("2039-02-13T23:31:30.123456", to_debug(LocalDatetime::from_micros(1_234_567_890_123_456)));
 
-        assert_eq!("-4713-11-24 00:00:00", LocalDatetime::MIN.to_string());
-        assert_eq!("-4713-11-24T00:00:00", to_debug(LocalDatetime::MIN));
+        assert_eq!("0001-01-01 00:00:00", LocalDatetime::MIN.to_string());
+        assert_eq!("0001-01-01T00:00:00", to_debug(LocalDatetime::MIN));
 
-        assert_eq!("+294276-12-31 23:59:59.999999", LocalDatetime::MAX.to_string());
-        assert_eq!("+294276-12-31T23:59:59.999999", to_debug(LocalDatetime::MAX));
+        assert_eq!("9999-12-31 23:59:59.999999", LocalDatetime::MAX.to_string());
+        assert_eq!("9999-12-31T23:59:59.999999", to_debug(LocalDatetime::MAX));
     }
 
     #[test]
@@ -1050,11 +1081,11 @@ mod test {
         assert_eq!("2039-02-13 23:31:30.123456 UTC", Datetime::from_micros(1_234_567_890_123_456).to_string());
         assert_eq!("2039-02-13T23:31:30.123456Z", to_debug(Datetime::from_micros(1_234_567_890_123_456)));
 
-        assert_eq!("-4713-11-24 00:00:00 UTC", Datetime::MIN.to_string());
-        assert_eq!("-4713-11-24T00:00:00Z", to_debug(Datetime::MIN));
+        assert_eq!("0001-01-01 00:00:00 UTC", Datetime::MIN.to_string());
+        assert_eq!("0001-01-01T00:00:00Z", to_debug(Datetime::MIN));
 
-        assert_eq!("+294276-12-31 23:59:59.999999 UTC", Datetime::MAX.to_string());
-        assert_eq!("+294276-12-31T23:59:59.999999Z", to_debug(Datetime::MAX));
+        assert_eq!("9999-12-31 23:59:59.999999 UTC", Datetime::MAX.to_string());
+        assert_eq!("9999-12-31T23:59:59.999999Z", to_debug(Datetime::MAX));
     }
 
     #[test]
@@ -1157,6 +1188,20 @@ mod test {
         );
         assert_error("PT1M1H", 4, "EOF");
         assert_error("PT1S1M", 4, "EOF");
+    }
+
+    #[test]
+    fn add_duration_rounding() {
+        // round down
+        assert_eq!(
+            Datetime::UNIX_EPOCH + std::time::Duration::new(17, 500),
+            Datetime::UNIX_EPOCH + std::time::Duration::new(17, 0),
+        );
+        // round up
+        assert_eq!(
+            Datetime::UNIX_EPOCH + std::time::Duration::new(12345, 1500),
+            Datetime::UNIX_EPOCH + std::time::Duration::new(12345, 2000),
+        );
     }
 }
 
@@ -1466,6 +1511,16 @@ impl Display for DateDuration {
     }
 }
 
+fn nanos_to_micros(nanos: i64) -> i64 {
+   // round to the nearest even
+   let mut micros = nanos / 1000;
+   let remainder = nanos % 1000;
+   if remainder == 500 && micros % 2 == 1 || remainder > 500 {
+       micros += 1;
+   }
+   return micros;
+}
+
 #[cfg(feature = "chrono")]
 mod chrono_interop {
     use super::*;
@@ -1492,14 +1547,18 @@ mod chrono_interop {
             -> Result<LocalDatetime, Self::Error>
         {
             let secs = d.timestamp();
-            let micros = d.timestamp_subsec_micros();
-            let timestamp = secs.checked_mul(1_000_000)
-                .and_then(|x| x.checked_add(micros as i64))
+            let subsec_nanos = d.timestamp_subsec_nanos();
+            let subsec_micros = nanos_to_micros(subsec_nanos.into());
+            let micros = secs.checked_mul(1_000_000)
+                .and_then(|x| x.checked_add(subsec_micros))
+                .and_then(|x| x.checked_add(Datetime::UNIX_EPOCH.micros))
                 .ok_or(OutOfRangeError)?;
-            Ok(LocalDatetime {
-                micros: timestamp.checked_add(Datetime::UNIX_EPOCH.micros)
-                    .ok_or(OutOfRangeError)?,
-            })
+            if micros < LocalDatetime::MIN.micros ||
+                micros > LocalDatetime::MAX.micros
+            {
+                return Err(OutOfRangeError)
+            }
+            Ok(LocalDatetime { micros })
         }
     }
 
@@ -1509,11 +1568,12 @@ mod chrono_interop {
         fn try_from(value:&Datetime) -> Result<ChronoDatetime, Self::Error> {
             use chrono::TimeZone;
 
-            let postgres_epoch = chrono::Utc.ymd(2000, 1, 1).and_hms(0, 0, 0);
+            let pg_epoch = chrono::Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0)
+                .unwrap();
             let duration = chrono::Duration::microseconds(value.micros);
             // this overflows for large values,
             // chrono uses an epoch based on year 0
-            postgres_epoch.checked_add_signed(duration)
+            pg_epoch.checked_add_signed(duration)
                 .ok_or(OutOfRangeError)
         }
     }
@@ -1522,11 +1582,20 @@ mod chrono_interop {
         type Error = OutOfRangeError;
 
         fn try_from(value:&ChronoDatetime) -> Result<Datetime, Self::Error> {
-           let min = ChronoDatetime::try_from(Datetime::from_micros(i64::MIN)).unwrap();
-           let duration = value.signed_duration_since(min).to_std().map_err(|_| OutOfRangeError)?;
-           let micros = u64::try_from(duration.as_micros()).map_err(|_| OutOfRangeError)?;
-           let micros = i64::MIN.wrapping_add(micros as i64);
-           Ok(Datetime::from_micros(micros))
+            let min = ChronoDatetime::try_from(Datetime::MIN).unwrap();
+            let duration = value.signed_duration_since(min).to_std()
+                .map_err(|_| OutOfRangeError)?;
+            let secs = duration.as_secs();
+            let subsec_micros = nanos_to_micros(duration.subsec_nanos().into());
+            let micros = i64::try_from(secs).ok()
+                .and_then(|x| x.checked_mul(1_000_000))
+                .and_then(|x| x.checked_add(subsec_micros))
+                .and_then(|x| x.checked_add(Datetime::MIN.micros))
+                .ok_or(OutOfRangeError)?;
+            if micros > Datetime::MAX.micros {
+                return Err(OutOfRangeError);
+            }
+            Ok(Datetime { micros })
         }
     }
 
@@ -1553,19 +1622,28 @@ mod chrono_interop {
 
     impl From<&LocalTime> for NaiveTime {
         fn from(value: &LocalTime) -> NaiveTime {
-            NaiveTime::from_num_seconds_from_midnight(
+            NaiveTime::from_num_seconds_from_midnight_opt(
                 (value.micros / 1000_000) as u32,
-                ((value.micros % 1000_000) * 1000) as u32)
+                ((value.micros % 1000_000) * 1000) as u32
+            ).expect("localtime and native time have equal range")
         }
     }
 
     impl From<&NaiveTime> for LocalTime {
         fn from(time: &NaiveTime) -> LocalTime {
             let sec = chrono::Timelike::num_seconds_from_midnight(time);
-            let nanos = chrono::Timelike::nanosecond(time);
-            LocalTime {
-                micros: sec as u64 * 1000_000 + nanos as u64 / 1000,
+            let nanos = nanos_to_micros(
+                chrono::Timelike::nanosecond(time) as i64
+            ) as u64;
+            let mut micros = sec as u64 * 1000_000 + nanos;
+
+            if micros >= 86400_000_000 {
+                // this is only possible due to rounding:
+                // >= 23:59:59.999999500
+                micros -= 86400_000_000;
             }
+
+            LocalTime { micros }
         }
     }
 
@@ -1679,12 +1757,13 @@ mod chrono_interop {
         #[test]
         fn format_local_date() {
             let dates = valid_test_dates().filter(|d| d.0 <= CHRONO_MAX_YEAR);
-            for date in dates {
-                let actual_value = LocalDate::from_ymd(date.0, date.1, date.2);
-                let expected_value = NaiveDate::from_ymd(date.0, date.1 as u32, date.2 as u32);
+            for (y, m, d) in dates {
+                let actual_value = LocalDate::from_ymd(y, m, d);
+                let expected = NaiveDate::from_ymd_opt(y, m as u32, d as u32)
+                    .unwrap();
 
-                check_display(expected_value, actual_value);
-                check_debug(expected_value, actual_value);
+                check_display(expected, actual_value);
+                check_debug(expected, actual_value);
             }
         }
 
@@ -1696,7 +1775,8 @@ mod chrono_interop {
                     let actual_date = LocalDate::from_ymd(date.0, date.1, date.2);
                     let actual_time = LocalTime::from_micros(time);
                     let actual_value = LocalDatetime::new(actual_date, actual_time);
-                    let expected_value = NaiveDateTime::try_from(actual_value).expect(&format!("Could not convert LocalDatetime '{}'", actual_value));
+                    let expected_value = NaiveDateTime::try_from(actual_value)
+                        .expect(&format!("Could not convert LocalDatetime '{}'", actual_value));
 
                     check_display(expected_value, actual_value);
                     check_debug(expected_value, actual_value);
