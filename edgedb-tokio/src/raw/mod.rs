@@ -27,6 +27,8 @@ pub use options::Options;
 pub use response::{ResponseStream};
 pub use state::{State, PoolState};
 
+#[cfg(feature="unstable")] pub use dumps::{DumpStream};
+
 #[derive(Clone, Debug)]
 pub struct Pool(Arc<PoolInner>);
 

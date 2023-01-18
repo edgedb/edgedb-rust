@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::time::{Instant, Duration};
+use std::mem;
 
 use bytes::Bytes;
 use tokio::time::sleep;
@@ -7,11 +8,27 @@ use tokio_stream::{Stream, StreamExt};
 
 use edgedb_errors::{Error, ErrorKind};
 use edgedb_errors::{ProtocolOutOfOrderError};
-use edgedb_protocol::server_message::ServerMessage;
+use edgedb_protocol::server_message::{ServerMessage, RawPacket};
 use edgedb_protocol::client_message::{ClientMessage, Restore, RestoreBlock};
+use edgedb_protocol::client_message::{Dump};
 
 use crate::raw::{Connection, Response};
 use crate::raw::connection::{send_messages, wait_message};
+use crate::raw::queries::Guard;
+
+enum DumpState {
+    Header(RawPacket),
+    Blocks,
+    Complete(Response<()>),
+    Error(Error),
+    Reset,
+}
+
+pub struct DumpStream<'a> {
+    conn: &'a mut Connection,
+    state: DumpState,
+    guard: Option<Guard>,
+}
 
 
 impl Connection {
@@ -126,6 +143,128 @@ impl Connection {
                         "unsolicited message {:?}", msg)))?;
                 }
             }
+        }
+    }
+    pub async fn dump(&mut self) -> Result<DumpStream<'_>, Error> {
+        let guard = self.begin_request()?;
+        self.send_messages(&[
+            ClientMessage::Dump(Dump {
+                headers: Default::default(),
+            }),
+            ClientMessage::Sync,
+        ]).await?;
+        let msg = self.message().await?;
+        let header = match msg {
+            ServerMessage::DumpHeader(packet) => packet,
+            ServerMessage::ErrorResponse(err) => {
+                self.expect_ready_or_eos(guard).await
+                    .map_err(|e| log::warn!(
+                        "Error waiting for Ready after error: {e:#}"))
+                    .ok();
+                return Err(Into::<Error>::into(err)
+                    .context("error receiving dump header")
+                    .into());
+            }
+            _ => {
+                return Err(ProtocolOutOfOrderError::with_message(format!(
+                    "unsolicited message {:?}", msg)))?;
+            }
+        };
+        Ok(DumpStream {
+            conn: self,
+            state: DumpState::Header(header),
+            guard: Some(guard),
+        })
+    }
+}
+
+impl DumpStream<'_> {
+    pub async fn complete(mut self) -> Result<Response<()>, Error> {
+        self.process_complete().await
+    }
+    pub fn take_header(&mut self) -> Option<RawPacket> {
+        match mem::replace(&mut self.state, DumpState::Reset) {
+            DumpState::Header(header) => {
+                self.state = DumpState::Blocks;
+                Some(header)
+            }
+            state => {
+                self.state = state;
+                None
+            }
+        }
+    }
+    pub async fn next_block(&mut self) -> Option<RawPacket> {
+        match &self.state {
+            DumpState::Header(_) |
+            DumpState::Blocks => {
+                match self.conn.message().await {
+                    Ok(ServerMessage::DumpBlock(packet)) => {
+                        Some(packet)
+                    }
+                    Ok(ServerMessage::CommandComplete0(complete))
+                    if self.guard.is_some() && !self.conn.proto.is_1() => {
+                        let guard = self.guard.take().unwrap();
+                        if let Err(e) = self.conn.expect_ready(guard).await {
+                            self.state = DumpState::Error(e)
+                        } else {
+                            self.state = DumpState::Complete(Response {
+                                status_data: complete.status_data,
+                                new_state: None,
+                                data: (),
+                            });
+                        }
+                        None
+                    }
+                    Ok(ServerMessage::CommandComplete1(complete))
+                    if self.guard.is_some() && self.conn.proto.is_1() => {
+                        let guard = self.guard.take().unwrap();
+                        if let Err(e) = self.conn.expect_ready(guard).await {
+                            self.state = DumpState::Error(e)
+                        } else {
+                            self.state = DumpState::Complete(Response {
+                                status_data: complete.status_data,
+                                new_state: Some(complete.state),
+                                data: (),
+                            });
+                        }
+                        None
+                    }
+                    Ok(ServerMessage::ErrorResponse(err)) => {
+                        let guard = self.guard.take().unwrap();
+                        self.conn.expect_ready_or_eos(guard).await
+                            .map_err(|e| log::warn!(
+                                "Error waiting for Ready after error: {e:#}"))
+                            .ok();
+                        self.state = DumpState::Error(err.into());
+                        None
+                    }
+                    Ok(msg) => {
+                        self.state = DumpState::Error(
+                            ProtocolOutOfOrderError::with_message(format!(
+                            "unsolicited message {:?}", msg))
+                        );
+                        None
+                    }
+                    Err(e) => {
+                        self.state = DumpState::Error(e);
+                        None
+                    }
+                }
+            }
+            _ => None,
+        }
+    }
+    pub async fn process_complete(&mut self) -> Result<Response<()>, Error> {
+        use DumpState::*;
+
+        match mem::replace(&mut self.state, Reset) {
+            Header(..) | Blocks
+                => panic!("process_complete() called too early"),
+            Complete(c) => Ok(c),
+            Error(e) => Err(e),
+
+            Reset => panic!("process_complete() called twice"),
         }
     }
 }
