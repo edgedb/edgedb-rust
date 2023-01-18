@@ -200,7 +200,7 @@ impl<'a, T: QueryResult> ResponseStream<'a, T>
             => Ok(Response { status_data, new_state, data: () }),
             Error(e) => Err(e),
             ErrorResponse(e) => Err(e.into()),
-            Reset => panic!("stream is already complete"),
+            Reset => panic!("process_complete() called twice"),
         }
     }
 }
