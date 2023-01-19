@@ -130,7 +130,7 @@ pub struct CommandComplete1 {
     pub annotations: Annotations,
     pub capabilities: Capabilities,
     pub status_data: Bytes,
-    pub state: State,
+    pub state: Option<State>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -666,8 +666,13 @@ impl Encode for CommandComplete1 {
         }
         buf.put_u64(self.capabilities.bits());
         self.status_data.encode(buf)?;
-        self.state.typedesc_id.encode(buf)?;
-        self.state.data.encode(buf)?;
+        if let Some(state) = &self.state {
+            state.typedesc_id.encode(buf)?;
+            state.data.encode(buf)?;
+        } else {
+            Uuid::from_u128(0).encode(buf)?;
+            Bytes::new().encode(buf)?;
+        }
         Ok(())
     }
 }
@@ -685,9 +690,15 @@ impl Decode for CommandComplete1 {
             Capabilities::from_bits_unchecked(buf.get_u64())
         };
         let status_data = Bytes::decode(buf)?;
-        let state = State {
-            typedesc_id: Uuid::decode(buf)?,
-            data: Bytes::decode(buf)?,
+        let typedesc_id = Uuid::decode(buf)?;
+        let state_data = Bytes::decode(buf)?;
+        let state = if typedesc_id == Uuid::from_u128(0) {
+            None
+        } else {
+            Some(State {
+                typedesc_id,
+                data: state_data,
+            })
         };
         Ok(CommandComplete1 {
             annotations,

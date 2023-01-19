@@ -83,7 +83,7 @@ impl<'a, T: QueryResult> ResponseStream<'a, T>
                 if self.guard.is_some() && self.connection.proto.is_1() => {
                     self.buffer = Complete {
                         status_data: complete.status_data,
-                        new_state: Some(complete.state),
+                        new_state: complete.state,
                     };
                     self.expect_ready().await;
                     return;
@@ -149,7 +149,7 @@ impl<'a, T: QueryResult> ResponseStream<'a, T>
                     self.expect_ready().await;
                     self.buffer = Complete {
                         status_data: complete.status_data,
-                        new_state: Some(complete.state),
+                        new_state: complete.state,
                     };
                     return None;
                 }
