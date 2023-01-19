@@ -252,7 +252,7 @@ impl Connection {
                     self.expect_ready(guard).await?;
                     return Ok(Response {
                         status_data: complete.status_data,
-                        new_state: Some(complete.state),
+                        new_state: complete.state,
                         data,
                     });
                 }

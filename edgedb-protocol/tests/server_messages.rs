@@ -5,7 +5,7 @@ use std::error::Error;
 use uuid::Uuid;
 use bytes::{Bytes, BytesMut};
 
-use edgedb_protocol::common::{Capabilities, State, RawTypedesc};
+use edgedb_protocol::common::{Capabilities, RawTypedesc};
 use edgedb_protocol::encoding::{Input, Output};
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::server_message::{Authentication};
@@ -129,10 +129,7 @@ fn command_complete1() -> Result<(), Box<dyn Error>> {
         annotations: HashMap::new(),
         capabilities: Capabilities::MODIFICATIONS,
         status_data: Bytes::from_static(b"okay"),
-        state: State {
-            typedesc_id: Uuid::from_u128(0),
-            data: Bytes::from_static(b""),
-        },
+        state: None,
     }), b"C\0\0\0*\0\0\0\0\0\0\0\0\0\x01\0\0\0\x04okay\
           \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
           \0\0\0\0");

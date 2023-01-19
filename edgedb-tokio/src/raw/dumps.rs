@@ -125,7 +125,7 @@ impl Connection {
                     self.end_request(guard);
                     return Ok(Response {
                         status_data: complete.status_data,
-                        new_state: Some(complete.state),
+                        new_state: complete.state,
                         data: (),
                     });
                 }
@@ -224,7 +224,7 @@ impl DumpStream<'_> {
                         } else {
                             self.state = DumpState::Complete(Response {
                                 status_data: complete.status_data,
-                                new_state: Some(complete.state),
+                                new_state: complete.state,
                                 data: (),
                             });
                         }
