@@ -111,7 +111,7 @@ impl ServerGuard {
         let cert_data = std::fs::read_to_string(&info.tls_cert_file)
             .expect("cert file should be readable");
         let config = Builder::uninitialized()
-             .host_port(None::<String>, Some(info.port))
+             .host_port(None::<String>, Some(info.port))?
              .pem_certificates(&cert_data)?
              .build()?;
         Ok(ServerGuard { config })

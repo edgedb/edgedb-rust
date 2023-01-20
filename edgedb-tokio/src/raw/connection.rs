@@ -380,6 +380,9 @@ async fn connect4(cfg: &Config, mut stream: TlsStream)
     let mut params = HashMap::new();
     params.insert(String::from("user"), cfg.0.user.clone());
     params.insert(String::from("database"), cfg.0.database.clone());
+    if let Some(secret_key) = cfg.0.secret_key.clone() {
+        params.insert(String::from("secret_key"), secret_key);
+    }
     let (major_ver, minor_ver) = proto.version_tuple();
     send_messages(&mut stream, &mut out_buf, &proto, &[
         ClientMessage::ClientHandshake(ClientHandshake {
