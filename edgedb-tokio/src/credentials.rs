@@ -3,6 +3,8 @@ use std::default::Default;
 
 use serde::{ser, Serialize, Deserialize};
 
+use crate::errors::{Error, ErrorKind};
+
 
 /// TLS Client Security Mode
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -63,6 +65,22 @@ struct CredentialsCompat {
 
 fn default_port() -> u16 {
     5656
+}
+
+impl TlsSecurity {
+    pub fn from_str(val: impl AsRef<str>) -> Result<Self, Error> {
+        match val.as_ref() {
+            "default" => Ok(TlsSecurity::Default),
+            "insecure" => Ok(TlsSecurity::Insecure),
+            "no_host_verification" => Ok(TlsSecurity::NoHostVerification),
+            "strict" => Ok(TlsSecurity::Strict),
+            val => Err(crate::errors::ClientError::with_message(format!(
+                "Invalid value {:?}. \
+                Options: default, insecure, no_host_verification, strict.",
+                val,
+            ))),
+        }
+    }
 }
 
 
