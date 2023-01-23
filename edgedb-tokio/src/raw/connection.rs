@@ -25,7 +25,7 @@ use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::server_message::{ParameterStatus, RawTypedesc};
 use edgedb_protocol::server_message::{ServerHandshake};
 use edgedb_protocol::server_message::{ServerMessage, Authentication};
-use edgedb_protocol::server_message::{TransactionState};
+use edgedb_protocol::server_message::{TransactionState, MessageSeverity};
 use edgedb_protocol::value::Value;
 
 use crate::builder::{Config, Address};
@@ -626,6 +626,31 @@ pub async fn wait_message<'x>(stream: &mut (impl AsyncRead + Unpin),
                               buf: &mut BytesMut, proto: &ProtocolVersion)
     -> Result<ServerMessage, Error>
 {
+    loop {
+        match _wait_message(stream, buf, proto).await? {
+            ServerMessage::LogMessage(msg) => {
+                match msg.severity {
+                    MessageSeverity::Debug => {
+                        log::debug!("[{}] {}", msg.code, msg.text);
+                    }
+                    MessageSeverity::Notice | MessageSeverity::Info => {
+                        log::info!("[{}] {}", msg.code, msg.text);
+                    }
+                    MessageSeverity::Warning | MessageSeverity::Unknown(_) => {
+                        log::warn!("[{}] {}", msg.code, msg.text);
+                    }
+                }
+                continue;
+            }
+            msg => return Ok(msg),
+        }
+    }
+}
+
+async fn _wait_message<'x>(stream: &mut (impl AsyncRead + Unpin),
+                              buf: &mut BytesMut, proto: &ProtocolVersion)
+    -> Result<ServerMessage, Error>
+{
     while buf.len() < 5 {
         buf.reserve(5);
         if stream.read_buf(buf).await.map_err(conn_err)? == 0 {
@@ -656,7 +681,7 @@ pub async fn wait_message<'x>(stream: &mut (impl AsyncRead + Unpin),
     log::debug!(target: "edgedb::incoming::frame",
                 "Frame Contents: {:#?}", result);
 
-    Ok(result)
+    return Ok(result)
 }
 
 fn connect_sleep() -> Duration {
