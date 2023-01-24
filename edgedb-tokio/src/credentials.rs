@@ -136,12 +136,13 @@ impl<'de> Deserialize<'de> for Credentials {
         let expected_verify = match creds.tls_security {
             Some(TlsSecurity::Strict) => Some(true),
             Some(TlsSecurity::NoHostVerification) => Some(false),
+            Some(TlsSecurity::Insecure) => Some(false),
             _ => None,
         };
         if creds.tls_verify_hostname.is_some() &&
             creds.tls_security.is_some() &&
             expected_verify.zip(creds.tls_verify_hostname)
-                .map(|(creds, expected)| creds == expected)
+                .map(|(creds, expected)| creds != expected)
                 .unwrap_or(false)
         {
             Err(serde::de::Error::custom(format!(
