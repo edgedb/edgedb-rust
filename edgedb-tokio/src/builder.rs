@@ -27,7 +27,6 @@ pub const DEFAULT_WAIT: Duration = Duration::from_secs(30);
 pub const DEFAULT_POOL_SIZE: usize = 10;
 pub const DEFAULT_HOST: &str = "localhost";
 pub const DEFAULT_PORT: u16 = 5656;
-const EDGEDB_CLOUD_DEFAULT_DNS_ZONE: &str = "aws.edgedb.cloud";
 
 type Verifier = Arc<dyn ServerCertVerifier>;
 
@@ -1299,9 +1298,12 @@ impl Builder {
                     )
                 })
             );
-            if matches!(get_env("_EDGEDB_CLOUD_CERTS")?.as_deref(), Some("staging")) {
-                roots.add_server_trust_anchors(
-                    tls::OwnedTrustAnchor::read_all(
+            get_env("_EDGEDB_CLOUD_CERTS")?
+                .as_deref()
+                .and_then(|v| match v {
+                    "staging" => Some(
+                        // Staging certs retrieved from
+                        // https://letsencrypt.org/docs/staging-environment/#root-certificates
                         "-----BEGIN CERTIFICATE-----
 MIIFmDCCA4CgAwIBAgIQU9C87nMpOIFKYpfvOHFHFDANBgkqhkiG9w0BAQsFADBm
 MQswCQYDVQQGEwJVUzEzMDEGA1UEChMqKFNUQUdJTkcpIEludGVybmV0IFNlY3Vy
@@ -1349,12 +1351,30 @@ KoZIzj0EAwMDaAAwZQIwRcp4ZKBsq9XkUuN8wfX+GEbY1N5nmCRc8e80kUkuAefo
 uc2j3cICeXo1cOybQ1iWAjEA3Ooawl8eQyR4wrjCofUE8h44p0j7Yl/kBlJZT8+9
 vbtH7QiVzeKCOTQPINyRql6P
 -----END CERTIFICATE-----"
-                    )
-                    .map_err(ClientError::with_source_ref)?
-                    .into_iter()
-                    .map(Into::into),
-                );
-            }
+                    ),
+                    "local" => Some(
+                        // Local nebula development root cert found in
+                        // nebula/infra/terraform/local/ca/root.certificate.pem
+                        "----BEGIN CERTIFICATE-----
+MIICBjCCAaugAwIBAgIUGLnu92rPr79+DsDQBtolXEZENwMwCgYIKoZIzj0EAwIw
+UDELMAkGA1UEBhMCVVMxGjAYBgNVBAoMEUVkZ2VEQiAoaW50ZXJuYWwpMSUwIwYD
+VQQDDBxOZWJ1bGEgSW5mcmEgUm9vdCBDQSAobG9jYWwpMB4XDTIzMDExNDIzMDkw
+M1oXDTMyMTAxMzIzMDkwM1owUDELMAkGA1UEBhMCVVMxGjAYBgNVBAoMEUVkZ2VE
+QiAoaW50ZXJuYWwpMSUwIwYDVQQDDBxOZWJ1bGEgSW5mcmEgUm9vdCBDQSAobG9j
+YWwpMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEHJk/v57y1dG1xekQjeYwqlW7
+45fvlWIIid/EfcyBNCyvWhLUyQUz3urmK81rJlFYCexq/kgazTeBFJyWbrvLLKNj
+MGEwHQYDVR0OBBYEFN5PvqC9p5e4HC99o3z0pJrRuIpeMB8GA1UdIwQYMBaAFN5P
+vqC9p5e4HC99o3z0pJrRuIpeMA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQD
+AgEGMAoGCCqGSM49BAMCA0kAMEYCIQDedUpRy5YtQAHROrh/ZsWPlvek3vguuRrE
+y4u6fdOVhgIhAJ4pJLfdoWQsHPUOcnVG5fBgdSnoCJhGQyuGyp+NDu1q
+-----END CERTIFICATE-----"
+                    ),
+                    _ => None,
+                })
+                .map(tls::OwnedTrustAnchor::read_all)
+                .transpose()
+                .map_err(ClientError::with_source_ref)?
+                .map(|certs| roots.add_server_trust_anchors(certs.into_iter().map(Into::into)));
         }
         Ok(roots)
     }
