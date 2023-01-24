@@ -847,7 +847,7 @@ impl Builder {
                     .map_err(ClientError::with_source)?;
                 let dns_zone = claims
                     .issuer
-                    .unwrap_or_else(|| EDGEDB_CLOUD_DEFAULT_DNS_ZONE.to_string());
+                    .ok_or(ClientError::with_message("Invalid secret key"))?;
                 let msg = format!("{}/{}", org_slug, name);
                 let checksum = crc16::State::<crc16::XMODEM>::calculate(msg.as_bytes());
                 let dns_bucket = format!("c-{:x}", checksum % 9900);
