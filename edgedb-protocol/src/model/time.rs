@@ -462,18 +462,28 @@ impl LocalDatetime {
         Ok(LocalDatetime { micros })
     }
 
+    #[deprecated(
+        since="0.5.0",
+        note="use Datetime::try_from_unix_micros(v).into() instead",
+    )]
     pub fn from_micros(micros: i64) -> LocalDatetime {
         Self::try_from_micros(micros).expect(&format!(
             "LocalDatetime::from_micros({}) is outside the valid datetime range",
              micros))
     }
 
+    #[deprecated(
+        since="0.5.0",
+        note="use .to_utc().to_unix_micros() instead",
+    )]
     pub fn to_micros(self) -> i64 {
         self.micros
     }
 
     pub fn new(date: LocalDate, time: LocalTime) -> LocalDatetime {
-        Self::from_micros(date.to_days() as i64 * MICROS_PER_DAY as i64 + time.to_micros() as i64)
+        let micros = date.to_days() as i64 * MICROS_PER_DAY as i64 +
+            time.to_micros() as i64;
+        LocalDatetime { micros }
     }
 
     pub fn date(self) -> LocalDate {
@@ -482,6 +492,16 @@ impl LocalDatetime {
 
     pub fn time(self) -> LocalTime {
         LocalTime::from_micros(self.micros.wrapping_rem_euclid(MICROS_PER_DAY as i64) as u64)
+    }
+
+    pub fn to_utc(self) -> Datetime {
+        Datetime { micros: self.micros }
+    }
+}
+
+impl From<Datetime> for LocalDatetime {
+    fn from(d: Datetime) -> LocalDatetime {
+        return LocalDatetime { micros: d.micros }
     }
 }
 
@@ -699,23 +719,77 @@ impl Debug for LocalDate {
 impl Datetime {
     pub const MIN : Datetime = Datetime { micros: LocalDatetime::MIN.micros };
     pub const MAX : Datetime = Datetime { micros: LocalDatetime::MAX.micros };
-    pub const UNIX_EPOCH : Datetime = Datetime { micros: LocalDate::UNIX_EPOCH.days as i64 * MICROS_PER_DAY as i64 };
+    pub const UNIX_EPOCH : Datetime = Datetime {
+        micros: LocalDate::UNIX_EPOCH.days as i64 * MICROS_PER_DAY as i64
+   };
 
+    /// Convert microseconds since unix epoch into a datetime
+    pub fn try_from_unix_micros(micros: i64)
+        -> Result<Datetime, OutOfRangeError>
+    {
+        Self::_from_micros(micros).ok_or(OutOfRangeError)
+    }
+
+    #[deprecated(
+        since="0.5.0",
+        note="use try_from_unix_micros instead",
+    )]
     pub fn try_from_micros(micros: i64) -> Result<Datetime, OutOfRangeError> {
+        Self::from_postgres_micros(micros)
+    }
+
+    pub(crate) fn from_postgres_micros(micros: i64)
+        -> Result<Datetime, OutOfRangeError>
+    {
         if micros < Self::MIN.micros || micros > Self::MAX.micros {
             return Err(OutOfRangeError);
         }
         Ok(Datetime { micros })
     }
 
+    fn _from_micros(micros: i64) -> Option<Datetime> {
+        let micros = micros.checked_add(Self::UNIX_EPOCH.micros)?;
+        if micros < Self::MIN.micros || micros > Self::MAX.micros {
+            return None;
+        }
+        Some(Datetime { micros })
+    }
+
+    #[deprecated(
+        since="0.5.0",
+        note="use from_unix_micros instead",
+    )]
     pub fn from_micros(micros: i64) -> Datetime {
-        Self::try_from_micros(micros).expect(&format!(
+        Self::from_postgres_micros(micros).expect(&format!(
             "Datetime::from_micros({}) is outside the valid datetime range",
              micros))
     }
 
+    /// Convert microseconds since unix epoch into a datetime
+    ///
+    /// # Panics
+    ///
+    /// When value is out of range.
+    pub fn from_unix_micros(micros: i64) -> Datetime {
+        if let Some(result) = Self::_from_micros(micros) {
+            return result
+        }
+        panic!("Datetime::from_micros({}) is outside the valid datetime range",
+             micros);
+    }
+
+    #[deprecated(
+        since="0.5.0",
+        note="use to_unix_micros instead",
+    )]
     pub fn to_micros(self) -> i64 {
         self.micros
+    }
+
+    /// Convert datetime to microseconds since Unix Epoch
+    pub fn to_unix_micros(self) -> i64 {
+        // i64 is enough to fit our range with both epochs
+        self.micros + Datetime::UNIX_EPOCH.micros
     }
 
     fn postgres_epoch_unix() -> SystemTime {
@@ -727,13 +801,13 @@ impl Datetime {
 
 impl Display for Datetime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} UTC", LocalDatetime::from_micros(self.to_micros()))
+        write!(f, "{} UTC", LocalDatetime { micros: self.micros })
     }
 }
 
 impl Debug for Datetime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}Z", LocalDatetime::from_micros(self.to_micros()))
+        write!(f, "{:?}Z", LocalDatetime { micros: self.micros })
     }
 }
 
@@ -886,6 +960,13 @@ impl Display for Duration {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn micros_conv() {
+        let datetime = Datetime::from_unix_micros(1645681383000002);
+        assert_eq!(datetime.micros, 698996583000002);
+        assert_eq!(to_debug(datetime), "2022-02-24T05:43:03.000002Z");
+    }
 
     #[test]
     fn big_duration_abs() {
@@ -1065,21 +1146,31 @@ mod test {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn format_local_datetime() {
-        assert_eq!("2039-02-13 23:31:30.123456", LocalDatetime::from_micros(1_234_567_890_123_456).to_string());
-        assert_eq!("2039-02-13T23:31:30.123456", to_debug(LocalDatetime::from_micros(1_234_567_890_123_456)));
+        assert_eq!("2039-02-13 23:31:30.123456",
+                   LocalDatetime::from_micros(1_234_567_890_123_456).to_string());
+        assert_eq!("2039-02-13T23:31:30.123456",
+                   to_debug(LocalDatetime::from_micros(1_234_567_890_123_456)));
 
-        assert_eq!("0001-01-01 00:00:00", LocalDatetime::MIN.to_string());
-        assert_eq!("0001-01-01T00:00:00", to_debug(LocalDatetime::MIN));
+        assert_eq!("0001-01-01 00:00:00",
+                   LocalDatetime::MIN.to_string());
+        assert_eq!("0001-01-01T00:00:00",
+                   to_debug(LocalDatetime::MIN));
 
-        assert_eq!("9999-12-31 23:59:59.999999", LocalDatetime::MAX.to_string());
-        assert_eq!("9999-12-31T23:59:59.999999", to_debug(LocalDatetime::MAX));
+        assert_eq!("9999-12-31 23:59:59.999999",
+                   LocalDatetime::MAX.to_string());
+        assert_eq!("9999-12-31T23:59:59.999999",
+                   to_debug(LocalDatetime::MAX));
     }
 
     #[test]
+    #[allow(deprecated)]
     fn format_datetime() {
-        assert_eq!("2039-02-13 23:31:30.123456 UTC", Datetime::from_micros(1_234_567_890_123_456).to_string());
-        assert_eq!("2039-02-13T23:31:30.123456Z", to_debug(Datetime::from_micros(1_234_567_890_123_456)));
+        assert_eq!("2039-02-13 23:31:30.123456 UTC",
+                   Datetime::from_micros(1_234_567_890_123_456).to_string());
+        assert_eq!("2039-02-13T23:31:30.123456Z",
+                   to_debug(Datetime::from_micros(1_234_567_890_123_456)));
 
         assert_eq!("0001-01-01 00:00:00 UTC", Datetime::MIN.to_string());
         assert_eq!("0001-01-01T00:00:00Z", to_debug(Datetime::MIN));
@@ -1711,7 +1802,6 @@ mod chrono_interop {
     mod test {
         use super::*;
         use crate::model::time::test::{ test_times, valid_test_dates, to_debug, CHRONO_MAX_YEAR};
-        use crate::model::time::Datetime;
         use std::convert::{TryFrom, TryInto};
         use std::str::FromStr;
         use std::fmt::{ Display, Debug };
@@ -1792,8 +1882,9 @@ mod chrono_interop {
                     let actual_date = LocalDate::from_ymd(date.0, date.1, date.2);
                     let actual_time = LocalTime::from_micros(time);
                     let local_datetime = LocalDatetime::new(actual_date, actual_time);
-                    let actual_value = Datetime::from_micros(local_datetime.to_micros());
-                    let expected_value = ChronoDatetime::try_from(actual_value).expect(&format!("Could not convert Datetime '{}'", actual_value));
+                    let actual_value = local_datetime.to_utc();
+                    let expected_value = ChronoDatetime::try_from(actual_value)
+                        .expect(&format!("Could not convert Datetime '{}'", actual_value));
 
                     check_display(expected_value, actual_value);
                     check_debug(expected_value, actual_value);
