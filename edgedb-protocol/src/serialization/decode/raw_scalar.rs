@@ -643,7 +643,7 @@ impl ScalarArg for SystemTime {
 impl<'t> RawCodec<'t> for Datetime {
     fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
         let micros = i64::decode(buf)?;
-        Ok(Datetime::try_from_micros(micros)
+        Ok(Datetime::from_postgres_micros(micros)
             .map_err(|_| errors::InvalidDate.build())?)
     }
 }
