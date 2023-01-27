@@ -455,7 +455,9 @@ impl LocalDatetime {
     // 9999-12-31T23:59:59.999999
     pub const MAX: LocalDatetime = LocalDatetime { micros: 252455615999999999 };
 
-    fn try_from_micros(micros: i64) -> Result<LocalDatetime, OutOfRangeError> {
+    pub(crate) fn from_postgres_micros(micros: i64)
+        -> Result<LocalDatetime, OutOfRangeError>
+    {
         if micros < Self::MIN.micros || micros > Self::MAX.micros {
             return Err(OutOfRangeError);
         }
@@ -467,7 +469,7 @@ impl LocalDatetime {
         note="use Datetime::try_from_unix_micros(v).into() instead",
     )]
     pub fn from_micros(micros: i64) -> LocalDatetime {
-        Self::try_from_micros(micros).expect(&format!(
+        Self::from_postgres_micros(micros).expect(&format!(
             "LocalDatetime::from_micros({}) is outside the valid datetime range",
              micros))
     }
@@ -850,13 +852,20 @@ impl TryFrom<&std::time::Duration> for Duration {
     }
 }
 
-impl TryInto<std::time::Duration> for Duration {
+impl TryFrom<&Duration> for std::time::Duration {
     type Error = OutOfRangeError;
 
-    fn try_into(self) -> Result<std::time::Duration, Self::Error> {
-        let micros = self.micros.try_into()
+    fn try_from(value: &Duration) -> Result<std::time::Duration, Self::Error> {
+        let micros = value.micros.try_into()
             .map_err(|_| OutOfRangeError)?;
         Ok(std::time::Duration::from_micros(micros))
+    }
+}
+impl TryFrom<Duration> for std::time::Duration {
+    type Error = OutOfRangeError;
+
+    fn try_from(value: Duration) -> Result<std::time::Duration, Self::Error> {
+        (&value).try_into()
     }
 }
 
@@ -1616,19 +1625,16 @@ fn nanos_to_micros(nanos: i64) -> i64 {
 mod chrono_interop {
     use super::*;
     use chrono::naive::{NaiveDate, NaiveDateTime, NaiveTime };
-    use std::convert::{From, Into, TryFrom, TryInto};
+    use std::convert::{From, Into, TryFrom};
 
     type ChronoDatetime = chrono::DateTime<chrono::Utc>;
 
-    impl TryFrom<&LocalDatetime> for NaiveDateTime {
-        type Error = OutOfRangeError;
-        fn try_from(value: &LocalDatetime) -> Result<NaiveDateTime, Self::Error> {
-            // convert between epochs after converting to seconds to avoid integer overflows for values close to the maximum
-            // however it looks like from_timestamp_opt fails for these values anyways
+    impl From<&LocalDatetime> for NaiveDateTime {
+        fn from(value: &LocalDatetime) -> NaiveDateTime {
             let timestamp_seconds = value.micros.wrapping_div_euclid(1000_000) - (Datetime::UNIX_EPOCH.micros / 1000_000);
             let timestamp_nanos = (value.micros.wrapping_rem_euclid(1000_000) * 1000) as u32;
             NaiveDateTime::from_timestamp_opt(timestamp_seconds, timestamp_nanos)
-                .ok_or(OutOfRangeError)
+                .expect("NaiveDateTime range is bigger than LocalDatetime")
         }
     }
 
@@ -1653,19 +1659,21 @@ mod chrono_interop {
         }
     }
 
-    impl TryFrom<&Datetime> for ChronoDatetime {
-        type Error = OutOfRangeError;
-
-        fn try_from(value:&Datetime) -> Result<ChronoDatetime, Self::Error> {
+    impl From<&Datetime> for ChronoDatetime {
+        fn from(value: &Datetime) -> ChronoDatetime {
             use chrono::TimeZone;
 
             let pg_epoch = chrono::Utc.with_ymd_and_hms(2000, 1, 1, 0, 0, 0)
                 .unwrap();
             let duration = chrono::Duration::microseconds(value.micros);
-            // this overflows for large values,
-            // chrono uses an epoch based on year 0
             pg_epoch.checked_add_signed(duration)
-                .ok_or(OutOfRangeError)
+                .expect("EdgeDB datetime range is smaller than Chrono's")
+        }
+    }
+
+    impl From<Datetime> for ChronoDatetime {
+        fn from(value: Datetime) -> ChronoDatetime {
+            (&value).into()
         }
     }
 
@@ -1702,12 +1710,11 @@ mod chrono_interop {
         }
     }
 
-    impl TryFrom<&LocalDate> for NaiveDate {
-        type Error = OutOfRangeError;
-        fn try_from(value: &LocalDate) -> Result<NaiveDate, Self::Error> {
+    impl From<&LocalDate> for NaiveDate {
+        fn from(value: &LocalDate) -> NaiveDate {
             value.days.checked_add(DAYS_IN_2000_YEARS - 365)
             .and_then(NaiveDate::from_num_days_from_ce_opt)
-            .ok_or(OutOfRangeError)
+            .expect("NaiveDate range is bigger than LocalDate")
         }
     }
 
@@ -1738,25 +1745,15 @@ mod chrono_interop {
         }
     }
 
-    impl TryFrom<LocalDatetime> for NaiveDateTime {
-        type Error = OutOfRangeError;
-        fn try_from(value: LocalDatetime) -> Result<NaiveDateTime, Self::Error> {
-            (&value).try_into()
+    impl From<LocalDatetime> for NaiveDateTime {
+        fn from(value: LocalDatetime) -> NaiveDateTime {
+            (&value).into()
         }
     }
 
-    impl TryFrom<Datetime> for ChronoDatetime {
-        type Error = OutOfRangeError;
-
-        fn try_from(value: Datetime) -> Result<ChronoDatetime, Self::Error> {
-            (&value).try_into()
-        }
-    }
-
-    impl TryFrom<LocalDate> for NaiveDate {
-        type Error = OutOfRangeError;
-        fn try_from(value: LocalDate) -> Result<NaiveDate, Self::Error> {
-            (&value).try_into()
+    impl From<LocalDate> for NaiveDate {
+        fn from(value: LocalDate) -> NaiveDate {
+            (&value).into()
         }
     }
 
