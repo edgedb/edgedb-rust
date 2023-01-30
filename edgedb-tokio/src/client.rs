@@ -434,7 +434,7 @@ impl Client {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn transaction<T, B, F>(self, body: B) -> Result<T, Error>
+    pub async fn transaction<T, B, F>(&self, body: B) -> Result<T, Error>
         where B: FnMut(Transaction) -> F,
               F: Future<Output=Result<T, Error>>,
     {
