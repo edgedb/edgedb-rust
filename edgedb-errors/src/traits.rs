@@ -57,12 +57,29 @@ pub trait Field {
     type Value: Send + Sync + 'static;
 }
 
+pub trait AsEdgedbError {
+    fn as_edgedb_error(&self) -> Option<&Error>;
+}
+
 pub trait ResultExt<T> {
     fn context<C>(self, context: C) -> Result<T, Error>
         where C: Into<Cow<'static, str>>;
     fn with_context<C, F>(self, f: F) -> Result<T, Error>
         where C: Into<Cow<'static, str>>,
               F: FnOnce() -> C;
+}
+
+impl AsEdgedbError for Error {
+    fn as_edgedb_error(&self) -> Option<&Error> {
+        Some(self)
+    }
+}
+
+#[cfg(feature="anyhow")]
+impl AsEdgedbError for anyhow::Error {
+    fn as_edgedb_error(&self) -> Option<&Error> {
+        self.downcast_ref()
+    }
 }
 
 impl<T> ResultExt<T> for Result<T, Error> {

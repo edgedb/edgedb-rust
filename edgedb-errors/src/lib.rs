@@ -146,6 +146,7 @@
 //!
 mod error;
 mod traits;
+mod transaction;
 
 pub mod display;
 pub mod kinds;
@@ -154,6 +155,7 @@ pub mod fields;
 #[cfg(feature="miette")]
 pub mod miette;
 
-pub use traits::{ErrorKind, ResultExt, Field};
+pub use traits::{ErrorKind, ResultExt, Field, AsEdgedbError};
+pub use transaction::{TransactionError};
 pub use error::{Error, Tag};
 pub use kinds::*;

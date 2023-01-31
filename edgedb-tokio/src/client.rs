@@ -2,11 +2,12 @@ use std::sync::Arc;
 use std::future::Future;
 
 use bytes::BytesMut;
-use edgedb_protocol::model::Json;
+use edgedb_errors::AsEdgedbError;
+use edgedb_protocol::QueryResult;
 use edgedb_protocol::common::CompilationOptions;
 use edgedb_protocol::common::{IoFormat, Capabilities, Cardinality};
+use edgedb_protocol::model::Json;
 use edgedb_protocol::query_arg::{QueryArgs, Encoder};
-use edgedb_protocol::QueryResult;
 use tokio::time::sleep;
 
 use crate::raw::{Pool, QueryCapabilities};
@@ -434,9 +435,10 @@ impl Client {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn transaction<T, B, F>(self, body: B) -> Result<T, Error>
+    pub async fn transaction<T, B, F, E>(self, body: B) -> Result<T, E>
         where B: FnMut(Transaction) -> F,
-              F: Future<Output=Result<T, Error>>,
+              F: Future<Output=Result<T, E>>,
+              E: AsEdgedbError + From<Error>,
     {
         transaction(&self.pool, &self.options, body).await
     }

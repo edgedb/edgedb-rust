@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
 
 use tokio::sync::{Mutex};
 
-use edgedb_tokio::{Client, Transaction};
+use edgedb_tokio::{Client, Transaction, Error};
 
 use crate::server::SERVER;
 
@@ -51,7 +51,7 @@ async fn transaction1(client: Client, name: &str, iterations: Arc<AtomicUsize>,
                         ).value
                     ", &(name,)).await?
             };
-            Ok(val)
+            Ok::<_, Error>(val)
         }
     }).await?;
     Ok(val)
@@ -114,7 +114,7 @@ async fn transaction1e(
             barrier.wait().await;
             let _lock = lock.lock().await;
             let val = get_counter_value(&mut tx, name).await?;
-            Ok(val)
+            Ok::<_, Error>(val)
         }
     }).await?;
     Ok(val)

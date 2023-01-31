@@ -8,6 +8,7 @@ use miette::{SourceCode, LabeledSpan};
 
 use crate::Error;
 use crate::fields::QueryText;
+use crate::traits::AsEdgedbError;
 
 impl miette::Diagnostic for Error {
     fn code(&self) -> Option<Box<dyn Display + '_>> {
@@ -25,5 +26,11 @@ impl miette::Diagnostic for Error {
     }
     fn help(&self) -> Option<Box<dyn Display + '_>> {
         self.details().map(|v| Box::new(v) as Box<dyn Display>)
+    }
+}
+
+impl AsEdgedbError for miette::Report {
+    fn as_edgedb_error(&self) -> Option<&Error> {
+        self.downcast_ref()
     }
 }

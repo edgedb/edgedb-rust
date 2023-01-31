@@ -7,6 +7,7 @@ use edgedb_protocol::common::CompilationOptions;
 use edgedb_protocol::common::{IoFormat, Capabilities, Cardinality};
 use edgedb_protocol::model::Json;
 use edgedb_protocol::query_arg::{QueryArgs, Encoder};
+use edgedb_errors::AsEdgedbError;
 use tokio::sync::oneshot;
 use tokio::time::sleep;
 
@@ -57,15 +58,16 @@ impl Drop for Transaction {
     }
 }
 
-pub(crate) async fn transaction<T, B, F>(
+pub(crate) async fn transaction<T, B, F, E>(
     pool: &Pool,
     options: &Options,
     mut body: B,
-) -> Result<T, Error>
+) -> Result<T, E>
 where
     B: FnMut(Transaction) -> F,
-    F: Future<Output = Result<T, Error>>,
-    {
+    F: Future<Output = Result<T, E>>,
+    E: AsEdgedbError + From<Error>,
+{
     let mut iteration = 0;
     'transaction: loop {
         let conn = pool.acquire().await?;
@@ -98,14 +100,12 @@ where
                     conn.statement("ROLLBACK", &options.state).await?;
                 }
 
-                let some_retry = outer.chain().find_map(|e| {
-                    e.downcast_ref::<Error>().and_then(|e| {
-                        if e.has_tag(SHOULD_RETRY) {
-                            Some(e)
-                        } else {
-                            None
-                        }
-                    })
+                let some_retry = outer.as_edgedb_error().and_then(|e| {
+                    if e.has_tag(SHOULD_RETRY) {
+                        Some(e)
+                    } else {
+                        None
+                    }
                 });
 
                 if some_retry.is_none() {
