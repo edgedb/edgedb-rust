@@ -27,7 +27,7 @@ commands:
   cargo-expand: !Command
     description: Print macro-expanded form for the crate
     container: nightly
-    run: [cargo, rustc, "--", -Zunstable-options, --pretty=expanded]
+    run: [cargo, rustc, "--profile=check", "--", -Zunpretty=expanded]
 
   test-rust: !Command
     description: Run tests
