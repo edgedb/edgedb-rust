@@ -4,6 +4,7 @@ use proc_macro::TokenStream;
 use syn::{self, parse_macro_input};
 
 mod attrib;
+mod enums;
 mod json;
 mod shape;
 mod variables;
@@ -83,9 +84,11 @@ fn derive(item: &syn::Item) -> syn::Result<proc_macro2::TokenStream> {
     } else {
         match item {
             syn::Item::Struct(s) => shape::derive_struct(s),
+            syn::Item::Enum(s) => enums::derive_enum(s),
             _ => {
                 return Err(syn::Error::new_spanned(item,
-                    "can only derive Queryable for a struct in non-JSON mode"
+                    "can only derive Queryable for a struct and enum \
+                     in non-JSON mode"
                 ));
             }
         }
