@@ -117,3 +117,17 @@ impl State {
         self.typedesc_id
     }
 }
+
+impl CompilationOptions {
+    pub fn flags(&self) -> CompilationFlags {
+        let mut cflags = CompilationFlags::empty();
+        if self.implicit_typenames {
+            cflags |= CompilationFlags::INJECT_OUTPUT_TYPE_NAMES;
+        }
+        if self.implicit_typeids {
+            cflags |= CompilationFlags::INJECT_OUTPUT_TYPE_IDS;
+        }
+        // TODO(tailhook) object ids
+        return cflags;
+    }
+}

@@ -7,13 +7,14 @@ use miette::{SourceCode, LabeledSpan};
 
 
 use crate::Error;
+use crate::fields::QueryText;
 
 impl miette::Diagnostic for Error {
     fn code(&self) -> Option<Box<dyn Display + '_>> {
         Some(Box::new(self.kind_name()))
     }
     fn source_code(&self) -> Option<&dyn SourceCode> {
-        self.0.source_code.as_ref().map(|s| s as _)
+        self.get::<QueryText>().map(|s| s as _)
     }
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
         let (start, end) = self.position_start().zip(self.position_end())?;

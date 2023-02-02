@@ -30,29 +30,42 @@
 
 #[cfg(feature="unstable")]
 pub mod raw;
+#[cfg(feature="unstable")]
+pub mod server_params;
+#[cfg(feature="unstable")]
+pub mod credentials;
+#[cfg(feature="unstable")]
+pub mod tls;
 
 #[cfg(not(feature="unstable"))]
 mod raw;
+#[cfg(not(feature="unstable"))]
+mod server_params;
+#[cfg(not(feature="unstable"))]
+mod credentials;
+#[cfg(not(feature="unstable"))]
+mod tls;
 
 mod builder;
 mod client;
-mod credentials;
 mod errors;
 mod options;
 mod sealed;
-mod server_params;
 pub mod state;
-mod tls;
 mod transaction;
 
 pub use edgedb_derive::{Queryable, GlobalsDelta, ConfigDelta};
 
-pub use builder::{Builder, Config};
+pub use builder::{Builder, Config, SkipFields};
 pub use credentials::TlsSecurity;
 pub use client::Client;
 pub use errors::Error;
 pub use options::{TransactionOptions, RetryOptions};
+pub use state::{GlobalsDelta, ConfigDelta};
 pub use transaction::{Transaction};
+
+#[cfg(feature="unstable")]
+pub use builder::get_project_dir;
 
 /// Create a connection to the database with default parameters
 ///

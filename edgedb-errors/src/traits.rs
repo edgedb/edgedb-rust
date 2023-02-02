@@ -17,7 +17,7 @@ pub trait ErrorKind: Sealed {
             messages: Vec::new(),
             error: Some(Source::Box(src.into())),
             headers: HashMap::new(),
-            source_code: None,
+            fields: HashMap::new(),
         }))
     }
     fn with_source_box(src: Box<dyn std::error::Error + Send+Sync>) -> Error {
@@ -26,7 +26,7 @@ pub trait ErrorKind: Sealed {
             messages: Vec::new(),
             error: Some(Source::Box(src)),
             headers: HashMap::new(),
-            source_code: None,
+            fields: HashMap::new(),
         }))
     }
     fn with_source_ref<T>(src: T) -> Error
@@ -38,7 +38,7 @@ pub trait ErrorKind: Sealed {
             messages: Vec::new(),
             error: Some(Source::Ref(Box::new(src))),
             headers: HashMap::new(),
-            source_code: None,
+            fields: HashMap::new(),
         }))
     }
     fn build() -> Error {
@@ -47,9 +47,14 @@ pub trait ErrorKind: Sealed {
             messages: Vec::new(),
             error: None,
             headers: HashMap::new(),
-            source_code: None,
+            fields: HashMap::new(),
         }))
     }
+}
+
+pub trait Field {
+    const NAME: &'static str;
+    type Value: Send + Sync + 'static;
 }
 
 pub trait ResultExt<T> {

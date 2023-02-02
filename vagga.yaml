@@ -11,7 +11,7 @@ commands:
   check: !Command
     description: Check the library
     container: ubuntu
-    run: [cargo, check, --workspace, --tests]
+    run: [cargo, check, --workspace, --tests, --all-features]
 
   doc: !Command
     description: Build documentation

@@ -546,6 +546,13 @@ impl<'t> RawCodec<'t> for Duration {
     }
 }
 
+impl<'t> RawCodec<'t> for std::time::Duration {
+    fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
+        let dur = Duration::decode(buf)?;
+        dur.try_into().map_err(|_| errors::InvalidDate.build())
+    }
+}
+
 impl ScalarArg for Duration {
     fn encode(&self, encoder: &mut Encoder)
         -> Result<(), Error>
@@ -603,17 +610,8 @@ impl ScalarArg for RelativeDuration {
 
 impl<'t> RawCodec<'t> for SystemTime {
     fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
-        let micros = i64::decode(buf)?;
-
-        use std::time::{ Duration, UNIX_EPOCH };
-        let postgres_epoch :SystemTime = UNIX_EPOCH + Duration::from_secs(946684800);
-
-        let val = if micros > 0 {
-            postgres_epoch + Duration::from_micros(micros as u64)
-        } else {
-            postgres_epoch - Duration::from_micros((-micros) as u64)
-        };
-        Ok(val)
+        let dur = Datetime::decode(buf)?;
+        dur.try_into().map_err(|_| errors::InvalidDate.build())
     }
 }
 
@@ -643,7 +641,7 @@ impl ScalarArg for SystemTime {
 impl<'t> RawCodec<'t> for Datetime {
     fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
         let micros = i64::decode(buf)?;
-        Ok(Datetime::try_from_micros(micros)
+        Ok(Datetime::from_postgres_micros(micros)
             .map_err(|_| errors::InvalidDate.build())?)
     }
 }
@@ -668,7 +666,8 @@ impl ScalarArg for Datetime {
 impl<'t> RawCodec<'t> for LocalDatetime {
     fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
         let micros = i64::decode(buf)?;
-        Ok(LocalDatetime { micros })
+        LocalDatetime::from_postgres_micros(micros)
+           .map_err(|_| errors::InvalidDate.build())
     }
 }
 

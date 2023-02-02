@@ -21,7 +21,7 @@ use edgedb_protocol::descriptors::{SetDescriptor};
 use edgedb_protocol::descriptors::{TupleTypeDescriptor};
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::model::{Datetime, RelativeDuration, Json};
-use edgedb_protocol::model::{LocalDatetime, LocalDate, LocalTime, Duration};
+use edgedb_protocol::model::{LocalDate, LocalTime, Duration};
 use edgedb_protocol::server_message::StateDataDescription;
 use edgedb_protocol::value::{Value, SparseObject};
 
@@ -655,7 +655,7 @@ fn local_datetime() -> Result<(), Box<dyn Error>> {
     )?;
 
     encoding_eq!(&codec, b"\0\x02=^@\xf9\x1f\xfd",
-        Value::LocalDatetime(LocalDatetime::from_micros(630424979709949)));
+        Value::LocalDatetime(Datetime::from_unix_micros(1577109779709949).into()));
     Ok(())
 }
 
