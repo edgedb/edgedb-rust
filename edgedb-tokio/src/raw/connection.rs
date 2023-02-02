@@ -172,8 +172,13 @@ impl Connection {
         // Guard mechanism was invented for real queries, so we have to
         // make a little bit of workaround just for Pings
         let spurious_guard = Guard;
-        self.expect_ready(spurious_guard).await?;
-        Ok(())
+        match self.expect_ready(spurious_guard).await {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                self.mode = Mode::Dirty;
+                Err(e)
+            }
+        }
     }
     pub async fn passive_wait(&mut self) -> io::Result<()> {
         loop {
