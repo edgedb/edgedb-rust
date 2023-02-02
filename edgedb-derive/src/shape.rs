@@ -1,4 +1,4 @@
-use proc_macro2::TokenStream;
+use proc_macro2::{TokenStream, Span};
 use quote::quote;
 
 use crate::attrib::FieldAttrs;
@@ -12,6 +12,10 @@ struct Field {
 
 pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
     let name = &s.ident;
+    let decoder = syn::Ident::new("decoder", Span::mixed_site());
+    let buf = syn::Ident::new("buf", Span::mixed_site());
+    let nfields = syn::Ident::new("nfields", Span::mixed_site());
+    let elements = syn::Ident::new("elements", Span::mixed_site());
     let (impl_generics, ty_generics, _) = s.generics.split_for_impl();
     let fields = match &s.fields {
         syn::Fields::Named(named) => {
@@ -37,18 +41,18 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
         .map(|f| f.name.clone()).collect::<Vec<_>>();
     let base_fields = fields.len();
     let type_id_block = Some(quote! {
-        if decoder.has_implicit_tid {
-            elements.skip_element()?;
+        if #decoder.has_implicit_tid {
+            #elements.skip_element()?;
         }
     });
     let type_name_block = Some(quote! {
-        if decoder.has_implicit_tname {
-            elements.skip_element()?;
+        if #decoder.has_implicit_tname {
+            #elements.skip_element()?;
         }
     });
     let id_block = Some(quote! {
-        if decoder.has_implicit_id {
-            elements.skip_element()?;
+        if #decoder.has_implicit_id {
+            #elements.skip_element()?;
         }
     });
     let type_id_check = Some(quote! {
@@ -82,7 +86,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
                 let #fieldname: ::edgedb_protocol::model::Json =
                     <::edgedb_protocol::model::Json as
                         ::edgedb_protocol::queryable::Queryable>
-                    ::decode_optional(decoder, elements.read()?)?;
+                    ::decode_optional(#decoder, #elements.read()?)?;
                 let #fieldname = ::serde_json::from_str(#fieldname.as_ref())
                     .map_err(::edgedb_protocol::errors::decode_error)?;
             }
@@ -90,7 +94,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
             quote!{
                 let #fieldname =
                     ::edgedb_protocol::queryable::Queryable
-                    ::decode_optional(decoder, elements.read()?)?;
+                    ::decode_optional(#decoder, #elements.read()?)?;
             }
         }
     }).collect::<TokenStream>();
@@ -122,16 +126,16 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
     let expanded = quote! {
         impl #impl_generics ::edgedb_protocol::queryable::Queryable
             for #name #ty_generics {
-            fn decode(decoder: &::edgedb_protocol::queryable::Decoder, buf: &[u8])
+            fn decode(#decoder: &::edgedb_protocol::queryable::Decoder, #buf: &[u8])
                 -> Result<Self, ::edgedb_protocol::errors::DecodeError>
             {
-                let nfields = #base_fields
-                    + if decoder.has_implicit_id { 1 } else { 0 }
-                    + if decoder.has_implicit_tid { 1 } else { 0 }
-                    + if decoder.has_implicit_tname { 1 } else { 0 };
-                let mut elements =
+                let #nfields = #base_fields
+                    + if #decoder.has_implicit_id { 1 } else { 0 }
+                    + if #decoder.has_implicit_tid { 1 } else { 0 }
+                    + if #decoder.has_implicit_tname { 1 } else { 0 };
+                let mut #elements =
                     ::edgedb_protocol::serialization::decode::DecodeTupleLike
-                    ::new_object(buf, nfields)?;
+                    ::new_object(#buf, #nfields)?;
 
                 #type_id_block
                 #type_name_block
