@@ -10,7 +10,7 @@ use std::time::{Duration};
 
 use tokio::fs;
 use rustls::client::ServerCertVerifier;
-use serde_json::{from_slice, json};
+use serde_json::from_slice;
 use sha1::Digest;
 
 use edgedb_protocol::model;
@@ -70,7 +70,7 @@ pub struct Builder {
 pub struct Config(pub(crate) Arc<ConfigInner>);
 
 /// Skip reading specified fields
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct SkipFields {
     ///
     pub user: bool,
@@ -491,7 +491,7 @@ impl<'a> DsnHelper<'a> {
     }
 
     async fn retrieve_tls_security(&mut self) -> Result<Option<TlsSecurity>, Error> {
-        self.retrieve_value("tls_security", None, TlsSecurity::from_str).await
+        self.retrieve_value("tls_security", None, |x| x.parse()).await
     }
 
     async fn retrieve_wait_until_available(&mut self) -> Result<Option<Duration>, Error> {
@@ -1476,10 +1476,10 @@ y4u6fdOVhgIhAJ4pJLfdoWQsHPUOcnVG5fBgdSnoCJhGQyuGyp+NDu1q
     /// Generate debug JSON string
     #[cfg(feature="unstable")]
     pub fn to_json(&self) -> Result<String, Error> {
-        Ok(json!({
+        Ok(serde_json::json!({
             "address": match &self.address {
-                Address::Tcp((host, port)) => json!([host, port]),
-                Address::Unix(path) => json!(path.to_str().unwrap()),
+                Address::Tcp((host, port)) => serde_json::json!([host, port]),
+                Address::Unix(path) => serde_json::json!(path.to_str().unwrap()),
             },
             "database": self.database,
             "user": self.user,

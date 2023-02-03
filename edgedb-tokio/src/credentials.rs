@@ -1,5 +1,6 @@
 //! Credentials file handling routines
 use std::default::Default;
+use std::str::FromStr;
 
 use serde::{ser, Serialize, Deserialize};
 
@@ -67,9 +68,10 @@ fn default_port() -> u16 {
     5656
 }
 
-impl TlsSecurity {
-    pub fn from_str(val: impl AsRef<str>) -> Result<Self, Error> {
-        match val.as_ref() {
+impl FromStr for TlsSecurity {
+    type Err = Error;
+    fn from_str(val: &str) -> Result<Self, Error> {
+        match val {
             "default" => Ok(TlsSecurity::Default),
             "insecure" => Ok(TlsSecurity::Insecure),
             "no_host_verification" => Ok(TlsSecurity::NoHostVerification),
