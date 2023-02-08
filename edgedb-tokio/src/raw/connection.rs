@@ -41,7 +41,6 @@ use crate::raw::queries::Guard;
 use crate::server_params::{ServerParams, ServerParam, SystemConfig};
 use crate::tls;
 
-const MAX_MESSAGE_SIZE: usize = 1_048_576;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum Mode {
@@ -664,10 +663,6 @@ async fn _wait_message<'x>(stream: &mut (impl AsyncRead + Unpin),
         }
     }
     let len = u32::from_be_bytes(buf[1..5].try_into().unwrap()) as usize;
-    if len > MAX_MESSAGE_SIZE {
-        return Err(ClientConnectionError::with_message(
-            format!("message length {len} is too long")));
-    }
     let frame_len = len + 1;
 
     while buf.len() < frame_len {
