@@ -170,7 +170,7 @@ fn get_port_env() -> Result<Option<String>, Error> {
 
             PORT_WARN.call_once(|| {
                 log::warn!("Environment variable `EDGEDB_PORT` contains \
-                           docker-link-like definition. Ingoring...");
+                           docker-link-like definition. Ignoring...");
             });
 
             return Ok(None);
