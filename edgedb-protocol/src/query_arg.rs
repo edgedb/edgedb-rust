@@ -458,8 +458,10 @@ macro_rules! implement_tuple {
                 #![allow(non_snake_case)]
                 let root_pos = enc.ctx.root_pos
                     .ok_or_else(|| DescriptorMismatch::with_message(
-                        "provided {} positional arguments, \
-                         but no arguments expected by the server"))?;
+                        format!(
+                            "provided {} positional arguments, \
+                             but no arguments expected by the server",
+                             $count)))?;
                 let desc = enc.ctx.get(root_pos)?;
                 match desc {
                     Descriptor::ObjectShape(desc)
