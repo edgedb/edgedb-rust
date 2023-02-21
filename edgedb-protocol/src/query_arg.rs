@@ -467,7 +467,7 @@ macro_rules! implement_tuple {
                     => {
                         if desc.elements.len() != $count {
                             return Err(enc.ctx.field_number(
-                                $count, desc.elements.len()));
+                                desc.elements.len(), $count));
                         }
                         let mut els = desc.elements.iter().enumerate();
                         let ($(ref $name,)+) = self;
@@ -486,7 +486,7 @@ macro_rules! implement_tuple {
                     => {
                         if desc.element_types.len() != $count {
                             return Err(enc.ctx.field_number(
-                                $count, desc.element_types.len()));
+                                desc.element_types.len(), $count));
                         }
                         let mut els = desc.element_types.iter();
                         let ($(ref $name,)+) = self;
