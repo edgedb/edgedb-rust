@@ -386,11 +386,7 @@ impl PoolState {
             cache: ArcSwapOption::new(None),
         }
     }
-
-}
-
-impl SealedState for &PoolState {
-    fn encode(&self, desc: &RawTypedesc)
+    pub fn encode(&self, desc: &RawTypedesc)
         -> Result<EncodedState, Error>
     {
         if let Some(cache) = &*self.cache.load() {
@@ -408,6 +404,14 @@ impl SealedState for &PoolState {
         })?;
         self.cache.store(Some(Arc::new(result.clone())));
         return Ok(result);
+    }
+}
+
+impl SealedState for &PoolState {
+    fn encode(&self, desc: &RawTypedesc)
+        -> Result<EncodedState, Error>
+    {
+        PoolState::encode(self, desc)
     }
 }
 impl State for &PoolState {}
