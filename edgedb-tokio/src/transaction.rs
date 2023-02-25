@@ -319,7 +319,7 @@ impl Transaction {
             implicit_typenames: false,
             implicit_typeids: false,
             explicit_objectids: true,
-            allow_capabilities: Capabilities::MODIFICATIONS,
+            allow_capabilities: Capabilities::MODIFICATIONS | Capabilities::DDL,
             io_format: IoFormat::Json,
             expected_cardinality: Cardinality::Many,
         };
