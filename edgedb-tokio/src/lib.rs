@@ -56,7 +56,7 @@ mod transaction;
 
 pub use edgedb_derive::{Queryable, GlobalsDelta, ConfigDelta};
 
-pub use builder::{Builder, Config, SkipFields};
+pub use builder::{Builder, Config};
 pub use credentials::TlsSecurity;
 pub use client::Client;
 pub use errors::Error;
@@ -80,7 +80,7 @@ pub use builder::get_project_dir;
 /// and the source of this function.
 #[cfg(feature="env")]
 pub async fn create_client() -> Result<Client, Error> {
-    let pool = Client::new(&Builder::from_env().await?.build()?);
+    let pool = Client::new(&Builder::new().build_env().await?);
     pool.ensure_connected().await?;
     Ok(pool)
 }

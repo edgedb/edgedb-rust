@@ -93,10 +93,12 @@ impl edgedb_errors::Field for QueryCapabilities {
 
 impl Pool {
     pub fn new(config: &Config) -> Pool {
+        let concurrency = config.0.max_concurrency
+            // TODO(tailhook) use 1 and get concurrency from the connection
+            .unwrap_or(crate::builder::DEFAULT_POOL_SIZE);
         Pool(Arc::new(PoolInner {
-            semaphore: Arc::new(Semaphore::new(config.0.max_connections)),
-            queue: BlockingMutex::new(
-                VecDeque::with_capacity(config.0.max_connections)),
+            semaphore: Arc::new(Semaphore::new(concurrency)),
+            queue: BlockingMutex::new(VecDeque::with_capacity(concurrency)),
             config: config.clone(),
         }))
     }
