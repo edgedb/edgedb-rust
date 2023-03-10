@@ -713,6 +713,12 @@ impl Builder {
         let address = if let Some(unix_path) = &self.unix_path {
             let port = self.port.unwrap_or(DEFAULT_PORT);
             Address::Unix(resolve_unix(unix_path, port, self.admin))
+        } else if let Some(credentials) = &self.credentials {
+            let host = self.host.clone()
+                .or_else(|| credentials.host.clone())
+                .unwrap_or(DEFAULT_HOST.into());
+            let port = self.port.unwrap_or(credentials.port);
+            Address::Tcp((host, port))
         } else {
             Address::Tcp((
                 self.host.clone().unwrap_or_else(|| DEFAULT_HOST.into()),
@@ -722,7 +728,6 @@ impl Builder {
         if self.instance.is_some()
             || self.dsn.is_some()
             || self.credentials_file.is_some()
-            || self.credentials.is_some()
             || self.tls_ca_file.is_some()
             || self.secret_key.is_some()
             || self.cloud_profile.is_some()
@@ -730,22 +735,29 @@ impl Builder {
             return Err(InterfaceError::with_message(
                     "unsupported constraint builder param"));
         }
+        let creds = self.credentials.as_ref();
         let mut cfg = ConfigInner {
             address,
             admin: self.admin,
-            user: self.user.clone().unwrap_or_else(|| "edgedb".into()),
-            password: self.password.clone(),
+            user: self.user.clone()
+                .or_else(|| creds.map(|c| c.user.clone()))
+                .unwrap_or_else(|| "edgedb".into()),
+            password: self.password.clone()
+                .or_else(|| creds.map(|c| c.password.clone()).flatten()),
             secret_key: self.secret_key.clone(),
             cloud_profile: self.cloud_profile.clone(),
             cloud_certs: None,
-            database: self.database.clone().unwrap_or_else(|| "edgedb".into()),
+            database: self.database.clone()
+                .or_else(|| creds.map(|c| c.database.clone()).flatten())
+                .unwrap_or_else(|| "edgedb".into()),
             instance_name: None,
             wait: self.wait_until_available.unwrap_or(DEFAULT_WAIT),
             connect_timeout: self.connect_timeout
                 .unwrap_or(DEFAULT_CONNECT_TIMEOUT),
             extra_dsn_query_args: HashMap::new(),
             creds_file_outdated: false,
-            pem_certificates: self.pem_certificates.clone(),
+            pem_certificates: self.pem_certificates.clone()
+                .or_else(|| creds.map(|c| c.tls_ca.clone()).flatten()),
 
             // Pool configuration
             max_concurrency: self.max_concurrency,
@@ -754,7 +766,9 @@ impl Builder {
             verifier: Arc::new(tls::NullVerifier),
             client_security: self.client_security
                 .unwrap_or(ClientSecurity::Default),
-            tls_security: self.tls_security.unwrap_or(TlsSecurity::Default),
+            tls_security: self.tls_security
+                .or_else(|| creds.map(|c| c.tls_security))
+                .unwrap_or(TlsSecurity::Default),
         };
 
         cfg.verifier = cfg.make_verifier(cfg.compute_tls_security()?);
