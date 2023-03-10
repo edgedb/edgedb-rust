@@ -1218,7 +1218,7 @@ impl Builder {
                      .map_err(|e| ClientError::with_source(e).context(
                          format!("error reading project settings {:?}: {:?}",
                                  project_dir, path)
-                     ))?;
+                     ))?.trim().into();
                  cfg.cloud_profile = Some(profile);
              }
         }
@@ -1364,6 +1364,23 @@ async fn read_instance(cfg: &mut ConfigInner, name: &InstanceName)
             } else {
                 let profile = cfg.cloud_profile.as_deref().unwrap_or("default");
                 let path = cloud_config_file(&profile)?;
+                if !fs::metadata(&path).await.is_ok() {
+                    let hint_cmd = if profile == "default" {
+                        "edgedb cloud login".into()
+                    } else {
+                        format!("edgedb cloud login --cloud-profile {:?}",
+                                profile)
+                    };
+                    return Err(ClientError::with_message(
+                            "connecting cloud instance requires a secret key")
+                        .with_headers(HashMap::from([(
+                            0x_00_01,  // FIELD_HINT
+                            bytes::Bytes::from(format!(
+                                "try `{}`, or provide a secret key to connect with", hint_cmd
+                            )),
+                        )]))
+                    );
+                }
                 let data = match fs::read(path).await {
                     Ok(data) => data,
                     Err(e) if e.kind() == io::ErrorKind::NotFound => {
