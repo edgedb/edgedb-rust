@@ -1,5 +1,6 @@
 //! Credentials file handling routines
 use std::default::Default;
+use std::fmt;
 use std::str::FromStr;
 
 use serde::{ser, Serialize, Deserialize};
@@ -29,7 +30,7 @@ pub enum TlsSecurity {
 
 
 /// A structure that represents the contents of the credentials file.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct Credentials {
     pub host: Option<String>,
@@ -81,6 +82,25 @@ impl FromStr for TlsSecurity {
                 Options: default, insecure, no_host_verification, strict.",
                 val,
             ))),
+        }
+    }
+}
+
+impl fmt::Display for TlsSecurity {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.as_str().fmt(f)
+    }
+}
+
+impl TlsSecurity {
+    fn as_str(&self) -> &'static str {
+        use TlsSecurity::*;
+
+        match self {
+            Default => "default",
+            Insecure => "insecure",
+            NoHostVerification => "no_host_verification",
+            Strict => "strict",
         }
     }
 }
