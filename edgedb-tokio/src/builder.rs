@@ -715,7 +715,7 @@ impl Builder {
             Address::Unix(resolve_unix(unix_path, port, self.admin))
         } else {
             Address::Tcp((
-                self.host.clone().unwrap_or_else(|| "localhost".into()),
+                self.host.clone().unwrap_or_else(|| DEFAULT_HOST.into()),
                 self.port.unwrap_or(DEFAULT_PORT),
             ))
         };
@@ -1229,7 +1229,7 @@ impl Builder {
         let mut errors = Vec::new();
 
         let mut cfg = ConfigInner {
-            address: Address::Tcp(("localhost".into(), 5656)),
+            address: Address::Tcp((DEFAULT_HOST.into(), DEFAULT_PORT)),
             admin: self.admin,
             user: "edgedb".into(),
             password: None,
@@ -1382,7 +1382,7 @@ async fn read_instance(cfg: &mut ConfigInner, name: &InstanceName)
             cfg.address = Address::Tcp((
                 format!("{}--{}.{}.i.{}",
                         name, org_slug, dns_bucket, dns_zone),
-                5656,
+                DEFAULT_PORT,
             ));
             cfg.secret_key = Some(secret_key);
         }
@@ -1427,7 +1427,7 @@ fn set_credentials(cfg: &mut ConfigInner, creds: &Credentials)
         cfg.pem_certificates = Some(cert_data.into());
     }
     cfg.address = Address::Tcp((
-        creds.host.clone().unwrap_or_else(|| "localhost".into()),
+        creds.host.clone().unwrap_or_else(|| DEFAULT_HOST.into()),
         creds.port,
     ));
     cfg.user = creds.user.clone();
