@@ -593,7 +593,7 @@ impl Builder {
         self
     }
 
-    /// Set the user name for SCRAM authentication.
+    /// Set the user name for authentication.
     pub fn user(&mut self, user: &str) -> Result<&mut Self, Error> {
         validate_user(user)?;
         self.user = Some(user.to_string());
