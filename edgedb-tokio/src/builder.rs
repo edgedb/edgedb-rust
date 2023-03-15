@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::env;
 use std::ffi::{OsString, OsStr};
 use std::fmt;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 use std::sync::Arc;
@@ -17,7 +18,7 @@ use edgedb_protocol::model;
 
 use crate::credentials::{Credentials, TlsSecurity};
 use crate::errors::{ClientError};
-use crate::errors::{ClientNoCredentialsError};
+use crate::errors::{ClientNoCredentialsError, NoCloudConfigFound};
 use crate::errors::{Error, ErrorKind, ResultExt};
 use crate::errors::{InterfaceError, InvalidArgumentError};
 use crate::tls;
@@ -27,6 +28,15 @@ pub const DEFAULT_WAIT: Duration = Duration::from_secs(30);
 pub const DEFAULT_POOL_SIZE: usize = 10;
 pub const DEFAULT_HOST: &str = "localhost";
 pub const DEFAULT_PORT: u16 = 5656;
+pub const COMPOUND_ENV_VARS: &[&str] = &[
+    "EDGEDB_HOST",
+    // "EDGEDB_PORT", // port check is special because of Docker
+    "EDGEDB_CREDENTIALS_FILE",
+    "EDGEDB_INSTANCE",
+    "EDGEDB_DSN",
+];
+
+static PORT_WARN: std::sync::Once = std::sync::Once::new();
 
 type Verifier = Arc<dyn ServerCertVerifier>;
 
@@ -38,30 +48,38 @@ pub enum ClientSecurity {
     Default,
 }
 
-/// A builder used to create connections.
-#[derive(Debug, Clone)]
-pub struct Builder {
-    address: Address,
-    admin: bool,
-    user: String,
-    password: Option<String>,
-    secret_key: Option<String>,
-    database: String,
-    pem: Option<String>,
-    tls_security: TlsSecurity,
-    instance_name: Option<String>,
-    #[allow(dead_code)] // used only on env feature
-    con_params: HashMap<String, String>,
+/// Client security mode.
+#[derive(Debug, Clone, Copy)]
+pub enum CloudCerts {
+    Staging,
+    Local,
+}
 
-    initialized: bool,
-    wait: Duration,
-    connect_timeout: Duration,
-    client_security: ClientSecurity,
-    creds_file_outdated: bool,
+/// A builder used to create connections.
+#[derive(Debug, Clone, Default)]
+pub struct Builder {
+    instance: Option<InstanceName>,
+    dsn: Option<url::Url>,
+    credentials: Option<Credentials>,
+    credentials_file: Option<PathBuf>,
+    host: Option<String>,
+    port: Option<u16>,
+    unix_path: Option<PathBuf>,
+    user: Option<String>,
+    database: Option<String>,
+    password: Option<String>,
+    tls_ca_file: Option<PathBuf>,
+    tls_security: Option<TlsSecurity>,
+    client_security: Option<ClientSecurity>,
+    pem_certificates: Option<String>,
+    wait_until_available: Option<Duration>,
+    admin: bool,
+    connect_timeout: Option<Duration>,
+    secret_key: Option<String>,
     cloud_profile: Option<String>,
 
     // Pool configuration
-    pub(crate) max_connections: usize,
+    max_concurrency: Option<usize>,
 }
 /// Configuration of the client
 ///
@@ -69,45 +87,32 @@ pub struct Builder {
 #[derive(Clone)]
 pub struct Config(pub(crate) Arc<ConfigInner>);
 
-/// Skip reading specified fields
-#[derive(Default, Debug)]
-pub struct SkipFields {
-    ///
-    pub user: bool,
-    ///
-    pub database: bool,
-    ///
-    pub wait_until_available: bool,
-    ///
-    pub secret_key: bool,
-    ///
-    pub password: bool,
-    ///
-    pub tls_ca_file: bool,
-    ///
-    pub tls_security: bool,
-}
 
+#[derive(Clone)]
 pub(crate) struct ConfigInner {
     pub address: Address,
-    #[allow(dead_code)] // TODO(tailhook) for cli only
     pub admin: bool,
     pub user: String,
     pub password: Option<String>,
     pub secret_key: Option<String>,
+    pub cloud_profile: Option<String>,
     pub database: String,
-    pub verifier: Arc<dyn ServerCertVerifier>,
-    #[allow(dead_code)] // TODO(tailhook) maybe for errors
-    pub instance_name: Option<String>,
+    pub verifier: Verifier,
     pub wait: Duration,
     pub connect_timeout: Duration,
-    #[allow(dead_code)] // TODO(tailhook) maybe for future things
-    pub client_security: ClientSecurity,
-    #[allow(dead_code)] // used only on env feature
-    pub con_params: HashMap<String, String>,
+    pub cloud_certs: Option<CloudCerts>,
+    #[allow(dead_code)] // used only only for tests
+    pub extra_dsn_query_args: HashMap<String, String>,
+    #[allow(dead_code)] // used only on unstable feature
+    pub creds_file_outdated: bool,
 
     // Pool configuration
-    pub max_connections: usize,
+    pub max_concurrency: Option<usize>,
+
+    instance_name: Option<InstanceName>,
+    tls_security: TlsSecurity,
+    client_security: ClientSecurity,
+    pem_certificates: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -160,37 +165,11 @@ fn get_env(name: &str) -> Result<Option<String>, Error> {
     }
 }
 
-fn get_port_env() -> Result<Option<String>, Error> {
-    static PORT_WARN: std::sync::Once = std::sync::Once::new();
-
-    let port = get_env("EDGEDB_PORT")?;
-    if let Some(port) = &port {
-        // ignore port if it's docker-specified string
-        if port.starts_with("tcp://") {
-
-            PORT_WARN.call_once(|| {
-                log::warn!("Environment variable `EDGEDB_PORT` contains \
-                           docker-link-like definition. Ignoring...");
-            });
-
-            return Ok(None);
-        }
-    }
-    Ok(port)
-}
-
-fn get_host_port() -> Result<Option<(Option<String>, Option<u16>)>, Error> {
-    let host = get_env("EDGEDB_HOST")?;
-    let port = get_port_env()?.map(|port| {
-        port.parse().map_err(|e| {
-            ClientError::with_source(e)
-                .context("cannot parse env var EDGEDB_PORT")
-        })
-    }).transpose()?;
-    if host.is_some() || port.is_some() {
-        Ok(Some((host, port)))
+fn has_port_env() -> bool {
+    if let Some(port) = env::var_os("EDGEDB_PORT") {
+        port.to_str().map(|s| !s.starts_with("tcp://")).unwrap_or(true)
     } else {
-        Ok(None)
+        false
     }
 }
 
@@ -366,7 +345,7 @@ impl<'a> DsnHelper<'a> {
             if query.contains_key(&k) {
                 return Err(ClientError::with_message(format!(
                     "{k:?} is defined multiple times in the DSN query"
-                )));
+                )).context("invalid DSN"));
             } else {
                 query.insert(k, v);
             }
@@ -374,7 +353,23 @@ impl<'a> DsnHelper<'a> {
         Ok(Self { url, admin, query })
     }
 
+    fn ignore_value(&mut self, key: &str) {
+        self.query.remove(key);
+        self.query.remove(&format!("{}_env", key)[..]);
+        self.query.remove(&format!("{}_file", key)[..]);
+    }
+
     async fn retrieve_value<T>(
+        &mut self,
+        key: &'static str,
+        v_from_url: Option<T>,
+        conv: impl FnOnce(String) -> Result<T, Error>,
+    ) -> Result<Option<T>, Error> {
+        self._retrieve_value(key, v_from_url, conv).await
+            .context("invalid DSN")
+    }
+
+    async fn _retrieve_value<T>(
         &mut self,
         key: &'static str,
         v_from_url: Option<T>,
@@ -430,36 +425,38 @@ impl<'a> DsnHelper<'a> {
         }
     }
 
-    async fn retrieve_host(&mut self, default: impl ToString) -> Result<String, Error> {
+    async fn retrieve_host(&mut self) -> Result<Option<String>, Error> {
         if let Some(url::Host::Ipv6(host)) = self.url.host() {
             // async-std uses raw IPv6 address without "[]"
-            Ok(host.to_string())
+            Ok(Some(host.to_string()))
         } else {
-            self.retrieve_value("host", self.url.host_str().map(|s| s.to_owned()), |s| Ok(s))
-                .await
-                .map(|rv| rv.unwrap_or_else(|| default.to_string()))
+            let url_host = if let Some(host) = self.url.host_str() {
+                validate_host(host)?;
+                Some(host.to_owned())
+            } else {
+                None
+            };
+            self.retrieve_value("host", url_host, validate_host).await
         }
     }
 
-    async fn retrieve_port(&mut self, default: u16) -> Result<u16, Error> {
+    async fn retrieve_port(&mut self) -> Result<Option<u16>, Error> {
         self.retrieve_value("port", self.url.port(), |s| {
-            s.parse()
-                .map_err(|e| InterfaceError::with_source(e).context("invalid port"))
+            s.parse().map_err(|e| {
+                InterfaceError::with_source(e).context("invalid port")
+            })
         })
         .await
-        .map(|rv| rv.unwrap_or(default))
     }
 
-    async fn retrieve_user(&mut self, default: impl ToString) -> Result<String, Error> {
+    async fn retrieve_user(&mut self) -> Result<Option<String>, Error> {
         let username = self.url.username();
         let v = if username.is_empty() {
             None
         } else {
             Some(username.to_owned())
         };
-        self.retrieve_value("user", v, |s| Ok(s))
-            .await
-            .map(|rv| rv.unwrap_or_else(|| default.to_string()))
+        self.retrieve_value("user", v, validate_user).await
     }
 
     async fn retrieve_password(&mut self) -> Result<Option<String>, Error> {
@@ -467,7 +464,7 @@ impl<'a> DsnHelper<'a> {
         self.retrieve_value("password", v, |s| Ok(s)).await
     }
 
-    async fn retrieve_database(&mut self, default: impl ToString) -> Result<String, Error> {
+    async fn retrieve_database(&mut self) -> Result<Option<String>, Error> {
         let v = self.url.path().strip_prefix("/").and_then(|s| {
             if s.is_empty() {
                 None
@@ -476,10 +473,10 @@ impl<'a> DsnHelper<'a> {
             }
         });
         self.retrieve_value("database", v, |s| {
-            Ok(s.strip_prefix("/").unwrap_or(&s).into())
-        })
-        .await
-        .map(|rv| rv.unwrap_or_else(|| default.to_string()))
+            let s = s.strip_prefix("/").unwrap_or(&s);
+            validate_database(&s)?;
+            Ok(s.to_owned())
+        }).await
     }
 
     async fn retrieve_secret_key(&mut self) -> Result<Option<String>, Error> {
@@ -516,235 +513,36 @@ impl<'a> DsnHelper<'a> {
     }
 }
 
-
 impl Builder {
 
-    /// Initializes a Builder using environment variables or project config.
-    pub async fn from_env() -> Result<Builder, Error> {
-        let mut builder = Builder::uninitialized();
+    /// Create a builder with empty options
+    pub fn new() -> Builder {
+        Default::default()
+    }
 
-        // optimize discovering project if defined by environment variable
-        if get_env("EDGEDB_HOST")?.is_none() &&
-           get_port_env()?.is_none() &&
-           get_env("EDGEDB_INSTANCE")?.is_none() &&
-           get_env("EDGEDB_DSN")?.is_none() &&
-           get_env("EDGEDB_CONFIGURATION_FILE")?.is_none()
+    /// Set instance name
+    #[cfg(feature="env")]
+    pub fn instance(&mut self, name: &str) -> Result<&mut Self, Error> {
+        self.instance = Some(name.parse()?);
+        Ok(self)
+    }
+
+    /// Set connection parameters as DSN
+    #[cfg(feature="env")]
+    pub fn dsn(&mut self, dsn: &str) -> Result<&mut Self, Error> {
+        if !dsn.starts_with("edgedb://") && !dsn.starts_with("edgedbadmin://")
         {
-            builder.read_project(None, true).await?;
-        }
-
-        builder.read_env_vars().await?;
-        Ok(builder)
-    }
-
-    /// Reads the project config if it exists.
-    ///
-    /// Projects are initialized using the command-line tool:
-    /// ```shell
-    /// edgedb project init
-    /// ```
-    /// Linking to an already running EdgeDB is also possible:
-    /// ```shell
-    /// edgedb project init --link
-    /// ```
-    ///
-    /// Returns a boolean value indicating whether the project was found.
-    pub async fn read_project(&mut self,
-        override_dir: Option<&Path>, search_parents: bool)
-        -> Result<&mut Self, Error>
-    {
-        let dir = match get_project_dir(override_dir, search_parents).await? {
-            Some(dir) => dir,
-            None => return Ok(self),
+            return Err(InvalidArgumentError::with_message(format!(
+                "String {:?} is not a valid DSN", dsn)));
         };
-        let canon = fs::canonicalize(&dir).await
-            .map_err(|e| ClientError::with_source(e).context(
-                format!("failed to canonicalize dir {:?}", dir)
-            ))?;
-        let stash_path = stash_path(canon.as_ref())?;
-        if fs::metadata(&stash_path).await.is_ok() {
-            let instance =
-                fs::read_to_string(stash_path.join("instance-name")).await
-                .map_err(|e| ClientError::with_source(e).context(
-                    format!("error reading project settings {:?}", dir)
-                ))?;
-            // read_instance() would use secret_key and cloud_profile for cloud
-            // instances, so read them from env vars here first.
-            // Note: even though we may set secret_key to the one from env var,
-            // the outer code may still overwrite it back to what we are using
-            // here correctly. This kind of setting secret_key multiple times
-            // back and forth is very confusing, and it should be set only once
-            // based on priority, and read_instance() should be the last step.
-            if instance.contains("/") {
-                self.secret_key = get_env("EDGEDB_SECRET_KEY")?;
-                self.cloud_profile = get_env("EDGEDB_CLOUD_PROFILE")?;
-                if self.secret_key.is_none() && self.cloud_profile.is_none() {
-                    let profile =
-                        fs::read_to_string(stash_path.join("cloud-profile")).await
-                            .map_err(|e| ClientError::with_source(e).context(
-                                format!("error reading project settings {:?}", dir)
-                            ))?;
-                    self.cloud_profile = Some(profile);
-                }
-            }
-            self.read_instance(instance.trim()).await?;
-
-        }
+        let url = url::Url::parse(dsn)
+            .map_err(|e| InvalidArgumentError::with_source(e)
+                .context(format!("cannot parse DSN {:?}", dsn)))?;
+        self.dsn = Some(url);
         Ok(self)
     }
 
-    /// Indicates whether credentials are set for this builder.
-    pub fn is_initialized(&self) -> bool {
-        self.initialized
-    }
-    /// Read environment variables and set respective configuration parameters.
-    ///
-    /// This function initializes the builder if one of the following is set:
-    ///
-    /// * `EDGEDB_CREDENTIALS_FILE`
-    /// * `EDGEDB_INSTANCE`
-    /// * `EDGEDB_DSN`
-    /// * `EDGEDB_HOST` or `EDGEDB_PORT`
-    ///
-    /// If it finds one of these then it will reset all previously set
-    /// credentials.
-    ///
-    /// If one of the following are set:
-    ///
-    /// * `EDGEDB_DATABASE`
-    /// * `EDGEDB_USER`
-    /// * `EDGEDB_PASSWORD`
-    /// * `EDGEDB_SECRET_KEY`
-    ///
-    /// Then the value of that environment variable will be used to set just
-    /// the parameter matching that environment variable.
-    ///
-    /// The `client_security` and connection parameters are never modified by
-    /// this function for now.
-    pub async fn read_env_vars(&mut self) -> Result<&mut Self, Error> {
-        let host_port = get_host_port()?;
-        let creds_file = get_env("EDGEDB_CREDENTIALS_FILE")?;
-        let instance = get_env("EDGEDB_INSTANCE")?;
-        let dsn = get_env("EDGEDB_DSN")?;
-        let compound_env_names = vec![
-            host_port.as_ref().map(|_| "EDGEDB_HOST/EDGEDB_PORT"),
-            creds_file.as_ref().map(|_| "EDGEDB_CREDENTIALS_FILE"),
-            instance.as_ref().map(|_| "EDGEDB_INSTANCE"),
-            dsn.as_ref().map(|_| "EDGEDB_DSN"),
-        ]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
-        if compound_env_names.len() > 1 {
-            return Err(ClientError::with_message(format!(
-                "multiple compound env vars found: {:?}",
-                compound_env_names
-            )));
-        }
-        if let Some((host, port)) = host_port {
-            self.host_port(host, port)?;
-        } else if let Some(path) = creds_file {
-            self.read_credentials(path).await?;
-        } else if let Some(instance) = instance {
-            // read_instance() would use secret_key and cloud_profile for cloud
-            // instances, so read them from env vars here first if they are not
-            // already set in higher-level layers like explicit options.
-            // Note: even though we may set secret_key to the one from env var,
-            // the outer code may still overwrite it back to what we are using
-            // here correctly. This kind of setting secret_key multiple times
-            // back and forth is very confusing, and it should be set only once
-            // based on priority, and read_instance() should be the last step.
-            if instance.contains("/") {
-                if self.secret_key.is_none() {
-                    self.secret_key = get_env("EDGEDB_SECRET_KEY")?;
-                }
-            }
-            self.read_instance(&instance).await?;
-        } else if let Some(dsn) = dsn {
-            let skip = SkipFields {
-                user: get_env("EDGEDB_USER")?.is_some(),
-                database: get_env("EDGEDB_DATABASE")?.is_some(),
-                wait_until_available: get_env("EDGEDB_WAIT_UNTIL_AVAILABLE")?.is_some(),
-                secret_key: get_env("EDGEDB_SECRET_KEY")?.is_some(),
-                password: get_env("EDGEDB_PASSWORD")?.is_some(),
-                tls_ca_file: get_env("EDGEDB_TLS_CA")?.is_some()
-                    || get_env("EDGEDB_TLS_CA_FILE")?.is_some(),
-                tls_security: get_env("EDGEDB_CLIENT_TLS_SECURITY")?.is_some(),
-            };
-            self.read_dsn(&dsn, skip).await.map_err(|e|
-                e.context("cannot parse env var EDGEDB_DSN"))?;
-        }
-        if let Some(database) = get_env("EDGEDB_DATABASE")? {
-            self.database = database;
-        }
-        if let Some(user) = get_env("EDGEDB_USER")? {
-            self.user = user;
-        }
-        if let Some(password) = get_env("EDGEDB_PASSWORD")? {
-            self.password = Some(password);
-        }
-        if let Some(secret_key) = get_env("EDGEDB_SECRET_KEY")? {
-            self.secret_key = Some(secret_key);
-        }
-        if let Some(wait) = get_env("EDGEDB_WAIT_UNTIL_AVAILABLE")? {
-            self.wait = wait.parse::<model::Duration>()
-                .map_err(ClientError::with_source)
-                .and_then(|d| match d.is_negative() {
-                    false => Ok(d.abs_duration()),
-                    true => Err(ClientError::with_message(
-                        "negative durations are unsupported")),
-                })
-                .context("Invalid value {:?} for env var \
-                          EDGEDB_WAIT_UNTIL_AVAILABLE.")?;
-        }
-        if let Some(sec) = get_env("EDGEDB_CLIENT_TLS_SECURITY")? {
-            self.tls_security = TlsSecurity::from_str(&sec)
-                .with_context(|| "invalid env var EDGEDB_CLIENT_TLS_SECURITY")?;
-        }
-        let tls_ca = get_env("EDGEDB_TLS_CA")?;
-        if let Some(tls_ca_file) = get_env("EDGEDB_TLS_CA_FILE")? {
-            if tls_ca.is_some() {
-                return Err(ClientError::with_message(
-                    "Environment variables EDGEDB_TLS_CA and \
-                     EDGEDB_TLS_CA_FILE are mutually exclusive"
-                ));
-            }
-            let pem = fs::read_to_string(&tls_ca_file).await
-                .map_err(|e| ClientError::with_source(e).context(
-                    format!("error reading TLS CA file {:?}", tls_ca_file)
-                ))?;
-            self.pem_certificates(&pem)?;
-        }
-        if let Some(pem) = tls_ca {
-            self.pem_certificates(&pem)?;
-        }
-        self.read_extra_env_vars()?;
-        Ok(self)
-    }
-    /// Read environment variables that aren't credentials
-    pub fn read_extra_env_vars(&mut self) -> Result<&mut Self, Error> {
-        use ClientSecurity::*;
-        if let Some(mode) = get_env("EDGEDB_CLIENT_SECURITY")? {
-            self.client_security = match &mode[..] {
-                "default" => Default,
-                "strict" => Strict,
-                "insecure_dev_mode" => InsecureDevMode,
-                _ => {
-                    return Err(ClientError::with_message(
-                        format!("Invalid value {:?} for env var \
-                                EDGEDB_CLIENT_SECURITY. \
-                                Options: default, strict, insecure_dev_mode.",
-                                mode)
-                    ));
-                }
-            };
-        }
-        Ok(self)
-    }
-
-    /// Set all credentials.
-    ///
-    /// This marks the builder as initialized.
+    /// Set connection parameters as credentials structure
     pub fn credentials(&mut self, credentials: &Credentials)
         -> Result<&mut Self, Error>
     {
@@ -752,454 +550,112 @@ impl Builder {
             validate_certs(&cert_data)
                 .context("invalid certificates in `tls_ca`")?;
         }
-        self.reset_compound();
-        self.address = Address::Tcp((
-            credentials.host.clone()
-                .unwrap_or_else(|| DEFAULT_HOST.into()),
-            credentials.port,
-        ));
-        self.admin = false;
-        self.user = credentials.user.clone();
-        self.password = credentials.password.clone();
-        self.database = credentials.database.clone()
-                .unwrap_or_else(|| "edgedb".into());
-        self.creds_file_outdated = credentials.file_outdated;
-        self.tls_security = credentials.tls_security;
-        self.pem = credentials.tls_ca.clone();
-        self.initialized = true;
+        self.credentials = Some(credentials.clone());
         Ok(self)
     }
 
-    /// Returns if the credentials file is outdated.
-    #[cfg(feature="unstable")]
-    pub fn is_creds_file_outdated(&self) -> bool {
-        self.creds_file_outdated
-    }
-
-    /// Returns the instance name if any.
-    #[cfg(feature="unstable")]
-    pub fn get_instance_name(&self) -> Option<&str> {
-        self.instance_name.as_deref()
-    }
-
-    /// Returns the secret key if any
-    #[cfg(feature="unstable")]
-    pub fn get_secret_key(&self) -> Option<&str> {
-        self.secret_key.as_deref()
-    }
-
-    /// Read credentials from the named instance.
+    /// Set connection parameters from file
     ///
-    /// Named instances are created using the command-line tool, either
-    /// directly:
-    /// ```shell
-    /// edgedb instance create <name>
-    /// ```
-    /// or when initializing a project:
-    /// ```shell
-    /// edgedb project init
-    /// ```
-    /// In the latter case you should use [`read_project()`][Builder::read_project]
-    /// instead if possible.
-    ///
-    /// This will mark the builder as initialized (if reading is successful)
-    /// and overwrite all credentials. However, `client_security`, pools
-    /// sizes, and timeouts are kept intact.
-    pub async fn read_instance(&mut self, name: &str)
-        -> Result<&mut Self, Error>
-    {
-        let name = InstanceName::from_str(name)?;
-        match &name {
-            InstanceName::Local(name) => {
-                self.read_credentials(
-                    config_dir()?
-                        .join("credentials")
-                        .join(format!("{}.json", name)),
-                )
-                .await?;
-            }
-            InstanceName::Cloud { org_slug, name } => {
-                let secret_key = if let Some(secret_key) = &self.secret_key {
-                    secret_key.clone()
-                } else {
-                    let profile = self
-                        .cloud_profile
-                        .as_deref()
-                        .map(|s| Ok(s.to_string()))
-                        .or_else(|| get_env("EDGEDB_CLOUD_PROFILE").transpose())
-                        .unwrap_or_else(|| Ok(String::from("default")))?;
-                    let path = cloud_config_file(&profile)?;
-                    let data = fs::read(path).await
-                        .map_err(ClientError::with_source)?;
-                    let config: CloudConfig = from_slice(&data)
-                        .map_err(ClientError::with_source)?;
-                    config.secret_key
-                };
-                let claims_b64 = secret_key
-                    .splitn(3, ".")
-                    .skip(1)
-                    .next()
-                    .ok_or(ClientError::with_message("Illegal JWT token"))?;
-                let claims = base64::decode_config(claims_b64, base64::URL_SAFE_NO_PAD)
-                    .map_err(ClientError::with_source)?;
-                let claims: Claims = from_slice(&claims)
-                    .map_err(ClientError::with_source)?;
-                let dns_zone = claims
-                    .issuer
-                    .ok_or(ClientError::with_message("Invalid secret key"))?;
-                let msg = format!("{}/{}", org_slug, name);
-                let checksum = crc16::State::<crc16::XMODEM>::calculate(msg.as_bytes());
-                let dns_bucket = format!("c-{:02}", checksum % 100);
-                let host = format!("{}--{}.{}.i.{}", name, org_slug, dns_bucket, dns_zone);
-                self.host_port(Some(host), None)?;
-                self.secret_key(secret_key);
-            }
-        }
-        self.instance_name = Some(name.to_string());
+    /// Note: file is not read immediately but is read when configuration is
+    /// being built.
+    #[cfg(feature="fs")]
+    pub fn credentials_file(&mut self, path: impl AsRef<Path>) -> &mut Self {
+        self.credentials_file = Some(path.as_ref().to_path_buf());
+        self
+    }
+
+    /// Set host to connect to
+    pub fn host(&mut self, host: &str) -> Result<&mut Self, Error> {
+        validate_host(host)?;
+        self.host = Some(host.to_string());
         Ok(self)
     }
 
-    /// Read credentials from a file.
-    ///
-    /// This will mark the builder as initialized (if reading is successful)
-    /// and overwrite all credentials. However, `client_security`, pools
-    /// sizes, and timeouts are kept intact.
-    pub async fn read_credentials(&mut self, path: impl AsRef<Path>)
-        -> Result<&mut Self, Error>
-    {
-        let path = path.as_ref();
-        async {
-            let data = fs::read(path).await
-                .map_err(ClientError::with_source)?;
-            let creds = serde_json::from_slice(&data)
-                .map_err(ClientError::with_source)?;
-            self.credentials(&creds)?;
-            Ok(())
-        }.await.map_err(|e: Error| e.context(
-            format!("cannot read credentials file {}", path.display())
-        ))?;
+    /// Set port to connect to
+    pub fn port(&mut self, port: u16) -> Result<&mut Self, Error> {
+        validate_port(port)?;
+        self.port = Some(port);
         Ok(self)
     }
 
-    /// Initialize credentials using data source name (DSN).
-    ///
-    /// DSN's that EdgeDB like are URL with `egdgedb::/scheme`:
-    /// ```text
-    /// edgedb://user:secret@localhost:5656/
-    /// ```
-    /// All the credentials can be specified using a DSN, although parsing a
-    /// DSN may also lead to reading of environment variables (if query
-    /// arguments of the for `*_env` are specified) and local files (for query
-    /// arguments named `*_file`).
-    ///
-    /// This will mark the builder as initialized (if reading is successful)
-    /// and overwrite all the credentials. However, `client_security`, pools
-    /// sizes, and timeouts are kept intact.
-    // TODO(tailhook) fix this ugly interface with skip fields
-    pub async fn read_dsn(&mut self, dsn: &str, skip: SkipFields) -> Result<&mut Self, Error> {
-        if !dsn.starts_with("edgedb://") && !dsn.starts_with("edgedbadmin://") {
-            return Err(ClientError::with_message(format!(
-                "String {:?} is not a valid DSN",
-                dsn,
-            )));
-        };
-        let url = url::Url::parse(dsn).map_err(|e| {
-            ClientError::with_source(e).context(format!("cannot parse DSN {:?}", dsn))
-        })?;
-        let mut dsn = DsnHelper::from_url(&url)?;
-        self.reset_compound();
-        let host = dsn.retrieve_host(DEFAULT_HOST).await?;
-        let port = dsn.retrieve_port(DEFAULT_PORT).await?;
-        self.host_port(Some(host), Some(port))?;
-        self.initialized = false;  // we're not done yet
-        self.admin = dsn.admin;
-        let user = dsn.retrieve_user("edgedb").await;
-        if skip.user {
-            user.ok();
-        } else {
-            self.user(user?)?;
-        }
-        let password = dsn.retrieve_password().await;
-        if skip.password {
-            password.ok();
-        } else {
-            self.password = password?;
-        }
-        let database = dsn.retrieve_database("edgedb").await;
-        if skip.database {
-            database.ok();
-        } else {
-            self.database(database?)?;
-        }
-        let secret_key = dsn.retrieve_secret_key().await;
-        if skip.secret_key {
-            secret_key.ok();
-        } else {
-            self.secret_key = secret_key?;
-        }
-        let tls_ca_file = dsn.retrieve_tls_ca_file().await;
-        if skip.tls_ca_file {
-            tls_ca_file.ok();
-        } else if let Some(tls_ca_file) = tls_ca_file? {
-            let pem = fs::read_to_string(Path::new(&tls_ca_file))
-                .await
-                .map_err(|e| {
-                    ClientError::with_source(e).context("error reading TLS CA file")
-                })?;
-            self.pem_certificates(&pem)?;
-        }
-        let tls_security = dsn.retrieve_tls_security().await;
-        if skip.tls_security {
-            tls_security.ok();
-        } else if let Some(s) = tls_security? {
-            self.tls_security = s;
-        }
-
-        let wait_until_available = dsn.retrieve_wait_until_available().await;
-        if skip.wait_until_available {
-            wait_until_available.ok();
-        } else if let Some(d) = wait_until_available? {
-            self.wait = d;
-        }
-        self.con_params = dsn.remaining_queries();
-        self.initialized = true;
-        Ok(self)
-    }
-    /// Creates a new builder that has to be intialized by calling some methods.
-    ///
-    /// This is only useful if you have connections to multiple unrelated
-    /// databases, or you want to have total control of the database
-    /// initialization process.
-    ///
-    /// Usually, `Builder::from_env()` should be used instead.
-    pub fn uninitialized() -> Builder {
-        Builder {
-            address: Address::Tcp((DEFAULT_HOST.into(), DEFAULT_PORT)),
-            admin: false,
-            user: "edgedb".into(),
-            password: None,
-            secret_key: None,
-            database: "edgedb".into(),
-            tls_security: TlsSecurity::Default,
-            pem: None,
-            instance_name: None,
-            con_params: HashMap::new(),
-
-            wait: DEFAULT_WAIT,
-            connect_timeout: DEFAULT_CONNECT_TIMEOUT,
-            initialized: false,
-            client_security: ClientSecurity::Default,
-            creds_file_outdated: false,
-            cloud_profile: None,
-
-            max_connections: DEFAULT_POOL_SIZE,
-        }
-    }
-    fn reset_compound(&mut self) {
-        *self = Builder {
-            // replace all of them
-            address: Address::Tcp((DEFAULT_HOST.into(), DEFAULT_PORT)),
-            admin: false,
-            user: "edgedb".into(),
-            password: None,
-            secret_key: None,
-            database: "edgedb".into(),
-            tls_security: TlsSecurity::Default,
-            pem: None,
-            instance_name: None,
-            con_params: HashMap::new(),
-
-            initialized: false,
-            // keep old values
-            wait: self.wait,
-            connect_timeout: self.connect_timeout,
-            client_security: self.client_security,
-            creds_file_outdated: false,
-            cloud_profile: None,
-
-            max_connections: self.max_connections,
-        };
-    }
-    /// Extract credentials from the [Builder] so they can be saved as JSON.
-    pub fn as_credentials(&self) -> Result<Credentials, Error> {
-        let (host, port) = match &self.address {
-            Address::Tcp(pair) => pair,
-            Address::Unix(_) => {
-                return Err(ClientError::with_message(
-                    "Unix socket address cannot \
-                    be saved as credentials file"));
-            }
-        };
-        Ok(Credentials {
-            host: Some(host.clone()),
-            port: *port,
-            user: self.user.clone(),
-            password: self.password.clone(),
-            database: Some( self.database.clone()),
-            tls_ca: self.pem.clone(),
-            tls_security: self.tls_security,
-            file_outdated: false,
-        })
-    }
-    /// Get the `host` this builder is configured to connect to.
-    ///
-    /// For unix-socket-configured builder (only if `admin_socket` feature is
-    /// enabled) returns "localhost"
-    pub fn get_host(&self) -> &str {
-        match &self.address {
-            Address::Tcp((host, _)) => host,
-            Address::Unix(_) => "localhost",
-        }
-    }
-    /// Get the `port` this builder is configured to connect to.
-    pub fn get_port(&self) -> u16 {
-        match &self.address {
-            Address::Tcp((_, port)) => *port,
-            Address::Unix(_) => 5656
-        }
-    }
-    /// Initialize credentials using host/port data.
-    ///
-    /// If either of host or port is `None`, they are replaced with the
-    /// default of `localhost` and `5656` respectively.
-    ///
-    /// This will mark the builder as initialized and overwrite all the
-    /// credentials. However, `client_security`, pools sizes, and timeouts
-    /// are kept intact.
-    pub fn host_port(&mut self,
-        host: Option<impl Into<String>>, port: Option<u16>)
-        -> Result<&mut Self, Error>
-    {
-        let host = host.map_or_else(|| DEFAULT_HOST.into(), |h| h.into());
-        let port = port.unwrap_or(DEFAULT_PORT);
-        if host.is_empty() {
-            return Err(InvalidArgumentError::with_message(
-                "invalid host: empty string"
-            ));
-        } else if host.contains(",") {
-            return Err(InvalidArgumentError::with_message(
-                "invalid host: multiple hosts"
-            ));
-        }
-        if port == 0 {
-            return Err(InvalidArgumentError::with_message("invalid port: 0"));
-        }
-        self.reset_compound();
-        self.address = Address::Tcp((host, port));
-        self.initialized = true;
-        Ok(self)
-    }
-
+    /// Set path to unix socket
     #[cfg(feature="admin_socket")]
-    /// Use admin socket instead of normal socket
-    pub fn admin(&mut self) -> Result<&mut Self, Error> {
-        let prefix = if let Some(name) = &self.instance_name {
-            if cfg!(windows) {
-                return Err(ClientError::with_message(
-                    "unix sockets are not supported on Windows"));
-            } else if let Some(dir) = dirs::runtime_dir() {
-                dir.join(format!("edgedb-{}", name))
-            } else {
-                dirs::cache_dir()
-                    .ok_or_else(|| ClientError::with_message(
-                        "cannot determine cache directory"))?
-                    .join("edgedb")
-                    .join("run")
-                    .join(name)
-            }
-        } else {
-            if cfg!(target_os="macos") {
-                "/var/run/edgedb".into()
-            } else {
-                "/run/edgedb".into()
-            }
-        };
-        match self.address {
-            Address::Tcp((_, port)) => {
-                self.address = Address::Unix(
-                    prefix.join(format!(".s.EDGEDB.admin.{}", port))
-                );
-            }
-            Address::Unix(_) => {},
-        }
-        Ok(self)
-    }
-
-    #[cfg(feature="admin_socket")]
-    /// Initialize credentials using unix socket
-    pub fn unix_path(&mut self, path: impl Into<PathBuf>,
-                     port: Option<u16>, admin: bool)
+    pub fn unix_path(&mut self, path: impl AsRef<Path>)
         -> &mut Self
     {
-        self.reset_compound();
-        self.admin = admin;
-        let path = path.into();
-        let has_socket_name = path.file_name()
-            .and_then(|x| x.to_str())
-            .map(|x| x.contains(".s.EDGEDB"))
-            .unwrap_or(false);
-        let path = if has_socket_name {
-            // it's the full path
-            path
-        } else {
-            let port = port.unwrap_or(5656);
-            let socket_name = if admin {
-                format!(".s.EDGEDB.admin.{}", port)
-            } else {
-                format!(".s.EDGEDB.{}", port)
-            };
-            path.join(socket_name)
-        };
-        // TODO(tailhook) figure out whether it's a prefix or full socket?
-        self.address = Address::Unix(path.into());
-        self.initialized = true;
+        self.unix_path = Some(path.as_ref().to_path_buf());
         self
     }
-    /// Get the user name for SCRAM authentication.
-    pub fn get_user(&self) -> &str {
-        &self.user
+
+    #[cfg(feature="admin_socket")]
+    pub fn admin(&mut self, admin: bool) -> &mut Self {
+        self.admin = admin;
+        self
     }
-    /// Set the user name for SCRAM authentication.
-    pub fn user(&mut self, user: impl Into<String>) -> Result<&mut Self, Error> {
-        let user = user.into();
-        if user.is_empty() {
-            return Err(InvalidArgumentError::with_message(
-                "invalid user: empty string"
-            ));
-        }
-        self.user = user;
+
+    /// Set the user name for authentication.
+    pub fn user(&mut self, user: &str) -> Result<&mut Self, Error> {
+        validate_user(user)?;
+        self.user = Some(user.to_string());
         Ok(self)
     }
+
     /// Set the password for SCRAM authentication.
-    pub fn password(&mut self, password: impl Into<String>) -> &mut Self {
-        self.password = Some(password.into());
-        self
-    }
-    /// Set the secret key for JWT authentication.
-    pub fn secret_key(&mut self, secret_key: impl Into<String>) -> &mut Self {
-        self.secret_key = Some(secret_key.into());
-        self
-    }
-    /// Set the EdgeDB Cloud profile name to locate instances.
-    pub fn cloud_profile(&mut self, cloud_profile: impl Into<String>) -> &mut Self {
-        self.cloud_profile = Some(cloud_profile.into());
+    pub fn password(&mut self, password: &str) -> &mut Self {
+        self.password = Some(password.to_string());
         self
     }
     /// Set the database name.
-    pub fn database(&mut self, database: impl Into<String>) -> Result<&mut Self, Error> {
-        let database = database.into();
-        if database.is_empty() {
-            return Err(InvalidArgumentError::with_message(
-                "invalid database: empty string"
-            ));
-        }
-        self.database = database;
+    pub fn database(&mut self, database: &str) -> Result<&mut Self, Error> {
+        validate_database(database)?;
+        self.database = Some(database.into());
         Ok(self)
     }
-    /// Get the database name.
-    pub fn get_database(&self) -> &str {
-        &self.database
+
+    /// Set certificate authority for TLS from file
+    ///
+    /// Note: file is not read immediately but is read when configuration is
+    /// being built.
+    #[cfg(feature="fs")]
+    pub fn tls_ca_file(&mut self, path: &Path) -> &mut Self {
+        self.tls_ca_file = Some(path.to_path_buf());
+        self
     }
+
+    /// Updates the client TLS security mode.
+    ///
+    /// By default, the certificate chain is always verified; but hostname
+    /// verification is disabled if configured to use only a
+    /// specific certificate, and enabled if root certificates are used.
+    pub fn tls_security(&mut self, value: TlsSecurity) -> &mut Self {
+        self.tls_security = Some(value);
+        self
+    }
+
+    /// Modifies the client security mode.
+    ///
+    /// InsecureDevMode changes tls_security only from Default to Insecure
+    /// Strict ensures tls_security is also Strict
+    pub fn client_security(&mut self, value: ClientSecurity) -> &mut Self {
+        self.client_security = Some(value);
+        self
+    }
+
+    /// Set the allowed certificate as a PEM file.
+    pub fn pem_certificates(&mut self, cert_data: &str)
+        -> Result<&mut Self, Error>
+    {
+        validate_certs(cert_data).context("invalid PEM certificate")?;
+        self.pem_certificates = Some(cert_data.into());
+        Ok(self)
+    }
+
+    /// Set the secret key for JWT authentication.
+    pub fn secret_key(&mut self, secret_key: &str) -> &mut Self {
+        self.secret_key = Some(secret_key.into());
+        self
+    }
+
     /// Set the time to wait for the database server to become available.
     ///
     /// This works by ignoring certain errors known to happen while the
@@ -1209,9 +665,10 @@ impl Builder {
     /// Note: the amount of time establishing a connection can take is the sum
     /// of `wait_until_available` plus `connect_timeout`
     pub fn wait_until_available(&mut self, time: Duration) -> &mut Self {
-        self.wait = time;
+        self.wait_until_available = Some(time);
         self
     }
+
     /// A timeout for a single connect attempt.
     ///
     /// The default is 10 seconds. A subsecond timeout should be fine for most
@@ -1229,268 +686,783 @@ impl Builder {
     /// Note: the amount of time establishing a connection can take is the sum
     /// of `wait_until_available` plus `connect_timeout`
     pub fn connect_timeout(&mut self, timeout: Duration) -> &mut Self {
-        self.connect_timeout = timeout;
+        self.connect_timeout = Some(timeout);
         self
     }
 
-    /// Set the allowed certificate as a PEM file.
-    pub fn pem_certificates(&mut self, cert_data: &String)
-        -> Result<&mut Self, Error>
-    {
-        validate_certs(cert_data).context("invalid PEM certificate")?;
-        self.pem = Some(cert_data.clone());
-        Ok(self)
+    /// Set the maximum number of underlying database connections.
+    pub fn max_concurrency(&mut self, value: usize) -> &mut Self {
+        self.max_concurrency = Some(value);
+        self
     }
 
-    /// Updates the client TLS security mode.
+    /// Build connection and pool configuration in constrained mode
     ///
-    /// By default, the certificate chain is always verified; but hostname
-    /// verification is disabled if configured to use only a
-    /// specific certificate, and enabled if root certificates are used.
-    pub fn tls_security(&mut self, value: TlsSecurity) -> &mut Self {
-        self.tls_security = value;
-        self
-    }
-
-    /// Modifies the client security mode.
+    /// Normal [`Builder::build_env()`], reads environment variables and files
+    /// if appropriate to build configuration variables. This method never reads
+    /// files or environment variables. Therefore it never blocks, so is not
+    /// asyncrhonous.
     ///
-    /// InsecureDevMode changes tls_security only from Default to Insecure
-    /// Strict ensures tls_security is also Strict
-    pub fn client_security(&mut self, value: ClientSecurity) -> &mut Self {
-        self.client_security = value;
-        self
-    }
-
-    /// A displayable form for an address this builder will connect to
-    pub fn display_addr<'x>(&'x self) -> impl fmt::Display + 'x {
-        if self.initialized {
-            DisplayAddr(Some(&self.address))
+    /// The limitations are:
+    ///
+    /// 1. [`Builder::credentials_file()`] is not supported
+    /// 2. [`Builder::dsn()`] is not supported yet (although, will be
+    ///    implemented later restricing `*_file` and `*_env` query args
+    #[cfg(any(feature="unstable", feature="test"))]
+    pub fn constrained_build(&self) -> Result<Config, Error> {
+        let address = if let Some(unix_path) = &self.unix_path {
+            let port = self.port.unwrap_or(DEFAULT_PORT);
+            Address::Unix(resolve_unix(unix_path, port, self.admin))
+        } else if let Some(credentials) = &self.credentials {
+            let host = self.host.clone()
+                .or_else(|| credentials.host.clone())
+                .unwrap_or(DEFAULT_HOST.into());
+            let port = self.port.unwrap_or(credentials.port);
+            Address::Tcp((host, port))
         } else {
-            DisplayAddr(None)
+            Address::Tcp((
+                self.host.clone().unwrap_or_else(|| DEFAULT_HOST.into()),
+                self.port.unwrap_or(DEFAULT_PORT),
+            ))
+        };
+        if self.instance.is_some()
+            || self.dsn.is_some()
+            || self.credentials_file.is_some()
+            || self.tls_ca_file.is_some()
+            || self.secret_key.is_some()
+            || self.cloud_profile.is_some()
+        {
+            return Err(InterfaceError::with_message(
+                    "unsupported constraint builder param"));
         }
+        let creds = self.credentials.as_ref();
+        let mut cfg = ConfigInner {
+            address,
+            admin: self.admin,
+            user: self.user.clone()
+                .or_else(|| creds.map(|c| c.user.clone()))
+                .unwrap_or_else(|| "edgedb".into()),
+            password: self.password.clone()
+                .or_else(|| creds.map(|c| c.password.clone()).flatten()),
+            secret_key: self.secret_key.clone(),
+            cloud_profile: self.cloud_profile.clone(),
+            cloud_certs: None,
+            database: self.database.clone()
+                .or_else(|| creds.map(|c| c.database.clone()).flatten())
+                .unwrap_or_else(|| "edgedb".into()),
+            instance_name: None,
+            wait: self.wait_until_available.unwrap_or(DEFAULT_WAIT),
+            connect_timeout: self.connect_timeout
+                .unwrap_or(DEFAULT_CONNECT_TIMEOUT),
+            extra_dsn_query_args: HashMap::new(),
+            creds_file_outdated: false,
+            pem_certificates: self.pem_certificates.clone()
+                .or_else(|| creds.map(|c| c.tls_ca.clone()).flatten()),
+
+            // Pool configuration
+            max_concurrency: self.max_concurrency,
+
+            // Temporary placeholders
+            verifier: Arc::new(tls::NullVerifier),
+            client_security: self.client_security
+                .unwrap_or(ClientSecurity::Default),
+            tls_security: self.tls_security
+                .or_else(|| creds.map(|c| c.tls_security))
+                .unwrap_or(TlsSecurity::Default),
+        };
+
+        cfg.verifier = cfg.make_verifier(cfg.compute_tls_security()?);
+
+        Ok(Config(Arc::new(cfg)))
     }
 
-    fn trust_anchors(&self) -> Result<Vec<tls::OwnedTrustAnchor>, Error> {
-        tls::OwnedTrustAnchor::read_all(
-            self.pem.as_deref().unwrap_or("")
-        ).map_err(ClientError::with_source_ref)
-    }
-
-    #[cfg(feature="unstable")]
-    /// Returns certificate store
-    pub fn root_cert_store(&self) -> Result<rustls::RootCertStore, Error> {
-        self._root_cert_store()
-    }
-
-    fn _root_cert_store(&self) -> Result<rustls::RootCertStore, Error> {
-        let mut roots = rustls::RootCertStore::empty();
-        if self.pem.is_some() {
-            roots.add_server_trust_anchors(
-                self.trust_anchors()?.into_iter().map(Into::into)
-            );
-        } else {
-            roots.add_server_trust_anchors(
-                webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
-                    rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
-                        ta.subject,
-                        ta.spki,
-                        ta.name_constraints,
-                    )
-                })
-            );
-            get_env("_EDGEDB_CLOUD_CERTS")?
-                .as_deref()
-                .and_then(|v| match v {
-                    "staging" => Some(
-                        // Staging certs retrieved from
-                        // https://letsencrypt.org/docs/staging-environment/#root-certificates
-                        "-----BEGIN CERTIFICATE-----
-MIIFmDCCA4CgAwIBAgIQU9C87nMpOIFKYpfvOHFHFDANBgkqhkiG9w0BAQsFADBm
-MQswCQYDVQQGEwJVUzEzMDEGA1UEChMqKFNUQUdJTkcpIEludGVybmV0IFNlY3Vy
-aXR5IFJlc2VhcmNoIEdyb3VwMSIwIAYDVQQDExkoU1RBR0lORykgUHJldGVuZCBQ
-ZWFyIFgxMB4XDTE1MDYwNDExMDQzOFoXDTM1MDYwNDExMDQzOFowZjELMAkGA1UE
-BhMCVVMxMzAxBgNVBAoTKihTVEFHSU5HKSBJbnRlcm5ldCBTZWN1cml0eSBSZXNl
-YXJjaCBHcm91cDEiMCAGA1UEAxMZKFNUQUdJTkcpIFByZXRlbmQgUGVhciBYMTCC
-AiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBALbagEdDTa1QgGBWSYkyMhsc
-ZXENOBaVRTMX1hceJENgsL0Ma49D3MilI4KS38mtkmdF6cPWnL++fgehT0FbRHZg
-jOEr8UAN4jH6omjrbTD++VZneTsMVaGamQmDdFl5g1gYaigkkmx8OiCO68a4QXg4
-wSyn6iDipKP8utsE+x1E28SA75HOYqpdrk4HGxuULvlr03wZGTIf/oRt2/c+dYmD
-oaJhge+GOrLAEQByO7+8+vzOwpNAPEx6LW+crEEZ7eBXih6VP19sTGy3yfqK5tPt
-TdXXCOQMKAp+gCj/VByhmIr+0iNDC540gtvV303WpcbwnkkLYC0Ft2cYUyHtkstO
-fRcRO+K2cZozoSwVPyB8/J9RpcRK3jgnX9lujfwA/pAbP0J2UPQFxmWFRQnFjaq6
-rkqbNEBgLy+kFL1NEsRbvFbKrRi5bYy2lNms2NJPZvdNQbT/2dBZKmJqxHkxCuOQ
-FjhJQNeO+Njm1Z1iATS/3rts2yZlqXKsxQUzN6vNbD8KnXRMEeOXUYvbV4lqfCf8
-mS14WEbSiMy87GB5S9ucSV1XUrlTG5UGcMSZOBcEUpisRPEmQWUOTWIoDQ5FOia/
-GI+Ki523r2ruEmbmG37EBSBXdxIdndqrjy+QVAmCebyDx9eVEGOIpn26bW5LKeru
-mJxa/CFBaKi4bRvmdJRLAgMBAAGjQjBAMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMB
-Af8EBTADAQH/MB0GA1UdDgQWBBS182Xy/rAKkh/7PH3zRKCsYyXDFDANBgkqhkiG
-9w0BAQsFAAOCAgEAncDZNytDbrrVe68UT6py1lfF2h6Tm2p8ro42i87WWyP2LK8Y
-nLHC0hvNfWeWmjZQYBQfGC5c7aQRezak+tHLdmrNKHkn5kn+9E9LCjCaEsyIIn2j
-qdHlAkepu/C3KnNtVx5tW07e5bvIjJScwkCDbP3akWQixPpRFAsnP+ULx7k0aO1x
-qAeaAhQ2rgo1F58hcflgqKTXnpPM02intVfiVVkX5GXpJjK5EoQtLceyGOrkxlM/
-sTPq4UrnypmsqSagWV3HcUlYtDinc+nukFk6eR4XkzXBbwKajl0YjztfrCIHOn5Q
-CJL6TERVDbM/aAPly8kJ1sWGLuvvWYzMYgLzDul//rUF10gEMWaXVZV51KpS9DY/
-5CunuvCXmEQJHo7kGcViT7sETn6Jz9KOhvYcXkJ7po6d93A/jy4GKPIPnsKKNEmR
-xUuXY4xRdh45tMJnLTUDdC9FIU0flTeO9/vNpVA8OPU1i14vCz+MU8KX1bV3GXm/
-fxlB7VBBjX9v5oUep0o/j68R/iDlCOM4VVfRa8gX6T2FU7fNdatvGro7uQzIvWof
-gN9WUwCbEMBy/YhBSrXycKA8crgGg3x1mIsopn88JKwmMBa68oS7EHM9w7C4y71M
-7DiA+/9Qdp9RBWJpTS9i/mDnJg1xvo8Xz49mrrgfmcAXTCJqXi24NatI3Oc=
------END CERTIFICATE-----
------BEGIN CERTIFICATE-----
-MIICTjCCAdSgAwIBAgIRAIPgc3k5LlLVLtUUvs4K/QcwCgYIKoZIzj0EAwMwaDEL
-MAkGA1UEBhMCVVMxMzAxBgNVBAoTKihTVEFHSU5HKSBJbnRlcm5ldCBTZWN1cml0
-eSBSZXNlYXJjaCBHcm91cDEkMCIGA1UEAxMbKFNUQUdJTkcpIEJvZ3VzIEJyb2Nj
-b2xpIFgyMB4XDTIwMDkwNDAwMDAwMFoXDTQwMDkxNzE2MDAwMFowaDELMAkGA1UE
-BhMCVVMxMzAxBgNVBAoTKihTVEFHSU5HKSBJbnRlcm5ldCBTZWN1cml0eSBSZXNl
-YXJjaCBHcm91cDEkMCIGA1UEAxMbKFNUQUdJTkcpIEJvZ3VzIEJyb2Njb2xpIFgy
-MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEOvS+w1kCzAxYOJbA06Aw0HFP2tLBLKPo
-FQqR9AMskl1nC2975eQqycR+ACvYelA8rfwFXObMHYXJ23XLB+dAjPJVOJ2OcsjT
-VqO4dcDWu+rQ2VILdnJRYypnV1MMThVxo0IwQDAOBgNVHQ8BAf8EBAMCAQYwDwYD
-VR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQU3tGjWWQOwZo2o0busBB2766XlWYwCgYI
-KoZIzj0EAwMDaAAwZQIwRcp4ZKBsq9XkUuN8wfX+GEbY1N5nmCRc8e80kUkuAefo
-uc2j3cICeXo1cOybQ1iWAjEA3Ooawl8eQyR4wrjCofUE8h44p0j7Yl/kBlJZT8+9
-vbtH7QiVzeKCOTQPINyRql6P
------END CERTIFICATE-----"
-                    ),
-                    "local" => Some(
-                        // Local nebula development root cert found in
-                        // nebula/infra/terraform/local/ca/root.certificate.pem
-                        "-----BEGIN CERTIFICATE-----
-MIICBjCCAaugAwIBAgIUGLnu92rPr79+DsDQBtolXEZENwMwCgYIKoZIzj0EAwIw
-UDELMAkGA1UEBhMCVVMxGjAYBgNVBAoMEUVkZ2VEQiAoaW50ZXJuYWwpMSUwIwYD
-VQQDDBxOZWJ1bGEgSW5mcmEgUm9vdCBDQSAobG9jYWwpMB4XDTIzMDExNDIzMDkw
-M1oXDTMyMTAxMzIzMDkwM1owUDELMAkGA1UEBhMCVVMxGjAYBgNVBAoMEUVkZ2VE
-QiAoaW50ZXJuYWwpMSUwIwYDVQQDDBxOZWJ1bGEgSW5mcmEgUm9vdCBDQSAobG9j
-YWwpMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEHJk/v57y1dG1xekQjeYwqlW7
-45fvlWIIid/EfcyBNCyvWhLUyQUz3urmK81rJlFYCexq/kgazTeBFJyWbrvLLKNj
-MGEwHQYDVR0OBBYEFN5PvqC9p5e4HC99o3z0pJrRuIpeMB8GA1UdIwQYMBaAFN5P
-vqC9p5e4HC99o3z0pJrRuIpeMA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQD
-AgEGMAoGCCqGSM49BAMCA0kAMEYCIQDedUpRy5YtQAHROrh/ZsWPlvek3vguuRrE
-y4u6fdOVhgIhAJ4pJLfdoWQsHPUOcnVG5fBgdSnoCJhGQyuGyp+NDu1q
------END CERTIFICATE-----"
-                    ),
-                    _ => None,
-                })
-                .map(tls::OwnedTrustAnchor::read_all)
-                .transpose()
-                .map_err(ClientError::with_source_ref)?
-                .map(|certs| roots.add_server_trust_anchors(certs.into_iter().map(Into::into)));
-        }
-        Ok(roots)
-    }
-
-    #[cfg(feature="unstable")]
-    pub fn build_with_cert_verifier(&self,
-                                    verifier: Arc<dyn ServerCertVerifier>)
-        -> Result<Config, Error>
-    {
-        self._build_with_cert_verifier(verifier)
-    }
-    fn _build_with_cert_verifier(&self, verifier: Arc<dyn ServerCertVerifier>)
-        -> Result<Config, Error>
-    {
-        if !self.initialized {
+    /// Build connection and pool configuration object
+    pub async fn build_env(&self) -> Result<Config, Error> {
+        let (complete, config, mut errors) = self._build_no_fail().await;
+        if !complete {
             return Err(ClientNoCredentialsError::with_message(
                 "EdgeDB connection options are not initialized. \
                 Run `edgedb project init` or use environment variables \
                 to configure connection."));
         }
-
-        Ok(Config(Arc::new(ConfigInner {
-            address: self.address.clone(),
-            admin: self.admin,
-            user: self.user.clone(),
-            password: self.password.clone(),
-            secret_key: self.secret_key.clone(),
-            database: self.database.clone(),
-            verifier,
-            instance_name: self.instance_name.clone(),
-            wait: self.wait,
-            connect_timeout: self.connect_timeout,
-            client_security: self.client_security,
-            con_params: self.con_params.clone(),
-
-            // Pool configuration
-            max_connections: self.max_connections,
-        })))
+        if !errors.is_empty() {
+            return Err(errors.remove(0));
+        }
+        Ok(config)
     }
 
-    fn compute_tls_security(&self) -> Result<TlsSecurity, Error> {
-        use TlsSecurity::*;
-
-        match (self.client_security, self.tls_security) {
-            (ClientSecurity::Strict, Insecure | NoHostVerification) => {
-                Err(ClientError::with_message(format!(
-                    "client_security=strict and tls_security={} don't comply",
-                    serde_json::to_string(&self.tls_security).unwrap(),
-                )))
+    async fn compound_owned(&self, cfg: &mut ConfigInner,
+                            errors: &mut Vec<Error>)
+    {
+        let mut conflict = None;
+        if let Some(instance) = &self.instance {
+            conflict = Some("instance");
+            read_instance(cfg, instance).await
+                .map_err(|e| errors.push(e)).ok();
+        }
+        if let Some(dsn) = &self.dsn {
+            if let Some(conflict) = conflict {
+                errors.push(InvalidArgumentError::with_message(format!(
+                    "dsn argument conflicts with {}", conflict
+                )));
             }
-            (ClientSecurity::Strict, _) => Ok(Strict),
-            (ClientSecurity::InsecureDevMode, Default) => Ok(Insecure),
-            (_, Default) if self.pem.is_none() => Ok(Strict),
-            (_, Default) => Ok(NoHostVerification),
-            (_, ts) => Ok(ts),
+            conflict = Some("dsn");
+            self.read_dsn(cfg, dsn, errors).await;
+        }
+        if let Some(credentials_file) = &self.credentials_file {
+            if let Some(conflict) = conflict {
+                errors.push(InvalidArgumentError::with_message(format!(
+                    "credentials_file argument conflicts with {}", conflict
+                )));
+            }
+            conflict = Some("credentials_file");
+            read_credentials(cfg, credentials_file).await
+                .map_err(|e| errors.push(e)).ok();
+        }
+        if let Some(credentials) = &self.credentials {
+            if let Some(conflict) = conflict {
+                errors.push(InvalidArgumentError::with_message(format!(
+                    "credentials argument conflicts with {}", conflict
+                )));
+            }
+            conflict = Some("credentials");
+            set_credentials(cfg, credentials)
+                .map_err(|e| errors.push(e)).ok();
+        }
+        if let Some(host) = &self.host {
+            if let Some(conflict) = conflict {
+                errors.push(InvalidArgumentError::with_message(format!(
+                    "host argument conflicts with {}", conflict
+                )));
+            }
+            conflict = Some("host");
+            cfg.address = Address::Tcp((
+                host.into(),
+                self.port.unwrap_or(DEFAULT_PORT),
+            ));
+        } else if let Some(port) = &self.port {
+            if let Some(conflict) = conflict {
+                errors.push(InvalidArgumentError::with_message(format!(
+                    "port argument conflicts with {}", conflict
+                )));
+            }
+            match &mut cfg.address {
+                Address::Tcp((_, ref mut portref)) => *portref = *port,
+                _ => {},
+            }
+        }
+        if let Some(unix_path) = &self.unix_path {
+            if let Some(conflict) = conflict {
+                errors.push(InvalidArgumentError::with_message(format!(
+                    "unix_path argument conflicts with {}", conflict
+                )));
+            }
+            #[allow(unused_assignments)] {
+                conflict = Some("unix_path");
+            }
+            let port = match cfg.address {
+                Address::Tcp((_, port)) => port,
+                Address::Unix(_) => DEFAULT_PORT,
+            };
+            let full_path = resolve_unix(unix_path, port, self.admin);
+            cfg.address = Address::Unix(full_path);
         }
     }
+
+    async fn granular_owned(&self, cfg: &mut ConfigInner,
+                            errors: &mut Vec<Error>)
+    {
+        if let Some(database) = &self.database {
+            cfg.database = database.clone();
+        }
+
+        if let Some(user) = &self.user {
+            cfg.user = user.clone();
+        }
+
+        if let Some(password) = &self.password {
+            cfg.password = Some(password.clone());
+        }
+
+        if let Some(tls_ca_file) = &self.tls_ca_file {
+            match read_certificates(tls_ca_file).await {
+                Ok(pem) => cfg.pem_certificates = Some(pem),
+                Err(e) => errors.push(e),
+            }
+        }
+
+        if let Some(pem) = &self.pem_certificates {
+            cfg.pem_certificates = Some(pem.clone());
+        }
+
+        if let Some(security) = self.tls_security {
+            cfg.tls_security = security;
+        }
+
+        if let Some(wait) = self.wait_until_available {
+            cfg.wait = wait;
+        }
+    }
+
+    async fn compound_env(&self, cfg: &mut ConfigInner,
+                          errors: &mut Vec<Error>)
+    {
+        // Due to how shared-test-cases are implemented we have to check for
+        // conflicts first and then do the actual parsing
+        let mut conflict = None;
+        let mut check_conflict = |var_name: &'static str| {
+            if env::var_os(var_name).is_some() {
+                if let Some(cvar) = conflict {
+                    errors.push(ClientError::with_message(format!(
+                            "{} conflicts with {}", var_name, cvar)));
+                }
+                conflict = Some(var_name);
+            }
+        };
+        check_conflict("EDGEDB_INSTANCE");
+        check_conflict("EDGEDB_DSN");
+        check_conflict("EDGEDB_CREDENTIALS_FILE");
+        check_conflict("EDGEDB_HOST");
+        if let Some(port) = env::var_os("EDGEDB_PORT") {
+            if !port.to_str().map(|s| s.starts_with("tcp://")).unwrap_or(false)
+            {
+                if let Some(cvar) = conflict {
+                    if cvar != "EDGEDB_HOST" {
+                        errors.push(ClientError::with_message(format!(
+                                "{} conflicts with {}", "EDGEDB_PORT", cvar)));
+                    }
+                }
+            }
+            // note: not setting conflict to work with HOST
+        }
+
+        let str_env = |var_name: &'static str, errors: &mut Vec<Error>| {
+            get_env(var_name).map_err(|e| errors.push(e)).ok().flatten()
+        };
+        if let Some(instance) = str_env("EDGEDB_INSTANCE", errors) {
+            match instance.parse() {
+                Ok(instance) => {
+                    read_instance(cfg, &instance).await
+                        .map_err(|e| errors.push(e)).ok();
+                }
+                Err(e) => {
+                    errors.push(ClientError::with_source(e)
+                                .context("EDGEDB_INSTANCE is invalid"));
+                }
+            }
+        }
+        if let Some(dsn) = str_env("EDGEDB_DSN", errors) {
+            match dsn.parse() {
+                Ok(url) => self.read_dsn(cfg, &url, errors).await,
+                Err(e) => {
+                    errors.push(ClientError::with_source(e)
+                                .context("EDGEDB_DSN is invalid"));
+                }
+            }
+        }
+        if let Some(fpath) = str_env("EDGEDB_CREDENTIALS_FILE", errors) {
+            read_credentials(cfg, fpath).await
+                .map_err(|e| errors.push(e)).ok();
+        }
+        if let Some(host) = str_env("EDGEDB_HOST", errors) {
+            match validate_host(&host) {
+                Ok(_) => {
+                    cfg.address = Address::Tcp((
+                        host.into(),
+                        DEFAULT_PORT,
+                    ));
+                }
+                Err(e) => errors.push(e.context("EDGEDB_HOST is invalid")),
+            }
+        }
+        if let Some(port_str) = str_env("EDGEDB_PORT", errors) {
+            let port = port_str.parse()
+                .map_err(|e| ClientError::with_source(e))
+                .and_then(validate_port)
+                .context("EDGEDB_PORT is invalid");
+            match port {
+                Ok(port) => match &mut cfg.address {
+                    Address::Tcp((_, ref mut portref)) => *portref = port,
+                    _ => {},
+                },
+                Err(e) => {
+                    if port_str.starts_with("tcp://") {
+                        PORT_WARN.call_once(|| {
+                            log::warn!("Environment variable `EDGEDB_PORT` \
+                                contains docker-link-like definition. \
+                                Ignoring...");
+                        });
+                    } else {
+                        errors.push(e);
+                    }
+                }
+            }
+        }
+    }
+    async fn preliminary_env(&self, cfg: &mut ConfigInner,
+                             errors: &mut Vec<Error>)
+    {
+        cfg.cloud_profile = self.cloud_profile.clone().or_else(|| {
+            get_env("EDGEDB_CLOUD_PROFILE")
+                .map_err(|e| errors.push(e)).ok().flatten()
+        });
+        cfg.secret_key = self.secret_key.clone().or_else(|| {
+            get_env("EDGEDB_SECRET_KEY")
+                .map_err(|e| errors.push(e)).ok().flatten()
+        });
+    }
+
+    async fn granular_env(&self, cfg: &mut ConfigInner,
+                          errors: &mut Vec<Error>)
+    {
+        let database = self.database.clone().or_else(|| {
+            get_env("EDGEDB_DATABASE")
+                .and_then(|v| v.map(validate_database).transpose())
+                .map_err(|e| errors.push(e)).ok().flatten()
+        });
+        // TODO(tailhook) check if not empty
+        if let Some(database) = database {
+            cfg.database = database;
+        }
+
+        let user = self.user.clone().or_else(|| {
+            get_env("EDGEDB_USER")
+                .and_then(|v| v.map(validate_user).transpose())
+                .map_err(|e| errors.push(e)).ok().flatten()
+        });
+        if let Some(user) = user {
+            cfg.user = user;
+        }
+
+        let password = self.password.clone().or_else(|| {
+            get_env("EDGEDB_PASSWORD")
+                .map_err(|e| errors.push(e)).ok().flatten()
+        });
+        if let Some(password) = password {
+            cfg.password = Some(password);
+        }
+
+        let tls_ca_file = self.tls_ca_file.clone().or_else(|| {
+            get_env("EDGEDB_TLS_CA_FILE")
+                .map_err(|e| errors.push(e)).ok().flatten()
+                .map(|p| p.into())
+        });
+        if let Some(tls_ca_file) = tls_ca_file {
+            match read_certificates(tls_ca_file).await {
+                Ok(pem) => cfg.pem_certificates = Some(pem),
+                Err(e) => errors.push(e),
+            }
+        }
+
+        let tls_ca = get_env("EDGEDB_TLS_CA")
+            .map_err(|e| errors.push(e)).ok().flatten();
+        if let Some(pem) = tls_ca {
+            match validate_certs(&pem) {
+                Ok(()) => cfg.pem_certificates = Some(pem),
+                Err(e) => errors.push(e),
+            }
+        }
+
+        let security = get_env("EDGEDB_CLIENT_TLS_SECURITY")
+            .map_err(|e| errors.push(e)).ok().flatten()
+            .and_then(|x| x.parse::<TlsSecurity>().map_err(|e| {
+                errors.push(e.context("EDGEDB_CLIENT_TLS_SECURITY error"));
+            }).ok());
+        if let Some(security) = security {
+            cfg.tls_security = security;
+        }
+
+        let wait = self.wait_until_available.or_else(|| {
+            get_env("EDGEDB_WAIT_UNTIL_AVAILABLE")
+            .map_err(|e| errors.push(e)).ok().flatten()
+            .and_then(|x| x.parse::<model::Duration>().map_err(|e| {
+                errors.push(ClientError::with_source(e)
+                            .context("EDGEDB_WAIT_UNTIL_AVAILABLE error"));
+            }).ok())
+            .and_then(|x| x.try_into().map_err(|e| {
+                errors.push(ClientError::with_source(e)
+                            .context("EDGEDB_WAIT_UNTIL_AVAILABLE error"));
+            }).ok())
+        });
+        if let Some(wait) = wait {
+            cfg.wait = wait;
+        }
+    }
+
+    async fn read_dsn(&self, cfg: &mut ConfigInner, url: &url::Url,
+                      errors: &mut Vec<Error>)
+    {
+        let mut dsn = match DsnHelper::from_url(&url) {
+            Ok(dsn) => dsn,
+            Err(e) => {
+                errors.push(e);
+                return;
+            }
+        };
+        let host = dsn.retrieve_host().await
+            .map_err(|e| errors.push(e)).ok().flatten()
+            .unwrap_or_else(|| DEFAULT_HOST.into());
+        let port = dsn.retrieve_port().await
+            .map_err(|e| errors.push(e)).ok().flatten()
+            .unwrap_or(DEFAULT_PORT);
+        cfg.address = Address::Tcp((host, port));
+        cfg.admin = dsn.admin;
+        match dsn.retrieve_user().await {
+            Ok(Some(value)) => cfg.user = value,
+            Ok(None) => {},
+            Err(e) => errors.push(e),
+        }
+        if self.password.is_none() {
+            match dsn.retrieve_password().await {
+                Ok(Some(value)) => cfg.password = Some(value),
+                Ok(None) => {},
+                Err(e) => errors.push(e),
+            }
+        } else {
+            dsn.ignore_value("password");
+        }
+        if self.database.is_none() {
+            match dsn.retrieve_database().await {
+                Ok(Some(value)) => cfg.database = value,
+                Ok(None) => {},
+                Err(e) => errors.push(e),
+            }
+        } else {
+            dsn.ignore_value("database");
+        }
+        match dsn.retrieve_secret_key().await {
+            Ok(Some(value)) => cfg.secret_key = Some(value),
+            Ok(None) => {},
+            Err(e) => errors.push(e),
+        }
+        if self.tls_ca_file.is_none() {
+            match dsn.retrieve_tls_ca_file().await {
+                Ok(Some(path)) => match read_certificates(&path).await {
+                    Ok(pem) => cfg.pem_certificates = Some(pem),
+                    Err(e) => errors.push(e),
+                },
+                Ok(None) => {}
+                Err(e) => errors.push(e),
+            }
+        } else {
+            dsn.ignore_value("tls_ca_file");
+        }
+        match dsn.retrieve_tls_security().await {
+            Ok(Some(value)) => cfg.tls_security = value,
+            Ok(None) => {},
+            Err(e) => errors.push(e),
+        }
+        match dsn.retrieve_wait_until_available().await {
+            Ok(Some(value)) => cfg.wait = value,
+            Ok(None) => {},
+            Err(e) => errors.push(e),
+        }
+
+        cfg.extra_dsn_query_args = dsn.remaining_queries();
+    }
+
+    async fn read_project(&self, cfg: &mut ConfigInner,
+                          errors: &mut Vec<Error>)
+        -> bool
+    {
+        let pair = self._get_stash_path().await
+            .map_err(|e| errors.push(e)).ok().flatten();
+        if let Some((project, stash)) = pair {
+            self._read_project(cfg, &project, &stash).await
+                .map_err(|e| errors.push(e)).ok();
+            true
+        } else {
+            false
+        }
+    }
+
+    async fn _get_stash_path(&self)
+        -> Result<Option<(PathBuf, PathBuf)>, Error>
+    {
+        let dir = match get_project_dir(None, true).await? {
+            Some(dir) => dir,
+            None => return Ok(None),
+        };
+        let canon = fs::canonicalize(&dir).await
+            .map_err(|e| ClientError::with_source(e).context(
+                format!("failed to canonicalize dir {:?}", dir)
+            ))?;
+        let stash_path = stash_path(canon.as_ref())?;
+        if fs::metadata(&stash_path).await.is_ok() {
+            return Ok(Some((dir, stash_path)));
+        }
+        Ok(None)
+    }
+
+    async fn _read_project(&self, cfg: &mut ConfigInner,
+                           project_dir: &Path, stash_path: &Path)
+        -> Result<(), Error>
+    {
+        let path = stash_path.join("instance-name");
+        let instance =
+            fs::read_to_string(&path).await
+            .map_err(|e| ClientError::with_source(e).context(
+                format!("error reading project settings {:?}: {:?}",
+                        project_dir, path)
+            ))?;
+        let instance = instance.trim().parse()
+            .map_err(|e| {
+                ClientError::with_source(e).context(format!(
+                    "cannot parse project's instance name: {:?}", instance
+                ))
+            })?;
+        if matches!(instance, InstanceName::Cloud {..}) {
+             if cfg.secret_key.is_none() && cfg.cloud_profile.is_none() {
+                 let path = stash_path.join("cloud-profile");
+                 let profile = fs::read_to_string(&path).await
+                     .map_err(|e| ClientError::with_source(e).context(
+                         format!("error reading project settings {:?}: {:?}",
+                                 project_dir, path)
+                     ))?.trim().into();
+                 cfg.cloud_profile = Some(profile);
+             }
+        }
+        read_instance(cfg, &instance).await?;
+        Ok(())
+    }
+
 
     /// Build connection and pool configuration object
-    pub fn build(&self) -> Result<Config, Error> {
-        use TlsSecurity::*;
+    ///
+    /// This is similar to `build_env` but never fails and fills in whatever
+    /// fields possible in `Config`.
+    ///
+    /// First boolean item in the tuple is `true` if configuration is complete
+    /// and can be used for connections.
+    #[cfg(any(feature="unstable", feature="test"))]
+    pub async fn build_no_fail(&self) -> (bool, Config, Vec<Error>) {
+        self._build_no_fail().await
+    }
 
-        let verifier = match self.compute_tls_security()? {
-            Insecure => Arc::new(tls::NullVerifier) as Verifier,
-            NoHostVerification => Arc::new(tls::NoHostnameVerifier::new(
-                self.trust_anchors()?
-            )) as Verifier,
-            Strict => Arc::new(rustls::client::WebPkiVerifier::new(
-                self._root_cert_store()?,
-                None,
-            )) as Verifier,
-            Default => unreachable!(),
+    async fn _build_no_fail(&self) -> (bool, Config, Vec<Error>) {
+        let mut errors = Vec::new();
+
+        let mut cfg = ConfigInner {
+            address: Address::Tcp((DEFAULT_HOST.into(), DEFAULT_PORT)),
+            admin: self.admin,
+            user: "edgedb".into(),
+            password: None,
+            secret_key: None,
+            cloud_profile: None,
+            cloud_certs: None,
+            database: "edgedb".into(),
+            instance_name: None,
+            wait: self.wait_until_available.unwrap_or(DEFAULT_WAIT),
+            connect_timeout: self.connect_timeout
+                .unwrap_or(DEFAULT_CONNECT_TIMEOUT),
+            extra_dsn_query_args: HashMap::new(),
+            creds_file_outdated: false,
+            pem_certificates: self.pem_certificates.clone(),
+            client_security: self.client_security
+                .unwrap_or(ClientSecurity::Default),
+            tls_security: self.tls_security.unwrap_or(TlsSecurity::Default),
+
+            // Pool configuration
+            max_concurrency: self.max_concurrency,
+
+            // Temporary placeholders
+            verifier: Arc::new(tls::NullVerifier),
         };
 
-        self._build_with_cert_verifier(verifier)
+        let complete = if self.host.is_some() ||
+           self.port.is_some() ||
+           self.unix_path.is_some() ||
+           self.dsn.is_some() ||
+           self.instance.is_some() ||
+           self.credentials.is_some() ||
+           self.credentials_file.is_some()
+        {
+            cfg.secret_key = self.secret_key.clone();
+            cfg.cloud_profile = self.cloud_profile.clone();
+            self.compound_owned(&mut cfg, &mut errors).await;
+            self.granular_owned(&mut cfg, &mut errors).await;
+            true
+        } else if
+            COMPOUND_ENV_VARS.iter().any(|x| env::var_os(x).is_some()) ||
+            has_port_env()
+        {
+            self.preliminary_env(&mut cfg, &mut errors).await;
+            self.compound_env(&mut cfg, &mut errors).await;
+            self.granular_env(&mut cfg, &mut errors).await;
+            true
+        } else {
+            self.preliminary_env(&mut cfg, &mut errors).await;
+            let complete = self.read_project(&mut cfg, &mut errors).await;
+            self.granular_env(&mut cfg, &mut errors).await;
+            complete
+        };
+
+        let security = get_env("EDGEDB_CLIENT_SECURITY")
+            .map_err(|e| errors.push(e)).ok().flatten()
+            .and_then(|x| x.parse::<ClientSecurity>().map_err(|e| {
+                errors.push(e.context("EDGEDB_CLIENT_SECURITY error"));
+            }).ok());
+        if let Some(security) = security {
+            cfg.client_security = security;
+        }
+
+        let cloud_certs = get_env("_EDGEDB_CLOUD_CERTS")
+            .map_err(|e| errors.push(e)).ok().flatten()
+            .and_then(|x| x.parse::<CloudCerts>().map_err(|e| {
+                errors.push(e.context("_EDGEDB_CLOUD_CERTS error"));
+            }).ok());
+        if let Some(cloud_certs) = cloud_certs {
+            cfg.cloud_certs = Some(cloud_certs);
+        }
+
+        // we don't overwrite this param in cfg because we want
+        // `with_pem_certificates` to bump security to Strict
+        let tls_security = cfg.compute_tls_security()
+            .map_err(|e| errors.push(e))
+            .unwrap_or(TlsSecurity::Strict);
+        cfg.verifier = cfg.make_verifier(tls_security);
+
+        return (complete, Config(Arc::new(cfg)), errors);
     }
 
-    /// Set the maximum number of underlying database connections.
-    pub fn max_connections(&mut self, value: usize) -> &mut Self {
-        self.max_connections = value;
-        self
-    }
+}
 
-    /// Get the path of the Unix socket if that is configured to be used.
-    ///
-    /// This is a deprecated API and should only be used by the command-line
-    /// tool.
-    #[cfg(feature="admin_socket")]
-    pub fn get_unix_path(&self) -> Option<PathBuf> {
-        self._get_unix_path().unwrap_or(None)
-    }
-    fn _get_unix_path(&self) -> Result<Option<PathBuf>, Error> {
-        match &self.address {
-            Address::Unix(path) => Ok(Some(path.clone())),
-            Address::Tcp(_) => Ok(None),
+fn resolve_unix(path: impl AsRef<Path>, port: u16, admin: bool) -> PathBuf {
+    let has_socket_name = path.as_ref().file_name()
+        .and_then(|x| x.to_str())
+        .map(|x| x.contains(".s.EDGEDB"))
+        .unwrap_or(false);
+    let path = if has_socket_name {
+        // it's the full path
+        path.as_ref().to_path_buf()
+    } else {
+        let socket_name = if admin {
+            format!(".s.EDGEDB.admin.{}", port)
+        } else {
+            format!(".s.EDGEDB.{}", port)
+        };
+        path.as_ref().join(socket_name)
+    };
+    return path;
+}
+
+async fn read_instance(cfg: &mut ConfigInner, name: &InstanceName)
+    -> Result<(), Error>
+{
+    cfg.instance_name = Some(name.clone());
+    match name {
+        InstanceName::Local(name) => {
+            read_credentials(cfg,
+                config_dir()?
+                    .join("credentials")
+                    .join(format!("{}.json", name)),
+            ).await?;
+        }
+        InstanceName::Cloud { org_slug, name } => {
+            let secret_key = if let Some(secret_key) = &cfg.secret_key {
+                secret_key.clone()
+            } else {
+                let profile = cfg.cloud_profile.as_deref().unwrap_or("default");
+                let path = cloud_config_file(&profile)?;
+                let data = match fs::read(path).await {
+                    Ok(data) => data,
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                        let hint_cmd = if profile == "default" {
+                            "edgedb cloud login".into()
+                        } else {
+                            format!("edgedb cloud login --cloud-profile {:?}",
+                                    profile)
+                        };
+                        return Err(NoCloudConfigFound::with_message(
+                            "connecting cloud instance requires a secret key")
+                            .with_headers(HashMap::from([(
+                                0x_00_01,  // FIELD_HINT
+                                bytes::Bytes::from(format!(
+                                    "try `{}`, or provide a secret key to connect with", hint_cmd
+                                )),
+                            )]))
+                        );
+                    }
+                    Err(e) => return Err(ClientError::with_source(e))?,
+                };
+                let config: CloudConfig = from_slice(&data)
+                    .map_err(ClientError::with_source)?;
+                config.secret_key
+            };
+            let claims_b64 = secret_key
+                .splitn(3, ".")
+                .skip(1)
+                .next()
+                .ok_or(ClientError::with_message("Illegal JWT token"))?;
+            let claims = base64::decode_config(claims_b64,
+                                               base64::URL_SAFE_NO_PAD)
+                .map_err(ClientError::with_source)?;
+            let claims: Claims = from_slice(&claims)
+                .map_err(ClientError::with_source)?;
+            let dns_zone = claims
+                .issuer
+                .ok_or(ClientError::with_message("Invalid secret key"))?;
+            let msg = format!("{}/{}", org_slug, name);
+            let checksum = crc16::State::<crc16::XMODEM>::calculate(
+                msg.as_bytes());
+            let dns_bucket = format!("c-{:02}", checksum % 100);
+            cfg.address = Address::Tcp((
+                format!("{}--{}.{}.i.{}",
+                        name, org_slug, dns_bucket, dns_zone),
+                DEFAULT_PORT,
+            ));
+            cfg.secret_key = Some(secret_key);
         }
     }
+    Ok(())
+}
 
-    /// Generate debug JSON string
-    #[cfg(feature="unstable")]
-    pub fn to_json(&self) -> Result<String, Error> {
-        Ok(serde_json::json!({
-            "address": match &self.address {
-                Address::Tcp((host, port)) => serde_json::json!([host, port]),
-                Address::Unix(path) => serde_json::json!(path.to_str().unwrap()),
-            },
-            "database": self.database,
-            "user": self.user,
-            "password": self.password,
-            "secretKey": self.secret_key,
-            "tlsCAData": self.pem,
-            "tlsSecurity": self.compute_tls_security()?,
-            "serverSettings": self.con_params,
-            "waitUntilAvailable": self.wait.as_micros() as i64,
-        }).to_string())
+async fn read_credentials(cfg: &mut ConfigInner, path: impl AsRef<Path>)
+    -> Result<(), Error>
+{
+    let path = path.as_ref();
+    async {
+        let data = fs::read(path).await
+            .map_err(ClientError::with_source)?;
+        let creds = serde_json::from_slice(&data)
+            .map_err(ClientError::with_source)?;
+        set_credentials(cfg, &creds)?;
+        Ok(())
+    }.await.map_err(|e: Error| e.context(
+        format!("cannot read credentials file {}", path.display())
+    ))?;
+    Ok(())
+}
+
+
+async fn read_certificates(path: impl AsRef<Path>) -> Result<String, Error> {
+
+    let data = fs::read_to_string(path.as_ref()).await
+        .map_err(|e| ClientError::with_source(e)
+                 .context("error reading TLS CA file"))?;
+    validate_certs(&data)
+        .context("invalid certificates")?;
+    Ok(data)
+}
+
+fn set_credentials(cfg: &mut ConfigInner, creds: &Credentials)
+    -> Result<(), Error>
+{
+    if let Some(cert_data) = &creds.tls_ca {
+        validate_certs(&cert_data)
+            .context("invalid certificates in `tls_ca`")?;
+        cfg.pem_certificates = Some(cert_data.into());
     }
+    cfg.address = Address::Tcp((
+        creds.host.clone().unwrap_or_else(|| DEFAULT_HOST.into()),
+        creds.port,
+    ));
+    cfg.user = creds.user.clone();
+    cfg.password = creds.password.clone();
+    cfg.database = creds.database.clone().unwrap_or_else(|| "edgedb".into());
+    cfg.tls_security = creds.tls_security;
+    cfg.creds_file_outdated = creds.file_outdated;
+    Ok(())
 }
 
 fn validate_certs(data: &str) -> Result<(), Error> {
@@ -1503,11 +1475,143 @@ fn validate_certs(data: &str) -> Result<(), Error> {
     Ok(())
 }
 
+fn validate_host<T: AsRef<str>>(host: T) -> Result<T, Error> {
+    if host.as_ref().is_empty() {
+        return Err(InvalidArgumentError::with_message(
+            "invalid host: empty string"
+        ));
+    } else if host.as_ref().contains(",") {
+        return Err(InvalidArgumentError::with_message(
+            "invalid host: multiple hosts"
+        ));
+    }
+    Ok(host)
+}
+
+fn validate_port(port: u16) -> Result<u16, Error> {
+    if port == 0 {
+        return Err(InvalidArgumentError::with_message(
+                "invalid port: port cannot be zero"));
+    }
+    Ok(port)
+}
+
+fn validate_database<T: AsRef<str>>(database: T) -> Result<T, Error> {
+    if database.as_ref().is_empty() {
+        return Err(InvalidArgumentError::with_message(
+            "invalid database: empty string"
+        ));
+    }
+    Ok(database)
+}
+
+fn validate_user<T: AsRef<str>>(user: T) -> Result<T, Error> {
+    if user.as_ref().is_empty() {
+        return Err(InvalidArgumentError::with_message(
+            "invalid user: empty string"
+        ));
+    }
+    Ok(user)
+}
+
 impl Config {
 
     /// A displayable form for an address this builder will connect to
     pub fn display_addr<'x>(&'x self) -> impl fmt::Display + 'x {
         DisplayAddr(Some(&self.0.address))
+    }
+
+    /// User name
+    pub fn user(&self) -> &str {
+        &self.0.user
+    }
+
+    /// Database name
+    pub fn database(&self) -> &str {
+        &self.0.database
+    }
+
+    /// Extract credentials from the [Builder] so they can be saved as JSON.
+    pub fn as_credentials(&self) -> Result<Credentials, Error> {
+        let (host, port) = match &self.0.address {
+            Address::Tcp(pair) => pair,
+            Address::Unix(_) => {
+                return Err(ClientError::with_message(
+                    "Unix socket address cannot \
+                    be saved as credentials file"));
+            }
+        };
+        Ok(Credentials {
+            host: Some(host.clone()),
+            port: *port,
+            user: self.0.user.clone(),
+            password: self.0.password.clone(),
+            database: Some( self.0.database.clone()),
+            tls_ca: self.0.pem_certificates.clone(),
+            tls_security: self.0.tls_security,
+            file_outdated: false,
+        })
+    }
+
+    /// Generate debug JSON string
+    #[cfg(feature="unstable")]
+    pub fn to_json(&self) -> String {
+        serde_json::json!({
+            "address": match &self.0.address {
+                Address::Tcp((host, port)) => serde_json::json!([host, port]),
+                Address::Unix(path) => serde_json::json!(path.to_str().unwrap()),
+            },
+            "database": self.0.database,
+            "user": self.0.user,
+            "password": self.0.password,
+            "secretKey": self.0.secret_key,
+            "tlsCAData": self.0.pem_certificates,
+            "tlsSecurity": self.0.compute_tls_security().unwrap(),
+            "serverSettings": self.0.extra_dsn_query_args,
+            "waitUntilAvailable": self.0.wait.as_micros() as i64,
+        }).to_string()
+    }
+
+    /// Server host name (if doesn't use unix socket)
+    pub fn host(&self) -> Option<&str> {
+        match self.0.address {
+            Address::Tcp((ref host, _)) => Some(host),
+            _ => None,
+        }
+    }
+
+    /// Server port (if doesn't use unix socket)
+    pub fn port(&self) -> Option<u16> {
+        match self.0.address {
+            Address::Tcp((_, port)) => Some(port),
+            _ => None,
+        }
+    }
+
+    /// Instance name if set and if it's local
+    pub fn local_instance_name(&self) -> Option<&str> {
+        match self.0.instance_name {
+            Some(InstanceName::Local(ref name)) => Some(name),
+            _ => None,
+        }
+    }
+
+    /// Secret key if set
+    pub fn secret_key(&self) -> Option<&str> {
+        self.0.secret_key.as_deref()
+    }
+
+    /// Return HTTP(s) url to server
+    ///
+    /// If not connected via unix socket
+    pub fn http_url(&self, tls: bool) -> Option<String> {
+        match &self.0.address {
+            Address::Tcp((host, port)) => {
+                let s = if tls { "s" } else {""};
+                Some(format!("http{}://{}:{}", s, host, port))
+            }
+            Address::Unix(_) => None,
+        }
     }
 
     fn _get_unix_path(&self) -> Result<Option<PathBuf>, Error> {
@@ -1516,35 +1620,203 @@ impl Config {
             Address::Tcp(_) => Ok(None),
         }
     }
+
+    /// Return the same config with changed password
+    pub fn with_password(mut self, password: &str) -> Config {
+        Arc::make_mut(&mut self.0).password = Some(password.to_owned());
+        self
+    }
+
+    /// Return the same config with changed database
+    pub fn with_database(mut self, database: &str) -> Result<Config, Error> {
+        if database.is_empty() {
+            return Err(InvalidArgumentError::with_message(
+                "invalid database: empty string"
+            ));
+        }
+        Arc::make_mut(&mut self.0).database = database.to_owned();
+        Ok(self)
+    }
+
+    /// Return the same config with changed wait until available timeout
+    #[cfg(any(feature="unstable", feature="test"))]
+    pub fn with_wait_until_available(mut self, wait: Duration) -> Config {
+        Arc::make_mut(&mut self.0).wait = wait;
+        self
+    }
+
+    /// Return the same config with changed certificates
+    #[cfg(any(feature="unstable", feature="test"))]
+    pub fn with_pem_certificates(mut self, pem: &str) -> Result<Config, Error>
+    {
+        validate_certs(pem).context("invalid PEM certificate")?;
+        let cfg = Arc::make_mut(&mut self.0);
+        cfg.pem_certificates = Some(pem.to_owned());
+        cfg.verifier = cfg.make_verifier(cfg.compute_tls_security()?);
+        Ok(self)
+    }
+
+    /// Returns true if credentials file is in outdated format
+    #[cfg(any(feature="unstable", feature="test"))]
+    pub fn is_creds_file_outdated(&self) -> bool {
+        self.0.creds_file_outdated
+    }
+
+    /// Return the certificate store of the config
+    #[cfg(any(feature="unstable", feature="test"))]
+    pub fn root_cert_store(&self) -> Result<rustls::RootCertStore, Error> {
+        Ok(self.0.root_cert_store())
+    }
+
+    /// Return the same config with changed certificate verifier
+    ///
+    /// Command-line tool uses this for interactive verifier
+    #[cfg(any(feature="unstable", feature="test"))]
+    pub fn with_cert_verifier(mut self, verifier: Verifier) -> Config {
+        Arc::make_mut(&mut self.0).verifier = verifier;
+        self
+    }
+}
+
+impl ConfigInner {
+    fn compute_tls_security(&self) -> Result<TlsSecurity, Error> {
+        use TlsSecurity::*;
+
+        match (self.client_security, self.tls_security) {
+            (ClientSecurity::Strict, Insecure | NoHostVerification) => {
+                Err(ClientError::with_message(format!(
+                    "client_security=strict and tls_security={} don't comply",
+                    self.tls_security,
+                )))
+            }
+            (ClientSecurity::Strict, _) => Ok(Strict),
+            (ClientSecurity::InsecureDevMode, Default) => Ok(Insecure),
+            (_, Default) if self.pem_certificates.is_none() => Ok(Strict),
+            (_, Default) => Ok(NoHostVerification),
+            (_, ts) => Ok(ts),
+        }
+    }
+    fn trust_anchors(&self) -> Vec<tls::OwnedTrustAnchor> {
+        tls::OwnedTrustAnchor::read_all(
+            self.pem_certificates.as_deref().unwrap_or("")
+        ).expect("all certificates are verified before")
+    }
+    fn root_cert_store(&self) -> rustls::RootCertStore {
+        use CloudCerts::*;
+
+        let mut roots = rustls::RootCertStore::empty();
+        if self.pem_certificates.is_some() {
+            roots.add_server_trust_anchors(
+                self.trust_anchors().into_iter().map(Into::into)
+            );
+        } else {
+            roots.add_server_trust_anchors(
+                webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+                    rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
+                        ta.subject,
+                        ta.spki,
+                        ta.name_constraints,
+                    )
+                })
+            );
+            if let Some(certs) = self.cloud_certs {
+                let data = match certs {
+                    // Staging certs retrieved from
+                    // https://letsencrypt.org/docs/staging-environment/#root-certificates
+                    Staging => include_str!("letsencrypt_staging.pem"),
+                    // Local nebula development root cert found in
+                    // nebula/infra/terraform/local/ca/root.certificate.pem
+                    Local => include_str!("nebula_development.pem"),
+                };
+                let pem = tls::OwnedTrustAnchor::read_all(data)
+                    .expect("embedded certs are correct");
+                roots.add_server_trust_anchors(
+                    pem.into_iter().map(Into::into)
+                );
+            }
+        }
+        return roots;
+    }
+    fn make_verifier(&self, tls_security: TlsSecurity) -> Verifier {
+        use TlsSecurity::*;
+
+        match tls_security {
+            Insecure => Arc::new(tls::NullVerifier) as Verifier,
+            NoHostVerification => Arc::new(tls::NoHostnameVerifier::new(
+                self.trust_anchors()
+            )) as Verifier,
+            Strict => Arc::new(rustls::client::WebPkiVerifier::new(
+                self.root_cert_store(),
+                None,
+            )) as Verifier,
+            Default => unreachable!(),
+        }
+    }
 }
 
 impl fmt::Debug for Config {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Config")
             .field("address", &self.0.address)
-            .field("max_connections", &self.0.max_connections)
+            .field("max_concurrency", &self.0.max_concurrency)
             // TODO(tailhook) more fields
             .finish()
     }
 }
 
+impl FromStr for ClientSecurity {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<ClientSecurity, Error> {
+        use ClientSecurity::*;
+
+        match s {
+            "default" => Ok(Default),
+            "strict" => Ok(Strict),
+            "insecure_dev_mode" => Ok(InsecureDevMode),
+            mode => Err(ClientError::with_message(
+                format!("Invalid client security: {:?}. \
+                        Options: default, strict, insecure_dev_mode.",
+                        mode)
+            )),
+        }
+    }
+}
+
+impl FromStr for CloudCerts {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<CloudCerts, Error> {
+        use CloudCerts::*;
+
+        match s {
+            "staging" => Ok(Staging),
+            "local" => Ok(Local),
+            option => Err(ClientError::with_message(
+                format!("Invalid cloud certificates: {:?}. \
+                        Options: staging, local.",
+                        option)
+            )),
+        }
+    }
+}
+
 #[tokio::test]
-async fn read_credentials() {
-    let mut bld = Builder::uninitialized();
-    bld.read_credentials("tests/credentials1.json").await.unwrap();
-    assert!(matches!(&bld.address, Address::Tcp((_, 10702))));
-    assert_eq!(&bld.user, "test3n");
-    assert_eq!(&bld.database, "test3n");
-    assert_eq!(bld.password, Some("lZTBy1RVCfOpBAOwSCwIyBIR".into()));
+async fn test_read_credentials() {
+    let cfg = Builder::new()
+        .credentials_file("tests/credentials1.json")
+        .build_env().await.unwrap();
+    assert!(matches!(&cfg.0.address, Address::Tcp((_, 10702))));
+    assert_eq!(&cfg.0.user, "test3n");
+    assert_eq!(&cfg.0.database, "test3n");
+    assert_eq!(cfg.0.password, Some("lZTBy1RVCfOpBAOwSCwIyBIR".into()));
 }
 
 #[tokio::test]
 async fn display() {
-    let mut bld = Builder::uninitialized();
-    bld.read_dsn("edgedb://localhost:1756", SkipFields::default()).await
-        .unwrap();
+    let cfg = Builder::new()
+        .dsn("edgedb://localhost:1756").unwrap()
+        .build_env().await.unwrap();
     assert!(matches!(
-        &bld.address,
+        &cfg.0.address,
         Address::Tcp((host, 1756)) if host == "localhost"
     ));
     /* TODO(tailhook)
@@ -1553,87 +1825,92 @@ async fn display() {
                Some("/test/my.sock/.s.EDGEDB.5656".into()));
     */
     #[cfg(feature="admin_socket")] {
-        bld.unix_path("/test/.s.EDGEDB.8888", None, false);
-        assert_eq!(bld.build().unwrap()._get_unix_path().unwrap(),
+        let cfg = Builder::new()
+            .unix_path("/test/.s.EDGEDB.8888")
+            .build_env().await.unwrap();
+        assert_eq!(cfg._get_unix_path().unwrap(),
                    Some("/test/.s.EDGEDB.8888".into()));
-        bld.unix_path("/test", Some(8888), false);
-        assert_eq!(bld.build().unwrap()._get_unix_path().unwrap(),
+        let cfg = Builder::new()
+            .port(8888).unwrap()
+            .unix_path("/test")
+            .build_env().await.unwrap();
+        assert_eq!(cfg._get_unix_path().unwrap(),
                    Some("/test/.s.EDGEDB.8888".into()));
     }
 }
 
 #[tokio::test]
 async fn from_dsn() {
-    let mut bld = Builder::uninitialized();
-    bld.read_dsn(
-        "edgedb://user1:EiPhohl7@edb-0134.elb.us-east-2.amazonaws.com/db2",
-        SkipFields::default(),
-    ).await.unwrap();
+    let cfg = Builder::new()
+        .dsn(
+            "edgedb://user1:EiPhohl7@edb-0134.elb.us-east-2.amazonaws.com/db2",
+        ).unwrap()
+        .build_env().await.unwrap();
     assert!(matches!(
-        &bld.address,
+        &cfg.0.address,
         Address::Tcp((host, 5656))
         if host == "edb-0134.elb.us-east-2.amazonaws.com",
     ));
-    assert_eq!(&bld.user, "user1");
-    assert_eq!(&bld.database, "db2");
-    assert_eq!(bld.password, Some("EiPhohl7".into()));
+    assert_eq!(&cfg.0.user, "user1");
+    assert_eq!(&cfg.0.database, "db2");
+    assert_eq!(cfg.0.password, Some("EiPhohl7".into()));
 
-    let mut bld = Builder::uninitialized();
-    bld.read_dsn(
-        "edgedb://user2@edb-0134.elb.us-east-2.amazonaws.com:1756/db2",
-        SkipFields::default(),
-    ).await.unwrap();
+    let cfg = Builder::new()
+        .dsn(
+            "edgedb://user2@edb-0134.elb.us-east-2.amazonaws.com:1756/db2",
+        ).unwrap()
+        .build_env().await.unwrap();
     assert!(matches!(
-        &bld.address,
+        &cfg.0.address,
         Address::Tcp((host, 1756))
         if host == "edb-0134.elb.us-east-2.amazonaws.com",
     ));
-    assert_eq!(&bld.user, "user2");
-    assert_eq!(&bld.database, "db2");
-    assert_eq!(bld.password, None);
+    assert_eq!(&cfg.0.user, "user2");
+    assert_eq!(&cfg.0.database, "db2");
+    assert_eq!(cfg.0.password, None);
 
     // Tests overriding
-    bld.read_dsn(
-        "edgedb://edb-0134.elb.us-east-2.amazonaws.com:1756",
-        SkipFields::default(),
-    ).await.unwrap();
+    let cfg = Builder::new()
+        .dsn(
+            "edgedb://edb-0134.elb.us-east-2.amazonaws.com:1756",
+        ).unwrap()
+        .build_env().await.unwrap();
     assert!(matches!(
-        &bld.address,
+        &cfg.0.address,
         Address::Tcp((host, 1756))
         if host == "edb-0134.elb.us-east-2.amazonaws.com",
     ));
-    assert_eq!(&bld.user, "edgedb");
-    assert_eq!(&bld.database, "edgedb");
-    assert_eq!(bld.password, None);
+    assert_eq!(&cfg.0.user, "edgedb");
+    assert_eq!(&cfg.0.database, "edgedb");
+    assert_eq!(cfg.0.password, None);
 
-    bld.read_dsn(
-        "edgedb://user3:123123@[::1]:5555/abcdef",
-        SkipFields::default(),
-    ).await.unwrap();
+    let cfg = Builder::new()
+        .dsn("edgedb://user3:123123@[::1]:5555/abcdef").unwrap()
+        .build_env().await.unwrap();
     assert!(matches!(
-        &bld.address,
+        &cfg.0.address,
         Address::Tcp((host, 5555)) if host == "::1",
     ));
-    assert_eq!(&bld.user, "user3");
-    assert_eq!(&bld.database, "abcdef");
-    assert_eq!(bld.password, Some("123123".into()));
+    assert_eq!(&cfg.0.user, "user3");
+    assert_eq!(&cfg.0.database, "abcdef");
+    assert_eq!(cfg.0.password, Some("123123".into()));
 }
 
 #[tokio::test]
 #[should_panic]  // servo/rust-url#424
 async fn from_dsn_ipv6_scoped_address() {
-    let mut bld = Builder::uninitialized();
-    bld.read_dsn(
-        "edgedb://user3@[fe80::1ff:fe23:4567:890a%25eth0]:3000/ab",
-        SkipFields::default(),
-    ).await.unwrap();
+    let cfg = Builder::new()
+        .dsn(
+            "edgedb://user3@[fe80::1ff:fe23:4567:890a%25eth0]:3000/ab",
+        ).unwrap()
+        .build_env().await.unwrap();
     assert!(matches!(
-        &bld.address,
+        &cfg.0.address,
         Address::Tcp((host, 3000)) if host == "fe80::1ff:fe23:4567:890a%eth0",
     ));
-    assert_eq!(&bld.user, "user3");
-    assert_eq!(&bld.database, "ab");
-    assert_eq!(bld.password, None);
+    assert_eq!(&cfg.0.user, "user3");
+    assert_eq!(&cfg.0.database, "ab");
+    assert_eq!(cfg.0.password, None);
 }
 
 /// Searches for project dir either from current dir or from specified

@@ -88,10 +88,10 @@ commands:
     container: tools
     run: [cargo, outdated]
 
-  fuzz: !Command
-    description: Run fuzz tool
+  audit: !Command
+    description: Run audit tool
     container: tools
-    run: [cargo, fuzz]
+    run: [cargo, audit]
 
   example-tokio: !Command
     description: Run named tokio example
@@ -192,7 +192,7 @@ containers:
   tools:
     setup:
     - !Container ubuntu
-    - !Sh 'cargo install cargo-fuzz cargo-outdated --root=/usr'
+    - !Sh 'cargo install cargo-audit cargo-outdated --root=/usr'
     environ: *environ
 
   nightly:
