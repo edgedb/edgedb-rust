@@ -17,7 +17,7 @@ mod variables;
 /// to "shapes" in EdgeDB).
 ///
 /// ```rust
-/// #[derive(edgedb_derive::Queryable)]
+/// #[derive(Queryable)]
 /// struct User {
 ///     first_name: String,
 ///     age: i32,
@@ -36,7 +36,7 @@ mod variables;
 /// ```rust
 /// # use std::collections::HashMap;
 ///
-/// #[derive(edgedb_derive::Queryable)]
+/// #[derive(Queryable)]
 /// struct User {
 ///     #[edgedb(json)]
 ///     user_notes: HashMap<String, String>,
@@ -52,7 +52,7 @@ mod variables;
 /// `serde::Deserialize`.
 ///
 /// ```rust
-/// #[derive(edgedb_derive::Queryable, serde::Deserialize)]
+/// #[derive(Queryable, serde::Deserialize)]
 /// #[edgedb(json)]
 /// struct JsonData {
 ///     field1: String,
