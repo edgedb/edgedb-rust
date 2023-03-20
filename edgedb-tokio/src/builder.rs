@@ -35,6 +35,8 @@ pub const COMPOUND_ENV_VARS: &[&str] = &[
     "EDGEDB_INSTANCE",
     "EDGEDB_DSN",
 ];
+const DOMAIN_LABEL_MAX_LENGTH: usize = 63;
+const CLOUD_INSTANCE_NAME_MAX_LENGTH: usize = DOMAIN_LABEL_MAX_LENGTH - 2 + 1;  // "--" -> "/"
 
 static PORT_WARN: std::sync::Once = std::sync::Once::new();
 
@@ -247,29 +249,30 @@ fn stash_path(project_dir: &Path) -> Result<PathBuf, Error> {
     Ok(config_dir()?.join("projects").join(stash_name(project_dir)))
 }
 
-fn is_valid_instance_name(name: &str) -> bool {
-    let mut chars = name.chars();
-    match chars.next() {
-        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
-        _ => return false,
-    }
-    for c in chars {
-        if !c.is_ascii_alphanumeric() && c != '_' {
-            return false;
-        }
-    }
-    return true;
-}
-
-fn is_valid_org_name(name: &str) -> bool {
+fn is_valid_instance_name(name: &str, is_cloud: bool) -> bool {
     let mut chars = name.chars();
     match chars.next() {
         Some(c) if c.is_ascii_alphanumeric() => {}
+        Some(c) if !is_cloud && c == '_' => {}
         _ => return false,
     }
+    let mut was_dash = false;
     for c in chars {
-        if !c.is_ascii_alphanumeric() && c != '-' {
-            return false;
+        if c == '-' {
+            if was_dash {
+                return false;
+            } else {
+                was_dash = true;
+            }
+        } else {
+            if c == '_' {
+                if is_cloud {
+                    return false;
+                }
+            } else if !c.is_ascii_alphanumeric() {
+                return false;
+            }
+            was_dash = false;
         }
     }
     return true;
@@ -288,18 +291,24 @@ impl FromStr for InstanceName {
     type Err = Error;
     fn from_str(name: &str) -> Result<InstanceName, Error> {
         if let Some((org_slug, name)) = name.split_once('/') {
-            if !is_valid_instance_name(name) {
+            if !is_valid_instance_name(name, true) {
                 return Err(ClientError::with_message(format!(
                     "instance name \"{}\" must be a valid identifier, \
-                     regex: ^[a-zA-Z_][a-zA-Z_0-9]*$",
+                     regex: ^[a-zA-Z0-9](-?[a-zA-Z0-9])*$",
                     name,
                 )));
             }
-            if !is_valid_org_name(org_slug) {
+            if !is_valid_instance_name(org_slug, true) {
                 return Err(ClientError::with_message(format!(
                     "org name \"{}\" must be a valid identifier, \
-                     regex: ^[a-zA-Z0-9][a-zA-Z0-9-]{{0,38}}$",
+                     regex: ^[a-zA-Z0-9](-?[a-zA-Z0-9])*$",
                     org_slug,
+                )));
+            }
+            if name.len() > CLOUD_INSTANCE_NAME_MAX_LENGTH {
+                return Err(ClientError::with_message(format!(
+                    "instance name \"{}\" length cannot exceed {} characters",
+                    name, CLOUD_INSTANCE_NAME_MAX_LENGTH,
                 )));
             }
             Ok(InstanceName::Cloud {
@@ -307,10 +316,10 @@ impl FromStr for InstanceName {
                 name: name.into(),
             })
         } else {
-            if !is_valid_instance_name(name) {
+            if !is_valid_instance_name(name, false) {
                 return Err(ClientError::with_message(format!(
                     "instance name must be a valid identifier, \
-                     regex: ^[a-zA-Z_][a-zA-Z_0-9]*$ or \
+                     regex: ^[a-zA-Z_0-9](-?[a-zA-Z_0-9])*$ or \
                      a cloud instance name ORG/INST."
                 )));
             }
