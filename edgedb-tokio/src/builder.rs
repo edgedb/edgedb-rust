@@ -9,10 +9,11 @@ use std::str::{self, FromStr};
 use std::sync::Arc;
 use std::time::{Duration};
 
-use tokio::fs;
+use base64::Engine;
 use rustls::client::ServerCertVerifier;
 use serde_json::from_slice;
 use sha1::Digest;
+use tokio::fs;
 
 use edgedb_protocol::model;
 
@@ -1394,8 +1395,8 @@ async fn read_instance(cfg: &mut ConfigInner, name: &InstanceName)
                 .skip(1)
                 .next()
                 .ok_or(ClientError::with_message("Illegal JWT token"))?;
-            let claims = base64::decode_config(claims_b64,
-                                               base64::URL_SAFE_NO_PAD)
+            let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(&claims_b64)
                 .map_err(ClientError::with_source)?;
             let claims: Claims = from_slice(&claims)
                 .map_err(ClientError::with_source)?;
