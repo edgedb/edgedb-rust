@@ -35,6 +35,8 @@ pub const COMPOUND_ENV_VARS: &[&str] = &[
     "EDGEDB_INSTANCE",
     "EDGEDB_DSN",
 ];
+const DOMAIN_LABEL_MAX_LENGTH: usize = 63;
+const CLOUD_INSTANCE_NAME_MAX_LENGTH: usize = DOMAIN_LABEL_MAX_LENGTH - 2 + 1;  // "--" -> "/"
 
 static PORT_WARN: std::sync::Once = std::sync::Once::new();
 
@@ -247,32 +249,60 @@ fn stash_path(project_dir: &Path) -> Result<PathBuf, Error> {
     Ok(config_dir()?.join("projects").join(stash_name(project_dir)))
 }
 
-fn is_valid_instance_name(name: &str) -> bool {
+fn is_valid_local_instance_name(name: &str) -> bool {
+    // For local instance names:
+    //  1. Allow only letters, numbers, underscores and single dashes
+    //  2. Must not start or end with a dash
+    // regex: ^[a-zA-Z_0-9]+(-[a-zA-Z_0-9]+)*$
     let mut chars = name.chars();
     match chars.next() {
-        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        Some(c) if c.is_ascii_alphanumeric() || c == '_' => {}
         _ => return false,
     }
+    let mut was_dash = false;
     for c in chars {
-        if !c.is_ascii_alphanumeric() && c != '_' {
-            return false;
+        if c == '-' {
+            if was_dash {
+                return false;
+            } else {
+                was_dash = true;
+            }
+        } else {
+            if !c.is_ascii_alphanumeric() && c != '_' {
+                return false;
+            }
+            was_dash = false;
         }
     }
-    return true;
+    return !was_dash;
 }
 
-fn is_valid_org_name(name: &str) -> bool {
+fn is_valid_cloud_name(name: &str) -> bool {
+    // For cloud instance name parts (organization slugs and instance names):
+    //  1. Allow only letters, numbers and single dashes
+    //  2. Must not start or end with a dash
+    // regex: ^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$
     let mut chars = name.chars();
     match chars.next() {
         Some(c) if c.is_ascii_alphanumeric() => {}
         _ => return false,
     }
+    let mut was_dash = false;
     for c in chars {
-        if !c.is_ascii_alphanumeric() && c != '-' {
-            return false;
+        if c == '-' {
+            if was_dash {
+                return false;
+            } else {
+                was_dash = true;
+            }
+        } else {
+            if !c.is_ascii_alphanumeric() {
+                return false;
+            }
+            was_dash = false;
         }
     }
-    return true;
+    return !was_dash;
 }
 
 impl fmt::Display for InstanceName {
@@ -288,18 +318,25 @@ impl FromStr for InstanceName {
     type Err = Error;
     fn from_str(name: &str) -> Result<InstanceName, Error> {
         if let Some((org_slug, name)) = name.split_once('/') {
-            if !is_valid_instance_name(name) {
+            if !is_valid_cloud_name(name) {
                 return Err(ClientError::with_message(format!(
-                    "instance name \"{}\" must be a valid identifier, \
-                     regex: ^[a-zA-Z_][a-zA-Z_0-9]*$",
+                    "invalid cloud instance name \"{}\", must follow \
+                     regex: ^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$",
                     name,
                 )));
             }
-            if !is_valid_org_name(org_slug) {
+            if !is_valid_cloud_name(org_slug) {
                 return Err(ClientError::with_message(format!(
-                    "org name \"{}\" must be a valid identifier, \
-                     regex: ^[a-zA-Z0-9][a-zA-Z0-9-]{{0,38}}$",
+                    "invalid cloud org name \"{}\", must follow \
+                     regex: ^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$",
                     org_slug,
+                )));
+            }
+            if name.len() > CLOUD_INSTANCE_NAME_MAX_LENGTH {
+                return Err(ClientError::with_message(format!(
+                    "invalid cloud instance name \"{}\": \
+                    length cannot exceed {} characters",
+                    name, CLOUD_INSTANCE_NAME_MAX_LENGTH,
                 )));
             }
             Ok(InstanceName::Cloud {
@@ -307,11 +344,12 @@ impl FromStr for InstanceName {
                 name: name.into(),
             })
         } else {
-            if !is_valid_instance_name(name) {
+            if !is_valid_local_instance_name(name) {
                 return Err(ClientError::with_message(format!(
-                    "instance name must be a valid identifier, \
-                     regex: ^[a-zA-Z_][a-zA-Z_0-9]*$ or \
-                     a cloud instance name ORG/INST."
+                    "invalid instance name \"{}\", must be either following \
+                     regex: ^[a-zA-Z_0-9]+(-[a-zA-Z_0-9]+)*$ or \
+                     a cloud instance name ORG/INST.",
+                    name,
                 )));
             }
             Ok(InstanceName::Local(name.into()))
@@ -1911,6 +1949,55 @@ async fn from_dsn_ipv6_scoped_address() {
     assert_eq!(&cfg.0.user, "user3");
     assert_eq!(&cfg.0.database, "ab");
     assert_eq!(cfg.0.password, None);
+}
+
+#[test]
+fn test_instance_name() {
+    for inst_name in [
+        "abc",
+        "_localdev",
+        "123",
+        "___",
+        "12345678901234567890123456789012345678901234567890123456789012345678901234567890",
+        "abc-123",
+        "a-b-c_d-e-f",
+        "_-_-_-_",
+
+        "abc/def",
+        "123/456",
+        "abc-123/def-456",
+        "123-abc/456-def",
+        "a-b-c/1-2-3",
+    ] {
+        match InstanceName::from_str(inst_name) {
+            Ok(InstanceName::Local(name)) => assert_eq!(name, inst_name),
+            Ok(InstanceName::Cloud { org_slug, name }) => {
+                let (o, i) = inst_name
+                    .split_once("/")
+                    .expect("test case must have one slash");
+                assert_eq!(org_slug, o);
+                assert_eq!(name, i);
+            }
+            Err(e) => panic!("{:#}", e),
+        }
+    }
+    for name in [
+        "",
+        "-leading-dash",
+        "trailing-dash-",
+        "double--dash",
+        "-leading-dash/abc",
+        "trailing-dash-/abc",
+        "double--dash/abc",
+        "abc/-leading-dash",
+        "abc/trailing-dash-",
+        "abc/double--dash",
+        "abc/_localdev",
+        "under_score/abc",
+        "123/45678901234567890123456789012345678901234567890123456789012345678901234567890",
+    ] {
+        assert!(InstanceName::from_str(name).is_err(), "unexpected success: {}", name);
+    }
 }
 
 /// Searches for project dir either from current dir or from specified
