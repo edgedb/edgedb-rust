@@ -76,12 +76,12 @@ impl DecodeScalar for i64 {
 
 impl DecodeScalar for f32 {
     fn uuid() -> Uuid { codec::STD_FLOAT32 }
-    fn typename() -> &'static str { "std::int32" }
+    fn typename() -> &'static str { "std::float32" }
 }
 
 impl DecodeScalar for f64 {
     fn uuid() -> Uuid { codec::STD_FLOAT64 }
-    fn typename() -> &'static str { "std::int64" }
+    fn typename() -> &'static str { "std::float64" }
 }
 
 impl DecodeScalar for Uuid {
