@@ -14,7 +14,10 @@ mod variables;
 /// queries.
 ///
 /// This derive can be used on structures with named fields (which correspond
-/// to "shapes" in EdgeDB).
+/// to "shapes" in EdgeDB). Note that field order matters, so the struct below
+/// corresponds to an EdgeDB `User` type with `first_name` followed by `age`.
+/// A `DescriptorMismatch` will be returned if the fields in the Rust struct
+/// are not in the same order as type in the EdgeDB schema.
 ///
 /// ```rust
 /// #[derive(edgedb_derive::Queryable)]
