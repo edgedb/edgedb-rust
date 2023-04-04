@@ -7,7 +7,7 @@ use edgedb_errors::{Error, ErrorKind, DescriptorMismatch, ClientEncodingError};
 use snafu::{ensure, OptionExt};
 use uuid::Uuid;
 
-use crate::codec::{Codec, build_codec};
+use crate::codec::{Codec, build_codec, uuid_to_scalar_name};
 use crate::common::{Cardinality, State};
 use crate::encoding::{Decode, Input};
 use crate::errors::{InvalidTypeDescriptor, UnexpectedTypePos};
@@ -395,6 +395,9 @@ impl Descriptor {
     }
     pub fn decode(buf: &mut Input) -> Result<Descriptor, DecodeError> {
         <Descriptor as Decode>::decode(buf)
+    }
+    pub fn as_human_readable(&self) -> String {
+        uuid_to_scalar_name(&self.id())
     }
 }
 
