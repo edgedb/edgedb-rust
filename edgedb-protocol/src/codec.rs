@@ -40,7 +40,7 @@ pub const STD_JSON: UuidVal = UuidVal::from_u128(0x10f);
 pub const STD_BIGINT: UuidVal = UuidVal::from_u128(0x110);
 pub const CFG_MEMORY: UuidVal = UuidVal::from_u128(0x130);
 
-pub fn uuid_to_scalar_name(uuid: &UuidVal) -> String {
+pub(crate) fn uuid_to_scalar_name(uuid: &UuidVal) -> String {
     format!("BaseScalar({})", match *uuid {
         STD_UUID => "uuid".into(),
         STD_STR => "str".into(),
