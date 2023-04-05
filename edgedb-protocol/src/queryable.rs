@@ -85,7 +85,7 @@ impl DescriptorContext<'_> {
         -> DescriptorMismatch
     {
         DescriptorMismatch::WrongType {
-            unexpected: descriptor.as_human_readable(),
+            unexpected: format!("{descriptor:?}"),
             expected: expected.into(),
         }
     }

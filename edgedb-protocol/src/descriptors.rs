@@ -1,4 +1,5 @@
 use std::convert::{TryFrom, TryInto};
+use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -46,22 +47,49 @@ pub struct Typedesc {
     pub(crate) root_pos: Option<TypePos>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct SetDescriptor {
     pub id: Uuid,
     pub type_pos: TypePos,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl Debug for SetDescriptor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_struct("SetDescriptor")
+            .field("id", &uuid_to_scalar_name(&self.id))
+            .field("type_pos", &&self.type_pos)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub struct ObjectShapeDescriptor {
     pub id: Uuid,
     pub elements: Vec<ShapeElement>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl Debug for ObjectShapeDescriptor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_struct("ObjectShapeDescriptor")
+            .field("id", &uuid_to_scalar_name(&self.id))
+            .field("elements", &self.elements)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub struct InputShapeTypeDescriptor {
     pub id: Uuid,
     pub elements: Vec<ShapeElement>,
+}
+
+impl Debug for InputShapeTypeDescriptor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_struct("InputShapeTypeDescriptor")
+            .field("id", &uuid_to_scalar_name(&self.id))
+            .field("elements", &self.elements)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,27 +102,62 @@ pub struct ShapeElement {
     pub type_pos: TypePos,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct BaseScalarTypeDescriptor {
     pub id: Uuid,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl Debug for BaseScalarTypeDescriptor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_struct("BaseScalarTypeDescriptor")
+            .field("id", &uuid_to_scalar_name(&self.id))
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub struct ScalarTypeDescriptor {
     pub id: Uuid,
     pub base_type_pos: TypePos,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl Debug for ScalarTypeDescriptor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_struct("ScalarTypeDescriptor")
+            .field("id", &uuid_to_scalar_name(&self.id))
+            .field("base_type_pos", &self.base_type_pos)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub struct TupleTypeDescriptor {
     pub id: Uuid,
     pub element_types: Vec<TypePos>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl Debug for TupleTypeDescriptor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_struct("TupleTypeDescriptor")
+            .field("id", &uuid_to_scalar_name(&self.id))
+            .field("element_types", &self.element_types)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub struct NamedTupleTypeDescriptor {
     pub id: Uuid,
     pub elements: Vec<TupleElement>,
+}
+
+impl Debug for NamedTupleTypeDescriptor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_struct("NamedTupleTypeDescriptor")
+            .field("id", &uuid_to_scalar_name(&self.id))
+            .field("elements", &self.elements)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,30 +166,68 @@ pub struct TupleElement {
     pub type_pos: TypePos,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ArrayTypeDescriptor {
     pub id: Uuid,
     pub type_pos: TypePos,
     pub dimensions: Vec<Option<u32>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl Debug for ArrayTypeDescriptor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_struct("ArrayTypeDescriptor")
+            .field("id", &uuid_to_scalar_name(&self.id))
+            .field("type_pos", &self.type_pos)
+            .field("dimensions", &self.dimensions)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub struct RangeTypeDescriptor {
     pub id: Uuid,
     pub type_pos: TypePos,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl Debug for RangeTypeDescriptor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_struct("RangeTypeDescriptor")
+            .field("id", &uuid_to_scalar_name(&self.id))
+            .field("type_pos", &self.type_pos)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub struct EnumerationTypeDescriptor {
     pub id: Uuid,
     pub members: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl Debug for EnumerationTypeDescriptor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_struct("EnumerationTypeDescriptor")
+            .field("id", &uuid_to_scalar_name(&self.id))
+            .field("members", &self.members)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub struct TypeAnnotationDescriptor {
     pub annotated_type: u8,
     pub id: Uuid,
     pub annotation: String,
+}
+
+impl Debug for TypeAnnotationDescriptor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_struct("TypeAnnotationDescriptor")
+            .field("annotated_type", &self.annotated_type)
+            .field("id", &uuid_to_scalar_name(&self.id))
+            .field("annotation", &self.annotation)
+            .finish()
+    }
 }
 
 pub struct StateBorrow<'a> {
@@ -395,9 +496,6 @@ impl Descriptor {
     }
     pub fn decode(buf: &mut Input) -> Result<Descriptor, DecodeError> {
         <Descriptor as Decode>::decode(buf)
-    }
-    pub fn as_human_readable(&self) -> String {
-        uuid_to_scalar_name(&self.id())
     }
 }
 

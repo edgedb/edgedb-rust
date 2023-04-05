@@ -8,7 +8,7 @@ use uuid::Uuid;
 use edgedb_errors::{Error, ErrorKind};
 use edgedb_errors::{ClientEncodingError, ProtocolError, DescriptorMismatch};
 
-use crate::codec::{self, Codec, build_codec, uuid_to_scalar_name};
+use crate::codec::{self, Codec, build_codec};
 use crate::descriptors::Descriptor;
 use crate::descriptors::TypePos;
 use crate::errors;
@@ -97,7 +97,7 @@ impl DescriptorContext<'_> {
     }
     pub fn wrong_type(&self, descriptor: &Descriptor, expected: &str) -> Error
     {
-        DescriptorMismatch::with_message(format!("unexpected type {} returned from EdgeDB, client expected {}", descriptor.as_human_readable(), expected))
+        DescriptorMismatch::with_message(format!("unexpected type {descriptor:?} returned from EdgeDB, client expected {expected}"))
     }
     pub fn field_number(&self, expected: usize, unexpected: usize)
         -> Error
