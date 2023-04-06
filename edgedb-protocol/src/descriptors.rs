@@ -42,9 +42,9 @@ pub enum Descriptor {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-pub struct DescriptorId(Uuid);
+pub struct DescriptorUuid(Uuid);
 
-impl Debug for DescriptorId {
+impl Debug for DescriptorUuid {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let readable_id = uuid_to_scalar_name(&self.0);
         f.debug_struct(&readable_id)
@@ -52,7 +52,7 @@ impl Debug for DescriptorId {
     }
 }
 
-impl Deref for DescriptorId {
+impl Deref for DescriptorUuid {
     type Target = Uuid;
 
     fn deref(&self) -> &Self::Target {
@@ -60,13 +60,13 @@ impl Deref for DescriptorId {
     }
 }
 
-impl From<Uuid> for DescriptorId {
+impl From<Uuid> for DescriptorUuid {
     fn from(uuid: Uuid) -> Self {
         Self(uuid)
     }
 }
 
-impl FromStr for DescriptorId {
+impl FromStr for DescriptorUuid {
     type Err = DecodeError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -87,19 +87,19 @@ pub struct Typedesc {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SetDescriptor {
-    pub id: DescriptorId,
+    pub id: DescriptorUuid,
     pub type_pos: TypePos,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ObjectShapeDescriptor {
-    pub id: DescriptorId,
+    pub id: DescriptorUuid,
     pub elements: Vec<ShapeElement>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InputShapeTypeDescriptor {
-    pub id: DescriptorId,
+    pub id: DescriptorUuid,
     pub elements: Vec<ShapeElement>,
 }
 
@@ -115,24 +115,24 @@ pub struct ShapeElement {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BaseScalarTypeDescriptor {
-    pub id: DescriptorId,
+    pub id: DescriptorUuid,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ScalarTypeDescriptor {
-    pub id: DescriptorId,
+    pub id: DescriptorUuid,
     pub base_type_pos: TypePos,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TupleTypeDescriptor {
-    pub id: DescriptorId,
+    pub id: DescriptorUuid,
     pub element_types: Vec<TypePos>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NamedTupleTypeDescriptor {
-    pub id: DescriptorId,
+    pub id: DescriptorUuid,
     pub elements: Vec<TupleElement>,
 }
 
@@ -144,27 +144,27 @@ pub struct TupleElement {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ArrayTypeDescriptor {
-    pub id: DescriptorId,
+    pub id: DescriptorUuid,
     pub type_pos: TypePos,
     pub dimensions: Vec<Option<u32>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RangeTypeDescriptor {
-    pub id: DescriptorId,
+    pub id: DescriptorUuid,
     pub type_pos: TypePos,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EnumerationTypeDescriptor {
-    pub id: DescriptorId,
+    pub id: DescriptorUuid,
     pub members: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TypeAnnotationDescriptor {
     pub annotated_type: u8,
-    pub id: DescriptorId,
+    pub id: DescriptorUuid,
     pub annotation: String,
 }
 
