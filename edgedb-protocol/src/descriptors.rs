@@ -1,12 +1,13 @@
 use std::convert::{TryFrom, TryInto};
 use std::fmt::{Debug, Formatter};
 use std::ops::Deref;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::collections::{BTreeMap, BTreeSet};
 
 use bytes::{Buf, BufMut, BytesMut};
 use edgedb_errors::{Error, ErrorKind, DescriptorMismatch, ClientEncodingError};
-use snafu::{ensure, OptionExt};
+use snafu::{ensure, OptionExt, ResultExt};
 use uuid::Uuid;
 
 use crate::codec::{Codec, build_codec, uuid_to_scalar_name};
@@ -62,6 +63,17 @@ impl Deref for DescriptorId {
 impl From<Uuid> for DescriptorId {
     fn from(uuid: Uuid) -> Self {
         Self(uuid)
+    }
+}
+
+impl FromStr for DescriptorId {
+    type Err = DecodeError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match Uuid::from_str(s).context(errors::InvalidUuid) {
+            Ok(s) => Ok(Self(s)),
+            Err(e) => Err(e)
+        }
     }
 }
 
