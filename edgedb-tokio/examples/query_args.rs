@@ -10,6 +10,9 @@ async fn main() -> anyhow::Result<()> {
     // Note the comma to indicate this is a tuple:                                                   ^^^^^^^^
     println!("One arg:\n{one_arg}");
 
+    let vec_of_numbers: Vec<i32> = conn.query("select {<int32>$0, <int32>$1}", &(10, 20)).await?;
+    println!("Here are your numbers back: {vec_of_numbers:?}");
+
     let num_res: i32 = conn.query_required_single("select {<int32>$0 + <int32>$1}", &(10, 20)).await?;
     println!("Two args added together: {num_res}");
 
