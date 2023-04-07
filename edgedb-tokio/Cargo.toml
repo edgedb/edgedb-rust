@@ -42,7 +42,7 @@ tokio-stream = {version="0.1.11", optional=true}
 base64 = "0.13"
 crc16 = "0.4.0"
 
-[target.'cfg(target_os = "linux")'.dev-dependencies]
+[target.'cfg(not(target_os="windows"))'.dev-dependencies]
 command-fds = "0.2.1"
 
 [dev-dependencies]
