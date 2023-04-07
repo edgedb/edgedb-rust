@@ -80,7 +80,7 @@ impl FromStr for DescriptorUuid {
 
 impl PartialEq<Uuid> for DescriptorUuid {
     fn eq(&self, other: &Uuid) -> bool {
-        &self.0 == other
+        self.0 == *other
     }
 }
 
