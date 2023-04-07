@@ -42,10 +42,8 @@ tokio-stream = {version="0.1.11", optional=true}
 base64 = "0.13"
 crc16 = "0.4.0"
 
-[target.'cfg(target_os = "unix")'.dev-dependencies]
-command-fds = "0.2.1"
-
 [dev-dependencies]
+command-fds = "0.2.1"
 nix = "0.23.1"
 shutdown_hooks = "0.1.0"
 env_logger = "0.9"
