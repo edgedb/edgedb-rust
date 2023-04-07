@@ -40,30 +40,31 @@ pub const STD_JSON: UuidVal = UuidVal::from_u128(0x10f);
 pub const STD_BIGINT: UuidVal = UuidVal::from_u128(0x110);
 pub const CFG_MEMORY: UuidVal = UuidVal::from_u128(0x130);
 
-pub(crate) fn uuid_to_scalar_name(uuid: &UuidVal) -> String {
-    format!("BaseScalar({})", match *uuid {
-        STD_UUID => "uuid".into(),
-        STD_STR => "str".into(),
-        STD_BYTES => "bytes".into(),
-        STD_INT16 => "int16".into(),
-        STD_INT32 => "int32".into(),
-        STD_INT64 => "int64".into(),
-        STD_FLOAT32 => "float32".into(),
-        STD_FLOAT64 => "float64".into(),
-        STD_DECIMAL => "decimal".into(),
-        STD_BOOL => "bool".into(),
-        STD_DATETIME => "datetime".into(),
-        CAL_LOCAL_DATETIME => "cal::local_datetime".into(),
-        CAL_LOCAL_DATE => "cal::local_date".into(),
-        CAL_LOCAL_TIME => "cal::local_time".into(),
-        STD_DURATION => "duration".into(),
-        CAL_RELATIVE_DURATION => "cal::relative_duration".into(),
-        CAL_DATE_DURATION => "cal::date_duration".into(),
-        STD_JSON => "std::json".into(),
-        STD_BIGINT => "bigint".into(),
-        CFG_MEMORY => "cfg::memory".into(),
-        other => other.to_string()
-    })
+pub(crate) fn uuid_to_known_name(uuid: &UuidVal) -> Option<&'static str> {
+
+    match *uuid {
+        STD_UUID => Some("BaseScalar(uuid)"),
+        STD_STR => Some("BaseScalar(str)"),
+        STD_BYTES => Some("BaseScalar(bytes)"),
+        STD_INT16 => Some("BaseScalar(int16)"),
+        STD_INT32 => Some("BaseScalar(int32)"),
+        STD_INT64 => Some("BaseScalar(int64)"),
+        STD_FLOAT32 => Some("BaseScalar(float32)"),
+        STD_FLOAT64 => Some("BaseScalar(float64)"),
+        STD_DECIMAL => Some("BaseScalar(decimal)"),
+        STD_BOOL => Some("BaseScalar(bool)"),
+        STD_DATETIME => Some("BaseScalar(datetime)"),
+        CAL_LOCAL_DATETIME => Some("BaseScalar(cal::local_datetime)"),
+        CAL_LOCAL_DATE => Some("BaseScalar(cal::local_date)"),
+        CAL_LOCAL_TIME => Some("BaseScalar(cal::local_time)"),
+        STD_DURATION => Some("BaseScalar(duration)"),
+        CAL_RELATIVE_DURATION => Some("BaseScalar(cal::relative_duration)"),
+        CAL_DATE_DURATION => Some("BaseScalar(cal::date_duration)"),
+        STD_JSON => Some("BaseScalar(std::json)"),
+        STD_BIGINT => Some("BaseScalar(bigint)"),
+        CFG_MEMORY => Some("BaseScalar(cfg::memory)"),
+        _ => None
+    }
 }
 
 pub trait Codec: fmt::Debug + Send + Sync + 'static {
