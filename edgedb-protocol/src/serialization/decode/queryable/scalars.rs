@@ -18,7 +18,7 @@ fn check_scalar(ctx: &DescriptorContext, type_pos: TypePos, type_id: Uuid, name:
         Scalar(scalar) => {
             return check_scalar(ctx, scalar.base_type_pos, type_id, name);
         }
-        BaseScalar(base) if base.id == type_id => {
+        BaseScalar(base) if *base.id == type_id => {
             return Ok(());
         }
         _ => {}

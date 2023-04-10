@@ -16,7 +16,7 @@ use crate::errors::{self, CodecError, DecodeError, EncodeError};
 use crate::value::{Value, SparseObject};
 use crate::model;
 use crate::serialization::decode::{RawCodec, DecodeTupleLike, DecodeArrayLike};
-use crate::serialization::decode::{DecodeRange};
+use crate::serialization::decode::DecodeRange;
 use crate::model::range;
 
 pub const STD_UUID: UuidVal = UuidVal::from_u128(0x100);
@@ -40,6 +40,32 @@ pub const STD_JSON: UuidVal = UuidVal::from_u128(0x10f);
 pub const STD_BIGINT: UuidVal = UuidVal::from_u128(0x110);
 pub const CFG_MEMORY: UuidVal = UuidVal::from_u128(0x130);
 
+pub(crate) fn uuid_to_known_name(uuid: &UuidVal) -> Option<&'static str> {
+
+    match *uuid {
+        STD_UUID => Some("BaseScalar(uuid)"),
+        STD_STR => Some("BaseScalar(str)"),
+        STD_BYTES => Some("BaseScalar(bytes)"),
+        STD_INT16 => Some("BaseScalar(int16)"),
+        STD_INT32 => Some("BaseScalar(int32)"),
+        STD_INT64 => Some("BaseScalar(int64)"),
+        STD_FLOAT32 => Some("BaseScalar(float32)"),
+        STD_FLOAT64 => Some("BaseScalar(float64)"),
+        STD_DECIMAL => Some("BaseScalar(decimal)"),
+        STD_BOOL => Some("BaseScalar(bool)"),
+        STD_DATETIME => Some("BaseScalar(datetime)"),
+        CAL_LOCAL_DATETIME => Some("BaseScalar(cal::local_datetime)"),
+        CAL_LOCAL_DATE => Some("BaseScalar(cal::local_date)"),
+        CAL_LOCAL_TIME => Some("BaseScalar(cal::local_time)"),
+        STD_DURATION => Some("BaseScalar(duration)"),
+        CAL_RELATIVE_DURATION => Some("BaseScalar(cal::relative_duration)"),
+        CAL_DATE_DURATION => Some("BaseScalar(cal::date_duration)"),
+        STD_JSON => Some("BaseScalar(std::json)"),
+        STD_BIGINT => Some("BaseScalar(bigint)"),
+        CFG_MEMORY => Some("BaseScalar(cfg::memory)"),
+        _ => None
+    }
+}
 
 pub trait Codec: fmt::Debug + Send + Sync + 'static {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError>;

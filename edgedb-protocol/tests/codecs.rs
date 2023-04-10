@@ -7,7 +7,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 
 use edgedb_protocol::codec::{Codec, ObjectShape};
-use edgedb_protocol::codec::{build_codec};
+use edgedb_protocol::codec::build_codec;
 use edgedb_protocol::common::RawTypedesc;
 use edgedb_protocol::descriptors::ArrayTypeDescriptor;
 use edgedb_protocol::descriptors::BaseScalarTypeDescriptor;
@@ -16,14 +16,15 @@ use edgedb_protocol::descriptors::RangeTypeDescriptor;
 use edgedb_protocol::descriptors::{Descriptor, TypePos};
 use edgedb_protocol::descriptors::{NamedTupleTypeDescriptor, TupleElement};
 use edgedb_protocol::descriptors::{ObjectShapeDescriptor, ShapeElement};
-use edgedb_protocol::descriptors::{ScalarTypeDescriptor};
-use edgedb_protocol::descriptors::{SetDescriptor};
-use edgedb_protocol::descriptors::{TupleTypeDescriptor};
+use edgedb_protocol::descriptors::ScalarTypeDescriptor;
+use edgedb_protocol::descriptors::SetDescriptor;
+use edgedb_protocol::descriptors::TupleTypeDescriptor;
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::model::{Datetime, RelativeDuration, Json};
 use edgedb_protocol::model::{LocalDate, LocalTime, Duration};
 use edgedb_protocol::server_message::StateDataDescription;
 use edgedb_protocol::value::{Value, SparseObject};
+use uuid::Uuid;
 
 mod base;
 
@@ -50,7 +51,7 @@ fn int16() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-000000000103".parse()?,
+                id: "00000000-0000-0000-0000-000000000103".parse::<Uuid>()?.into(),
             })
         ]
     )?;
@@ -68,7 +69,7 @@ fn int32() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-000000000104".parse()?,
+                id: "00000000-0000-0000-0000-000000000104".parse::<Uuid>()?.into(),
             })
         ]
     )?;
@@ -85,7 +86,7 @@ fn int64() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-000000000105".parse()?,
+                id: "00000000-0000-0000-0000-000000000105".parse::<Uuid>()?.into(),
             })
         ]
     )?;
@@ -105,7 +106,7 @@ fn float32() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-000000000106".parse()?,
+                id: "00000000-0000-0000-0000-000000000106".parse::<Uuid>()?.into(),
             })
         ]
     )?;
@@ -144,7 +145,7 @@ fn float64() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-000000000107".parse()?,
+                id: "00000000-0000-0000-0000-000000000107".parse::<Uuid>()?.into(),
             })
         ]
     )?;
@@ -183,7 +184,7 @@ fn str() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-000000000101".parse()?,
+                id: "00000000-0000-0000-0000-000000000101".parse::<Uuid>()?.into(),
             })
         ]
     )?;
@@ -199,7 +200,7 @@ fn bytes() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-000000000102".parse()?,
+                id: "00000000-0000-0000-0000-000000000102".parse::<Uuid>()?.into(),
             })
         ]
     )?;
@@ -215,12 +216,12 @@ fn uuid() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-000000000100".parse()?,
+                id: "00000000-0000-0000-0000-000000000100".parse::<Uuid>()?.into(),
             })
         ]
     )?;
     encoding_eq!(&codec, b"I(\xcc\x1e e\x11\xea\x88H{S\xa6\xad\xb3\x83",
-               Value::Uuid("4928cc1e-2065-11ea-8848-7b53a6adb383".parse()?));
+               Value::Uuid("4928cc1e-2065-11ea-8848-7b53a6adb383".parse::<Uuid>()?.into()));
     Ok(())
 }
 
@@ -229,7 +230,7 @@ fn duration() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-00000000010e".parse()?,
+                id: "00000000-0000-0000-0000-00000000010e".parse::<Uuid>()?.into(),
             })
         ]
     )?;
@@ -255,7 +256,7 @@ fn relative_duration() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-000000000111".parse()?,
+                id: "00000000-0000-0000-0000-000000000111".parse::<Uuid>()?.into(),
             })
         ]
     )?;
@@ -307,10 +308,10 @@ fn object_codec() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(Some(TypePos(1)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-000000000100".parse()?,
+                id: "00000000-0000-0000-0000-000000000100".parse::<Uuid>()?.into(),
             }),
             Descriptor::ObjectShape(ObjectShapeDescriptor {
-                id: "5d5ebe41-eac8-eab7-a24e-cc3a8cd2766c".parse()?,
+                id: "5d5ebe41-eac8-eab7-a24e-cc3a8cd2766c".parse::<Uuid>()?.into(),
                 elements,
             }),
         ]
@@ -462,21 +463,21 @@ fn set_codec() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(Some(TypePos(4)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-000000000100".parse()?,
+                id: "00000000-0000-0000-0000-000000000100".parse::<Uuid>()?.into(),
             }),
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-000000000101".parse()?,
+                id: "00000000-0000-0000-0000-000000000101".parse::<Uuid>()?.into(),
             }),
             Descriptor::ObjectShape(ObjectShapeDescriptor {
-                id: "8faa7193-48c6-4263-18d3-1a127652569b".parse()?,
+                id: "8faa7193-48c6-4263-18d3-1a127652569b".parse::<Uuid>()?.into(),
                 elements: inner_elements,
             }),
             Descriptor::Set(SetDescriptor {
-                id: "afbb389d-aa73-2aae-9310-84a9163cb5ed".parse()?,
+                id: "afbb389d-aa73-2aae-9310-84a9163cb5ed".parse::<Uuid>()?.into(),
                 type_pos: TypePos(2),
             }),
             Descriptor::ObjectShape(ObjectShapeDescriptor {
-                id: "9740ff04-324e-08a4-4ac7-2192d72c6967".parse()?,
+                id: "9740ff04-324e-08a4-4ac7-2192d72c6967".parse::<Uuid>()?.into(),
                 elements: outer_elements,
             }),
         ]
@@ -559,7 +560,7 @@ fn bigint() -> Result<(), Box<dyn Error>> {
         &[
             Descriptor::BaseScalar(
                 BaseScalarTypeDescriptor {
-                    id: "00000000-0000-0000-0000-000000000110".parse()?,
+                    id: "00000000-0000-0000-0000-000000000110".parse::<Uuid>()?.into(),
                 },
             ),
         ]
@@ -588,7 +589,7 @@ fn decimal() -> Result<(), Box<dyn Error>> {
         &[
             Descriptor::BaseScalar(
                 BaseScalarTypeDescriptor {
-                    id: "00000000-0000-0000-0000-000000000108".parse()?,
+                    id: "00000000-0000-0000-0000-000000000108".parse::<Uuid>()?.into(),
                 },
             ),
         ]
@@ -617,7 +618,7 @@ fn bool() -> Result<(), Box<dyn Error>> {
         &[
             Descriptor::BaseScalar(
                 BaseScalarTypeDescriptor {
-                    id: "00000000-0000-0000-0000-000000000109".parse()?,
+                    id: "00000000-0000-0000-0000-000000000109".parse::<Uuid>()?.into(),
                 },
             ),
         ]
@@ -633,7 +634,7 @@ fn datetime() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-00000000010a".parse()?,
+                id: "00000000-0000-0000-0000-00000000010a".parse::<Uuid>()?.into(),
             })
         ]
     )?;
@@ -649,7 +650,7 @@ fn local_datetime() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-00000000010b".parse()?,
+                id: "00000000-0000-0000-0000-00000000010b".parse::<Uuid>()?.into(),
             })
         ]
     )?;
@@ -664,7 +665,7 @@ fn local_date() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-00000000010c".parse()?,
+                id: "00000000-0000-0000-0000-00000000010c".parse::<Uuid>()?.into(),
             })
         ]
     )?;
@@ -679,7 +680,7 @@ fn local_time() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-00000000010d".parse()?,
+                id: "00000000-0000-0000-0000-00000000010d".parse::<Uuid>()?.into(),
             })
         ]
     )?;
@@ -694,7 +695,7 @@ fn json() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(Some(TypePos(0)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-00000000010f".parse()?,
+                id: "00000000-0000-0000-0000-00000000010f".parse::<Uuid>()?.into(),
             })
         ]
     )?;
@@ -710,12 +711,12 @@ fn custom_scalar() -> Result<(), Box<dyn Error>> {
         &[
             Descriptor::BaseScalar(
                 BaseScalarTypeDescriptor {
-                    id: "00000000-0000-0000-0000-000000000101".parse()?,
+                    id: "00000000-0000-0000-0000-000000000101".parse::<Uuid>()?.into(),
                 },
             ),
             Descriptor::Scalar(
                 ScalarTypeDescriptor {
-                    id: "234dc787-2646-11ea-bebd-010d530c06ca".parse()?,
+                    id: "234dc787-2646-11ea-bebd-010d530c06ca".parse::<Uuid>()?.into(),
                     base_type_pos: TypePos(0),
                 },
             ),
@@ -733,17 +734,17 @@ fn tuple() -> Result<(), Box<dyn Error>> {
         &[
             Descriptor::BaseScalar(
                 BaseScalarTypeDescriptor {
-                    id: "00000000-0000-0000-0000-000000000105".parse()?,
+                    id: "00000000-0000-0000-0000-000000000105".parse::<Uuid>()?.into(),
                 },
             ),
             Descriptor::BaseScalar(
                 BaseScalarTypeDescriptor {
-                    id: "00000000-0000-0000-0000-000000000101".parse()?,
+                    id: "00000000-0000-0000-0000-000000000101".parse::<Uuid>()?.into(),
                 },
             ),
             Descriptor::Tuple(
                 TupleTypeDescriptor {
-                    id: "6c87a50a-fce2-dcae-6872-8c4c9c4d1e7c".parse()?,
+                    id: "6c87a50a-fce2-dcae-6872-8c4c9c4d1e7c".parse::<Uuid>()?.into(),
                     element_types: vec![TypePos(0), TypePos(1)],
                 },
             ),
@@ -777,17 +778,17 @@ fn named_tuple() -> Result<(), Box<dyn Error>> {
         &[
             Descriptor::BaseScalar(
                 BaseScalarTypeDescriptor {
-                    id: "00000000-0000-0000-0000-000000000105".parse()?,
+                    id: "00000000-0000-0000-0000-000000000105".parse::<Uuid>()?.into(),
                 },
             ),
             Descriptor::BaseScalar(
                 BaseScalarTypeDescriptor {
-                    id: "00000000-0000-0000-0000-000000000101".parse()?,
+                    id: "00000000-0000-0000-0000-000000000101".parse::<Uuid>()?.into(),
                 },
             ),
             Descriptor::NamedTuple(
                     NamedTupleTypeDescriptor {
-                        id: "101385c1-d6d5-ec67-eec4-b2b88be8a197".parse()?,
+                        id: "101385c1-d6d5-ec67-eec4-b2b88be8a197".parse::<Uuid>()?.into(),
                         elements,
                     },
                 ),
@@ -813,12 +814,12 @@ fn array() -> Result<(), Box<dyn Error>> {
         &[
             Descriptor::BaseScalar(
                 BaseScalarTypeDescriptor {
-                    id: "00000000-0000-0000-0000-000000000105".parse()?,
+                    id: "00000000-0000-0000-0000-000000000105".parse::<Uuid>()?.into(),
                 },
             ),
             Descriptor::Array(
                 ArrayTypeDescriptor {
-                    id: "b0105467-a177-635f-e207-0a21867f9be0".parse()?,
+                    id: "b0105467-a177-635f-e207-0a21867f9be0".parse::<Uuid>()?.into(),
                     type_pos: TypePos(0),
                     dimensions: vec![None],
                 },
@@ -847,7 +848,7 @@ fn enums() -> Result<(), Box<dyn Error>> {
         &[
             Descriptor::Enumeration(
                 EnumerationTypeDescriptor {
-                    id: "ac5dc6a4-2656-11ea-aa6d-233f91e80ff6".parse()?,
+                    id: "ac5dc6a4-2656-11ea-aa6d-233f91e80ff6".parse::<Uuid>()?.into(),
                     members: vec![
                         "x".into(),
                         "y".into(),
@@ -894,25 +895,25 @@ fn set_of_arrays() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(Some(TypePos(5)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-000000000101".parse()?, // str
+                id: "00000000-0000-0000-0000-000000000101".parse::<Uuid>()?.into(), // str
             }),
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-000000000100".parse()?, // uuid
+                id: "00000000-0000-0000-0000-000000000100".parse::<Uuid>()?.into(), // uuid
             }),
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-000000000105".parse()?, // int64
+                id: "00000000-0000-0000-0000-000000000105".parse::<Uuid>()?.into(), // int64
             }),
             Descriptor::Array(ArrayTypeDescriptor {
-                id: "b0105467-a177-635f-e207-0a21867f9be0".parse()?,
+                id: "b0105467-a177-635f-e207-0a21867f9be0".parse::<Uuid>()?.into(),
                 type_pos: TypePos(2),
                 dimensions: vec![None],
             }),
             Descriptor::Set(SetDescriptor {
-                id: "499ffd5c-f21b-574d-af8a-1c094c9d6fb0".parse()?,
+                id: "499ffd5c-f21b-574d-af8a-1c094c9d6fb0".parse::<Uuid>()?.into(),
                 type_pos: TypePos(3),
             }),
             Descriptor::ObjectShape(ObjectShapeDescriptor {
-                id: "499ffd5c-f21b-574d-af8a-1c094c9d6fb0".parse()?,
+                id: "499ffd5c-f21b-574d-af8a-1c094c9d6fb0".parse::<Uuid>()?.into(),
                 elements,
             }),
         ]
@@ -952,10 +953,10 @@ fn range() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(Some(TypePos(1)),
         &[
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-000000000105".parse()?,
+                id: "00000000-0000-0000-0000-000000000105".parse::<Uuid>()?.into(),
             }),
             Descriptor::Range(RangeTypeDescriptor {
-                id: "7f8919fd845bb1badae19d40d96ea0a8".parse().unwrap(),
+                id: "7f8919fd845bb1badae19d40d96ea0a8".parse::<Uuid>().unwrap().into(),
                 type_pos: TypePos(0),
             }),
         ]

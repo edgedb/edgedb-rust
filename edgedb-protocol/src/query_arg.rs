@@ -97,9 +97,7 @@ impl DescriptorContext<'_> {
     }
     pub fn wrong_type(&self, descriptor: &Descriptor, expected: &str) -> Error
     {
-        DescriptorMismatch::with_message(format!(
-            "unexpected type {:?}, expected {}",
-            descriptor, expected))
+        DescriptorMismatch::with_message(format!("\nEdgeDB returned unexpected type {descriptor:?}\nClient expected {expected}"))
     }
     pub fn field_number(&self, expected: usize, unexpected: usize)
         -> Error
