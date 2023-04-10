@@ -67,17 +67,6 @@ impl From<Uuid> for DescriptorUuid {
     }
 }
 
-impl FromStr for DescriptorUuid {
-    type Err = DecodeError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match Uuid::from_str(s).context(errors::InvalidUuid) {
-            Ok(s) => Ok(Self(s)),
-            Err(e) => Err(e)
-        }
-    }
-}
-
 impl PartialEq<Uuid> for DescriptorUuid {
     fn eq(&self, other: &Uuid) -> bool {
         self.0 == *other
