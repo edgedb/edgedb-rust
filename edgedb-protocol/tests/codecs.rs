@@ -7,18 +7,18 @@ use std::sync::Arc;
 use bytes::Bytes;
 
 use edgedb_protocol::codec::{Codec, ObjectShape};
-use edgedb_protocol::codec::{build_codec};
+use edgedb_protocol::codec::build_codec;
 use edgedb_protocol::common::RawTypedesc;
-use edgedb_protocol::descriptors::{ArrayTypeDescriptor, DescriptorUuid};
+use edgedb_protocol::descriptors::ArrayTypeDescriptor;
 use edgedb_protocol::descriptors::BaseScalarTypeDescriptor;
 use edgedb_protocol::descriptors::EnumerationTypeDescriptor;
 use edgedb_protocol::descriptors::RangeTypeDescriptor;
 use edgedb_protocol::descriptors::{Descriptor, TypePos};
 use edgedb_protocol::descriptors::{NamedTupleTypeDescriptor, TupleElement};
 use edgedb_protocol::descriptors::{ObjectShapeDescriptor, ShapeElement};
-use edgedb_protocol::descriptors::{ScalarTypeDescriptor};
-use edgedb_protocol::descriptors::{SetDescriptor};
-use edgedb_protocol::descriptors::{TupleTypeDescriptor};
+use edgedb_protocol::descriptors::ScalarTypeDescriptor;
+use edgedb_protocol::descriptors::SetDescriptor;
+use edgedb_protocol::descriptors::TupleTypeDescriptor;
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::model::{Datetime, RelativeDuration, Json};
 use edgedb_protocol::model::{LocalDate, LocalTime, Duration};
@@ -560,7 +560,7 @@ fn bigint() -> Result<(), Box<dyn Error>> {
         &[
             Descriptor::BaseScalar(
                 BaseScalarTypeDescriptor {
-                    id: "00000000-0000-0000-0000-000000000110".parse()?,
+                    id: "00000000-0000-0000-0000-000000000110".parse::<Uuid>()?.into(),
                 },
             ),
         ]
@@ -589,7 +589,7 @@ fn decimal() -> Result<(), Box<dyn Error>> {
         &[
             Descriptor::BaseScalar(
                 BaseScalarTypeDescriptor {
-                    id: "00000000-0000-0000-0000-000000000108".parse()?,
+                    id: "00000000-0000-0000-0000-000000000108".parse::<Uuid>()?.into(),
                 },
             ),
         ]
