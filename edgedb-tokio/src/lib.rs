@@ -1,4 +1,7 @@
 //! EdgeDB client for Tokio
+//! 
+//! 👉 New! Check out the new [EdgeDB client tutorial](`tutorial`). 👈
+
 //!
 //! Main way to use EdgeDB bindings is to use [`Client`]. It encompasses
 //! connection pool to the database that is transparent for user. Individual
@@ -25,6 +28,7 @@
 //! }
 //! ```
 //! More [examples on github](https://github.com/edgedb/edgedb-rust/tree/master/edgedb-tokio/examples)
+
 #![cfg_attr(not(feature="unstable"),
    warn(missing_docs, missing_debug_implementations))]
 
@@ -52,6 +56,7 @@ mod errors;
 mod options;
 mod sealed;
 pub mod state;
+pub mod tutorial;
 mod transaction;
 
 pub use edgedb_derive::{Queryable, GlobalsDelta, ConfigDelta};

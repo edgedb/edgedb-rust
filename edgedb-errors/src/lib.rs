@@ -18,7 +18,7 @@
 //! assert!(err.is::<UserError>());
 //! ```
 //!
-//! Since errors are hirarhical [`Error::is`] works with any ancestor:
+//! Since errors are hirarchical [`Error::is`] works with any ancestor:
 //!
 //! ```rust
 //! # use edgedb_errors::*;

@@ -1,13 +1,12 @@
 use std::convert::{TryFrom, TryInto};
 use std::fmt::{Debug, Formatter};
 use std::ops::Deref;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::collections::{BTreeMap, BTreeSet};
 
 use bytes::{Buf, BufMut, BytesMut};
 use edgedb_errors::{Error, ErrorKind, DescriptorMismatch, ClientEncodingError};
-use snafu::{ensure, OptionExt, ResultExt};
+use snafu::{ensure, OptionExt};
 use uuid::Uuid;
 
 use crate::codec::{Codec, build_codec, uuid_to_known_name};
