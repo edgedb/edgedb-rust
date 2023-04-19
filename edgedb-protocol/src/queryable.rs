@@ -85,8 +85,7 @@ impl DescriptorContext<'_> {
         -> DescriptorMismatch
     {
         DescriptorMismatch::WrongType {
-            // TODO(tailhook) human-readable type description
-            unexpected: format!("{:?}", descriptor),
+            unexpected: format!("{descriptor:?}"),
             expected: expected.into(),
         }
     }

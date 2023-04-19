@@ -64,6 +64,8 @@ impl Client {
     /// let greeting = pool.query::<String, _>("SELECT 'hello'", &());
     /// // or
     /// let greeting: Vec<String> = pool.query("SELECT 'hello'", &());
+    /// 
+    /// let two_numbers: Vec<i32> = conn.query("select {<int32>$0, <int32>$1}", &(10, 20)).await?;
     /// ```
     ///
     /// This method can be used with both static arguments, like a tuple of

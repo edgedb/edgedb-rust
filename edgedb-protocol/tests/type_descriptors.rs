@@ -8,6 +8,7 @@ use edgedb_protocol::descriptors::{Descriptor, TypePos};
 use edgedb_protocol::descriptors::TupleTypeDescriptor;
 use edgedb_protocol::descriptors::{ObjectShapeDescriptor, ShapeElement};
 use edgedb_protocol::descriptors::BaseScalarTypeDescriptor;
+use uuid::Uuid;
 
 mod base;
 
@@ -40,7 +41,7 @@ fn empty_tuple() -> Result<(), Box<dyn Error>> {
     assert_eq!(decode(b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0")?,
         vec![
             Descriptor::Tuple(TupleTypeDescriptor {
-                id: "00000000-0000-0000-0000-0000000000FF".parse()?,
+                id: "00000000-0000-0000-0000-0000000000FF".parse::<Uuid>()?.into(),
                 element_types: Vec::new(),
             }),
         ]);
@@ -55,10 +56,10 @@ fn one_tuple() -> Result<(), Box<dyn Error>> {
             b"\x04\x1cyGes%\x89Sa\x03\xe7\x87vE\xad9\0\x01\0\0"))?,
         vec![
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-000000000105".parse()?,
+                id: "00000000-0000-0000-0000-000000000105".parse::<Uuid>()?.into(),
             }),
             Descriptor::Tuple(TupleTypeDescriptor {
-                id: "1c794765-7325-8953-6103-e7877645ad39".parse()?,
+                id: "1c794765-7325-8953-6103-e7877645ad39".parse::<Uuid>()?.into(),
                 element_types: vec![TypePos(0)],
             }),
         ]);
@@ -70,7 +71,7 @@ fn single_int() -> Result<(), Box<dyn Error>> {
     assert_eq!(decode(b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05")?,
         vec![
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-000000000105".parse()?,
+                id: "00000000-0000-0000-0000-000000000105".parse::<Uuid>()?.into(),
             })
         ]);
     Ok(())
@@ -81,7 +82,7 @@ fn duration() -> Result<(), Box<dyn Error>> {
     assert_eq!(decode(b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x0e")?,
         vec![
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-00000000010e".parse()?,
+                id: "00000000-0000-0000-0000-00000000010e".parse::<Uuid>()?.into(),
             })
         ]);
     Ok(())
@@ -97,13 +98,13 @@ fn object_10() -> Result<(), Box<dyn Error>> {
          b"\0\0\0\x02id\0\0\0\0\0\0\x05title\0\x01"))?,
         vec![
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-000000000100".parse()?,
+                id: "00000000-0000-0000-0000-000000000100".parse::<Uuid>()?.into(),
             }),
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-000000000101".parse()?,
+                id: "00000000-0000-0000-0000-000000000101".parse::<Uuid>()?.into(),
             }),
             Descriptor::ObjectShape(ObjectShapeDescriptor {
-                id: "6ebbbeda-0050-14fe-84bc-821540b152cd".parse()?,
+                id: "6ebbbeda-0050-14fe-84bc-821540b152cd".parse::<Uuid>()?.into(),
                 elements: vec![
                     ShapeElement {
                         flag_implicit: true,
@@ -152,13 +153,13 @@ fn object() -> Result<(), Box<dyn Error>> {
         ))?,
         vec![
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-000000000101".parse()?,
+                id: "00000000-0000-0000-0000-000000000101".parse::<Uuid>()?.into(),
             }),
             Descriptor::BaseScalar(BaseScalarTypeDescriptor {
-                id: "00000000-0000-0000-0000-000000000100".parse()?,
+                id: "00000000-0000-0000-0000-000000000100".parse::<Uuid>()?.into(),
             }),
             Descriptor::ObjectShape(ObjectShapeDescriptor {
-                id: "6e27dba0-7861-24c2-86a9-15a6f2e3faf5".parse()?,
+                id: "6e27dba0-7861-24c2-86a9-15a6f2e3faf5".parse::<Uuid>()?.into(),
                 elements: vec![
                     ShapeElement {
                         flag_implicit: true,
