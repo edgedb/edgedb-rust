@@ -539,7 +539,10 @@ let query_res: Vec<InnerJsonQueryableAccount> = client.query(query, &()).await.u
 The client also has a .transaction() method that allows atomic [transactions](https://www.edgedb.com/docs/edgeql/transactions). Wikipedia has a good example of a transaction and why it would be best done atomically:
 
 ```
-An example of an atomic transaction is a monetary transfer from bank account A to account B. It consists of two operations, withdrawing the money from account A and saving it to account B. Performing these operations in an atomic transaction ensures that the database remains in a consistent state, that is, money is neither lost nor created if either of those two operations fails.
+An example of an atomic transaction is a monetary transfer from bank account A to account B. 
+It consists of two operations, withdrawing the money from account A and saving it to account B. 
+Performing these operations in an atomic transaction ensures that the database remains in a 
+consistent state, that is, money is neither lost nor created if either of those two operations fails.
 ```
 
 A transaction removing 10 cents from one customer's account and placing it in the other's account would look as follows:
@@ -554,10 +557,9 @@ pub struct BankCustomer {
     // Transactions
     // Customer1 has an account with 110 cents in it.
     // Customer2 has an account with 90 cents in it.
-    // Customer1 is going to send 10 cents to Customer 2. This will be a transaction because
-    // we don't want the case to ever occur - even for a split second -  where one account 
-    // has sent money while the other has not received it yet. The operation must be atomic, 
-    // so we will use a transaction.
+    // Customer1 is going to send 10 cents to Customer 2. This will be a transaction 
+    // because we don't want the case to ever occur - even for a split second -  
+    // where one account has sent money while the other has not received it yet.
 
     // After the transaction is over, each customer should have 100 cents.
 

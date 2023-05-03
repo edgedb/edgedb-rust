@@ -20,14 +20,17 @@ use crate::state::{AliasesDelta, GlobalsDelta, ConfigDelta};
 use crate::state::{AliasesModifier, GlobalsModifier, ConfigModifier, Fn};
 
 
-/// EdgeDB Client
+/// The EdgeDB Client.
 ///
 /// Internally it contains a connection pool.
 ///
-/// To create client, use [`create_client`](crate::create_client) function (it
+/// To create a client, use [`create_client`](crate::create_client) function (it
 /// gets database connection configuration from environment). You can also use
 /// [`Builder`](crate::Builder) to [`build`](`crate::Builder::build`) custom
 /// [`Config`] and [create a client](Client::new) using that config.
+/// 
+/// The `with_` methods ([`with_retry_options`](crate::Client::with_retry_options), [`with_transaction_options`](crate::Client::with_transaction_options), etc.)
+/// let you create a shallow copy of the client with adjusted options.
 #[derive(Debug, Clone)]
 pub struct Client {
     options: Arc<Options>,
@@ -296,6 +299,19 @@ impl Client {
     /// than one element, a
     /// [`ResultCardinalityMismatchError`][crate::errors::ResultCardinalityMismatchError]
     /// is raised.
+    /// 
+    /// ```rust,ignore
+    /// let query = "select <json>(
+    ///     insert Account {
+    ///     username := <str>$0
+    ///     }) {
+    ///     username, 
+    ///     id
+    ///     };";
+    /// let json_res: Option<Json> = client
+    ///  .query_single_json(query, &("SomeUserName",))
+    ///     .await?;
+    /// ```
     pub async fn query_single_json(&self,
                                    query: &str, arguments: &impl QueryArgs)
         -> Result<Option<Json>, Error>
