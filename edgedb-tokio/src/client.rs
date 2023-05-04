@@ -26,7 +26,7 @@ use crate::state::{AliasesModifier, GlobalsModifier, ConfigModifier, Fn};
 ///
 /// To create a client, use [`create_client`](crate::create_client) function (it
 /// gets database connection configuration from environment). You can also use
-/// [`Builder`](crate::Builder) to [`build`](`crate::Builder::build`) custom
+/// [`Builder`](crate::Builder) to [`build`](`crate::Builder::new`) custom
 /// [`Config`] and [create a client](Client::new) using that config.
 /// 
 /// The `with_` methods ([`with_retry_options`](crate::Client::with_retry_options), [`with_transaction_options`](crate::Client::with_transaction_options), etc.)
