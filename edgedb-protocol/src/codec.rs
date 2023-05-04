@@ -1,3 +1,7 @@
+/*!
+Implementations of the [Codec](crate::codec::Codec) trait into types found in the [Value](crate::value::Value) enum.
+*/
+
 use std::any::type_name;
 use std::convert::{TryInto, TryFrom};
 use std::fmt;
