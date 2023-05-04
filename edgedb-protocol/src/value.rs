@@ -1,9 +1,12 @@
+/*!
+Contains the [Value](crate::value::Value) enum.
+*/
 use std::iter::IntoIterator;
 
 use bytes::Bytes;
 
 use crate::codec::{NamedTupleShape, ObjectShape, ShapeElement};
-use crate::common::{Cardinality};
+use crate::common::Cardinality;
 use crate::model::{BigInt, Decimal, Uuid, ConfigMemory, Range};
 use crate::model::{LocalDatetime, LocalDate, LocalTime, Duration, Datetime};
 use crate::model::{RelativeDuration, DateDuration, Json};

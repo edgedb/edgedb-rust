@@ -1,3 +1,7 @@
+/*!
+Contains the [QueryArg](crate::query_arg::QueryArg) and [QueryArgs](crate::query_arg::QueryArgs) traits.
+*/
+
 use std::convert::{TryFrom, TryInto};
 use std::sync::Arc;
 
