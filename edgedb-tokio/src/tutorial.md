@@ -1,4 +1,4 @@
-# Using the EdgeDB Rust client
+# EdgeDB Rust client tutorial
 
 # Getting started (project template repo)
 
