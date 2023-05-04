@@ -1,26 +1,12 @@
-use std::collections::HashMap;
-use std::convert::TryFrom;
-use std::u16;
+/*!
+([Website reference](https://www.edgedb.com/docs/reference/protocol/messages)) The [ClientMessage](crate::client_message::ClientMessage) enum and related types. 
 
-use bytes::{Bytes, BufMut, Buf};
-use uuid::Uuid;
-use snafu::{OptionExt, ensure};
-
-use crate::encoding::{Encode, Decode, encode, Input, Output};
-use crate::encoding::{Annotations, KeyValues};
-use crate::errors::{self, EncodeError, DecodeError};
-pub use crate::common::{Cardinality, CompilationFlags, Capabilities};
-pub use crate::common::{CompilationOptions};
-pub use crate::common::{State, RawTypedesc};
-
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
+```rust
 pub enum ClientMessage {
     ClientHandshake(ClientHandshake),
     ExecuteScript(ExecuteScript),
-    Prepare(Prepare),  // protocol < 1.0
-    Parse(Parse), // protocol > 1.0
+    Prepare(Prepare),
+    Parse(Parse),
     DescribeStatement(DescribeStatement),
     Execute0(Execute0),
     Execute1(Execute1),
@@ -35,6 +21,47 @@ pub enum ClientMessage {
     Sync,
     Flush,
     Terminate,
+}
+```
+*/
+
+use std::collections::HashMap;
+use std::convert::TryFrom;
+use std::u16;
+
+use bytes::{Bytes, BufMut, Buf};
+use uuid::Uuid;
+use snafu::{OptionExt, ensure};
+
+use crate::encoding::{Encode, Decode, encode, Input, Output};
+use crate::encoding::{Annotations, KeyValues};
+use crate::errors::{self, EncodeError, DecodeError};
+pub use crate::common::{Cardinality, CompilationFlags, Capabilities};
+pub use crate::common::CompilationOptions;
+pub use crate::common::{State, RawTypedesc};
+
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ClientMessage {
+    AuthenticationSaslInitialResponse(SaslInitialResponse),
+    AuthenticationSaslResponse(SaslResponse),
+    ClientHandshake(ClientHandshake),
+    Dump(Dump),
+    Parse(Parse), // protocol > 1.0
+    ExecuteScript(ExecuteScript),
+    Execute0(Execute0),
+    Execute1(Execute1),
+    Restore(Restore),
+    RestoreBlock(RestoreBlock),
+    RestoreEof,
+    Sync,
+    Terminate,
+    Prepare(Prepare),  // protocol < 1.0
+    DescribeStatement(DescribeStatement),
+    OptimisticExecute(OptimisticExecute),
+    UnknownMessage(u8, Bytes),
+    Flush,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

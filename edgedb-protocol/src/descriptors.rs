@@ -1,3 +1,35 @@
+/*!
+([Website reference](https://www.edgedb.com/docs/reference/protocol/typedesc)) Types for the [Descriptor](crate::descriptors::Descriptor) enum.
+
+```rust
+pub enum Descriptor {
+    Set(SetDescriptor),
+    ObjectShape(ObjectShapeDescriptor),
+    BaseScalar(BaseScalarTypeDescriptor),
+    Scalar(ScalarTypeDescriptor),
+    Tuple(TupleTypeDescriptor),
+    NamedTuple(NamedTupleTypeDescriptor),
+    Array(ArrayTypeDescriptor),
+    Enumeration(EnumerationTypeDescriptor),
+    InputShape(InputShapeTypeDescriptor),
+    Range(RangeTypeDescriptor),
+    TypeAnnotation(TypeAnnotationDescriptor),
+}
+```
+
+From the website:
+
+>The type descriptor is essentially a list of type information blocks:
+>* each block encodes one type;
+>* blocks can reference other blocks.
+
+>While parsing the _blocks_, a database driver can assemble an _encoder_ or a _decoder_ of the EdgeDB binary data.
+
+>An _encoder_ is used to encode objects, native to the driver’s runtime, to binary data that EdegDB can decode and work with.
+
+>A _decoder_ is used to decode data from EdgeDB native format to data types native to the driver.
+*/
+
 use std::convert::{TryFrom, TryInto};
 use std::fmt::{Debug, Formatter};
 use std::ops::Deref;
@@ -34,9 +66,9 @@ pub enum Descriptor {
     Tuple(TupleTypeDescriptor),
     NamedTuple(NamedTupleTypeDescriptor),
     Array(ArrayTypeDescriptor),
-    Range(RangeTypeDescriptor),
     Enumeration(EnumerationTypeDescriptor),
     InputShape(InputShapeTypeDescriptor),
+    Range(RangeTypeDescriptor),
     TypeAnnotation(TypeAnnotationDescriptor),
 }
 
