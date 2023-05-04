@@ -1,16 +1,4 @@
-extern crate proc_macro;
-
-use proc_macro::TokenStream;
-use syn::{self, parse_macro_input};
-
-mod attrib;
-mod enums;
-mod json;
-mod shape;
-mod variables;
-
-
-/**
+/*!
 Derive macro that allows structs and enums to be populated by database
 queries.
 
@@ -64,6 +52,17 @@ struct JsonData {
 }
 ```
 */
+extern crate proc_macro;
+
+use proc_macro::TokenStream;
+use syn::{self, parse_macro_input};
+
+mod attrib;
+mod enums;
+mod json;
+mod shape;
+mod variables;
+
 #[proc_macro_derive(Queryable, attributes(edgedb))]
 pub fn edgedb_queryable(input: TokenStream) -> TokenStream {
     let s = parse_macro_input!(input as syn::Item);
