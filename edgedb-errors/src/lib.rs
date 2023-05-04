@@ -7,6 +7,8 @@ All errors that EdgeDB Rust bindings produce are encapsulated into the
 [`UserError`] can be used to encapsulate custom errors (commonly used
 to return an error from a transaction).
 
+A full list of EdgeDB error types on a single page can be found on the [website documentation](https://www.edgedb.com/docs/reference/protocol/errors#error-codes).
+
 Each error kind is represented as a separate type that implements the
 [`ErrorKind`] trait. But error kinds are used like marker structs; you can
 use [`Error::is`] for error kinds and use them to create instances of the
