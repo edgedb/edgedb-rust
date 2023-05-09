@@ -539,10 +539,11 @@ let query_res: Vec<InnerJsonQueryableAccount> = client.query(query, &()).await.u
 The client also has a .transaction() method that allows atomic [transactions](https://www.edgedb.com/docs/edgeql/transactions). Wikipedia has a good example of a transaction and why it would be best done atomically:
 
 ```
-An example of an atomic transaction is a monetary transfer from bank account A to account B. 
-It consists of two operations, withdrawing the money from account A and saving it to account B. 
-Performing these operations in an atomic transaction ensures that the database remains in a 
-consistent state, that is, money is neither lost nor created if either of those two operations fails.
+An example of an atomic transaction is a monetary transfer from bank account A 
+to account B. It consists of two operations, withdrawing the money from account A 
+and saving it to account B. Performing these operations in an atomic transaction 
+ensures that the database remains in a consistent state, that is, money is 
+neither lost nor created if either of those two operations fails.
 ```
 
 A transaction removing 10 cents from one customer's account and placing it in the other's account would look as follows:
@@ -566,12 +567,122 @@ pub struct BankCustomer {
     let customers_after_transaction = client.transaction(|mut conn| async move {
         let res_1 = conn.query_required_single_json
         ("select(update BankCustomer filter .name = <str>$0 set 
-        { bank_balance := .bank_balance - 10 }){name, bank_balance};", &("SomeCustomer1",)).await?;
+        { bank_balance := .bank_balance - 10 }){name, bank_balance};", &("Customer1",)).await?;
         let res_2 = conn.query_required_single_json
         ("select(update BankCustomer filter .name = <str>$0 set
-        { bank_balance := .bank_balance + 10 }){name, bank_balance};", &("SomeCustomer2",)).await?;
+        { bank_balance := .bank_balance + 10 }){name, bank_balance};", &("Customer2",)).await?;
         Ok(vec![res_1, res_2])
     }).await?;
 ```
 
+## Links can work instead of transactions
+
 Note that many atomic transactions can be done with links instead and may not require using a formal transaction. For example, a wedding ceremony can be seen as an atomic operation as it involves two instantaneous changes in state (from single to married) and should not have a state in between where Person A is married to Person B while Person B is still not yet married to Person A. However, this can be accomplished through links instead: insert a WeddingCertificate with links to a Person type, with a Person type having a computed that traverses the link in the opposite direction.
+
+Such a schema might look like this:
+
+```
+type Citizen {
+  required name: str;
+  required gov_id: int32 {
+    constraint exclusive;
+}
+  link spouse := (
+    with 
+    id := .gov_id,
+    cert := (select MarriageCertificate filter id in {.spouse_1.gov_id, .spouse_2.gov_id}),
+    select cert.spouse_2 if cert.spouse_1.gov_id = id else cert.spouse_1
+)
+}
+
+type MarriageCertificate {
+  required spouse_1: Citizen;
+  required spouse_2: Citizen;
+  property spouse_ids := { .spouse_1.gov_id, .spouse_2.gov_id };
+
+  trigger prohibit_multi_marriage after insert, update for each do (
+  assert(
+      not exists (select MarriageCertificate filter .spouse_1.gov_id in .spouse_ids or .spouse_2.gov_id in .spouse_ids ),
+      message := "Already married to someone else"
+)
+)
+}
+```
+
+First insert two citizens:
+
+```
+edgedb> insert Citizen { name := "Citizen1", gov_id := 555};
+{default::Citizen {id: 930d6af4-edf0-11ed-9ead-5729da651020}}
+edgedb> insert Citizen { name := "Citizen2", gov_id := 556};
+{default::Citizen {id: 9696d732-edf0-11ed-acd3-935105464f09}}
+```
+
+The two citizens then get married via a MarriageCertificate that links to both of them, no need for a transaction:
+
+```
+edgedb> insert MarriageCertificate {
+....... spouse_1 := (select Citizen filter .gov_id = 555),
+....... spouse_2 := (select Citizen filter .gov_id = 556),
+....... };
+{default::MarriageCertificate {id: a71e9716-edf0-11ed-acd3-539229d86153}}
+```
+
+Selecting the citizens shows that one is now the spouse of the other:
+
+```
+edgedb> select Citizen {**};
+{
+  default::Citizen {
+    id: 930d6af4-edf0-11ed-9ead-5729da651020,
+    gov_id: 555,
+    name: 'Citizen1',
+    spouse: {
+      default::Citizen {
+        id: 9696d732-edf0-11ed-acd3-935105464f09,
+        gov_id: 556,
+        name: 'Citizen2',
+      },
+    },
+  },
+  default::Citizen {
+    id: 9696d732-edf0-11ed-acd3-935105464f09,
+    gov_id: 556,
+    name: 'Citizen2',
+    spouse: {
+      default::Citizen {
+        id: 930d6af4-edf0-11ed-9ead-5729da651020,
+        gov_id: 555,
+        name: 'Citizen1',
+      },
+    },
+  },
+}
+```
+
+Later the citizens decide to go their separate ways, so delete the certificate:
+
+```
+edgedb> delete MarriageCertificate filter 555 in .spouse_ids and 556 in .spouse_ids;
+{default::MarriageCertificate {id: a71e9716-edf0-11ed-acd3-539229d86153}}
+```
+
+And now the citizens have an empty set for their `spouse` link.
+
+```
+edgedb> select Citizen {**};
+{
+  default::Citizen {
+    id: 930d6af4-edf0-11ed-9ead-5729da651020,
+    gov_id: 555,
+    name: 'Citizen1',
+    spouse: {},
+  },
+  default::Citizen {
+    id: 9696d732-edf0-11ed-acd3-935105464f09,
+    gov_id: 556,
+    name: 'Citizen2',
+    spouse: {},
+  },
+}
+```
