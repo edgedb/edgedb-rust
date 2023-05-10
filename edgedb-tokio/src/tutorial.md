@@ -582,50 +582,87 @@ Note that many atomic transactions can be done with links instead and may not re
 Such a schema might look like this:
 
 ```
-type Citizen {
-  required name: str;
-  required gov_id: int32 {
-    constraint exclusive;
-}
-  link spouse := (
-    with 
-    id := .gov_id,
-    cert := (select MarriageCertificate filter id in {.spouse_1.gov_id, .spouse_2.gov_id}),
-    select cert.spouse_2 if cert.spouse_1.gov_id = id else cert.spouse_1
-)
-}
+  type Citizen {
+    required name: str;
+    required gov_id: int32 {
+      constraint exclusive;
+    }
+    single link spouse := assert_single((
+      with 
+      id := .gov_id,
+      cert := (select MarriageCertificate filter id in {.spouse_1.gov_id, .spouse_2.gov_id}),
+      select cert.spouse_2 if cert.spouse_1.gov_id = id else cert.spouse_1
+    ));
+  }
 
-type MarriageCertificate {
-  required spouse_1: Citizen;
-  required spouse_2: Citizen;
-  property spouse_ids := { .spouse_1.gov_id, .spouse_2.gov_id };
+  type MarriageCertificate {
+    required spouse_1: Citizen;
+    required spouse_2: Citizen;
+    property spouse_ids := { .spouse_1.gov_id, .spouse_2.gov_id };
 
-  trigger prohibit_multi_marriage after insert, update for each do (
-  assert(
-      not exists (select MarriageCertificate filter .spouse_1.gov_id in .spouse_ids or .spouse_2.gov_id in .spouse_ids ),
-      message := "Already married to someone else"
-)
-)
-}
+    trigger prohibit_multi_marriage
+            after update, insert 
+            for each do (assert(
+                not any(__new__.spouse_ids in (MarriageCertificate except __new__).spouse_ids), 
+                message := 'Already married to someone else'));
+  }
 ```
 
 First insert two citizens:
 
 ```
-edgedb> insert Citizen { name := "Citizen1", gov_id := 555};
-{default::Citizen {id: 930d6af4-edf0-11ed-9ead-5729da651020}}
-edgedb> insert Citizen { name := "Citizen2", gov_id := 556};
-{default::Citizen {id: 9696d732-edf0-11ed-acd3-935105464f09}}
+edgedb> insert Citizen {
+....... name := "Citizen1",
+....... gov_id := 1
+....... };
+{default::Citizen {id: 612d4752-eec2-11ed-bd0c-eba0abe0ac68}}
+edgedb> insert Citizen {
+....... name := "Citizen2",
+....... gov_id := 2
+....... };
+{default::Citizen {id: 6400483a-eec2-11ed-bd0c-572f7ab1b059}}
+edgedb> select Citizen {**};
+{
+  default::Citizen {
+    id: 612d4752-eec2-11ed-bd0c-eba0abe0ac68,
+    name: 'Citizen1',
+    gov_id: 1,
+    spouse: {},
+  },
+  default::Citizen {
+    id: 6400483a-eec2-11ed-bd0c-572f7ab1b059,
+    name: 'Citizen2',
+    gov_id: 2,
+    spouse: {},
+  },
+}
 ```
 
 The two citizens then get married via a MarriageCertificate that links to both of them, no need for a transaction:
 
 ```
 edgedb> insert MarriageCertificate {
-....... spouse_1 := (select Citizen filter .gov_id = 555),
-....... spouse_2 := (select Citizen filter .gov_id = 556),
+....... spouse_1 := (select Citizen filter .gov_id = 1),
+....... spouse_2 := (select Citizen filter .gov_id = 2)
 ....... };
-{default::MarriageCertificate {id: a71e9716-edf0-11ed-acd3-539229d86153}}
+{default::MarriageCertificate {id: 82209cd4-eec2-11ed-bd0c-c727d9d35d73}}
+edgedb> select MarriageCertificate {**};
+{
+  default::MarriageCertificate {
+    id: 82209cd4-eec2-11ed-bd0c-c727d9d35d73,
+    spouse_ids: {1, 2},
+    spouse_1: default::Citizen {
+      id: 612d4752-eec2-11ed-bd0c-eba0abe0ac68,
+      name: 'Citizen1',
+      gov_id: 1,
+    },
+    spouse_2: default::Citizen {
+      id: 6400483a-eec2-11ed-bd0c-572f7ab1b059,
+      name: 'Citizen2',
+      gov_id: 2,
+    },
+  },
+}
 ```
 
 Selecting the citizens shows that one is now the spouse of the other:
@@ -634,27 +671,23 @@ Selecting the citizens shows that one is now the spouse of the other:
 edgedb> select Citizen {**};
 {
   default::Citizen {
-    id: 930d6af4-edf0-11ed-9ead-5729da651020,
-    gov_id: 555,
+    id: 612d4752-eec2-11ed-bd0c-eba0abe0ac68,
     name: 'Citizen1',
-    spouse: {
-      default::Citizen {
-        id: 9696d732-edf0-11ed-acd3-935105464f09,
-        gov_id: 556,
-        name: 'Citizen2',
-      },
+    gov_id: 1,
+    spouse: default::Citizen {
+      id: 6400483a-eec2-11ed-bd0c-572f7ab1b059,
+      name: 'Citizen2',
+      gov_id: 2,
     },
   },
   default::Citizen {
-    id: 9696d732-edf0-11ed-acd3-935105464f09,
-    gov_id: 556,
+    id: 6400483a-eec2-11ed-bd0c-572f7ab1b059,
     name: 'Citizen2',
-    spouse: {
-      default::Citizen {
-        id: 930d6af4-edf0-11ed-9ead-5729da651020,
-        gov_id: 555,
-        name: 'Citizen1',
-      },
+    gov_id: 2,
+    spouse: default::Citizen {
+      id: 612d4752-eec2-11ed-bd0c-eba0abe0ac68,
+      name: 'Citizen1',
+      gov_id: 1,
     },
   },
 }
@@ -663,25 +696,25 @@ edgedb> select Citizen {**};
 Later the citizens decide to go their separate ways, so delete the certificate:
 
 ```
-edgedb> delete MarriageCertificate filter 555 in .spouse_ids and 556 in .spouse_ids;
-{default::MarriageCertificate {id: a71e9716-edf0-11ed-acd3-539229d86153}}
+edgedb> delete MarriageCertificate filter 1 in .spouse_ids and 2 in .spouse_ids;
+{default::MarriageCertificate {id: 82209cd4-eec2-11ed-bd0c-c727d9d35d73}}
 ```
 
-And now the citizens have an empty set for their `spouse` link.
+And now the citizens are back to an empty set for their `spouse` link.
 
 ```
 edgedb> select Citizen {**};
 {
   default::Citizen {
-    id: 930d6af4-edf0-11ed-9ead-5729da651020,
-    gov_id: 555,
+    id: 612d4752-eec2-11ed-bd0c-eba0abe0ac68,
     name: 'Citizen1',
+    gov_id: 1,
     spouse: {},
   },
   default::Citizen {
-    id: 9696d732-edf0-11ed-acd3-935105464f09,
-    gov_id: 556,
+    id: 6400483a-eec2-11ed-bd0c-572f7ab1b059,
     name: 'Citizen2',
+    gov_id: 2,
     spouse: {},
   },
 }
