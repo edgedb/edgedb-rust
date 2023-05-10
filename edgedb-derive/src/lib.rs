@@ -19,7 +19,7 @@ struct User {
 This allows a query to directly unpack into the type instead
 of working with the [Value](https://docs.rs/edgedb-protocol/latest/edgedb_protocol/value/enum.Value.html) enum.
 
-```rust
+```rust,ignore
 let query = "select User { first_name, age };";
 // With Queryable:
 let query_res: Vec<User> = client.query(query, &()).await?;
@@ -66,7 +66,7 @@ struct JsonData {
 This allows a query to directly unpack into the type without an intermediate
 step using [serde_json::from_str](https://docs.rs/serde_json/latest/serde_json/fn.from_str.html):
 
-```rust
+```rust,ignore
 let query = "select <json>JsonData { field1, field2 };";
 let query_res: Vec<JsonData> = client.query(query, &()).await?;
 ```
