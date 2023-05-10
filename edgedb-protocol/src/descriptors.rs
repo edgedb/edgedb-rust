@@ -1,7 +1,7 @@
 /*!
 ([Website reference](https://www.edgedb.com/docs/reference/protocol/typedesc)) Types for the [Descriptor](crate::descriptors::Descriptor) enum.
 
-```rust
+```rust,ignore
 pub enum Descriptor {
     Set(SetDescriptor),
     ObjectShape(ObjectShapeDescriptor),

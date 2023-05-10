@@ -16,7 +16,7 @@ for working with the client such as:
 
 The Value enum:
 
-```rust
+```rust,ignore
 pub enum Value {
     Nothing,
     Uuid(Uuid),
