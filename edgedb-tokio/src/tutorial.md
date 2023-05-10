@@ -32,7 +32,7 @@ If you are avoiding async code and want to emulate a blocking client, you will s
 
 And then you can start a runtime upon which you can use the `.block_on()` method to block and wait for futures to resolve. e.g.:
 
-```rust
+```rust,ignore
 let rt = tokio::runtime::Builder::new_current_thread()
     .enable_all()
     .build()?;
@@ -82,7 +82,7 @@ Now that you have the right dependencies and an EdgeDB instance, you can create 
 
 Creating a new EdgeDB client can be done in a single line:
 
-```rust
+```rust,ignore
 let client = edgedb_tokio::create_client().await.unwrap();
 ```
 
@@ -90,7 +90,7 @@ Under the hood, this will create a Builder, look for environmental variables and
 
 If you need a more customized setup, you can use a Builder:
 
-```rust
+```rust,ignore
 let mut builder = edgedb_tokio::Builder::uninitialized();
 // Read from env vars
 builder.read_env_vars().unwrap();
@@ -103,7 +103,7 @@ let client = edgedb_tokio::Client::new(&config);
 
 As the documentation notes, in most cases you can just read from the environment:
 
-```rust
+```
 /// A builder used to create connection configuration
 /// Note: in most cases you don't need to tweak connection configuration as
 /// it's read from the environment. So using
@@ -117,7 +117,7 @@ Here are the simplified signatures of the client methods involving queries:
 
 (Note: R here means a type that implements [QueryResult](https://docs.rs/edgedb-protocol/0.4.0/edgedb_protocol/trait.QueryResult.html))
 
-```rust
+```
 fn query -> Result<Vec<R>, Error>
 fn query_json -> Result<Json, Error>
 
@@ -166,14 +166,14 @@ But when using the Rust client there is no prompt to do so. Arguments also have 
 
 The `()` unit type [implements QueryArgs](https://docs.rs/edgedb-protocol/latest/edgedb_protocol/query_arg/trait.QueryArgs.html#impl-QueryArgs-for-()) and is used when no arguments are present so `&()` is a pretty common sight when using the Rust client:
 
-```rust
+```rust,ignore
 client.query("This just returns a string", &());
 ```
 
 These methods take two generic parameters:
 
 
-```rust
+```rust,ignore
 let query_res = client.query_required_single::<String, ()>
     ("select {'This just returns a string'}", &()).await?;
     // or
@@ -183,7 +183,7 @@ let query_res = client.query_required_single::<String, _>
     
 Declaring the type up front tends to look neater than the turbofish syntax:
 
-```rust
+```rust,ignore
 let query_res: String = client.query_required_single
     ("select {'This just returns a string'}", &()).await?;
 ```
@@ -194,14 +194,14 @@ let query_res: String = client.query_required_single
 
 Using the `.query()` method works fine in any case, but returns a Vec of results. In this case we return a `Result<Vec<String>>`:
 
-```rust
+```rust,ignore
 let query = "select {'This just returns a string'}";
 let query_res: Result<Vec<String>, Error> = client.query(query, &()).await;
 ```
 
 If you know that only a single result will be returned, using .query_required_single() or .query_single() will be more ergonomic:
 
-```rust
+```rust,ignore
 let query = "select {'This just returns a string'}";
 let query_res: Result<String, Error> = client.query_required_single(query, &()).await;
 let query_res_opt: Result<Option<String>, Error> = client.query_single(query, &()).await;
@@ -217,7 +217,7 @@ select {( 'Hi there', <int32>10 )};
 
 Even in an example as simple as this, we need double `{{` curly braces as well as `' '` around the "Hello there" string to keep the EdgeDB compiler from seeing two separate `Hello` and `there` tokens:
 
-```rust
+```rust,ignore
 let message = "Hi there";
 let num = 10;
 let query = format!("select {{
@@ -227,7 +227,7 @@ let query = format!("select {{
 
 Instead of directly formatting a query, passing in arguments as a tuple allows the query to be a directly typed single &'static str and the cast notation (`<str>`, `<int32>`) makes the types more clearly visible:
 
-```rust
+```rust,ignore
 let query = "select {
     (<str>$0, <int32>$1)
     };";
@@ -255,7 +255,7 @@ select <int32>$0 // Fine: EdgeDB knows to expect an i32
 
 As such, arguments in queries are used as type inference for the EdgeDB compiler, not to cast from queries from the Rust side. Take this query as an example:
 
-```rust
+```rust,ignore
     let query = "select <int32>$0";
 ```
 
@@ -263,7 +263,7 @@ This simply means "select an argument that must be an int32", not "take the rece
 
 As such, this will return an error:
 
-```rust
+```rust,ignore
 let query = "select <int32>$0";
 let argument = 9i16; // Rust client will expect an int16
 let query_res: Result<Value, _> = client.query_required_single(query, &(argument,)).await;
@@ -274,7 +274,7 @@ assert!(format!("{query_res:?}").contains("expected std::int16"));
 
 Thus far we have mostly just worked with Values from our queries in order to print them out and understand them. You can always return a Value from a query, as a Value represents anything returned from EdgeDB. On the other hand, returning a Value can lead to a lot of pattern matching to get to the inner value.
 
-```rust
+```rust,ignore
 pub enum Value {
     Nothing,
     Uuid(Uuid),
@@ -310,7 +310,7 @@ pub enum Value {
 
 One example of working with a Value:
 
-```rust
+```rust,ignore
     // Inserting an object will return the object's type and id (a Uuid):
     let query = "insert Account {
         username := <str>$0
@@ -340,7 +340,7 @@ One example of working with a Value:
 
 Most variants of the Value enum correspond to a Rust type from the standard library, while some are from the edgedb-protocol crate and will have to be constructed. For example, this query expecting a `bigint` will return an error as it receives a `20` (an i32) but EdgeDB is expecting a bigint:
 
-```rust
+```rust,ignore
 let query = "select <bigint>$0";
 let argument = 20;
 let query_res: Result<Value, _> = client.query_required_single(query, &(argument,)).await;
@@ -349,7 +349,7 @@ assert!(format!("{query_res:?}").contains("expected std::int32"));
 
 Instead, first construct a BigInt from the i32 and pass that in as an argument:
 
-```rust
+```rust,ignore
 let query = "select <bigint>$0";
 let bigint_arg = edgedb_protocol::model::BigInt::from(20);
 let query_res: Result<Value, _> = client.query_required_single(query, &(bigint_arg,)).await;
@@ -361,7 +361,7 @@ assert_eq!(
 
 Variants only needing standard library types to construct:
 
-```rust
+```rust,ignore
     Nothing,
     Str(String),
     Int16(i16),
@@ -376,7 +376,7 @@ Variants only needing standard library types to construct:
 
 Variants holding types from the edgedb-protocol:
 
-```rust
+```rust,ignore
     Datetime(Datetime),
     LocalDatetime(LocalDatetime),
     LocalDate(LocalDate),
@@ -391,14 +391,14 @@ Variants holding types from the edgedb-protocol:
 
 Variants using a different external crate to construct:
 
-```rust
+```rust,ignore
     Uuid(Uuid), // from https://docs.rs/uuid/latest/uuid/
     Bytes(Bytes), // from https://docs.rs/bytes/latest/bytes/
 ```
 
 Variants holding other Values:
 
-```rust
+```rust,ignore
     Set(Vec<Value>),
     Object { shape: ObjectShape, fields: Vec<Option<Value>> },
     SparseObject(SparseObject),
@@ -416,7 +416,7 @@ There are a lot of alternatives to Value when dealing with the output from EdgeD
 
 Using json is pretty comfortable for Rust user thanks to serde and serde_json. EdgeDB can cast any type to json with `<json>` so just sticking that in front of a query is enough to return the same object as json:
 
-```rust
+```rust,ignore
 let query = "select <json>(
     insert Account {
     username := <str>$0
@@ -435,7 +435,7 @@ let json_res = client
 
 You can turn this into a serde_json::Value and access using square brackets:
 
-```rust
+```rust,ignore
 let as_value: serde_json::Value = serde_json::from_str(&json_res)?;
 println!(
     "Username is {},\nId is {}.\n",
@@ -445,7 +445,7 @@ println!(
 
 But deserializing into a Rust type is much more common (and rigorous). If you have an Account struct that implements Deserialize, you can use serde_json to deserialize the result into an Account.
 
-```rust
+```rust,ignore
 #[derive(Debug, Deserialize)]
 pub struct Account {
     pub username: String,
@@ -459,7 +459,7 @@ let as_account: Account = serde_json::from_str(&json_res)?;
 
 The edgedb-derive crate has a built-in Queryable macro that lets us just query without having to cast to json. Same query as before:
 
-```rust
+```rust,ignore
 #[derive(Debug, Deserialize, Queryable)]
 pub struct QueryableAccount {
     pub username: String,
@@ -479,7 +479,7 @@ let as_queryable_account: QueryableAccount = client
 
 Note: field order (in other words, the "shape" of the query) matters when using the Queryable macro. In the example before, a query is done in the order `id, username` instead of `username, id` as defined in the struct:
 
-```rust
+```rust,ignore
 let query = "select (
     insert Account {
     username := <str>$0
@@ -499,7 +499,7 @@ assert!(
 
 Adding the edgedb(json) attribute on top of Queryable allows unpacking a struct from json returned from EdgeDB in a single call:
 
-```rust
+```rust,ignore
 #[derive(Debug, Deserialize, Queryable)]
 #[edgedb(json)]
 pub struct JsonQueryableAccount {
@@ -515,7 +515,7 @@ let json_queryable_accounts: Vec<JsonQueryableAccount> = client
 
 This attribute can also be used on an inner struct value that implements Queryable. Here, some random json is turned into a HashMap<String, String>:
 
-```rust
+```rust,ignore
 #[derive(Debug, Deserialize, Queryable)]
 pub struct InnerJsonQueryableAccount {
     pub username: String,
@@ -550,7 +550,7 @@ neither lost nor created if either of those two operations fails.
 
 A transaction removing 10 cents from one customer's account and placing it in the other's account would look as follows:
 
-```rust
+```rust,ignore
 #[derive(Debug, Deserialize, Queryable)]
 #[edgedb(json)]
 pub struct BankCustomer {
