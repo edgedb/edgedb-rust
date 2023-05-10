@@ -2,14 +2,9 @@
 
 # Getting started (project template repo)
 
-If you just want a working repo to clone to get started, [go here](https://github.com/Dhghomon/edgedb_rust_client_examples) and then open up a command line and type:
+If you just want a working repo to clone to get started, [go here](https://github.com/Dhghomon/edgedb_rust_client_examples), type `edgedb project init` to start an EdgeDB project and then `cargo run` to run the samples.
 
-* `edgedb project init`
-* `edgedb migration create`
-* `edgedb migrate`
-* `cargo run`
-
-This tutorial is essentially a more detailed version of the main.rs file inside that repo. It also uses the same schema as that in the EdgeDB [tutorial](https://www.edgedb.com/tutorial).
+This tutorial is essentially a more detailed version of the main.rs file inside that repo. It also uses the same schema as that in the EdgeDB [tutorial](https://www.edgedb.com/tutorial), plus a few extra types on top.
 
 # Getting started (detailed)
 
@@ -167,7 +162,7 @@ Parameter <str>$1: General Kenobi
 {'Hello there General Kenobi'}
 ```
 
-But when using the client there is no prompt to do so. Arguments also have to be in the order $0, $1, and so on as opposed to in the REPL where they can be named, as above.
+But when using the Rust client there is no prompt to do so. Arguments also have to be in the order $0, $1, and so on as opposed to in the REPL where they can be named, as above.
 
 The `()` unit type [implements QueryArgs](https://docs.rs/edgedb-protocol/latest/edgedb_protocol/query_arg/trait.QueryArgs.html#impl-QueryArgs-for-()) and is used when no arguments are present so `&()` is a pretty common sight when using the Rust client:
 
@@ -246,7 +241,7 @@ assert_eq!(
 
 ## Casting inside the EdgeDB compiler
 
-EdgeDB requires arguments to have a cast in the same way that Rust requires a type declaration when the compiler requires a type declaration / is unable to determine the type.
+EdgeDB requires arguments to have a cast in the same way that Rust requires a type declaration in a signature or when the compiler is unable to determine the type.
 
 ```
 // Rust
@@ -379,7 +374,7 @@ Variants only needing standard library types to construct:
     Enum(EnumValue), // Holds a str
 ```
 
-Variants needing edgedb-protocol to construct:
+Variants holding types from the edgedb-protocol:
 
 ```rust
     Datetime(Datetime),
@@ -397,8 +392,8 @@ Variants needing edgedb-protocol to construct:
 Variants using a different external crate to construct:
 
 ```rust
-    Uuid(Uuid),
-    Bytes(Bytes),
+    Uuid(Uuid), // from https://docs.rs/uuid/latest/uuid/
+    Bytes(Bytes), // from https://docs.rs/bytes/latest/bytes/
 ```
 
 Variants holding other Values:
@@ -419,7 +414,7 @@ There are a lot of alternatives to Value when dealing with the output from EdgeD
 
 ### Using json
 
-Using json is pretty comfortable for Rust user thanks to serde. EdgeDB can cast any type to json with `<json>` so just sticking that in front of a query is enough to return the same object as json:
+Using json is pretty comfortable for Rust user thanks to serde and serde_json. EdgeDB can cast any type to json with `<json>` so just sticking that in front of a query is enough to return the same object as json:
 
 ```rust
 let query = "select <json>(
@@ -438,7 +433,7 @@ let json_res = client
     .unwrap();
 ```
 
-You can turn this into a serde Value and access using square brackets:
+You can turn this into a serde_json::Value and access using square brackets:
 
 ```rust
 let as_value: serde_json::Value = serde_json::from_str(&json_res)?;
@@ -448,7 +443,7 @@ println!(
 );
 ```
 
-But Deserialize is much more common (and rigorous). If you have an Account struct that implements Deserialize, you can use serde_json to deserialize the result into an Account.
+But deserializing into a Rust type is much more common (and rigorous). If you have an Account struct that implements Deserialize, you can use serde_json to deserialize the result into an Account.
 
 ```rust
 #[derive(Debug, Deserialize)]
@@ -505,6 +500,13 @@ assert!(
 Adding the edgedb(json) attribute on top of Queryable allows unpacking a struct from json returned from EdgeDB in a single call:
 
 ```rust
+#[derive(Debug, Deserialize, Queryable)]
+#[edgedb(json)]
+pub struct JsonQueryableAccount {
+    pub username: String,
+    pub id: Uuid,
+}
+
 let json_queryable_accounts: Vec<JsonQueryableAccount> = client
     .query("select <json>Account { username, id }", &())
     .await
@@ -577,7 +579,9 @@ pub struct BankCustomer {
 
 ## Links can work instead of transactions
 
-Note that many atomic transactions can be done with links instead and may not require using a formal transaction. For example, a wedding ceremony can be seen as an atomic operation as it involves two instantaneous changes in state (from single to married) and should not have a state in between where Person A is married to Person B while Person B is still not yet married to Person A. However, this can be accomplished through links instead: insert a WeddingCertificate with links to a Person type, with a Person type having a computed that traverses the link in the opposite direction.
+Note that atomic transactions can often be achieved with links instead of transaction operations and is more idiomatic to EdgeDB. For example, a wedding ceremony can in theory be seen as an atomic operation as it involves two instantaneous changes in state (from single to married) and should not have a state in between where Person A is married to Person B while Person B is still not yet married to Person A.
+
+However, in EdgeDB this is better accomplished through links instead: insert a WeddingCertificate with links to a Person type, with the Person type having a computed `spouse` that looks for a MarriageCertificate that includes the Person's government id.
 
 Such a schema might look like this:
 
