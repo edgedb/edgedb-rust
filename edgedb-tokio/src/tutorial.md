@@ -104,11 +104,11 @@ let client = edgedb_tokio::Client::new(&config);
 As the documentation notes, in most cases you can just read from the environment:
 
 ```
-/// A builder used to create connection configuration
-/// Note: in most cases you don't need to tweak connection configuration as
-/// it's read from the environment. So using
-/// [`create_client`][crate::create_client] in this case
-/// is encouraged.
+A builder used to create connection configuration
+Note: in most cases you don't need to tweak connection configuration as
+it's read from the environment. So using
+[`create_client`][crate::create_client] in this case
+is encouraged.
 ```
 
 # Queries with the client
