@@ -198,7 +198,7 @@ Using the `.query()` method works fine in any case, but returns a Vec of results
 
 ```rust
 let query = "select {'This just returns a string'}";
-let query_res: Result<Vec<String>, Error> = client.query(query, &()).await;
+let query_res: Vec<String> = client.query(query, &()).await?;
 ```
 
 If you know that only a single result will be returned, using .query_required_single() or .query_single() will be more ergonomic:
