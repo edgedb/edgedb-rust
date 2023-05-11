@@ -298,7 +298,7 @@ pub enum Value {
 }
 ```
 
-One example of working with a Value:
+One example of working with a `Value`:
 
 ```rust
     // Inserting an object will return the object's type and id (a Uuid):
