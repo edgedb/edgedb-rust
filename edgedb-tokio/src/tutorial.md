@@ -138,7 +138,7 @@ A regular EdgeQL query without arguments looks like this:
 with 
     message1 := 'Hello there', 
     message2 := 'General Kenobi', 
-    select message1 ++ ' ' ++ message2;
+select message1 ++ ' ' ++ message2;
 ```
 
 And the same query with arguments:
