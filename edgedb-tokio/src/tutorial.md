@@ -337,7 +337,7 @@ let query_res: Result<Value, _> = client.query_required_single(query, &(argument
 assert!(format!("{query_res:?}").contains("expected std::int32"));
 ```
 
-Instead, first construct a BigInt from the i32 and pass that in as an argument:
+Instead, first construct a `BigInt` from the `i32` and pass that in as an argument:
 
 ```rust
 let query = "select <bigint>$0";
