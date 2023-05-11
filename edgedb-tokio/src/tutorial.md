@@ -241,19 +241,7 @@ assert_eq!(
 
 ## Casting inside the EdgeDB compiler
 
-EdgeDB requires arguments to have a cast in the same way that Rust requires a type declaration in a signature or when the compiler is unable to determine the type.
-
-```
-// Rust
-fn takes_something(num) {} // Error: parameter needs a type
-fn takes_something(num: i32) {} // Fine: Rust knows to expect an i32
-
-// EdgeDB
-select $0 // Error: EdgeDB needs to know what argument type to expect
-select <int32>$0 // Fine: EdgeDB knows to expect an i32
-```
-
-As such, arguments in queries are used as type specification for the EdgeDB compiler, not to cast from queries from the Rust side. Take this query as an example:
+EdgeDB requires arguments to have a cast in the same way that Rust requires a type declaration in function signatures. As such, arguments in queries are used as type specification for the EdgeDB compiler, not to cast from queries from the Rust side. Take this query as an example:
 
 ```rust
     let query = "select <int32>$0";
