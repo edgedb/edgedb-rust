@@ -194,7 +194,7 @@ let query_res: String = client.query_required_single
 
 ## When cardinality is guaranteed to be 1
 
-Using the `.query()` method works fine in any case, but returns a Vec of results. In this case we return a `Result<Vec<String>>`:
+Using the `.query()` method works fine in any case, but returns a Vec of results. In this case we return a `Result<Vec<String>>` which becomes a `Vec<String>` after the error is handled:
 
 ```rust
 let query = "select {'This just returns a string'}";
@@ -205,8 +205,8 @@ If you know that only a single result will be returned, using .query_required_si
 
 ```rust
 let query = "select {'This just returns a string'}";
-let query_res: Result<String, Error> = client.query_required_single(query, &()).await;
-let query_res_opt: Result<Option<String>, Error> = client.query_single(query, &()).await;
+let query_res: String = client.query_required_single(query, &()).await?;
+let query_res_opt: Option<String> = client.query_single(query, &()).await?;
 ```
 
 ## Passing in arguments
