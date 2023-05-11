@@ -253,7 +253,7 @@ select $0 // Error: EdgeDB needs to know what argument type to expect
 select <int32>$0 // Fine: EdgeDB knows to expect an i32
 ```
 
-As such, arguments in queries are used as type inference for the EdgeDB compiler, not to cast from queries from the Rust side. Take this query as an example:
+As such, arguments in queries are used as type specification for the EdgeDB compiler, not to cast from queries from the Rust side. Take this query as an example:
 
 ```rust
     let query = "select <int32>$0";
