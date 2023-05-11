@@ -74,9 +74,9 @@ Inside your cargo project you'll notice some new items:
 
 * `edgedb.toml`, which is used to mark the directory as an EdgeDB project. The file itself doesn't contain much — just the version of EdgeDB being used — but is used by the CLI to run commands without connection flags. (E.g., `edgedb -I my_project migrate` becomes simply `edgedb migrate`). See more on edgedb.toml [in our blog post introducing the EdgeDB projects CLI](https://www.edgedb.com/blog/introducing-edgedb-projects).
 
-* A /dbschema folder, inside of which there is:
-    * a default.esdl file. This holds your schema.
-    * a /migrations folder with .edgeql files starting with 00001. These hold the [ddl](https://www.edgedb.com/docs/reference/ddl/index) commands that were used to migrate your schema. Every time you change your schema followed by `edgedb migration create` and `edgedb migrate`, a new file will be slipped into this directory.
+* A `/dbschema` folder containing:
+    * a `default.esdl` file. This holds your schema.
+    * a `/migrations` folder with `.edgeql` files named starting at `00001`. These hold the [ddl](https://www.edgedb.com/docs/reference/ddl/index) commands that were used to migrate your schema. Every time you change your schema followed by `edgedb migration create` and `edgedb migrate`, a new file will be slipped into this directory.
 
 Now that you have the right dependencies and an EdgeDB instance, you can create a client.
 
