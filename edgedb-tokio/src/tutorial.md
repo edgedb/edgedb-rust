@@ -402,7 +402,7 @@ Variants holding other `Value`s:
 
 There are a lot of alternatives to `Value` when dealing with the output from EdgeDB on the Rust side.
 
-### Using json
+### Using JSON
 
 Using JSON is pretty comfortable for Rust users thanks to `serde` and `serde_json`. EdgeDB can cast any type to JSON with `<json>` so just sticking that in front of a query is enough to return the same object as JSON:
 
@@ -423,7 +423,7 @@ let json_res = client
     .unwrap();
 ```
 
-You can turn this into a serde_json::Value and access using square brackets:
+You can turn this into a `serde_json::Value` and access it using square brackets:
 
 ```rust
 let as_value: serde_json::Value = serde_json::from_str(&json_res)?;
@@ -445,9 +445,9 @@ pub struct Account {
 let as_account: Account = serde_json::from_str(&json_res)?;
 ```
 
-### Using the Queryable macro
+### Using the `Queryable` macro
 
-The edgedb-derive crate has a built-in Queryable macro that lets us just query without having to cast to json. Same query as before:
+The `edgedb-derive` crate has a built-in `Queryable` macro that lets us query without having to cast to JSON. Same query as before:
 
 ```rust
 #[derive(Debug, Deserialize, Queryable)]
@@ -467,7 +467,7 @@ let as_queryable_account: QueryableAccount = client
     .await?;
 ```
 
-Note: field order (in other words, the "shape" of the query) matters when using the Queryable macro. In the example before, a query is done in the order `id, username` instead of `username, id` as defined in the struct:
+Note: Field order within the shape of the query matters when using the `Queryable` macro. In the example before, a query is done in the order `id, username` instead of `username, id` as defined in the struct:
 
 ```rust
 let query = "select (
@@ -485,7 +485,7 @@ assert!(
 );
 ```
 
-### Using json with the edgedb(json) attribute
+### Using JSON with the `edgedb(json)` attribute
 
 Adding the `edgedb(json)` attribute on top of `Queryable` allows unpacking a struct from JSON returned from EdgeDB in a single call:
 
