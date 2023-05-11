@@ -326,7 +326,7 @@ One example of working with a `Value`:
     };
 ```
 
-## Value enum variants
+## `Value` enum variants
 
 Most variants of the `Value` enum correspond to a Rust type from the standard library, while some are from the `edgedb-protocol` crate and will have to be constructed. For example, this query expecting a `bigint` will return an error as it receives a `20` (an `i32`) but EdgeDB is expecting a `bigint`:
 
