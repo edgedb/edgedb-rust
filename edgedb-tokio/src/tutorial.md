@@ -548,7 +548,7 @@ ensures that the database remains in a consistent state, that is, money is
 neither lost nor created if either of those two operations fails.
 ```
 
-A transaction removing 10 cents from one customer's account and placing it in the other's account would look as follows:
+A transaction removing 10 cents from one customer's account and placing it in another's would look like this:
 
 ```rust
 #[derive(Debug, Deserialize, Queryable)]
