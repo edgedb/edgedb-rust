@@ -36,6 +36,8 @@ And then you can start a runtime upon which you can use the `.block_on()` method
 let rt = tokio::runtime::Builder::new_current_thread()
     .enable_all()
     .build()?;
+let just_a_string: String =
+    rt.block_on(client.query_required_single("select 'This just returns a string'", &()))?;
 ```
 
 ## Edgedb CLI
