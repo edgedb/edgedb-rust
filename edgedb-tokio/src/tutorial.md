@@ -538,7 +538,7 @@ let query_res: Vec<InnerJsonQueryableAccount> = client.query(query, &()).await.u
 
 ## Transactions
 
-The client also has a .transaction() method that allows atomic [transactions](https://www.edgedb.com/docs/edgeql/transactions). Wikipedia has a good example of a transaction and why it would be best done atomically:
+The client also has a `.transaction()` method that allows atomic [transactions](https://www.edgedb.com/docs/edgeql/transactions). Wikipedia has a good example of a transaction and why it would be best done atomically:
 
 ```
 An example of an atomic transaction is a monetary transfer from bank account A 
