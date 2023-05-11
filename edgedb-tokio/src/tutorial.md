@@ -260,7 +260,7 @@ let query_res: Result<Value, _> = client.query_required_single(query, &(argument
 assert!(query_res.unwrap_err().to_string().contains("expected std::int16"));
 ```
 
-## The Value enum
+## The `Value` enum
 
 So far, we have mostly worked with `Value`s from our queries in order to print them out and understand them. You can always return a `Value` from a query, as a `Value` represents anything returned from EdgeDB. On the other hand, returning a `Value` can lead to a lot of pattern matching to get to the inner value.
 
