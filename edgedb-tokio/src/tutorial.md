@@ -386,7 +386,7 @@ Variants using a different external crate to construct:
     Bytes(Bytes), // from https://docs.rs/bytes/latest/bytes/
 ```
 
-Variants holding other Values:
+Variants holding other `Value`s:
 
 ```rust
     Set(Vec<Value>),
