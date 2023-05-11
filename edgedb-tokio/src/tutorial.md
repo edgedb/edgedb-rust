@@ -433,7 +433,7 @@ println!(
 );
 ```
 
-But deserializing into a Rust type is much more common (and rigorous). If you have an Account struct that implements Deserialize, you can use serde_json to deserialize the result into an Account.
+But deserializing into a Rust type is much more common (and rigorous). If you have an `Account` struct that implements `Deserialize`, you can use `serde_json` to deserialize the result into an `Account`.
 
 ```rust
 #[derive(Debug, Deserialize)]
