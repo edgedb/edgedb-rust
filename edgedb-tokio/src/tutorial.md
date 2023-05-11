@@ -166,7 +166,7 @@ Parameter <str>$1: General Kenobi
 
 But when using the Rust client there is no prompt to do so. Arguments also have to be in the order $0, $1, and so on as opposed to in the REPL where they can be named, as above.
 
-The `()` unit type [implements QueryArgs](https://docs.rs/edgedb-protocol/latest/edgedb_protocol/query_arg/trait.QueryArgs.html#impl-QueryArgs-for-()) and is used when no arguments are present so `&()` is a pretty common sight when using the Rust client:
+The `()` unit type [implements `QueryArgs`](https://docs.rs/edgedb-protocol/latest/edgedb_protocol/query_arg/trait.QueryArgs.html#impl-QueryArgs-for-()) and is used when no arguments are present so `&()` is a pretty common sight when using the Rust client:
 
 ```rust
 client.query("select 'This just returns a string'", &());
