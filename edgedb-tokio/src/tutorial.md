@@ -72,7 +72,7 @@ The `edgedb` CLI initializes EdgeDB projects in the same way cargo does, except 
 
 Inside your cargo project you'll notice some new items:
 
-* edgedb.toml, which is used to mark the directory as an EdgeDB project. The file itself doesn't contain much (just the version of EdgeDB being used) but is used by the CLI to run commands without connection flags (e.g. `edgedb -I my_project migrate` becomes simply `edgedb migrate`). See more on edgedb.toml [here](https://www.edgedb.com/blog/introducing-edgedb-projects).
+* `edgedb.toml`, which is used to mark the directory as an EdgeDB project. The file itself doesn't contain much — just the version of EdgeDB being used — but is used by the CLI to run commands without connection flags. (E.g., `edgedb -I my_project migrate` becomes simply `edgedb migrate`). See more on edgedb.toml [in our blog post introducing the EdgeDB projects CLI](https://www.edgedb.com/blog/introducing-edgedb-projects).
 
 * A /dbschema folder, inside of which there is:
     * a default.esdl file. This holds your schema.
