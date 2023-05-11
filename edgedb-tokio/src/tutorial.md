@@ -2,7 +2,7 @@
 
 # Getting started (project template repo)
 
-If you just want a working repo to clone to get started, [go here](https://github.com/Dhghomon/edgedb_rust_client_examples), type `edgedb project init` to start an EdgeDB project and then `cargo run` to run the samples.
+If you just want a working repo to get started, clone the [Rust client examples repo](https://github.com/Dhghomon/edgedb_rust_client_examples), type `edgedb project init` to start an EdgeDB project, and then `cargo run` to run the samples.
 
 This tutorial is essentially a more detailed version of the main.rs file inside that repo. It also uses the same schema as that in the EdgeDB [tutorial](https://www.edgedb.com/tutorial), plus a few extra types on top.
 
