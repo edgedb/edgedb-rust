@@ -497,7 +497,7 @@ assert!(
 
 ### Using json with the edgedb(json) attribute
 
-Adding the edgedb(json) attribute on top of Queryable allows unpacking a struct from json returned from EdgeDB in a single call:
+Adding the `edgedb(json)` attribute on top of `Queryable` allows unpacking a struct from JSON returned from EdgeDB in a single call:
 
 ```rust
 #[derive(Debug, Deserialize, Queryable)]
