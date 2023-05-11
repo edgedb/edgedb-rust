@@ -155,10 +155,10 @@ with
 In the EdgeQL REPL you are prompted to enter arguments:
 
 ```
-edgedb> with
-....... message1 := <str>$0,
-....... message2 := <str>$1,
-....... select message1 ++ ' ' ++ message2;
+db> with
+... message1 := <str>$0,
+... message2 := <str>$1,
+... select message1 ++ ' ' ++ message2;
 Parameter <str>$0: Hello there
 Parameter <str>$1: General Kenobi
 {'Hello there General Kenobi'}
