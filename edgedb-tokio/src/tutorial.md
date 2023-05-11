@@ -1,6 +1,6 @@
 # EdgeDB Rust client tutorial
 
-# Getting started (project template repo)
+# Getting started (quick start from repo)
 
 If you just want a working repo to get started, clone the [Rust client examples repo](https://github.com/Dhghomon/edgedb_rust_client_examples), type `edgedb project init` to start an EdgeDB project, and then `cargo run` to run the samples.
 
