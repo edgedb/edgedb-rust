@@ -267,7 +267,7 @@ As such, this will return an error:
 let query = "select <int32>$0";
 let argument = 9i16; // Rust client will expect an int16
 let query_res: Result<Value, _> = client.query_required_single(query, &(argument,)).await;
-assert!(format!("{query_res:?}").contains("expected std::int16"));
+assert!(query_res.unwrap_err().to_string().contains("expected std::int16"));
 ```
 
 ## The Value enum
