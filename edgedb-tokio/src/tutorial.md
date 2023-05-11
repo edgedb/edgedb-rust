@@ -249,7 +249,7 @@ EdgeDB requires arguments to have a cast in the same way that Rust requires a ty
     let query = "select <int32>$0";
 ```
 
-This simply means "select an argument that must be an int32", not "take the received argument and cast it into an int32".
+This simply means "select an argument that must be an `int32`", not "take the received argument and cast it into an `int32`".
 
 As such, this will return an error:
 
