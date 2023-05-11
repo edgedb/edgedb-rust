@@ -117,7 +117,7 @@ is encouraged.
 
 Here are the simplified signatures of the client methods involving queries:
 
-(Note: R here means a type that implements [QueryResult](https://docs.rs/edgedb-protocol/0.4.0/edgedb_protocol/trait.QueryResult.html))
+(Note: `R` here means a type that implements [`QueryResult`](https://docs.rs/edgedb-protocol/0.4.0/edgedb_protocol/trait.QueryResult.html))
 
 ```
 fn query -> Result<Vec<R>, Error>
