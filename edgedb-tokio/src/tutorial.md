@@ -364,7 +364,7 @@ Variants only needing standard library types to construct:
     Enum(EnumValue), // Holds a str
 ```
 
-Variants holding types from the edgedb-protocol:
+Variants holding types from `edgedb-protocol`:
 
 ```rust
     Datetime(Datetime),
