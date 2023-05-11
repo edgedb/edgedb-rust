@@ -6,7 +6,7 @@ If you just want a working repo to get started, clone the [Rust client examples 
 
 This tutorial is essentially a more detailed version of the `main.rs` file inside that repo. It uses the same schema as [the EdgeDB tutorial](https://www.edgedb.com/tutorial), with a few extra types on top.
 
-# Getting started (detailed)
+# Getting started (from scratch)
 
 ## Cargo
 
