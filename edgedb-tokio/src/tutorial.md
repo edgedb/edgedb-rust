@@ -1,12 +1,12 @@
 # EdgeDB Rust client tutorial
 
-# Getting started (project template repo)
+# Getting started (quick start from repo)
 
 If you just want a working repo to get started, clone the [Rust client examples repo](https://github.com/Dhghomon/edgedb_rust_client_examples), type `edgedb project init` to start an EdgeDB project, and then `cargo run` to run the samples.
 
 This tutorial is essentially a more detailed version of the `main.rs` file inside that repo. It uses the same schema as [the EdgeDB tutorial](https://www.edgedb.com/tutorial), with a few extra types on top.
 
-# Getting started (detailed)
+# Getting started (from scratch)
 
 ## Cargo
 
@@ -26,7 +26,7 @@ The Rust client uses tokio so add this to Cargo.toml as well:
 
     tokio = { version = "1.27.0", features = ["macros", "rt-multi-thread"] }`
 
-If you are avoiding async code and want to emulate a blocking client, you will still need to use tokio as a dependency but can bridge with async using [one of the methods](https://tokio.rs/tokio/topics/bridging) recommended by tokio. This won't require any added features:
+If you are avoiding async code and want to emulate a blocking client, you will still need to use tokio as a dependency but can bridge with async using [one of the bridging methods recommended by tokio](https://tokio.rs/tokio/topics/bridging). This won't require any added features:
 
     tokio = "1.27.0"
 
@@ -487,7 +487,7 @@ assert!(
 
 ### Using json with the edgedb(json) attribute
 
-Adding the edgedb(json) attribute on top of Queryable allows unpacking a struct from json returned from EdgeDB in a single call:
+Adding the `edgedb(json)` attribute on top of `Queryable` allows unpacking a struct from JSON returned from EdgeDB in a single call:
 
 ```rust
 #[derive(Debug, Deserialize, Queryable)]
@@ -503,7 +503,7 @@ let json_queryable_accounts: Vec<JsonQueryableAccount> = client
     .unwrap();
 ```
 
-This attribute can also be used on an inner struct value that implements Queryable. Here, some random json is turned into a HashMap<String, String>:
+This attribute can also be used on an inner struct value that implements `Queryable`. Here, some random JSON is turned into a `HashMap<String, String>`:
 
 ```rust
 #[derive(Debug, Deserialize, Queryable)]
@@ -528,7 +528,7 @@ let query_res: Vec<InnerJsonQueryableAccount> = client.query(query, &()).await.u
 
 ## Transactions
 
-The client also has a .transaction() method that allows atomic [transactions](https://www.edgedb.com/docs/edgeql/transactions). Wikipedia has a good example of a transaction and why it would be best done atomically:
+The client also has a `.transaction()` method that allows atomic [transactions](https://www.edgedb.com/docs/edgeql/transactions). Wikipedia has a good example of a transaction and why it would be best done atomically:
 
 ```
 An example of an atomic transaction is a monetary transfer from bank account A 
@@ -538,7 +538,7 @@ ensures that the database remains in a consistent state, that is, money is
 neither lost nor created if either of those two operations fails.
 ```
 
-A transaction removing 10 cents from one customer's account and placing it in the other's account would look as follows:
+A transaction removing 10 cents from one customer's account and placing it in another's would look like this:
 
 ```rust
 #[derive(Debug, Deserialize, Queryable)]
