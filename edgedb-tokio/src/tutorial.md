@@ -404,7 +404,7 @@ There are a lot of alternatives to `Value` when dealing with the output from Edg
 
 ### Using json
 
-Using json is pretty comfortable for Rust user thanks to serde and serde_json. EdgeDB can cast any type to json with `<json>` so just sticking that in front of a query is enough to return the same object as json:
+Using JSON is pretty comfortable for Rust users thanks to `serde` and `serde_json`. EdgeDB can cast any type to JSON with `<json>` so just sticking that in front of a query is enough to return the same object as JSON:
 
 ```rust
 let query = "select <json>(
