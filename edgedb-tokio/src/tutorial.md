@@ -194,7 +194,7 @@ let query_res: String = client.query_required_single
 
 ## When cardinality is guaranteed to be 1
 
-Using the `.query()` method works fine in any case, but returns a Vec of results. In this case we return a `Result<Vec<String>>` which becomes a `Vec<String>` after the error is handled:
+Using the `.query()` method works fine in any case, but returns a `Vec` of results. In this case we return a `Result<Vec<String>>` which becomes a `Vec<String>` after the error is handled:
 
 ```rust
 let query = "select {'This just returns a string'}";
@@ -249,7 +249,7 @@ EdgeDB requires arguments to have a cast in the same way that Rust requires a ty
     let query = "select <int32>$0";
 ```
 
-This simply means "select an argument that must be an int32", not "take the received argument and cast it into an int32".
+This simply means "select an argument that must be an `int32`", not "take the received argument and cast it into an `int32`".
 
 As such, this will return an error:
 
