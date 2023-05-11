@@ -201,7 +201,7 @@ let query = "select {'This just returns a string'}";
 let query_res: Vec<String> = client.query(query, &()).await?;
 ```
 
-If you know that only a single result will be returned, using .query_required_single() or .query_single() will be more ergonomic:
+If you know that only a single result will be returned, using `.query_required_single()` or `.query_single()` will be more ergonomic:
 
 ```rust
 let query = "select {'This just returns a string'}";
