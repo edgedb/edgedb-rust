@@ -400,7 +400,7 @@ Variants holding other Values:
 
 ## Alternatives to working with Value
 
-There are a lot of alternatives to Value when dealing with the output from EdgeDB on the Rust side.
+There are a lot of alternatives to `Value` when dealing with the output from EdgeDB on the Rust side.
 
 ### Using json
 
