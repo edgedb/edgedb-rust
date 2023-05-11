@@ -513,7 +513,7 @@ let json_queryable_accounts: Vec<JsonQueryableAccount> = client
     .unwrap();
 ```
 
-This attribute can also be used on an inner struct value that implements Queryable. Here, some random json is turned into a HashMap<String, String>:
+This attribute can also be used on an inner struct value that implements `Queryable`. Here, some random JSON is turned into a `HashMap<String, String>`:
 
 ```rust
 #[derive(Debug, Deserialize, Queryable)]
