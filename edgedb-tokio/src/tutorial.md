@@ -556,14 +556,13 @@ pub struct BankCustomer {
 
     // After the transaction is over, each customer should have 100 cents.
 
-    let customers_after_transaction = client.transaction(|mut conn| async move {
-        let res_1 = conn.query_required_single_json
+    client.transaction(|mut conn| async move {
+        conn.query_required_single_json
         ("select(update BankCustomer filter .name = <str>$0 set 
         { bank_balance := .bank_balance - 10 }){name, bank_balance};", &("Customer1",)).await?;
-        let res_2 = conn.query_required_single_json
+        conn.query_required_single_json
         ("select(update BankCustomer filter .name = <str>$0 set
         { bank_balance := .bank_balance + 10 }){name, bank_balance};", &("Customer2",)).await?;
-        Ok(vec![res_1, res_2])
     }).await?;
 ```
 
