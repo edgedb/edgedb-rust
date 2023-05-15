@@ -12,7 +12,7 @@ readme = "README.md"
 [dependencies]
 edgedb-protocol = {path = "../edgedb-protocol", version="0.4.0"}
 edgedb-errors = {path = "../edgedb-errors", version = "0.4.0" }
-edgedb-derive = {path = "../edgedb-derive", version="0.4.0", optional=true}
+edgedb-derive = {path = "../edgedb-derive", version = "0.5.0", optional=true}
 tokio = { version="1.15", features=["net", "time", "sync", "macros"] }
 bytes = "1.0.1"
 scram = "0.6.0"
