@@ -675,15 +675,15 @@ mod tests {
         let float_32: Uuid = "00000000-0000-0000-0000-000000000106".parse().unwrap();
         let descriptor_id = DescriptorUuid::from(float_32);
         assert_eq!(format!("{descriptor_id:?}"), "BaseScalar(float32)");
-    
+
         let random_uuid: Uuid = "7cc7e050-ef76-4ae9-b8a6-053ca9baa3d5".parse().unwrap();
         let descriptor_id = DescriptorUuid::from(random_uuid);
         assert_eq!(format!("{descriptor_id:?}"), "7cc7e050-ef76-4ae9-b8a6-053ca9baa3d5");
-    
+
         let base_scalar = Descriptor::BaseScalar(BaseScalarTypeDescriptor { id: "00000000-0000-0000-0000-000000000106".parse::<Uuid>().unwrap().into() }
         );
         assert_eq!(format!("{base_scalar:?}"), "BaseScalar(BaseScalarTypeDescriptor { id: BaseScalar(float32) })");
-    
+
         let set_descriptor_with_float32 = Descriptor::Set(SetDescriptor {
             id: "00000000-0000-0000-0000-000000000106".parse::<Uuid>().unwrap().into(),
             type_pos: TypePos(0)
