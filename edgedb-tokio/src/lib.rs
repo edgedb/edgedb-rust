@@ -56,7 +56,7 @@ mod transaction;
 
 pub use edgedb_derive::{Queryable, GlobalsDelta, ConfigDelta};
 
-pub use builder::{Builder, Config, InstanceName};
+pub use builder::{Builder, Config, InstanceName, ClientSecurity};
 pub use credentials::TlsSecurity;
 pub use client::Client;
 pub use errors::Error;
