@@ -132,8 +132,9 @@ struct DsnHelper<'a> {
     query: HashMap<Cow<'a, str>, Cow<'a, str>>,
 }
 
+/// Parsed EdgeDB instance name.
 #[derive(Clone, Debug)]
-enum InstanceName {
+pub enum InstanceName {
     Local(String),
     Cloud {
         org_slug: String,
@@ -1632,6 +1633,10 @@ impl Config {
             Some(InstanceName::Local(ref name)) => Some(name),
             _ => None,
         }
+    }
+
+    pub fn instance_name(&self) -> Option<&InstanceName> {
+        self.0.instance_name.as_ref()
     }
 
     /// Secret key if set
