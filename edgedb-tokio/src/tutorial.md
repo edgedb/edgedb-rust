@@ -449,3 +449,45 @@ cloned_client
 Note that atomic transactions can often be achieved with links instead of transaction operations, which is both more idiomatic to EdgeDB and easier to use.
 
 For example, a wedding ceremony can in theory be seen as an atomic operation as it involves two instantaneous changes in state (from single to married) and should not have a state in between where Person A is married to Person B but Person B is still not yet married to Person A. However, this can be easily accomplished through links instead. One method to accomplish this might be to insert a `WeddingCertificate` with links to two `Person` objects each holding a government id number, with the `Person` type linking to a `WeddingCertificate` containing its government id number to pull up marriage status, the spouse's Person object, and so on.
+
+## Client configuration
+
+The Client can still be configured after initialization via the `with_` methods ([`with_retry_options`](crate::Client::with_retry_options), [`with_transaction_options`](crate::Client::with_transaction_options), etc.) that create a shallow copy of the client with adjusted options.
+
+```rust
+    // Take a schema with matching Rust structs:
+    //
+    // module default {
+    //   type User {
+    //     required property name -> str;
+    //   }
+    // }
+
+    // module test {
+    //   type User {
+    //     required property name -> str;
+    //   }
+    // };
+    
+    // The regular client will query from module 'default' by default
+    let client = edgedb_tokio::create_client().await?;
+    
+    // This client will query from module 'test' by default
+    // The original client is unaffected
+    let test_client = client.with_default_module(Some("test"));
+        
+    // Each client queries separately with different behavior
+    let query = "select User {name};";
+    let users: Vec<User> = client.query(query, &()).await?;
+    let test_users: Vec<TestUser> = test_client.query(query, &()).await?;
+
+    // Many other clients can be created with different options, all independent of the main client
+    let read_only_transaction_client =
+        client.with_transaction_options(TransactionOptions::default().read_only(true));
+
+    let immediate_retry_once_client = client.with_retry_options(RetryOptions::default().with_rule(
+        RetryCondition::TransactionConflict,
+        1,
+        |_| std::time::Duration::from_millis(0),
+    ));
+```
