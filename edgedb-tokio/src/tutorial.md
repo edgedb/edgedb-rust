@@ -446,9 +446,9 @@ cloned_client
     .await?;
 ```
 
-Note that atomic transactions can often be achieved with links instead of transaction operations, which is both more idiomatic to EdgeDB and easier to use.
+Note that atomic transactions can often be achieved with links and backlinks instead of transaction operations, which is both more idiomatic to EdgeDB and easier to use.
 
-For example, a wedding ceremony can in theory be seen as an atomic operation as it involves two instantaneous changes in state (from single to married) and should not have a state in between where Person A is married to Person B but Person B is still not yet married to Person A. However, this can be easily accomplished through links instead. One method to accomplish this might be to insert a `WeddingCertificate` with links to two `Person` objects each holding a government id number, with the `Person` type linking to a `WeddingCertificate` containing its government id number to pull up marriage status, the spouse's Person object, and so on.
+For example, if one object holds a `required link` to two other objects and each of these two objects has a single banklink to the first one, simply inserting the first object will effectively change the state of the other two instantaneously.
 
 ## Client configuration
 
