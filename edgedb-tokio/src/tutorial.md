@@ -446,7 +446,7 @@ cloned_client
     .await?;
 ```
 
-Note that atomic transactions can often be achieved with links and backlinks instead of transaction operations, which is both more idiomatic to EdgeDB and easier to use.
+Note that atomic transactions can often be achieved with links and [backlinks](https://www.edgedb.com/docs/edgeql/paths#backlinks) instead of transaction operations, which is both more idiomatic to EdgeDB and easier to use.
 
 For example, if one object holds a `required link` to two other objects and each of these two objects has a single banklink to the first one, simply inserting the first object will effectively change the state of the other two instantaneously.
 
