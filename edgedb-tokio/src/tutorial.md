@@ -4,7 +4,7 @@
 
 If you just want a working repo to get started, clone the [Rust client examples repo](https://github.com/Dhghomon/edgedb_rust_client_examples), type `edgedb project init` to start an EdgeDB project, and then `cargo run` to run the samples.
 
-This tutorial contains a lot of similar examples to those found in the `main.rs` file inside that repo. It uses the same schema as [the EdgeDB tutorial](https://www.edgedb.com/tutorial), with a few extra types on top.
+This tutorial contains a lot of similar examples to those found in the `main.rs` file inside that repo.
 
 ## Getting started - your own project
 
@@ -139,7 +139,7 @@ Parameter <str>$1: General Kenobi
 
 But when using the Rust client there is no prompt to do so. Arguments also have to be in the order `$0`, `$1`, and so on as opposed to in the REPL where they can be named (e.g. `$message` and `$person` instead of `$0` and `$1`). The arguments in the client are then passed in as a tuple.
 
-More information on passing in arguments can be found in its own section below.
+More information on passing in arguments can be found in [its own section](#passing-in-arguments) below.
 
 The `()` unit type [implements `QueryArgs`](https://docs.rs/edgedb-protocol/latest/edgedb_protocol/query_arg/trait.QueryArgs.html#impl-QueryArgs-for-()) and is used when no arguments are present so `&()` is a pretty common sight when using the Rust client:
 
@@ -159,7 +159,7 @@ let query_res = client
     .await?;
 ```
     
-But declaring the type up front tends to look neater.
+But declaring the final expected type up front tends to look neater.
 
 ```rust
 let query_res: String = client
@@ -188,7 +188,7 @@ let query_res_opt: Option<String> = client.query_single(query, &()).await?;
 
 ## Using the `Queryable` macro
 
-The easiest way to unpack an EdgeDB query result is the built-in `Queryable` macro from the `edgedb-derive` crate. This turns queries directly into Rust types without having to match on a `Value` (more on the `Value` enum in the next section), cast to JSON, etc.
+The easiest way to unpack an EdgeDB query result is the built-in `Queryable` macro from the `edgedb-derive` crate. This turns queries directly into Rust types without having to match on a `Value` (more on the `Value` enum in [its own section](#the-value-enum)), cast to JSON, etc.
 
 ```rust
 #[derive(Debug, Deserialize, Queryable)]
@@ -274,7 +274,7 @@ let query_res: Value = client.query_required_single(query, &(arguments)).await?;
 
 ## The `Value` enum
 
-The [Value](https://docs.rs/edgedb-protocol/latest/edgedb_protocol/value/enum.Value.html) enum can be found in the edgedb-protocol crate. A `Value` represents anything returned from EdgeDB so you can always return a `Value` from any of the query methods, and the enum can be instructive in getting to know the protocol. On the other hand, returning a `Value` can lead to a lot of pattern matching to get to the inner value and is not the most ergonomic way to work with results from EdgeDB.
+The [Value](https://docs.rs/edgedb-protocol/latest/edgedb_protocol/value/enum.Value.html) enum can be found in the edgedb-protocol crate. A `Value` represents anything returned from EdgeDB so you can always return a `Value` from any of the query methods without needing to deserialize into a Rust type, and the enum can be instructive in getting to know the protocol. On the other hand, returning a `Value` leads to pattern matching to get to the inner value and is not the most ergonomic way to work with results from EdgeDB.
 
 ```rust
 pub enum Value {
