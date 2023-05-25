@@ -88,6 +88,16 @@ commands:
     container: tools
     run: [cargo, outdated]
 
+  upgrade: !Command
+    description: Run `cargo upgrade`
+    container: tools
+    run: [cargo, upgrade]
+
+  set-version: !Command
+    description: Run `cargo set-version` tool
+    container: tools
+    run: [cargo, set-version]
+
   audit: !Command
     description: Run audit tool
     container: tools
@@ -192,7 +202,7 @@ containers:
   tools:
     setup:
     - !Container ubuntu
-    - !Sh 'cargo install cargo-audit cargo-outdated --root=/usr'
+    - !Sh 'cargo install cargo-audit cargo-outdated cargo-edit --root=/usr'
     environ: *environ
 
   nightly:
