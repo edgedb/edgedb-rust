@@ -1,14 +1,12 @@
 # EdgeDB Rust client tutorial
 
-# Getting started
-
-## Quick start from repo
+## Getting started - quick start from repo
 
 If you just want a working repo to get started, clone the [Rust client examples repo](https://github.com/Dhghomon/edgedb_rust_client_examples), type `edgedb project init` to start an EdgeDB project, and then `cargo run` to run the samples.
 
 This tutorial contains a lot of similar examples to those found in the `main.rs` file inside that repo. It uses the same schema as [the EdgeDB tutorial](https://www.edgedb.com/tutorial), with a few extra types on top.
 
-## Cargo
+## Getting started - your own project
 
 The minimum to add to your Cargo.toml to use the client is [edgedb-tokio](https://docs.rs/edgedb-tokio/latest/edgedb_tokio/):
 
@@ -51,17 +49,17 @@ The `edgedb` CLI initializes EdgeDB projects in the same way cargo does, except 
     Specify the name of EdgeDB instance to use with this project [default: my_db]:
     > my_db
     Checking EdgeDB versions...
-    Specify the version of EdgeDB to use with this project [default: 2.14]:
-    > 2.14
+    Specify the version of EdgeDB to use with this project [default: 2.15]:
+    > 2.15
     ┌─────────────────────┬─────────────────────────────────┐
     │ Project directory   │ \\?\C:\rust\my_db               │
     │ Project config      │ \\?\C:\rust\my_db\edgedb.toml   │
     │ Schema dir (empty)  │ \\?\C:\rust\my_db\dbschema      │
     │ Installation method │ WSL                             │
-    │ Version             │ 2.14+7aec755                    │
+    │ Version             │ 2.15+75c3494                    │
     │ Instance name       │ my_db                           │
     └─────────────────────┴─────────────────────────────────┘
-    Version 2.14+7aec755 is already installed
+    Version 2.15+75c3494 is already installed
     Initializing EdgeDB instance...
     Applying migrations...
     Everything is up to date. Revision initial
@@ -70,11 +68,11 @@ The `edgedb` CLI initializes EdgeDB projects in the same way cargo does, except 
 
 Inside your cargo project you'll notice some new items:
 
-* `edgedb.toml`, which is used to mark the directory as an EdgeDB project. The file itself doesn't contain much — just the version of EdgeDB being used — but is used by the CLI to run commands without connection flags. (E.g., `edgedb -I my_project migrate` becomes simply `edgedb migrate`). See more on edgedb.toml [in our blog post introducing the EdgeDB projects CLI](https://www.edgedb.com/blog/introducing-edgedb-projects).
+* `edgedb.toml`, which is used to mark the directory as an EdgeDB project. The file itself doesn't contain much — just the version of EdgeDB being used — but is used by the CLI to run commands without connection flags. (E.g., `edgedb -I my_project migrate` becomes simply `edgedb migrate`). See more on edgedb.toml [in the blog post introducing the EdgeDB projects CLI](https://www.edgedb.com/blog/introducing-edgedb-projects).
 
 * A `/dbschema` folder containing:
-    * a `default.esdl` file. This holds your schema.
-    * a `/migrations` folder with `.edgeql` files named starting at `00001`. These hold the [ddl](https://www.edgedb.com/docs/reference/ddl/index) commands that were used to migrate your schema. Every time you change your schema followed by `edgedb migration create` and `edgedb migrate`, a new file will be slipped into this directory.
+    * a `default.esdl` file which holds your schema. You can change the schema by directly modifying this file followed by `edgedb migration create` and `edgedb migrate`.
+    * a `/migrations` folder with `.edgeql` files named starting at `00001`. These hold the [ddl](https://www.edgedb.com/docs/reference/ddl/index) commands that were used to migrate your schema. A new file will show up in this directory every time your schema is migrated.
 
 Now that you have the right dependencies and an EdgeDB instance, you can create a client.
 
@@ -105,7 +103,7 @@ fn query_required_single -> Result<R, Error>
 fn query_required_single_json -> Result<Json, Error>
 ```
 
-By the way, the two `_required_single` methods just call the `_single` methods with an `.ok_or_else()` inside so structurally there is nothing different about them.
+Note that the two `_required_single` methods just call the `_single` methods with an `.ok_or_else()` inside so structurally there is nothing different about them.
 
 These methods all take a *query* and *arguments*.
 
@@ -139,7 +137,7 @@ Parameter <str>$1: General Kenobi
 {'Hello there General Kenobi'}
 ```
 
-But when using the Rust client there is no prompt to do so. Arguments also have to be in the order $0, $1, and so on as opposed to in the REPL where they can be named, as above. The arguments in the client are then passed in as a tuple.
+But when using the Rust client there is no prompt to do so. Arguments also have to be in the order `$0`, `$1`, and so on as opposed to in the REPL where they can be named (e.g. `$message` and `$person` instead of `$0` and `$1`). The arguments in the client are then passed in as a tuple.
 
 The `()` unit type [implements `QueryArgs`](https://docs.rs/edgedb-protocol/latest/edgedb_protocol/query_arg/trait.QueryArgs.html#impl-QueryArgs-for-()) and is used when no arguments are present so `&()` is a pretty common sight when using the Rust client:
 
@@ -206,7 +204,7 @@ let query = format!(
 );
 ```
 
-The better way to do it is by passing in arguments as a tuple as the second argument in the client methods. This allows the query to be a directly typed single `&'static str` and the cast notation (`<str>`, `<int32>`) makes the types more clearly visible:
+Instead, you can pass in arguments as a tuple as the second argument in the client methods. This allows the query to be a directly typed single `&'static str` and the cast notation (`<str>`, `<int32>`) makes the types more clearly visible:
 
 ```rust
 let query = "select {
@@ -244,7 +242,7 @@ assert!(query_res
 
 ## The `Value` enum
 
-The above examples have have mostly worked with the [Value](https://docs.rs/edgedb-protocol/latest/edgedb_protocol/value/enum.Value.html) enum in order to print them out and understand the EdgeDB data protocol. You can always return a `Value` from a query, as a `Value` represents anything returned from EdgeDB. On the other hand, returning a `Value` can lead to a lot of pattern matching to get to the inner value and is not the most ergonomic way to work with results from EdgeDB.
+The [Value](https://docs.rs/edgedb-protocol/latest/edgedb_protocol/value/enum.Value.html) enum can be found in the edgedb-protocol crate. A `Value` represents anything returned from EdgeDB so you can always return a `Value` from any of the query methods, and the enum can be instructive in getting to know the protocol. On the other hand, returning a `Value` can lead to a lot of pattern matching to get to the inner value and is not the most ergonomic way to work with results from EdgeDB.
 
 ```rust
 pub enum Value {
@@ -261,8 +259,6 @@ pub enum Value {
     // ... and so on
 }
 ```
-
-## `Value` enum variants
 
 Most variants of the `Value` enum correspond to a Rust type from the standard library, while some are from the `edgedb-protocol` crate and will have to be constructed. For example, this query expecting a `bigint` will return an error as it receives a `20` (an `i32`) but EdgeDB is expecting a `bigint`:
 
@@ -319,19 +315,19 @@ let query = "with account :=
         username := <str>$0
     }),
     select account {
-      username,
-      id
+      id,
+      username
     };";
-let cannot_make_into_queryable_account: Result<QueryableAccount, _> = client
+let wrong_order: Result<QueryableAccount, _> = client
     .query_required_single(query, &("SomeUserName",))
     .await;
 assert!(
-    format!("{cannot_make_into_queryable_account:?}")
-    .contains(r#"error: Some(WrongField { unexpected: "id", expected: "username" })"#);
+    format!("{wrong_order:?}")
+    .contains(r#"WrongField { unexpected: "id", expected: "username" }"#);
 );
 ```
 
-You can use `cargo expand` with the nightly compiler to see the code generated by the Queryable macro. The minimal example repo also contains a somewhat cleaned up version of the generated code [here](https://github.com/Dhghomon/edgedb_rust_client_examples/blob/master/src/lib.rs#L12).
+You can use `[cargo expand](https://github.com/dtolnay/cargo-expand)` with the nightly compiler to see the code generated by the Queryable macro, but the minimal example repo also contains a somewhat cleaned up version of the generated code [here](https://github.com/Dhghomon/edgedb_rust_client_examples/blob/master/src/lib.rs#L12).
 
 ## Using JSON
 
@@ -381,7 +377,7 @@ let json_queryable_accounts: Vec<JsonQueryableAccount> = client
     .unwrap();
 ```
 
-This attribute can also be used on an inner struct value that implements `Queryable`. Here, some random JSON is turned into a `HashMap<String, String>`:
+This attribute can also be used on an inner struct value that implements `Queryable`:
 
 ```rust
 #[derive(Debug, Deserialize, Queryable)]
@@ -391,17 +387,6 @@ pub struct InnerJsonQueryableAccount {
     #[edgedb(json)]
     pub some_json: HashMap<String, String>,
 }
-
-let query = r#" with j := <json>(
-      nice_user := "yes",
-      bad_user := "no"
-    )
-    select Account {
-      username,
-      id,
-      some_json := j
-    };"#;
-let query_res: Vec<InnerJsonQueryableAccount> = client.query(query, &()).await.unwrap();
 ``` 
 
 ## Transactions
@@ -416,7 +401,6 @@ A transaction removing 10 cents from one customer's account and placing it in an
 
 ```rust
 #[derive(Debug, Deserialize, Queryable)]
-#[edgedb(json)]
 pub struct BankCustomer {
     pub name: String,
     pub bank_balance: i32,
@@ -482,12 +466,14 @@ The Client can still be configured after initialization via the `with_` methods 
     let test_users: Vec<TestUser> = test_client.query(query, &()).await?;
 
     // Many other clients can be created with different options, all independent of the main client
-    let read_only_transaction_client =
+    let _read_only_client =
         client.with_transaction_options(TransactionOptions::default().read_only(true));
 
-    let immediate_retry_once_client = client.with_retry_options(RetryOptions::default().with_rule(
+    let _immediate_retry_once_client = client.with_retry_options(RetryOptions::default().with_rule(
         RetryCondition::TransactionConflict,
+        // No. of retries
         1,
+        // Retry immediately as opposed to default with increasing backoff
         |_| std::time::Duration::from_millis(0),
     ));
 ```
