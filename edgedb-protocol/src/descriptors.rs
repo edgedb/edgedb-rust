@@ -1,4 +1,6 @@
 use std::convert::{TryFrom, TryInto};
+use std::fmt::{Debug, Formatter};
+use std::ops::Deref;
 use std::sync::Arc;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -7,7 +9,7 @@ use edgedb_errors::{Error, ErrorKind, DescriptorMismatch, ClientEncodingError};
 use snafu::{ensure, OptionExt};
 use uuid::Uuid;
 
-use crate::codec::{Codec, build_codec};
+use crate::codec::{Codec, build_codec, uuid_to_known_name};
 use crate::common::{Cardinality, State};
 use crate::encoding::{Decode, Input};
 use crate::errors::{InvalidTypeDescriptor, UnexpectedTypePos};
@@ -38,6 +40,38 @@ pub enum Descriptor {
     TypeAnnotation(TypeAnnotationDescriptor),
 }
 
+#[derive(Clone, PartialEq, Eq)]
+pub struct DescriptorUuid(Uuid);
+
+impl Debug for DescriptorUuid {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match uuid_to_known_name(&self.0) {
+            Some(known_name) => write!(f, "{known_name}"),
+            None => write!(f, "{}", &self.0)
+        }
+    }
+}
+
+impl Deref for DescriptorUuid {
+    type Target = Uuid;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<Uuid> for DescriptorUuid {
+    fn from(uuid: Uuid) -> Self {
+        Self(uuid)
+    }
+}
+
+impl PartialEq<Uuid> for DescriptorUuid {
+    fn eq(&self, other: &Uuid) -> bool {
+        self.0 == *other
+    }
+}
+
 #[derive(Debug)]
 pub struct Typedesc {
     pub(crate) proto: ProtocolVersion,
@@ -46,21 +80,21 @@ pub struct Typedesc {
     pub(crate) root_pos: Option<TypePos>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SetDescriptor {
-    pub id: Uuid,
+    pub id: DescriptorUuid,
     pub type_pos: TypePos,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ObjectShapeDescriptor {
-    pub id: Uuid,
+    pub id: DescriptorUuid,
     pub elements: Vec<ShapeElement>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InputShapeTypeDescriptor {
-    pub id: Uuid,
+    pub id: DescriptorUuid,
     pub elements: Vec<ShapeElement>,
 }
 
@@ -74,26 +108,26 @@ pub struct ShapeElement {
     pub type_pos: TypePos,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BaseScalarTypeDescriptor {
-    pub id: Uuid,
+    pub id: DescriptorUuid,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ScalarTypeDescriptor {
-    pub id: Uuid,
+    pub id: DescriptorUuid,
     pub base_type_pos: TypePos,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TupleTypeDescriptor {
-    pub id: Uuid,
+    pub id: DescriptorUuid,
     pub element_types: Vec<TypePos>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NamedTupleTypeDescriptor {
-    pub id: Uuid,
+    pub id: DescriptorUuid,
     pub elements: Vec<TupleElement>,
 }
 
@@ -103,29 +137,29 @@ pub struct TupleElement {
     pub type_pos: TypePos,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ArrayTypeDescriptor {
-    pub id: Uuid,
+    pub id: DescriptorUuid,
     pub type_pos: TypePos,
     pub dimensions: Vec<Option<u32>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RangeTypeDescriptor {
-    pub id: Uuid,
+    pub id: DescriptorUuid,
     pub type_pos: TypePos,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EnumerationTypeDescriptor {
-    pub id: Uuid,
+    pub id: DescriptorUuid,
     pub members: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TypeAnnotationDescriptor {
     pub annotated_type: u8,
-    pub id: Uuid,
+    pub id: DescriptorUuid,
     pub annotation: String,
 }
 
@@ -156,7 +190,7 @@ impl Typedesc {
     pub fn is_empty_tuple(&self) -> bool {
         match self.root() {
             Some(Descriptor::Tuple(t))
-              => t.id == Uuid::from_u128(0xFF) && t.element_types.is_empty(),
+              => *t.id == Uuid::from_u128(0xFF) && t.element_types.is_empty(),
             _ => false,
         }
     }
@@ -185,7 +219,7 @@ impl Typedesc {
         Ok(Typedesc {
             proto: buf.proto().clone(),
             array: descriptors,
-            root_id: root_id.clone(),
+            root_id,
             root_pos,
         })
     }
@@ -323,7 +357,7 @@ impl Typedesc {
         })?;
         let data = buf.freeze();
         Ok(State {
-            typedesc_id: self.root_id.clone(),
+            typedesc_id: self.root_id,
             data,
         })
     }
@@ -425,7 +459,7 @@ impl Decode for SetDescriptor {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 0);
-        let id = Uuid::decode(buf)?;
+        let id = Uuid::decode(buf)?.into();
         let type_pos = TypePos(buf.get_u16());
         Ok(SetDescriptor { id, type_pos })
     }
@@ -435,7 +469,7 @@ impl Decode for ObjectShapeDescriptor {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 1);
-        let id = Uuid::decode(buf)?;
+        let id = Uuid::decode(buf)?.into();
         let element_count = buf.get_u16();
         let mut elements = Vec::with_capacity(element_count as usize);
         for _ in 0..element_count {
@@ -449,7 +483,7 @@ impl Decode for InputShapeTypeDescriptor {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 8);
-        let id = Uuid::decode(buf)?;
+        let id = Uuid::decode(buf)?.into();
         let element_count = buf.get_u16();
         let mut elements = Vec::with_capacity(element_count as usize);
         for _ in 0..element_count {
@@ -486,7 +520,7 @@ impl Decode for ShapeElement {
 impl Decode for BaseScalarTypeDescriptor {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         assert!(buf.get_u8() == 2);
-        let id = Uuid::decode(buf)?;
+        let id = Uuid::decode(buf)?.into();
         Ok(BaseScalarTypeDescriptor { id })
     }
 }
@@ -496,7 +530,7 @@ impl Decode for ScalarTypeDescriptor {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 3);
-        let id = Uuid::decode(buf)?;
+        let id = Uuid::decode(buf)?.into();
         let base_type_pos = TypePos(buf.get_u16());
         Ok(ScalarTypeDescriptor { id, base_type_pos })
     }
@@ -506,7 +540,7 @@ impl Decode for TupleTypeDescriptor {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 4);
-        let id = Uuid::decode(buf)?;
+        let id = Uuid::decode(buf)?.into();
         let el_count = buf.get_u16();
         ensure!(buf.remaining() >= 2*el_count as usize, errors::Underflow);
         let mut element_types = Vec::with_capacity(el_count as usize);
@@ -521,7 +555,7 @@ impl Decode for NamedTupleTypeDescriptor {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 5);
-        let id = Uuid::decode(buf)?;
+        let id = Uuid::decode(buf)?.into();
         let element_count = buf.get_u16();
         let mut elements = Vec::with_capacity(element_count as usize);
         for _ in 0..element_count {
@@ -547,7 +581,7 @@ impl Decode for ArrayTypeDescriptor {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 21, errors::Underflow);
         assert!(buf.get_u8() == 6);
-        let id = Uuid::decode(buf)?;
+        let id = Uuid::decode(buf)?.into();
         let type_pos = TypePos(buf.get_u16());
         let dim_count = buf.get_u16();
         ensure!(buf.remaining() >= 4*dim_count as usize, errors::Underflow);
@@ -567,7 +601,7 @@ impl Decode for RangeTypeDescriptor {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 9);
-        let id = Uuid::decode(buf)?;
+        let id = Uuid::decode(buf)?.into();
         let type_pos = TypePos(buf.get_u16());
         Ok(RangeTypeDescriptor { id, type_pos })
     }
@@ -577,7 +611,7 @@ impl Decode for EnumerationTypeDescriptor {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 7);
-        let id = Uuid::decode(buf)?;
+        let id = Uuid::decode(buf)?.into();
         let member_count = buf.get_u16();
         let mut members = Vec::with_capacity(member_count as usize);
         for _ in 0..member_count {
@@ -592,8 +626,36 @@ impl Decode for TypeAnnotationDescriptor {
         ensure!(buf.remaining() >= 21, errors::Underflow);
         let annotated_type = buf.get_u8();
         assert!(annotated_type >= 0x7F);
-        let id = Uuid::decode(buf)?;
+        let id = Uuid::decode(buf)?.into();
         let annotation = String::decode(buf)?;
         Ok(TypeAnnotationDescriptor { annotated_type, id, annotation })
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use uuid::Uuid;
+    use crate::descriptors::{DescriptorUuid, Descriptor, BaseScalarTypeDescriptor, SetDescriptor, TypePos};
+
+    #[test]
+    fn descriptor_uuid_debug_outputs() {
+        let float_32: Uuid = "00000000-0000-0000-0000-000000000106".parse().unwrap();
+        let descriptor_id = DescriptorUuid::from(float_32);
+        assert_eq!(format!("{descriptor_id:?}"), "BaseScalar(float32)");
+
+        let random_uuid: Uuid = "7cc7e050-ef76-4ae9-b8a6-053ca9baa3d5".parse().unwrap();
+        let descriptor_id = DescriptorUuid::from(random_uuid);
+        assert_eq!(format!("{descriptor_id:?}"), "7cc7e050-ef76-4ae9-b8a6-053ca9baa3d5");
+
+        let base_scalar = Descriptor::BaseScalar(BaseScalarTypeDescriptor { id: "00000000-0000-0000-0000-000000000106".parse::<Uuid>().unwrap().into() }
+        );
+        assert_eq!(format!("{base_scalar:?}"), "BaseScalar(BaseScalarTypeDescriptor { id: BaseScalar(float32) })");
+
+        let set_descriptor_with_float32 = Descriptor::Set(SetDescriptor {
+            id: "00000000-0000-0000-0000-000000000106".parse::<Uuid>().unwrap().into(),
+            type_pos: TypePos(0)
+        });
+        assert_eq!(format!("{set_descriptor_with_float32:?}"), "Set(SetDescriptor { id: BaseScalar(float32), type_pos: TypePos(0) })");
     }
 }

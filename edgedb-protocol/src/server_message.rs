@@ -240,7 +240,7 @@ impl ParameterStatus {
             self.proto,
             typedesc_data,
         );
-        let typedesc_id = Uuid::decode(typedesc_buf)?;
+        let typedesc_id = Uuid::decode(typedesc_buf)?.into();
         let typedesc = Typedesc::decode_with_id(typedesc_id, typedesc_buf)?;
         Ok((typedesc, data))
     }
