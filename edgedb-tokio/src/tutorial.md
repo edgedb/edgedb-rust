@@ -321,7 +321,7 @@ assert!(query_res
 
 ## Using JSON
 
-EdgeDB can cast any type to JSON with `<json>` so just sticking that in front of a query is enough to return the same object as JSON. This result can be turned into a struct using `serde` and `serde_json`.
+EdgeDB can cast any type to JSON with `<json>`, but the `_json` methods don't require this cast in the query. This result can be turned into a struct using `serde` and `serde_json`.
 
 ```rust
 #[derive(Debug, Deserialize)]
@@ -330,11 +330,12 @@ pub struct Account {
     pub id: Uuid,
 }
 
+// No need for <json> cast here
 let query = "with account := 
     (insert Account {
         username := <str>$0
     }),
-    select <json>account {
+    select account {
       username,
       id
     };";
