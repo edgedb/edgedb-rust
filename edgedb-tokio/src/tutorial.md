@@ -74,6 +74,8 @@ Inside your cargo project you'll notice some new items:
     * a `default.esdl` file which holds your schema. You can change the schema by directly modifying this file followed by `edgedb migration create` and `edgedb migrate`.
     * a `/migrations` folder with `.edgeql` files named starting at `00001`. These hold the [ddl](https://www.edgedb.com/docs/reference/ddl/index) commands that were used to migrate your schema. A new file will show up in this directory every time your schema is migrated.
 
+If you are running EdgeDB 3.0 and above, you also have the option of using the [edgedb watch](https://www.edgedb.com/docs/cli/edgedb_watch) command. Doing so starts a long-running process that keeps an eye on changes in `/dbschema`, automatically applying these changes in real time.
+
 Now that you have the right dependencies and an EdgeDB instance, you can create a client.
 
 # Using the client
