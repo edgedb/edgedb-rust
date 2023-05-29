@@ -110,47 +110,23 @@ Note the difference between the `_single` and the `_required_single` methods:
 * The `_required_single` methods return empty results as a `NoDataError` which allows propagating errors normally through an application,
 * The `_single` methods will simply give you an `Ok(None)` in this case.
 
-These methods all take a *query* and *arguments*.
+These methods all take a *query* (a `&str`) and *arguments* (something that implements the [`QueryArgs`](https://docs.rs/edgedb-protocol/latest/edgedb_protocol/query_arg/trait.QueryArgs.html) trait).
 
-A regular EdgeQL query without arguments looks like this:
-
-```
-with 
-    message1 := 'Hello there', 
-    message2 := 'General Kenobi', 
-select message1 ++ ' ' ++ message2;
-```
-
-And the same query with arguments:
-
-```
-with 
-    message1 := <str>$0, 
-    message2 := <str>$1, 
-select message1 ++ ' ' ++ message2;
-```
-
-In the EdgeQL REPL you are prompted to enter arguments:
-
-```
-db> with
-... message1 := <str>$0,
-... message2 := <str>$1,
-... select message1 ++ ' ' ++ message2;
-Parameter <str>$0: Hello there
-Parameter <str>$1: General Kenobi
-{'Hello there General Kenobi'}
-```
-
-But when using the Rust client there is no prompt to do so. Arguments also have to be in the order `$0`, `$1`, and so on as opposed to in the REPL where they can be named (e.g. `$message` and `$person` instead of `$0` and `$1`). The arguments in the client are then passed in as a tuple.
-
-More information on passing in arguments can be found in [its own section](#passing-in-arguments) below.
-
-The `()` unit type [implements `QueryArgs`](https://docs.rs/edgedb-protocol/latest/edgedb_protocol/query_arg/trait.QueryArgs.html#impl-QueryArgs-for-()) and is used when no arguments are present so `&()` is a pretty common sight when using the Rust client:
+The `()` unit type `QueryArgs` and is used when no arguments are present so `&()` is a pretty common sight when using the Rust client.
 
 ```rust
-let query_res = client.query("select 'Just a string'", &()).await?;
+// Without arguments: just add &() after the query
+let query_res: String = client.query_required_single("select 'Just a string'", &()).await?;
+
+// With arguments, same output
+let one = " a ";
+let two = "string";
+let query_res: String = client
+    .query_required_single("select 'Just' ++ <str>$0 ++ <str>$1", &(first, second))
+    .await?;
 ```
+
+More information on passing in arguments can be found in [its own section](#passing-in-arguments) below.
 
 These methods take two generic parameters which can be specified with the turbofish syntax:
 
@@ -231,35 +207,44 @@ You can use [cargo expand](https://github.com/dtolnay/cargo-expand) with the nig
 
 ## Passing in arguments
 
-Technically arguments can be passed in through any correctly formatted string, but this can be fragile and quickly gets awkward. Note the double `{{` curly braces as well as `' '` around the `movie_title` string to keep the EdgeDB compiler from seeing two separate `movie` and `title` tokens:
+A regular EdgeQL query without arguments looks like this:
 
-```rust
-let movie_title = "Nice movie";
-let release_year = 2023;
-let query = format!(
-    "with movie_title := '{movie_title}',
-year := {release_year},
-movie := (insert Movie {{
-    title := movie_title,
-    release_year := year
-}}),
-select movie {{
-    title,
-    release_year,
-    id
-}}");
+```
+with 
+    message1 := 'Hello there', 
+    message2 := 'General Kenobi', 
+select message1 ++ ' ' ++ message2;
 ```
 
-Instead, you can pass in arguments as a tuple as the second argument in the client methods. This allows the query to be a directly typed single `&'static str` and the cast notation (`<str>`, `<int32>`) makes the types more clearly visible:
+And the same query with arguments:
+
+```
+with 
+    message1 := <str>$0, 
+    message2 := <str>$1, 
+select message1 ++ ' ' ++ message2;
+```
+
+In the EdgeQL REPL you are prompted to enter arguments:
+
+```
+db> with
+... message1 := <str>$0,
+... message2 := <str>$1,
+... select message1 ++ ' ' ++ message2;
+Parameter <str>$0: Hello there
+Parameter <str>$1: General Kenobi
+{'Hello there General Kenobi'}
+```
+
+But when using the Rust client there is no prompt to do so. At present, arguments also have to be in the order `$0`, `$1`, and so on as opposed to in the REPL where they can be named (e.g. `$message` and `$person` instead of `$0` and `$1`). The arguments in the client are then passed in as a tuple:
 
 ```rust
 let arguments = ("Nice movie", 2023);
-let query = "with 
-movie_title := <str>$0,
-year := <int32>$1,
+let query = "with
 movie := (insert Movie {
-  title := movie_title,
-  release_year := year
+  title := <str>$0,
+  release_year := <int32>$1
 })
   select  {
     title,
