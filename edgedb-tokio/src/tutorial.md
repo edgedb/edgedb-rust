@@ -105,7 +105,10 @@ fn query_required_single -> Result<R, Error>
 fn query_required_single_json -> Result<Json, Error>
 ```
 
-Note that the two `_required_single` methods just call the `_single` methods with an `.ok_or_else()` inside so structurally there is nothing different about them.
+Note the difference between the `_single` and the `_required_single` methods:
+
+* The `_required_single` methods return empty results as a `NoDataError` which allows propagating errors normally through an application,
+* The `_single` methods will simply give you an `Ok(None)` in this case.
 
 These methods all take a *query* and *arguments*.
 
