@@ -321,7 +321,7 @@ assert!(query_res
 
 ## Using JSON
 
-EdgeDB can cast any type to JSON with `<json>`, but the `_json` methods don't require this cast in the query. This result can be turned into a struct using `serde` and `serde_json`.
+EdgeDB can cast any type to JSON with `<json>`, but the `_json` methods don't require this cast in the query. This result can be turned into a String and used to respond to some JSON API request directly, unpacked into a struct using `serde` and `serde_json`, etc.
 
 ```rust
 #[derive(Debug, Deserialize)]
@@ -347,6 +347,8 @@ let json_res = client
     .await?
     .unwrap();
 
+// Format: {"username" : "SomeUser1", "id" : "7093944a-fd3a-11ed-a013-c7de12ffe7a9"}
+let as_string = json_res.to_string();
 let as_account: Account = serde_json::from_str(&json_res)?;
 ```
 
