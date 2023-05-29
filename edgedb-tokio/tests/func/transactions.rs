@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
 
 use tokio::sync::{Mutex};
 
+use edgedb_errors::NoDataError;
 use edgedb_tokio::{Client, Transaction};
 
 use crate::server::SERVER;
@@ -139,5 +140,46 @@ async fn transaction_conflict_with_complex_err() -> anyhow::Result<()> {
 
     assert!(tup == (1, 2) || tup == (2, 1), "Wrong result: {:?}", tup);
     assert_eq!(iters.load(Ordering::SeqCst), 3);
+    Ok(())
+}
+
+#[tokio::test]
+async fn queries() -> anyhow::Result<()> {
+    let client = Client::new(&SERVER.config);
+    client.transaction(|mut tx| async move {
+        let value = tx.query::<i64, _>("SELECT 7*93", &()).await?;
+        assert_eq!(value, vec![651]);
+
+        let value = tx.query_single::<i64, _>("SELECT 5*11", &()).await?;
+        assert_eq!(value, Some(55));
+
+        let value = tx.query_single::<i64, _>("SELECT <int64>{}", &()).await?;
+        assert_eq!(value, None);
+
+        let value = tx.query_required_single::<i64, _>(
+            "SELECT 5*11", &()).await?;
+        assert_eq!(value, 55);
+
+        let err = tx.query_required_single::<i64, _>(
+            "SELECT <int64>{}", &()).await.unwrap_err();
+        assert!(err.is::<NoDataError>());
+
+        let value = tx.query_json("SELECT 'x' ++ 'y'", &()).await?;
+        assert_eq!(value.as_ref(), r#"["xy"]"#);
+
+        let value = tx.query_single_json("SELECT 'x' ++ 'y'", &()).await?;
+        assert_eq!(value.as_deref(), Some(r#""xy""#));
+
+        let value = tx.query_single_json("SELECT <str>{}", &()).await?;
+        assert_eq!(value.as_deref(), None);
+
+        let err = tx.query_required_single_json(
+            "SELECT <int64>{}", &()).await.unwrap_err();
+        assert!(err.is::<NoDataError>());
+
+        tx.execute("SELECT 1+1", &()).await?;
+
+        Ok(())
+    }).await?;
     Ok(())
 }

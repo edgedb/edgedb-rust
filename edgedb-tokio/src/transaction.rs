@@ -433,6 +433,41 @@ impl Transaction {
             .ok_or_else(|| NoDataError::with_message(
                         "query row returned zero results"))
     }
+
+    /// Execute a query and don't expect result
+    ///
+    /// This method can be used with both static arguments, like a tuple of
+    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// Similarly, dynamically typed results are also supported.
+    pub async fn execute<A>(&mut self, query: &str, arguments: &A)
+        -> Result<(), Error>
+        where A: QueryArgs,
+    {
+        self.ensure_started().await?;
+        let flags = CompilationOptions {
+            implicit_limit: None,
+            implicit_typenames: false,
+            implicit_typeids: false,
+            explicit_objectids: true,
+            allow_capabilities: Capabilities::MODIFICATIONS,
+            io_format: IoFormat::Binary,
+            expected_cardinality: Cardinality::Many,
+        };
+        let state = self.state.clone(); // TODO: optimize, by careful borrow
+        let ref mut conn = self.inner().conn;
+        let desc = conn.parse(&flags, query, &state).await?;
+        let inp_desc = desc.input()
+            .map_err(ProtocolEncodingError::with_source)?;
+
+        let mut arg_buf = BytesMut::with_capacity(8);
+        arguments.encode(&mut Encoder::new(
+            &inp_desc.as_query_arg_context(),
+            &mut arg_buf,
+        ))?;
+
+        conn.execute(&flags, query, &state, &desc, &arg_buf.freeze()).await?;
+        Ok(())
+    }
 }
 
 #[allow(dead_code, unreachable_code)]

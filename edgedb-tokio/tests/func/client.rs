@@ -39,6 +39,9 @@ async fn simple() -> anyhow::Result<()> {
         "SELECT <int64>{}", &()).await.unwrap_err();
     assert!(err.is::<NoDataError>());
 
+    client.execute("SELECT 1+1", &()).await?;
+    client.execute("START MIGRATION TO {}; ABORT MIGRATION", &()).await?;
+
     Ok(())
 }
 
