@@ -202,11 +202,7 @@ pub struct QueryableAccount {
     pub id: Uuid,
 }
 
-let query = "with account := 
-    (insert Account {
-      username := 'User1'
-    }),
-    select account {
+let query = "select account {
       username,
       id
     };";
@@ -218,11 +214,7 @@ let as_queryable_account: QueryableAccount = client
 Note: Field order within the shape of the query matters when using the `Queryable` macro. In the example before, a query is done in the order `id, username` instead of `username, id` as defined in the struct:
 
 ```rust
-let query = "with account := 
-    (insert Account {
-        username := 'User1'
-    }),
-    select account {
+let query = "select account {
       id,
       username
     };";
