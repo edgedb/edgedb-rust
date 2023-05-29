@@ -352,36 +352,6 @@ let as_string = json_res.to_string();
 let as_account: Account = serde_json::from_str(&json_res)?;
 ```
 
-## Using JSON with the `edgedb(json)` attribute
-
-Adding the `edgedb(json)` attribute on top of `Queryable` allows unpacking a struct from JSON returned from EdgeDB in a single call:
-
-```rust
-#[derive(Debug, Deserialize, Queryable)]
-#[edgedb(json)]
-pub struct JsonQueryableAccount {
-    pub username: String,
-    pub id: Uuid,
-}
-
-let json_queryable_accounts: Vec<JsonQueryableAccount> = client
-    .query("select <json>Account { username, id }", &())
-    .await
-    .unwrap();
-```
-
-This attribute can also be used on an inner struct value that implements `Queryable`:
-
-```rust
-#[derive(Debug, Deserialize, Queryable)]
-pub struct InnerJsonQueryableAccount {
-    pub username: String,
-    pub id: Uuid,
-    #[edgedb(json)]
-    pub some_json: HashMap<String, String>,
-}
-``` 
-
 ## Transactions
 
 The client also has a `.transaction()` method that allows atomic [transactions](https://www.edgedb.com/docs/edgeql/transactions). Wikipedia has a good example of a transaction and why it would be best done atomically:
