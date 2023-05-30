@@ -72,7 +72,7 @@ impl FieldAttrs {
         let mut res = FieldAttrs::default();
         for attr in attrs {
             if matches!(attr.style, syn::AttrStyle::Outer) &&
-                attr.path.is_ident("edgedb")
+                attr.path().is_ident("edgedb")
             {
                 let chunk: FieldAttrList = attr.parse_args()?;
                 for item in chunk.0 {
@@ -96,7 +96,7 @@ impl ContainerAttrs {
         let mut res = ContainerAttrs::default();
         for attr in attrs {
             if matches!(attr.style, syn::AttrStyle::Outer) &&
-                attr.path.is_ident("edgedb")
+                attr.path().is_ident("edgedb")
             {
                 let chunk: ContainerAttrList = attr.parse_args()?;
                 for item in chunk.0 {
