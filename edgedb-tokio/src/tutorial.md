@@ -71,7 +71,7 @@ Inside your cargo project you'll notice some new items:
 * `edgedb.toml`, which is used to mark the directory as an EdgeDB project. The file itself doesn't contain much — just the version of EdgeDB being used — but is used by the CLI to run commands without connection flags. (E.g., `edgedb -I my_project migrate` becomes simply `edgedb migrate`). See more on edgedb.toml [in the blog post introducing the EdgeDB projects CLI](https://www.edgedb.com/blog/introducing-edgedb-projects).
 
 * A `/dbschema` folder containing:
-    * a `default.esdl` file which holds your schema. You can change the schema by directly modifying this file followed by `edgedb migration create` and `edgedb migrate`. If using EdgeDB 3.0 or above, you can also use [edgedb watch](https://www.edgedb.com/docs/cli/edgedb_watch) to automatically apply changes in real time every time you save any changes to your schema.
+    * a `default.esdl` file which holds your schema. You can change the schema by directly modifying this file followed by `edgedb migration create` and `edgedb migrate`.
     * a `/migrations` folder with `.edgeql` files named starting at `00001`. These hold the [ddl](https://www.edgedb.com/docs/reference/ddl/index) commands that were used to migrate your schema. A new file will show up in this directory every time your schema is migrated.
 
 If you are running EdgeDB 3.0 and above, you also have the option of using the [edgedb watch](https://www.edgedb.com/docs/cli/edgedb_watch) command. Doing so starts a long-running process that keeps an eye on changes in `/dbschema`, automatically applying these changes in real time.
