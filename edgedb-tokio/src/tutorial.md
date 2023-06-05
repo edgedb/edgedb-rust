@@ -331,17 +331,13 @@ pub struct Account {
 }
 
 // No need for <json> cast here
-let query = "with account := 
-    (insert Account {
-        username := <str>$0
-    }),
-    select account {
+let query = "select Account { 
       username,
       id
-    };";
+    } filter .username = <str>$0;";
 
-// We know there will only be one result so use query_single_json;
-// otherwise it will return a map of json
+// Assuming we know there will only be one result we can use query_single_json;
+// otherwise query_json which returns a map of json
 let json_res = client
     .query_single_json(query, &("SomeUserName",))
     .await?
