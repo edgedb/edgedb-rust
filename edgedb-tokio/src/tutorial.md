@@ -352,6 +352,28 @@ let as_string = json_res.to_string();
 let as_account: Account = serde_json::from_str(&json_res)?;
 ```
 
+## Execute
+
+The `execute` method was added in June 2023 and will show up inside the next version of the `edgedb-tokio` crate. In the meantime it can be used by setting your edgedb dependencies to the git repo:
+
+```
+edgedb-derive = { git = "https://github.com/edgedb/edgedb-rust" }
+edgedb-tokio = { git = "https://github.com/edgedb/edgedb-rust" }
+edgedb-protocol = { git = "https://github.com/edgedb/edgedb-rust" }
+```
+
+`execute` doesn't return anything (a successful execute returns an `Ok(())`) which is convenient for things like updates or commands where we don't care about getting an output if it works:
+
+```rust
+client.execute("update Account set {username := .username ++ '!'};", &()).await?;
+client.execute("create superuser role project;", &()).await?;
+client.execute("alter role project set password := 'STRONGpassword';", &()).await?;
+
+// Returns Ok(()) upon success but error info will be returned of course
+let command = client.execute("create type MyType {};", &()).await;
+assert!(command.unwrap_err().to_string().contains("bare DDL statements are not allowed"));
+```
+
 ## Transactions
 
 The client also has a `.transaction()` method that allows atomic [transactions](https://www.edgedb.com/docs/edgeql/transactions). Wikipedia has a good example of a transaction and why it would be best done atomically:
@@ -380,19 +402,28 @@ pub struct BankCustomer {
 
 // After the transaction is over, each customer should have 100 cents.
 
-let query = "with customer := (
-    update BankCustomer filter .name = <str>$0
-    set { bank_balance -= 10 }
-    ),
-    select customer {
-      name,
-      bank_balance
-    };";
+let sender_name = "Customer1";
+let receiver_name = "Customer2";
+let balance_check_query = "select BankCustomer { name, bank_balance } 
+    filter .name = <str>$0";
+let transfer_query = "update BankCustomer 
+        filter .name = <str>$0
+        set { bank_balance := .bank_balance + <int32>$1 }";
+let send_amount = 10;
 
-cloned_client
+client
     .transaction(|mut conn| async move {
-        let _res_1: BankCustomer = conn.query_required_single(query, &(c1,)).await?;
-        let _res_2: BankCustomer = conn.query_required_single(query, &(&c2,)).await?;
+        let sender: BankCustomer = conn
+            .query_required_single(balance_check_query, &(sender_name,))
+            .await?;
+        if sender.bank_balance < send_amount {
+            println!("Not enough money to send, bailing from transaction");
+            return Ok(());
+        };
+        conn.execute(transfer_query, &(sender_name, send_amount.neg()))
+            .await?;
+        conn.execute(transfer_query, &(receiver_name, send_amount)).await?;
+        Ok(())
     })
     .await?;
 ```
@@ -406,43 +437,43 @@ For example, if one object holds a `required link` to two other objects and each
 The Client can still be configured after initialization via the `with_` methods ([`with_retry_options`](crate::Client::with_retry_options), [`with_transaction_options`](crate::Client::with_transaction_options), etc.) that create a shallow copy of the client with adjusted options.
 
 ```rust
-    // Take a schema with matching Rust structs:
-    //
-    // module default {
-    //   type User {
-    //     required property name -> str;
-    //   }
-    // }
+// Take a schema with matching Rust structs:
+//
+// module default {
+//   type User {
+//     required property name -> str;
+//   }
+// }
 
-    // module test {
-    //   type User {
-    //     required property name -> str;
-    //   }
-    // };
+// module test {
+//   type User {
+//     required property name -> str;
+//   }
+// };
+
+// The regular client will query from module 'default' by default
+let client = edgedb_tokio::create_client().await?;
+
+// This client will query from module 'test' by default
+// The original client is unaffected
+let test_client = client.with_default_module(Some("test"));
     
-    // The regular client will query from module 'default' by default
-    let client = edgedb_tokio::create_client().await?;
-    
-    // This client will query from module 'test' by default
-    // The original client is unaffected
-    let test_client = client.with_default_module(Some("test"));
-        
-    // Each client queries separately with different behavior
-    let query = "select User {name};";
-    let users: Vec<User> = client.query(query, &()).await?;
-    let test_users: Vec<TestUser> = test_client.query(query, &()).await?;
+// Each client queries separately with different behavior
+let query = "select User {name};";
+let users: Vec<User> = client.query(query, &()).await?;
+let test_users: Vec<TestUser> = test_client.query(query, &()).await?;
 
-    // Many other clients can be created with different options,
-    // all independent of the main client:
-    let transaction_opts = TransactionOptions::default().read_only(true);
-    let _read_only_client = client.with_transaction_options(transaction_opts);
+// Many other clients can be created with different options,
+// all independent of the main client:
+let transaction_opts = TransactionOptions::default().read_only(true);
+let _read_only_client = client.with_transaction_options(transaction_opts);
 
-    let retry_opts = RetryOptions::default().with_rule(
-        RetryCondition::TransactionConflict,
-        // No. of retries
-        1,
-        // Retry immediately instead of default with increasing backoff
-        |_| std::time::Duration::from_millis(0),
-    );
-    let _immediate_retry_once_client = client.with_retry_options(retry_opts);
+let retry_opts = RetryOptions::default().with_rule(
+    RetryCondition::TransactionConflict,
+    // No. of retries
+    1,
+    // Retry immediately instead of default with increasing backoff
+    |_| std::time::Duration::from_millis(0),
+);
+let _immediate_retry_once_client = client.with_retry_options(retry_opts);
 ```
