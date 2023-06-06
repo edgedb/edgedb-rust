@@ -9,10 +9,11 @@ use std::str::{self, FromStr};
 use std::sync::Arc;
 use std::time::{Duration};
 
-use tokio::fs;
+use base64::Engine;
 use rustls::client::ServerCertVerifier;
 use serde_json::from_slice;
 use sha1::Digest;
+use tokio::fs;
 
 use edgedb_protocol::model;
 
@@ -132,8 +133,9 @@ struct DsnHelper<'a> {
     query: HashMap<Cow<'a, str>, Cow<'a, str>>,
 }
 
+/// Parsed EdgeDB instance name.
 #[derive(Clone, Debug)]
-enum InstanceName {
+pub enum InstanceName {
     Local(String),
     Cloud {
         org_slug: String,
@@ -1432,8 +1434,8 @@ async fn read_instance(cfg: &mut ConfigInner, name: &InstanceName)
                 .skip(1)
                 .next()
                 .ok_or(ClientError::with_message("Illegal JWT token"))?;
-            let claims = base64::decode_config(claims_b64,
-                                               base64::URL_SAFE_NO_PAD)
+            let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(&claims_b64)
                 .map_err(ClientError::with_source)?;
             let claims: Claims = from_slice(&claims)
                 .map_err(ClientError::with_source)?;
@@ -1632,6 +1634,10 @@ impl Config {
             Some(InstanceName::Local(ref name)) => Some(name),
             _ => None,
         }
+    }
+
+    pub fn instance_name(&self) -> Option<&InstanceName> {
+        self.0.instance_name.as_ref()
     }
 
     /// Secret key if set

@@ -685,10 +685,7 @@ impl Decode for CommandComplete1 {
         for _ in 0..num_annotations {
             annotations.insert(String::decode(buf)?, String::decode(buf)?);
         }
-        let capabilities = unsafe {
-            // extra flags sent from server are okay
-            Capabilities::from_bits_unchecked(buf.get_u64())
-        };
+        let capabilities = Capabilities::from_bits_retain(buf.get_u64());
         let status_data = Bytes::decode(buf)?;
         let typedesc_id = Uuid::decode(buf)?;
         let state_data = Bytes::decode(buf)?;
@@ -839,10 +836,7 @@ impl Decode for CommandDataDescription1 {
             annotations.insert(String::decode(buf)?, String::decode(buf)?);
         }
         ensure!(buf.remaining() >= 49, errors::Underflow);
-        let capabilities = unsafe {
-            // extra flags sent from server are okay
-            Capabilities::from_bits_unchecked(buf.get_u64())
-        };
+        let capabilities = Capabilities::from_bits_retain(buf.get_u64());
         let result_cardinality = TryFrom::try_from(buf.get_u8())?;
         let input = RawTypedesc {
             proto: buf.proto().clone(),
@@ -970,9 +964,7 @@ impl PrepareComplete {
             if bytes.len() == 8 {
                 let mut array = [0u8; 8];
                 array.copy_from_slice(bytes);
-                Some(unsafe { Capabilities::from_bits_unchecked(
-                    u64::from_be_bytes(array)
-                )})
+                Some(Capabilities::from_bits_retain(u64::from_be_bytes(array)))
             } else {
                 None
             }
