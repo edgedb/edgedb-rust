@@ -1568,6 +1568,12 @@ impl Config {
         DisplayAddr(Some(&self.0.address))
     }
 
+    /// Is admin connection desired
+    #[cfg(feature="admin_socket")]
+    pub fn admin(&self) -> bool {
+        self.0.admin
+    }
+
     /// User name
     pub fn user(&self) -> &str {
         &self.0.user
@@ -1706,6 +1712,12 @@ impl Config {
         cfg.pem_certificates = Some(pem.to_owned());
         cfg.verifier = cfg.make_verifier(cfg.compute_tls_security()?);
         Ok(self)
+    }
+
+    #[cfg(feature="admin_socket")]
+    pub fn with_unix_path(mut self, path: &Path) -> Config {
+        Arc::make_mut(&mut self.0).address = Address::Unix(path.into());
+        self
     }
 
     /// Returns true if credentials file is in outdated format
