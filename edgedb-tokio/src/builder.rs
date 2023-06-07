@@ -46,8 +46,11 @@ type Verifier = Arc<dyn ServerCertVerifier>;
 /// Client security mode.
 #[derive(Debug, Clone, Copy)]
 pub enum ClientSecurity {
+    /// Disable security checks
     InsecureDevMode,
+    /// Always verify domain an certificate
     Strict,
+    /// Verify domain only if no specific certificate is configured
     Default,
 }
 
@@ -136,9 +139,13 @@ struct DsnHelper<'a> {
 /// Parsed EdgeDB instance name.
 #[derive(Clone, Debug)]
 pub enum InstanceName {
+    /// Instance configured locally
     Local(String),
+    /// Instance running on the EdgeDB Cloud
     Cloud {
+        /// Organization name
         org_slug: String,
+        /// Instance name within the organization
         name: String,
     },
 }
@@ -1636,6 +1643,7 @@ impl Config {
         }
     }
 
+    /// Name of the instance if set
     pub fn instance_name(&self) -> Option<&InstanceName> {
         self.0.instance_name.as_ref()
     }
