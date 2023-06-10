@@ -38,7 +38,9 @@ pub enum IsolationLevel {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum RetryCondition {
+    /// Optimistic transaction error
     TransactionConflict,
+    /// Network failure between client and server
     NetworkError,
 }
 

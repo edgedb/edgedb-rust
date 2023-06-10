@@ -11,6 +11,7 @@ use edgedb_protocol::client_message::{Execute0, Execute1};
 use edgedb_protocol::client_message::{OptimisticExecute};
 use edgedb_protocol::common::{CompilationOptions};
 use edgedb_protocol::common::{IoFormat, Cardinality, Capabilities};
+use edgedb_protocol::descriptors::Typedesc;
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::model::Uuid;
 use edgedb_protocol::query_arg::{QueryArgs, Encoder};
@@ -22,7 +23,7 @@ use crate::errors::{ProtocolOutOfOrderError, ClientInconsistentError};
 use crate::errors::{ClientConnectionEosError, ProtocolEncodingError};
 use crate::errors::{NoResultExpected, NoDataError};
 use crate::raw::{Connection, PoolConnection, QueryCapabilities};
-use crate::raw::{State, Response, ResponseStream};
+use crate::raw::{State, Response, ResponseStream, Description};
 use crate::raw::connection::Mode;
 
 pub(crate) struct Guard;
@@ -239,6 +240,7 @@ impl Connection {
         ]).await?;
 
         let mut data = Vec::new();
+        let mut description = None;
         loop {
             let msg = self.message().await?;
             match msg {
@@ -256,12 +258,19 @@ impl Connection {
                         data,
                     });
                 }
+                ServerMessage::CommandDataDescription1(desc) => {
+                    description = Some(desc);
+                }
                 ServerMessage::ErrorResponse(err) => {
                     self.expect_ready_or_eos(guard).await
                         .map_err(|e| log::warn!(
                             "Error waiting for Ready after error: {e:#}"))
                         .ok();
-                    return Err(err.into());
+                    let mut err: Error = err.into();
+                    if let Some(desc) = description {
+                        err = err.set::<Description>(desc);
+                    }
+                    return Err(err);
                 }
                 _ => {
                     return Err(ProtocolOutOfOrderError::with_message(format!(
@@ -360,7 +369,55 @@ impl Connection {
             ]).await?;
         }
 
-        return ResponseStream::new(self, desc, guard);
+        let out_desc = desc.output()
+            .map_err(ProtocolEncodingError::with_source)?;
+        return ResponseStream::new(self, &out_desc, guard).await;
+    }
+    pub async fn try_execute_stream<R, A>(&mut self,
+        opts: &CompilationOptions, query: &str,
+        state: &dyn State, input: &Typedesc, output: &Typedesc, arguments: &A)
+        -> Result<ResponseStream<R>, Error>
+        where A: QueryArgs,
+              R: QueryResult,
+              R::State: Unpin,
+    {
+        let mut arg_buf = BytesMut::with_capacity(8);
+        arguments.encode(&mut Encoder::new(
+            &input.as_query_arg_context(),
+            &mut arg_buf,
+        ))?;
+
+        let guard = self.begin_request()?;
+        if self.proto.is_1() {
+            self.send_messages(&[
+                ClientMessage::Execute1(Execute1 {
+                    annotations: HashMap::new(),
+                    allowed_capabilities: opts.allow_capabilities,
+                    compilation_flags: opts.flags(),
+                    implicit_limit: opts.implicit_limit,
+                    output_format: opts.io_format,
+                    expected_cardinality: opts.expected_cardinality,
+                    command_text: query.into(),
+                    state: state.encode(&self.state_desc)?,
+                    input_typedesc_id: *input.id(),
+                    output_typedesc_id: *input.id(),
+                    arguments: arg_buf.freeze(),
+                }),
+                ClientMessage::Sync,
+            ]).await?;
+        } else {
+            // TODO(tailhook) maybe use OptimisticExecute instead?
+            self.send_messages(&[
+                ClientMessage::Execute0(Execute0 {
+                    headers: HashMap::new(),
+                    statement_name: Bytes::from(""),
+                    arguments: arg_buf.freeze(),
+                }),
+                ClientMessage::Sync,
+            ]).await?;
+        }
+
+        return ResponseStream::new(self, output, guard).await;
     }
     pub async fn statement(&mut self, flags: &CompilationOptions, query: &str,
                            state: &dyn State)
