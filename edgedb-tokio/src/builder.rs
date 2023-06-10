@@ -1441,6 +1441,8 @@ async fn read_instance(cfg: &mut ConfigInner, name: &InstanceName)
             let dns_zone = claims
                 .issuer
                 .ok_or(ClientError::with_message("Invalid secret key"))?;
+            let org_slug = org_slug.to_lowercase();
+            let name = name.to_lowercase();
             let msg = format!("{}/{}", org_slug, name);
             let checksum = crc16::State::<crc16::XMODEM>::calculate(
                 msg.as_bytes());
