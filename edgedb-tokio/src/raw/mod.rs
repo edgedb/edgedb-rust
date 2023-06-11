@@ -18,6 +18,7 @@ use tokio::sync::{self, Semaphore};
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::common::{RawTypedesc, Capabilities};
 use edgedb_protocol::server_message::{TransactionState};
+use edgedb_protocol::server_message::{CommandDataDescription1};
 
 use crate::errors::{Error, ErrorKind, ClientError};
 use crate::builder::Config;
@@ -36,6 +37,8 @@ pub enum QueryCapabilities {
     Unparsed,
     Parsed(Capabilities),
 }
+
+pub struct Description;
 
 #[derive(Debug)]
 struct PoolInner {
@@ -89,6 +92,11 @@ impl AssertPool for Pool {}
 impl edgedb_errors::Field for QueryCapabilities {
     const NAME: &'static str = "capabilities";
     type Value = QueryCapabilities;
+}
+
+impl edgedb_errors::Field for Description {
+    const NAME: &'static str = "descriptor";
+    type Value = CommandDataDescription1;
 }
 
 impl Pool {

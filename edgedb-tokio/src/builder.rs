@@ -46,8 +46,11 @@ type Verifier = Arc<dyn ServerCertVerifier>;
 /// Client security mode.
 #[derive(Debug, Clone, Copy)]
 pub enum ClientSecurity {
+    /// Disable security checks
     InsecureDevMode,
+    /// Always verify domain an certificate
     Strict,
+    /// Verify domain only if no specific certificate is configured
     Default,
 }
 
@@ -136,9 +139,13 @@ struct DsnHelper<'a> {
 /// Parsed EdgeDB instance name.
 #[derive(Clone, Debug)]
 pub enum InstanceName {
+    /// Instance configured locally
     Local(String),
+    /// Instance running on the EdgeDB Cloud
     Cloud {
+        /// Organization name
         org_slug: String,
+        /// Instance name within the organization
         name: String,
     },
 }
@@ -1561,6 +1568,12 @@ impl Config {
         DisplayAddr(Some(&self.0.address))
     }
 
+    /// Is admin connection desired
+    #[cfg(feature="admin_socket")]
+    pub fn admin(&self) -> bool {
+        self.0.admin
+    }
+
     /// User name
     pub fn user(&self) -> &str {
         &self.0.user
@@ -1636,6 +1649,7 @@ impl Config {
         }
     }
 
+    /// Name of the instance if set
     pub fn instance_name(&self) -> Option<&InstanceName> {
         self.0.instance_name.as_ref()
     }
@@ -1698,6 +1712,12 @@ impl Config {
         cfg.pem_certificates = Some(pem.to_owned());
         cfg.verifier = cfg.make_verifier(cfg.compute_tls_security()?);
         Ok(self)
+    }
+
+    #[cfg(feature="admin_socket")]
+    pub fn with_unix_path(mut self, path: &Path) -> Config {
+        Arc::make_mut(&mut self.0).address = Address::Unix(path.into());
+        self
     }
 
     /// Returns true if credentials file is in outdated format

@@ -11,7 +11,13 @@ commands:
   check: !Command
     description: Check the library
     container: ubuntu
+    prerequisites: [check-no-unstable]
     run: [cargo, check, --workspace, --tests, --all-features]
+
+  check-no-unstable: !Command
+    description: Check the library without unstable features
+    container: ubuntu
+    run: [cargo, check, --workspace, "--features=fs,env,derive"]
 
   doc: !Command
     description: Build documentation

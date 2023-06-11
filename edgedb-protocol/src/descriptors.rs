@@ -219,6 +219,14 @@ impl Typedesc {
         self.array.get(type_pos.0 as usize)
             .context(UnexpectedTypePos { position: type_pos.0 })
     }
+    pub fn nothing(protocol: &ProtocolVersion) -> Typedesc {
+        Typedesc {
+            proto: protocol.clone(),
+            array: Vec::new(),
+            root_id: Uuid::from_u128(0),
+            root_pos: None,
+        }
+    }
     pub fn is_empty_tuple(&self) -> bool {
         match self.root() {
             Some(Descriptor::Tuple(t))
