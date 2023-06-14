@@ -197,6 +197,7 @@ impl QueryArg for Value {
             Array(v) => v.encode_slot(enc)?,
             Enum(v) => v.encode_slot(enc)?,
             Range(v) => v.encode_slot(enc)?,
+            Vector(v) => v.encode_slot(enc)?,
         }
 
         Ok(())
