@@ -41,6 +41,7 @@ pub enum Value {
     Tuple(Vec<Value>),
     NamedTuple { shape: NamedTupleShape, fields: Vec<Value> },
     Array(Vec<Value>),
+    Vector(Vec<f32>),
     Enum(EnumValue),
     Range(Range<Box<Value>>),
 }
@@ -84,6 +85,7 @@ impl Value {
             Array(..) => "array",
             Enum(..) => "enum",
             Range{..} => "range",
+            Vector(..) => "ext::pgvector::vector",
         }
     }
     pub fn empty_tuple() -> Value {

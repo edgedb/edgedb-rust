@@ -536,10 +536,12 @@ impl Connection {
                 .map_err(ProtocolEncodingError::with_source)?;
 
             let mut arg_buf = BytesMut::with_capacity(8);
-            arguments.encode(&mut Encoder::new(
+            if let Err(e) = arguments.encode(&mut Encoder::new(
                 &inp_desc.as_query_arg_context(),
                 &mut arg_buf,
-            ))?;
+            )) {
+                return Err(e.set::<Description>(desc));
+            }
 
             let response = self._execute(
                 &flags, query, state, &desc, &arg_buf.freeze()
@@ -588,10 +590,12 @@ impl Connection {
                 .map_err(ProtocolEncodingError::with_source)?;
 
             let mut arg_buf = BytesMut::with_capacity(8);
-            arguments.encode(&mut Encoder::new(
+            if let Err (e) = arguments.encode(&mut Encoder::new(
                 &inp_desc.as_query_arg_context(),
                 &mut arg_buf,
-            ))?;
+            )) {
+                return Err(e.set::<Description>(desc));
+            }
 
             let response = self._execute(
                 &flags, query, state, &desc, &arg_buf.freeze(),
@@ -655,10 +659,12 @@ impl Connection {
                 .map_err(ProtocolEncodingError::with_source)?;
 
             let mut arg_buf = BytesMut::with_capacity(8);
-            arguments.encode(&mut Encoder::new(
+            if let Err(e) = arguments.encode(&mut Encoder::new(
                 &inp_desc.as_query_arg_context(),
                 &mut arg_buf,
-            ))?;
+            )) {
+                return Err(e.set::<Description>(desc));
+            }
 
             let res = self._execute(
                 &flags, query, state, &desc, &arg_buf.freeze(),

@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use edgedb_errors::{Error, ErrorKind};
 use edgedb_errors::{ClientEncodingError, ProtocolError, DescriptorMismatch};
+use edgedb_errors::{ParameterTypeMismatchError};
 
 use crate::codec::{self, Codec, build_codec};
 use crate::descriptors::Descriptor;
@@ -142,11 +143,11 @@ impl QueryArgs for () {
                     if t.id == Uuid::from_u128(0xFF)
                     && t.element_types.is_empty()
                     => {}
-                    _ => return Err(DescriptorMismatch::with_message(
+                    _ => return Err(ParameterTypeMismatchError::with_message(
                             "query arguments expected")),
                 };
             } else {
-                return Err(DescriptorMismatch::with_message(
+                return Err(ParameterTypeMismatchError::with_message(
                     "query arguments expected"));
             }
         }
@@ -201,6 +202,7 @@ impl QueryArg for Value {
             Array(v) => v.encode_slot(enc)?,
             Enum(v) => v.encode_slot(enc)?,
             Range(v) => v.encode_slot(enc)?,
+            Vector(v) => v.encode_slot(enc)?,
         }
 
         Ok(())
