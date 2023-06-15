@@ -1270,6 +1270,24 @@ impl Builder {
              }
         }
         read_instance(cfg, &instance).await?;
+        let path = stash_path.join("database");
+        match fs::read_to_string(&path).await {
+            Ok(text) => {
+                cfg.database = validate_database(text.trim())
+                    .with_context(|| {
+                        format!("error reading project settings {:?}: {:?}",
+                                project_dir, path)
+                    })?
+                    .to_owned();
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(ClientError::with_source(e).context(
+                    format!("error reading project settings {:?}: {:?}",
+                            project_dir, path)
+                ))
+            }
+        }
         Ok(())
     }
 
