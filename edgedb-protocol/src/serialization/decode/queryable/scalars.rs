@@ -11,7 +11,7 @@ use crate::serialization::decode::RawCodec;
 use std::time::SystemTime;
 
 
-fn check_scalar(ctx: &DescriptorContext, type_pos: TypePos, type_id: Uuid, name: &str) -> Result<(), DescriptorMismatch> {
+pub(crate) fn check_scalar(ctx: &DescriptorContext, type_pos: TypePos, type_id: Uuid, name: &str) -> Result<(), DescriptorMismatch> {
     use crate::descriptors::Descriptor::{Scalar, BaseScalar};
     let desc = ctx.get(type_pos)?;
     match desc {
