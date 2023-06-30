@@ -174,3 +174,9 @@ impl From<i64> for Value {
         Value::Int64(s)
     }
 }
+
+impl From<bool> for Value {
+    fn from(s: bool) -> Value {
+        Value::Bool(s)
+    }
+}
