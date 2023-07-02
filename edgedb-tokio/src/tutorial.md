@@ -256,6 +256,26 @@ movie := (insert Movie {
 let query_res: Value = client.query_required_single(query, &(arguments)).await?;
 ```
 
+A note on the casting syntax: EdgeDB requires arguments to have a cast in the same way that Rust requires a type declaration in function signatures. As such, arguments in queries are used as type specification for the EdgeDB compiler, not to cast from queries from the Rust side. Take this query as an example:
+
+```rust
+let query = "select <int32>$0";
+```
+
+This simply means "select an argument that must be an `int32`", not "take the received argument and cast it into an `int32`".
+
+As such, this will return an error:
+
+```rust
+let query = "select <int32>$0";
+let argument = 9i16; // Rust client will expect an int16
+let query_res: Result<Value, _> = client.query_required_single(query, &(argument,)).await;
+assert!(query_res
+    .unwrap_err()
+    .to_string()
+    .contains("expected std::int16"));
+```
+
 ## The `Value` enum
 
 The [`Value`](https://docs.rs/edgedb-protocol/latest/edgedb_protocol/value/enum.Value.html) enum can be found in the edgedb-protocol crate. A `Value` represents anything returned from EdgeDB. This means you can always return a `Value` from any of the query methods without needing to deserialize into a Rust type, and the enum can be instructive in getting to know the protocol. On the other hand, returning a `Value` leads to pattern matching to get to the inner value and is not the most ergonomic way to work with results from EdgeDB.
@@ -297,28 +317,6 @@ assert_eq!(
     format!("{query_res:?}"),
     "Ok(BigInt(BigInt { negative: false, weight: 0, digits: [20] }))"
 );
-```
-
-## Casting inside the EdgeDB compiler
-
-EdgeDB requires arguments to have a cast in the same way that Rust requires a type declaration in function signatures. As such, arguments in queries are used as type specification for the EdgeDB compiler, not to cast from queries from the Rust side. Take this query as an example:
-
-```rust
-let query = "select <int32>$0";
-```
-
-This simply means "select an argument that must be an `int32`", not "take the received argument and cast it into an `int32`".
-
-As such, this will return an error:
-
-```rust
-let query = "select <int32>$0";
-let argument = 9i16; // Rust client will expect an int16
-let query_res: Result<Value, _> = client.query_required_single(query, &(argument,)).await;
-assert!(query_res
-    .unwrap_err()
-    .to_string()
-    .contains("expected std::int16"));
 ```
 
 ## Using JSON
