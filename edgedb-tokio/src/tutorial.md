@@ -114,7 +114,7 @@ Note the difference between the `_single` and the `_required_single` methods:
 
 These methods all take a *query* (a `&str`) and *arguments* (something that implements the [`QueryArgs`](https://docs.rs/edgedb-protocol/latest/edgedb_protocol/query_arg/trait.QueryArgs.html) trait).
 
-The `()` unit type `QueryArgs` and is used when no arguments are present so `&()` is a pretty common sight when using the Rust client.
+The `()` unit type implements `QueryArgs` and is used when no arguments are present so `&()` is a pretty common sight when using the Rust client.
 
 ```rust
 // Without arguments: just add &() after the query
