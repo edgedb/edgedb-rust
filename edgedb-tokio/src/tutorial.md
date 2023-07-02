@@ -1,12 +1,14 @@
 # EdgeDB Rust client tutorial
 
-## Getting started - quick start from repo
+## Getting started
+
+### From examples repo
 
 If you just want a working repo to get started, clone the [Rust client examples repo](https://github.com/Dhghomon/edgedb_rust_client_examples), type `edgedb project init` to start an EdgeDB project, and then `cargo run` to run the samples.
 
 This tutorial contains a lot of similar examples to those found in the `main.rs` file inside that repo.
 
-## Getting started - your own project
+### From scratch
 
 The minimum to add to your Cargo.toml to use the client is [edgedb-tokio](https://docs.rs/edgedb-tokio/latest/edgedb_tokio/):
 
