@@ -28,7 +28,7 @@ If you are avoiding async code and want to emulate a blocking client, you will s
 
     tokio = "1.28.0"
 
-And then you can start a runtime upon which you can use the `.block_on()` method to block and wait for futures to resolve:
+Then you can start a runtime. Block and wait for futures to resolve by calling the runtime's `.block_on()` method:
 
 ```rust
 let rt = tokio::runtime::Builder::new_current_thread()
@@ -38,9 +38,9 @@ let just_a_string: String =
     rt.block_on(client.query_required_single("select 'Just a string'", &()))?;
 ```
 
-## Edgedb CLI
+## Edgedb project setup
 
-The `edgedb` CLI initializes EdgeDB projects in the same way cargo does, except it does not create a new directory. So to start a project, use `cargo new <your_crate_name>` as usual, then go into the directory and type `edgedb project init`. The CLI will prompt you for the instance name and version of EdgeDB to use. It will look something like this:
+The EdgeDB CLI initializes EdgeDB projects in the same way cargo does, except it does not create a new directory. So to start a project, use `cargo new <your_crate_name>` as usual, then go into the directory and type `edgedb project init`. The CLI will prompt you for the instance name and version of EdgeDB to use. It will look something like this:
 
     PS C:\rust\my_db> edgedb project init
     No `edgedb.toml` found in `\\?\C:\rust\my_db` or above
@@ -66,7 +66,7 @@ The `edgedb` CLI initializes EdgeDB projects in the same way cargo does, except 
     Project initialized.
     To connect to my_db, run `edgedb`
 
-Inside your cargo project you'll notice some new items:
+Inside your project directory you'll notice some new items:
 
 * `edgedb.toml`, which is used to mark the directory as an EdgeDB project. The file itself doesn't contain much — just the version of EdgeDB being used — but is used by the CLI to run commands without connection flags. (E.g., `edgedb -I my_project migrate` becomes simply `edgedb migrate`). See more on edgedb.toml [in the blog post introducing the EdgeDB projects CLI](https://www.edgedb.com/blog/introducing-edgedb-projects).
 
@@ -86,11 +86,11 @@ Creating a new EdgeDB client can be done in a single line:
 let client = edgedb_tokio::create_client().await?;
 ```
 
-Under the hood, this will create a [Builder](crate::Builder), look for environmental variables and/or an `edgedb.toml` file and return an `Ok(Self)` if successful. This `Builder` can be used on its own instead of `create_client()` if you need a more customized setup.
+Under the hood, this will create a [Builder](crate::Builder), look for environment variables and/or an `edgedb.toml` file and return an `Ok(Self)` if successful. This `Builder` can be used on its own instead of `create_client()` if you need a more customized setup.
 
 # Queries with the client
 
-Here are the simplified signatures of the client methods involving queries:
+Here are the simplified signatures of the client methods used for querying:
 
 (Note: `R` here means a type that implements [`QueryResult`](https://docs.rs/edgedb-protocol/0.4.0/edgedb_protocol/trait.QueryResult.html))
 
@@ -107,8 +107,8 @@ fn query_required_single_json -> Result<Json, Error>
 
 Note the difference between the `_single` and the `_required_single` methods:
 
-* The `_required_single` methods return empty results as a `NoDataError` which allows propagating errors normally through an application,
-* The `_single` methods will simply give you an `Ok(None)` in this case.
+* The `_required_single` methods return empty results as a `NoDataError` which allows propagating errors normally through an application
+* The `_single` methods will simply give you an `Ok(None)` in this case
 
 These methods all take a *query* (a `&str`) and *arguments* (something that implements the [`QueryArgs`](https://docs.rs/edgedb-protocol/latest/edgedb_protocol/query_arg/trait.QueryArgs.html) trait).
 
@@ -126,7 +126,7 @@ let query_res: String = client
     .await?;
 ```
 
-More information on passing in arguments can be found in [its own section](#passing-in-arguments) below.
+For more information, see the ["Passing in arguments" section](#passing-in-arguments) below.
 
 These methods take two generic parameters which can be specified with the turbofish syntax:
 
@@ -140,7 +140,7 @@ let query_res = client
     .await?;
 ```
     
-But declaring the final expected type up front tends to look neater.
+But declaring the final expected type upfront tends to look neater.
 
 ```rust
 let query_res: String = client
@@ -169,7 +169,7 @@ let query_res_opt: Option<String> = client.query_single(query, &()).await?;
 
 ## Using the `Queryable` macro
 
-The easiest way to unpack an EdgeDB query result is the built-in `Queryable` macro from the `edgedb-derive` crate. This turns queries directly into Rust types without having to match on a `Value` (more on the `Value` enum in [its own section](#the-value-enum)), cast to JSON, etc.
+The easiest way to unpack an EdgeDB query result is the built-in `Queryable` macro from the `edgedb-derive` crate. This turns queries directly into Rust types without having to match on a `Value` (more in the section on [the `Value` enum](#the-value-enum)), cast to JSON, etc.
 
 ```rust
 #[derive(Debug, Deserialize, Queryable)]
@@ -187,7 +187,7 @@ let as_queryable_account: QueryableAccount = client
     .await?;
 ```
 
-Note: Field order within the shape of the query matters when using the `Queryable` macro. In the example before, a query is done in the order `id, username` instead of `username, id` as defined in the struct:
+Note: Field order within the shape of the query matters when using the `Queryable` macro. In the example above, a query is done in the order `id, username` instead of `username, id` as defined in the struct:
 
 ```rust
 let query = "select account {
@@ -203,7 +203,7 @@ assert!(
 );
 ```
 
-You can use [cargo expand](https://github.com/dtolnay/cargo-expand) with the nightly compiler to see the code generated by the Queryable macro, but the minimal example repo also contains a somewhat cleaned up version of the generated code [here](https://github.com/Dhghomon/edgedb_rust_client_examples/blob/master/src/lib.rs#L12).
+You can use [`cargo expand`](https://github.com/dtolnay/cargo-expand) with the nightly compiler to see the code generated by the `Queryable` macro, but the minimal example repo also contains [a somewhat cleaned up version of the generated `Queryable` code](https://github.com/Dhghomon/edgedb_rust_client_examples/blob/master/src/lib.rs#L12).
 
 ## Passing in arguments
 
@@ -237,7 +237,7 @@ Parameter <str>$1: General Kenobi
 {'Hello there General Kenobi'}
 ```
 
-But when using the Rust client there is no prompt to do so. At present, arguments also have to be in the order `$0`, `$1`, and so on as opposed to in the REPL where they can be named (e.g. `$message` and `$person` instead of `$0` and `$1`). The arguments in the client are then passed in as a tuple:
+But when using the Rust client, there is no prompt to do so. At present, arguments also have to be in the order `$0`, `$1`, and so on while in the REPL, they can be named (e.g. `$message` and `$person` instead of `$0` and `$1`). The arguments in the client are then passed in as a tuple:
 
 ```rust
 let arguments = ("Nice movie", 2023);
@@ -256,7 +256,7 @@ let query_res: Value = client.query_required_single(query, &(arguments)).await?;
 
 ## The `Value` enum
 
-The [Value](https://docs.rs/edgedb-protocol/latest/edgedb_protocol/value/enum.Value.html) enum can be found in the edgedb-protocol crate. A `Value` represents anything returned from EdgeDB so you can always return a `Value` from any of the query methods without needing to deserialize into a Rust type, and the enum can be instructive in getting to know the protocol. On the other hand, returning a `Value` leads to pattern matching to get to the inner value and is not the most ergonomic way to work with results from EdgeDB.
+The [`Value`](https://docs.rs/edgedb-protocol/latest/edgedb_protocol/value/enum.Value.html) enum can be found in the edgedb-protocol crate. A `Value` represents anything returned from EdgeDB. This means you can always return a `Value` from any of the query methods without needing to deserialize into a Rust type, and the enum can be instructive in getting to know the protocol. On the other hand, returning a `Value` leads to pattern matching to get to the inner value and is not the most ergonomic way to work with results from EdgeDB.
 
 ```rust
 pub enum Value {
@@ -274,7 +274,7 @@ pub enum Value {
 }
 ```
 
-Most variants of the `Value` enum correspond to a Rust type from the standard library, while some are from the `edgedb-protocol` crate and will have to be constructed. For example, this query expecting a `bigint` will return an error as it receives a `20` (an `i32`) but EdgeDB is expecting a `bigint`:
+Most variants of the `Value` enum correspond to a Rust type from the standard library, while some are from the `edgedb-protocol` crate and will have to be constructed. For example, this query expecting a `bigint` will return an error as it receives a `20`, which is *not* a `bigint` but an `i32`:
 
 ```rust
 let query = "select <bigint>$0";
@@ -321,7 +321,7 @@ assert!(query_res
 
 ## Using JSON
 
-EdgeDB can cast any type to JSON with `<json>`, but the `_json` methods don't require this cast in the query. This result can be turned into a String and used to respond to some JSON API request directly, unpacked into a struct using `serde` and `serde_json`, etc.
+EdgeDB can cast any type to JSON with `<json>`, but the `_json` methods don't require this cast in the query. This result can be turned into a `String` and used to respond to some JSON API request directly, unpacked into a struct using `serde` and `serde_json`, etc.
 
 ```rust
 #[derive(Debug, Deserialize)]
@@ -350,7 +350,7 @@ let as_account: Account = serde_json::from_str(&json_res)?;
 
 ## Execute
 
-The `execute` method was added in June 2023 and will show up inside the next version of the `edgedb-tokio` crate. In the meantime it can be used by setting your edgedb dependencies to the git repo:
+The `execute` method was added in June 2023 and will show up inside the next version of the `edgedb-tokio` crate. In the meantime it can be used by setting your EdgeDB dependencies to the git repo:
 
 ```
 edgedb-derive = { git = "https://github.com/edgedb/edgedb-rust" }
@@ -358,7 +358,7 @@ edgedb-tokio = { git = "https://github.com/edgedb/edgedb-rust" }
 edgedb-protocol = { git = "https://github.com/edgedb/edgedb-rust" }
 ```
 
-`execute` doesn't return anything (a successful execute returns an `Ok(())`) which is convenient for things like updates or commands where we don't care about getting an output if it works:
+`execute` doesn't return anything (a successful execute returns an `Ok(())`) which is convenient for things like updates or commands where we don't care about getting output if it works:
 
 ```rust
 client.execute("update Account set {username := .username ++ '!'};", &()).await?;
@@ -372,11 +372,11 @@ assert!(command.unwrap_err().to_string().contains("bare DDL statements are not a
 
 ## Transactions
 
-The client also has a `.transaction()` method that allows atomic [transactions](https://www.edgedb.com/docs/edgeql/transactions). 
+The client also has a `.transaction()` method that allows for atomic [transactions](https://www.edgedb.com/docs/edgeql/transactions). 
 
-Note: What often may seem to require an atomic transaction can instead be achieved with links and [backlinks](https://www.edgedb.com/docs/edgeql/paths#backlinks) which are both idiomatic and easy to use in EdgeDB. For example, if one object holds a `required link` to two other objects and each of these two objects has a single banklink to the first one, simply inserting the first object will effectively change the state of the other two instantaneously.
+Note: What often may seem to require an atomic transaction can instead be achieved with links and [backlinks](https://www.edgedb.com/docs/edgeql/paths#backlinks) which are both idiomatic and easy to use in EdgeDB. For example, if one object holds a `required link` to two other objects and each of these two objects has a single backlink to the first one, simply inserting the first object will effectively change the state of the other two instantaneously.
 
-Wikipedia has a good example of a transaction which will serve for the next example:
+Wikipedia has a good example of a scenario requiring a transaction which we can then implement:
 
 ```
 An example of an atomic transaction is a monetary transfer from bank account A
