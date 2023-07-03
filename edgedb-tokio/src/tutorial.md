@@ -195,7 +195,7 @@ let as_queryable_account: QueryableAccount = client
     .await?;
 ```
 
-Note: Field order within the shape of the query matters when using the `Queryable` macro. In the example above, a query is done in the order `id, username` instead of `username, id` as defined in the struct:
+Note: Field order within the shape of the query matters when using the `Queryable` macro. In the example below, a query is done in the order `id, username` instead of `username, id` as defined in the struct:
 
 ```rust
 let query = "select account {
