@@ -356,15 +356,7 @@ let as_account: Account = serde_json::from_str(&json_res)?;
 
 ## Execute
 
-The `execute` method was added in June 2023 and will show up inside the next version of the `edgedb-tokio` crate. In the meantime it can be used by setting your EdgeDB dependencies to the git repo:
-
-```
-edgedb-derive = { git = "https://github.com/edgedb/edgedb-rust" }
-edgedb-tokio = { git = "https://github.com/edgedb/edgedb-rust" }
-edgedb-protocol = { git = "https://github.com/edgedb/edgedb-rust" }
-```
-
-`execute` doesn't return anything (a successful execute returns an `Ok(())`) which is convenient for things like updates or commands where we don't care about getting output if it works:
+The `execute` method doesn't return anything (a successful execute returns an `Ok(())`) which is convenient for things like updates or commands where we don't care about getting output if it works:
 
 ```rust
 client.execute("update Account set {username := .username ++ '!'};", &()).await?;
