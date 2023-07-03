@@ -221,6 +221,18 @@ impl CommandDataDescription1 {
     }
 }
 
+impl From<CommandDataDescription0> for CommandDataDescription1 {
+    fn from(value: CommandDataDescription0) -> Self {
+        Self {
+            annotations: HashMap::new(),
+            capabilities: decode_capabilities0(&value.headers).unwrap_or(Capabilities::ALL),
+            result_cardinality: value.result_cardinality,
+            input: value.input,
+            output: value.output,
+        }
+    }
+}
+
 impl StateDataDescription {
     pub fn parse(self) -> Result<Typedesc, DecodeError> {
         self.typedesc.decode()
@@ -960,14 +972,18 @@ impl Decode for RawPacket {
 
 impl PrepareComplete {
     pub fn get_capabilities(&self) -> Option<Capabilities> {
-        self.headers.get(&0x1001).and_then(|bytes| {
-            if bytes.len() == 8 {
-                let mut array = [0u8; 8];
-                array.copy_from_slice(bytes);
-                Some(Capabilities::from_bits_retain(u64::from_be_bytes(array)))
-            } else {
-                None
-            }
-        })
+        decode_capabilities0(&self.headers)
     }
+}
+
+fn decode_capabilities0(headers: &KeyValues) -> Option<Capabilities> {
+    headers.get(&0x1001).and_then(|bytes| {
+        if bytes.len() == 8 {
+            let mut array = [0u8; 8];
+            array.copy_from_slice(bytes);
+            Some(Capabilities::from_bits_retain(u64::from_be_bytes(array)))
+        } else {
+            None
+        }
+    })
 }
