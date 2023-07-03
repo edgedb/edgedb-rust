@@ -42,7 +42,13 @@ let just_a_string: String =
 
 ## Edgedb project setup
 
-The EdgeDB CLI initializes EdgeDB projects in the same way cargo does, except it does not create a new directory. So to start a project, use `cargo new <your_crate_name>` as usual, then go into the directory and type `edgedb project init`. The CLI will prompt you for the instance name and version of EdgeDB to use. It will look something like this:
+
+The EdgeDB CLI initializes an EdgeDB project with a single command in the same way that Cargo initializes a Rust project, except it does not create a new directory. So to start a project: 
+
+* Use `cargo new <your_crate_name>` as usual, then:
+* Go into the directory and type `edgedb project init`.
+
+The CLI will prompt you for the instance name and version of EdgeDB to use. It will look something like this:
 
     PS C:\rust\my_db> edgedb project init
     No `edgedb.toml` found in `\\?\C:\rust\my_db` or above
@@ -51,17 +57,17 @@ The EdgeDB CLI initializes EdgeDB projects in the same way cargo does, except it
     Specify the name of EdgeDB instance to use with this project [default: my_db]:
     > my_db
     Checking EdgeDB versions...
-    Specify the version of EdgeDB to use with this project [default: 2.15]:
-    > 2.15
+    Specify the version of EdgeDB to use with this project [default: 3.0]:
+    > 3.0
     ┌─────────────────────┬─────────────────────────────────┐
     │ Project directory   │ \\?\C:\rust\my_db               │
     │ Project config      │ \\?\C:\rust\my_db\edgedb.toml   │
     │ Schema dir (empty)  │ \\?\C:\rust\my_db\dbschema      │
     │ Installation method │ WSL                             │
-    │ Version             │ 2.15+75c3494                    │
+    │ Version             │ 3.0+e7d38e9                     │
     │ Instance name       │ my_db                           │
     └─────────────────────┴─────────────────────────────────┘
-    Version 2.15+75c3494 is already installed
+    Version 3.0+e7d38e9 is already installed
     Initializing EdgeDB instance...
     Applying migrations...
     Everything is up to date. Revision initial
