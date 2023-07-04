@@ -4,7 +4,7 @@ use std::mem;
 use bytes::Bytes;
 use edgedb_errors::ProtocolEncodingError;
 use edgedb_errors::{Error, ErrorKind};
-use edgedb_errors::{ProtocolOutOfOrderError};
+use edgedb_errors::{ParameterTypeMismatchError, ProtocolOutOfOrderError};
 use edgedb_protocol::QueryResult;
 use edgedb_protocol::common::State;
 use edgedb_protocol::descriptors::Typedesc;
@@ -75,8 +75,17 @@ impl<'a, T: QueryResult> ResponseStream<'a, T>
                     };
                     break;
                 }
-                ServerMessage::CommandDataDescription1(desc) => {
+                ServerMessage::CommandDataDescription1(desc)
+                if connection.proto.is_1() => {
                     description = Some(desc);
+                }
+                ServerMessage::CommandDataDescription0(desc)
+                if !connection.proto.is_1() => {
+                    let guard = guard.take().unwrap();
+                    connection.expect_ready(guard).await?;
+                    let err = ParameterTypeMismatchError::build()
+                        .set::<Description>(CommandDataDescription1::from(desc));
+                    return Err(err);
                 }
                 ServerMessage::ErrorResponse(err) => {
                     let guard = guard.take().unwrap();
