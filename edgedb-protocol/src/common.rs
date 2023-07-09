@@ -1,3 +1,7 @@
+/*!
+([Website reference](https://www.edgedb.com/docs/reference/protocol/messages#parse)) Capabilities, CompilationFlags etc. from the message protocol.
+*/
+
 use crate::errors;
 use crate::model::Uuid;
 use bytes::Bytes;

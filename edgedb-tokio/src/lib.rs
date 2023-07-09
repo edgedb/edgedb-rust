@@ -1,30 +1,35 @@
-//! EdgeDB client for Tokio
-//!
-//! Main way to use EdgeDB bindings is to use [`Client`]. It encompasses
-//! connection pool to the database that is transparent for user. Individual
-//! queries can be made via methods on the client. Correlated queries are done
-//! via [transactions](Client::transaction)
-//!
-//! To create client, use [`create_client`] function (it gets database
-//! connection configuration from environment). You can also use [`Builder`]
-//! to [`build`](`Builder::build`) custom [`Config`] and [create a
-//! client](Client::new) using that config.
-//!
-//! # Example
-//!
-//! ```rust,no_run
-//! #[tokio::main]
-//! async fn main() -> anyhow::Result<()> {
-//!     let conn = edgedb_tokio::create_client().await?;
-//!     let val = conn.query_required_single::<i64, _>(
-//!         "SELECT 7*8",
-//!         &(),
-//!     ).await?;
-//!     println!("7*8 is: {}", val);
-//!     Ok(())
-//! }
-//! ```
-//! More [examples on github](https://github.com/edgedb/edgedb-rust/tree/master/edgedb-tokio/examples)
+/*!
+EdgeDB client for Tokio
+
+👉 New! Check out the new [EdgeDB client tutorial](`tutorial`). 👈
+
+The main way to use EdgeDB bindings is to use the [`Client`]. It encompasses
+connection pool to the database that is transparent for user. Individual
+queries can be made via methods on the client. Correlated queries are done
+via [transactions](Client::transaction).
+
+To create a client, use the [`create_client`] function (it gets a database
+connection configuration from environment). You can also use a [`Builder`]
+to [`build`](`Builder::new`) custom [`Config`] and [create a
+client](Client::new) using that config.
+
+# Example
+
+```rust,no_run
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let conn = edgedb_tokio::create_client().await?;
+    let val = conn.query_required_single::<i64, _>(
+        "SELECT 7*8",
+        &(),
+    ).await?;
+    println!("7*8 is: {}", val);
+    Ok(())
+}
+```
+More [examples on github](https://github.com/edgedb/edgedb-rust/tree/master/edgedb-tokio/examples)
+*/
+
 #![cfg_attr(not(feature="unstable"),
    warn(missing_docs, missing_debug_implementations))]
 
@@ -52,6 +57,7 @@ mod errors;
 mod options;
 mod sealed;
 pub mod state;
+pub mod tutorial;
 mod transaction;
 
 pub use edgedb_derive::{Queryable, GlobalsDelta, ConfigDelta};

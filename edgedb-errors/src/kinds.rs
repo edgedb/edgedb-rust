@@ -1,3 +1,7 @@
+/*!
+All errors from the [EdgeDB protocol](https://www.edgedb.com/docs/reference/protocol/errors#error-codes)
+*/
+
 use crate::error::Tag;
 use crate::traits::{ErrorKind, Sealed};
 

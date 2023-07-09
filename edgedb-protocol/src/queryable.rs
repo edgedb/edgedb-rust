@@ -1,3 +1,6 @@
+/*!
+Contains the [Queryable](crate::queryable::Queryable) trait.
+*/
 use std::sync::Arc;
 use std::default::Default;
 use snafu::{Snafu, ensure};

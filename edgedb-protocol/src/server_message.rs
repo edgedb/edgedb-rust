@@ -1,3 +1,31 @@
+/*!
+The [ServerMessage](crate::server_message::ServerMessage) enum and related types. EdgeDB website documentation on messages [here](https://www.edgedb.com/docs/reference/protocol/messages).
+
+```rust,ignore
+pub enum ServerMessage {
+    ServerHandshake(ServerHandshake),
+    UnknownMessage(u8, Bytes),
+    LogMessage(LogMessage),
+    ErrorResponse(ErrorResponse),
+    Authentication(Authentication),
+    ReadyForCommand(ReadyForCommand),
+    ServerKeyData(ServerKeyData),
+    ParameterStatus(ParameterStatus),
+    CommandComplete0(CommandComplete0),
+    CommandComplete1(CommandComplete1),
+    PrepareComplete(PrepareComplete),
+    CommandDataDescription0(CommandDataDescription0), // protocol < 1.0
+    CommandDataDescription1(CommandDataDescription1), // protocol >= 1.0
+    StateDataDescription(StateDataDescription),
+    Data(Data),
+    RestoreReady(RestoreReady),
+    DumpHeader(RawPacket),
+    DumpBlock(RawPacket),
+}
+```
+*/
+
+
 use std::collections::HashMap;
 use std::u32;
 use std::u16;
@@ -18,26 +46,26 @@ use crate::common::Capabilities;
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ServerMessage {
-    ServerHandshake(ServerHandshake),
-    UnknownMessage(u8, Bytes),
-    LogMessage(LogMessage),
-    ErrorResponse(ErrorResponse),
     Authentication(Authentication),
-    ReadyForCommand(ReadyForCommand),
-    ServerKeyData(ServerKeyData),
-    ParameterStatus(ParameterStatus),
     CommandComplete0(CommandComplete0),
     CommandComplete1(CommandComplete1),
-    PrepareComplete(PrepareComplete),
     CommandDataDescription0(CommandDataDescription0), // protocol < 1.0
     CommandDataDescription1(CommandDataDescription1), // protocol >= 1.0
     StateDataDescription(StateDataDescription),
     Data(Data),
-    RestoreReady(RestoreReady),
     // Don't decode Dump packets here as we only need to process them as
     // whole
     DumpHeader(RawPacket),
     DumpBlock(RawPacket),
+    ErrorResponse(ErrorResponse),
+    LogMessage(LogMessage),
+    ParameterStatus(ParameterStatus),
+    ReadyForCommand(ReadyForCommand),
+    RestoreReady(RestoreReady),
+    ServerHandshake(ServerHandshake),
+    ServerKeyData(ServerKeyData),
+    UnknownMessage(u8, Bytes),
+    PrepareComplete(PrepareComplete),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
