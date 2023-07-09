@@ -404,7 +404,7 @@ let sender_name = "Customer1";
 let receiver_name = "Customer2";
 let balance_check_query = "select BankCustomer { name, bank_balance } 
     filter .name = <str>$0";
-let transfer_query = "update BankCustomer 
+let balance_change_query = "update BankCustomer 
         filter .name = <str>$0
         set { bank_balance := .bank_balance + <int32>$1 }";
 let send_amount = 10;
@@ -418,9 +418,9 @@ client
             println!("Not enough money to send, bailing from transaction");
             return Ok(());
         };
-        conn.execute(transfer_query, &(sender_name, send_amount.neg()))
+        conn.execute(balance_change_query, &(sender_name, send_amount.neg()))
             .await?;
-        conn.execute(transfer_query, &(receiver_name, send_amount)).await?;
+        conn.execute(balance_change_query, &(receiver_name, send_amount)).await?;
         Ok(())
     })
     .await?;
