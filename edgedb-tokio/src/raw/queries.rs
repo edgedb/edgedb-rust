@@ -406,13 +406,10 @@ impl Connection {
                 ClientMessage::Sync,
             ]).await?;
         } else {
-            // TODO(tailhook) maybe use OptimisticExecute instead?
             self.send_messages(&[
-                ClientMessage::Execute0(Execute0 {
-                    headers: HashMap::new(),
-                    statement_name: Bytes::from(""),
-                    arguments: arg_buf.freeze(),
-                }),
+                ClientMessage::OptimisticExecute(OptimisticExecute::new(
+                    opts, query, arg_buf.freeze(), *input.id(), *output.id()
+                )),
                 ClientMessage::Sync,
             ]).await?;
         }

@@ -614,6 +614,8 @@ pub(crate) async fn send_messages<'x>(
 ) -> Result<(), Error> {
     buf.truncate(0);
     for msg in messages {
+        log::debug!(target: "edgedb::outgoing::frame",
+                    "Frame Contents: {:#?}", msg);
         msg.encode(&mut Output::new(proto, buf))
             .map_err(ClientEncodingError::with_source)?;
     }
