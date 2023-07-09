@@ -372,8 +372,6 @@ assert!(command.unwrap_err().to_string().contains("bare DDL statements are not a
 
 The client also has a `.transaction()` method that allows for atomic [transactions](https://www.edgedb.com/docs/edgeql/transactions). 
 
-Note: What often may seem to require an atomic transaction can instead be achieved with links and [backlinks](https://www.edgedb.com/docs/edgeql/paths#backlinks) which are both idiomatic and easy to use in EdgeDB. For example, if one object holds a `required link` to two other objects and each of these two objects has a single backlink to the first one, simply updating the first object will effectively change the state of the other two instantaneously.
-
 Wikipedia has a good example of a scenario requiring a transaction which we can then implement:
 
 ```
@@ -425,6 +423,8 @@ client
     })
     .await?;
 ```
+
+Note: What often may seem to require an atomic transaction can instead be achieved with links and [backlinks](https://www.edgedb.com/docs/edgeql/paths#backlinks) which are both idiomatic and easy to use in EdgeDB. For example, if one object holds a `required link` to two other objects and each of these two objects has a single backlink to the first one, simply updating the first object will effectively change the state of the other two instantaneously.
 
 ## Client configuration
 
