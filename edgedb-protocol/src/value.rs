@@ -2,6 +2,7 @@
 Contains the [Value](crate::value::Value) enum.
 */
 use std::iter::IntoIterator;
+use std::convert::TryFrom;
 
 use bytes::Bytes;
 
@@ -91,6 +92,10 @@ impl Value {
     pub fn empty_tuple() -> Value {
         Value::Tuple(Vec::new())
     }
+
+    pub fn try_from_uuid(input: &str) -> Result<Self, uuid::Error>  {
+        Ok(Self::Uuid(Uuid::parse_str(input)?))
+    }
 }
 
 impl SparseObject {
@@ -160,6 +165,24 @@ impl From<String> for Value {
     }
 }
 
+impl From<&str> for Value {
+    fn from(s: &str) -> Value {
+        Value::Str(s.into())
+    }
+}
+
+impl From<bool> for Value {
+    fn from(b: bool) -> Value {
+        Value::Bool(b)
+    }
+}
+
+impl From<i8> for Value {
+    fn from(num: i8) -> Value {
+        Value::Int16(i16::from(num))
+    }
+}
+
 impl From<i16> for Value {
     fn from(s: i16) -> Value {
         Value::Int16(s)
@@ -175,5 +198,41 @@ impl From<i32> for Value {
 impl From<i64> for Value {
     fn from(s: i64) -> Value {
         Value::Int64(s)
+    }
+}
+
+impl From<u8> for Value {
+    fn from(s: u8) -> Value {
+        Value::Int16(i16::from(s))
+    }
+}
+
+impl From<u16> for Value {
+    fn from(s: u16) -> Value {
+        match i16::try_from(s) {
+            Ok(num) => Value::Int16(num),
+            Err(_) => Value::Int32(i32::from(s))
+        }
+    }
+}
+
+impl From<u32> for Value {
+    fn from(s: u32) -> Value {
+        match i32::try_from(s) {
+            Ok(num) => Value::Int32(num),
+            Err(_) => Value::Int64(i64::from(s))
+        }
+    }
+}
+
+impl From<f32> for Value {
+    fn from(num: f32) -> Value {
+        Value::Float32(num)
+    }
+}
+
+impl From<f64> for Value {
+    fn from(num: f64) -> Value {
+        Value::Float64(num)
     }
 }
