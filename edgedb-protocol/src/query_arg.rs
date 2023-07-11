@@ -218,9 +218,7 @@ impl QueryArg for Value {
         }
         match (desc, self) {
             (_, Nothing) => Ok(()),  // any descriptor works
-            (Scalar(_), _) => {
-                unreachable!("scalar dereference to a non-base type");
-            }
+            (Scalar(_), _) => unreachable!("scalar dereference to a non-base type"),
             (BaseScalar(d), Uuid(_)) if d.id == codec::STD_UUID => Ok(()),
             (BaseScalar(d), Str(_)) if d.id == codec::STD_STR => Ok(()),
             (BaseScalar(d), Bytes(_)) if d.id == codec::STD_BYTES => Ok(()),
@@ -230,27 +228,17 @@ impl QueryArg for Value {
             (BaseScalar(d), Float32(_)) if d.id == codec::STD_FLOAT32 => Ok(()),
             (BaseScalar(d), Float64(_)) if d.id == codec::STD_FLOAT64 => Ok(()),
             (BaseScalar(d), BigInt(_)) if d.id == codec::STD_BIGINT => Ok(()),
-            (BaseScalar(d), ConfigMemory(_))
-                if d.id == codec::CFG_MEMORY => Ok(()),
-            (BaseScalar(d), Decimal(_))
-                if d.id == codec::STD_DECIMAL => Ok(()),
+            (BaseScalar(d), ConfigMemory(_)) if d.id == codec::CFG_MEMORY => Ok(()),
+            (BaseScalar(d), Decimal(_)) if d.id == codec::STD_DECIMAL => Ok(()),
             (BaseScalar(d), Bool(_)) if d.id == codec::STD_BOOL => Ok(()),
-            (BaseScalar(d), Datetime(_))
-                if d.id == codec::STD_DATETIME => Ok(()),
-            (BaseScalar(d), LocalDatetime(_))
-                if d.id == codec::CAL_LOCAL_DATETIME => Ok(()),
-            (BaseScalar(d), LocalDate(_))
-                if d.id == codec::CAL_LOCAL_DATE => Ok(()),
-            (BaseScalar(d), LocalTime(_))
-                if d.id == codec::CAL_LOCAL_TIME => Ok(()),
-            (BaseScalar(d), Duration(_))
-                if d.id == codec::STD_DURATION => Ok(()),
-            (BaseScalar(d), RelativeDuration(_))
-                if d.id == codec::CAL_RELATIVE_DURATION => Ok(()),
-            (BaseScalar(d), DateDuration(_))
-                if d.id == codec::CAL_DATE_DURATION => Ok(()),
-            (BaseScalar(d), Json(_))
-                if d.id == codec::STD_JSON => Ok(()),
+            (BaseScalar(d), Datetime(_)) if d.id == codec::STD_DATETIME => Ok(()),
+            (BaseScalar(d), LocalDatetime(_)) if d.id == codec::CAL_LOCAL_DATETIME => Ok(()),
+            (BaseScalar(d), LocalDate(_)) if d.id == codec::CAL_LOCAL_DATE => Ok(()),
+            (BaseScalar(d), LocalTime(_)) if d.id == codec::CAL_LOCAL_TIME => Ok(()),
+            (BaseScalar(d), Duration(_)) if d.id == codec::STD_DURATION => Ok(()),
+            (BaseScalar(d), RelativeDuration(_)) if d.id == codec::CAL_RELATIVE_DURATION => Ok(()),
+            (BaseScalar(d), DateDuration(_)) if d.id == codec::CAL_DATE_DURATION => Ok(()),
+            (BaseScalar(d), Json(_)) if d.id == codec::STD_JSON => Ok(()),
             // TODO(tailhook) all types
             (desc, _) => Err(ctx.wrong_type(desc, self.kind())),
         }
