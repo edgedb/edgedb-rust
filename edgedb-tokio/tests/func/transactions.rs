@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
 
-use tokio::sync::{Mutex};
+use tokio::sync::Mutex;
 
 use edgedb_errors::NoDataError;
 use edgedb_tokio::{Client, Transaction};
