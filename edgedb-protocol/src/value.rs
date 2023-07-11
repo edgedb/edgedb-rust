@@ -165,21 +165,9 @@ impl From<String> for Value {
     }
 }
 
-impl From<&str> for Value {
-    fn from(s: &str) -> Value {
-        Value::Str(s.into())
-    }
-}
-
 impl From<bool> for Value {
     fn from(b: bool) -> Value {
         Value::Bool(b)
-    }
-}
-
-impl From<i8> for Value {
-    fn from(num: i8) -> Value {
-        Value::Int16(i16::from(num))
     }
 }
 
@@ -198,30 +186,6 @@ impl From<i32> for Value {
 impl From<i64> for Value {
     fn from(s: i64) -> Value {
         Value::Int64(s)
-    }
-}
-
-impl From<u8> for Value {
-    fn from(s: u8) -> Value {
-        Value::Int16(i16::from(s))
-    }
-}
-
-impl From<u16> for Value {
-    fn from(s: u16) -> Value {
-        match i16::try_from(s) {
-            Ok(num) => Value::Int16(num),
-            Err(_) => Value::Int32(i32::from(s))
-        }
-    }
-}
-
-impl From<u32> for Value {
-    fn from(s: u32) -> Value {
-        match i32::try_from(s) {
-            Ok(num) => Value::Int32(num),
-            Err(_) => Value::Int64(i64::from(s))
-        }
     }
 }
 
