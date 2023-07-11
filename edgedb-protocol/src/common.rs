@@ -1,3 +1,7 @@
+/*!
+([Website reference](https://www.edgedb.com/docs/reference/protocol/messages#parse)) Capabilities, CompilationFlags etc. from the message protocol.
+*/
+
 use crate::errors;
 use crate::model::Uuid;
 use bytes::Bytes;
@@ -20,6 +24,7 @@ pub enum Cardinality {
 }
 
 bitflags::bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub struct Capabilities: u64 {
         const MODIFICATIONS =       0b00000001;
         const SESSION_CONFIG =      0b00000010;
@@ -31,6 +36,7 @@ bitflags::bitflags! {
 }
 
 bitflags::bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub struct CompilationFlags: u64 {
         const INJECT_OUTPUT_TYPE_IDS =       0b00000001;
         const INJECT_OUTPUT_TYPE_NAMES =     0b00000010;

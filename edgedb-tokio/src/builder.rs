@@ -9,10 +9,11 @@ use std::str::{self, FromStr};
 use std::sync::Arc;
 use std::time::{Duration};
 
-use tokio::fs;
+use base64::Engine;
 use rustls::client::ServerCertVerifier;
 use serde_json::from_slice;
 use sha1::Digest;
+use tokio::fs;
 
 use edgedb_protocol::model;
 
@@ -45,8 +46,11 @@ type Verifier = Arc<dyn ServerCertVerifier>;
 /// Client security mode.
 #[derive(Debug, Clone, Copy)]
 pub enum ClientSecurity {
+    /// Disable security checks
     InsecureDevMode,
+    /// Always verify domain an certificate
     Strict,
+    /// Verify domain only if no specific certificate is configured
     Default,
 }
 
@@ -132,11 +136,16 @@ struct DsnHelper<'a> {
     query: HashMap<Cow<'a, str>, Cow<'a, str>>,
 }
 
+/// Parsed EdgeDB instance name.
 #[derive(Clone, Debug)]
-enum InstanceName {
+pub enum InstanceName {
+    /// Instance configured locally
     Local(String),
+    /// Instance running on the EdgeDB Cloud
     Cloud {
+        /// Organization name
         org_slug: String,
+        /// Instance name within the organization
         name: String,
     },
 }
@@ -1261,6 +1270,24 @@ impl Builder {
              }
         }
         read_instance(cfg, &instance).await?;
+        let path = stash_path.join("database");
+        match fs::read_to_string(&path).await {
+            Ok(text) => {
+                cfg.database = validate_database(text.trim())
+                    .with_context(|| {
+                        format!("error reading project settings {:?}: {:?}",
+                                project_dir, path)
+                    })?
+                    .to_owned();
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(ClientError::with_source(e).context(
+                    format!("error reading project settings {:?}: {:?}",
+                            project_dir, path)
+                ))
+            }
+        }
         Ok(())
     }
 
@@ -1432,14 +1459,16 @@ async fn read_instance(cfg: &mut ConfigInner, name: &InstanceName)
                 .skip(1)
                 .next()
                 .ok_or(ClientError::with_message("Illegal JWT token"))?;
-            let claims = base64::decode_config(claims_b64,
-                                               base64::URL_SAFE_NO_PAD)
+            let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(&claims_b64)
                 .map_err(ClientError::with_source)?;
             let claims: Claims = from_slice(&claims)
                 .map_err(ClientError::with_source)?;
             let dns_zone = claims
                 .issuer
                 .ok_or(ClientError::with_message("Invalid secret key"))?;
+            let org_slug = org_slug.to_lowercase();
+            let name = name.to_lowercase();
             let msg = format!("{}/{}", org_slug, name);
             let checksum = crc16::State::<crc16::XMODEM>::calculate(
                 msg.as_bytes());
@@ -1559,6 +1588,12 @@ impl Config {
         DisplayAddr(Some(&self.0.address))
     }
 
+    /// Is admin connection desired
+    #[cfg(feature="admin_socket")]
+    pub fn admin(&self) -> bool {
+        self.0.admin
+    }
+
     /// User name
     pub fn user(&self) -> &str {
         &self.0.user
@@ -1634,6 +1669,11 @@ impl Config {
         }
     }
 
+    /// Name of the instance if set
+    pub fn instance_name(&self) -> Option<&InstanceName> {
+        self.0.instance_name.as_ref()
+    }
+
     /// Secret key if set
     pub fn secret_key(&self) -> Option<&str> {
         self.0.secret_key.as_deref()
@@ -1692,6 +1732,12 @@ impl Config {
         cfg.pem_certificates = Some(pem.to_owned());
         cfg.verifier = cfg.make_verifier(cfg.compute_tls_security()?);
         Ok(self)
+    }
+
+    #[cfg(feature="admin_socket")]
+    pub fn with_unix_path(mut self, path: &Path) -> Config {
+        Arc::make_mut(&mut self.0).address = Address::Unix(path.into());
+        self
     }
 
     /// Returns true if credentials file is in outdated format

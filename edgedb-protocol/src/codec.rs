@@ -1,3 +1,7 @@
+/*!
+Implementations of the [Codec](crate::codec::Codec) trait into types found in the [Value](crate::value::Value) enum.
+*/
+
 use std::any::type_name;
 use std::convert::{TryInto, TryFrom};
 use std::fmt;
@@ -16,7 +20,7 @@ use crate::errors::{self, CodecError, DecodeError, EncodeError};
 use crate::value::{Value, SparseObject};
 use crate::model;
 use crate::serialization::decode::{RawCodec, DecodeTupleLike, DecodeArrayLike};
-use crate::serialization::decode::{DecodeRange};
+use crate::serialization::decode::DecodeRange;
 use crate::model::range;
 
 pub const STD_UUID: UuidVal = UuidVal::from_u128(0x100);
@@ -39,7 +43,36 @@ pub const CAL_DATE_DURATION: UuidVal = UuidVal::from_u128(0x112);
 pub const STD_JSON: UuidVal = UuidVal::from_u128(0x10f);
 pub const STD_BIGINT: UuidVal = UuidVal::from_u128(0x110);
 pub const CFG_MEMORY: UuidVal = UuidVal::from_u128(0x130);
+pub const PGVECTOR_VECTOR: UuidVal =
+    UuidVal::from_u128(0x9565dd88_04f5_11ee_a691_0b6ebe179825);
 
+pub(crate) fn uuid_to_known_name(uuid: &UuidVal) -> Option<&'static str> {
+
+    match *uuid {
+        STD_UUID => Some("BaseScalar(uuid)"),
+        STD_STR => Some("BaseScalar(str)"),
+        STD_BYTES => Some("BaseScalar(bytes)"),
+        STD_INT16 => Some("BaseScalar(int16)"),
+        STD_INT32 => Some("BaseScalar(int32)"),
+        STD_INT64 => Some("BaseScalar(int64)"),
+        STD_FLOAT32 => Some("BaseScalar(float32)"),
+        STD_FLOAT64 => Some("BaseScalar(float64)"),
+        STD_DECIMAL => Some("BaseScalar(decimal)"),
+        STD_BOOL => Some("BaseScalar(bool)"),
+        STD_DATETIME => Some("BaseScalar(datetime)"),
+        CAL_LOCAL_DATETIME => Some("BaseScalar(cal::local_datetime)"),
+        CAL_LOCAL_DATE => Some("BaseScalar(cal::local_date)"),
+        CAL_LOCAL_TIME => Some("BaseScalar(cal::local_time)"),
+        STD_DURATION => Some("BaseScalar(duration)"),
+        CAL_RELATIVE_DURATION => Some("BaseScalar(cal::relative_duration)"),
+        CAL_DATE_DURATION => Some("BaseScalar(cal::date_duration)"),
+        STD_JSON => Some("BaseScalar(std::json)"),
+        STD_BIGINT => Some("BaseScalar(bigint)"),
+        CFG_MEMORY => Some("BaseScalar(cfg::memory)"),
+        PGVECTOR_VECTOR => Some("BaseScalar(ext::pgvector::vector)"),
+        _ => None
+    }
+}
 
 pub trait Codec: fmt::Debug + Send + Sync + 'static {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError>;
@@ -180,6 +213,10 @@ pub struct Array {
 }
 
 #[derive(Debug)]
+pub struct Vector {
+}
+
+#[derive(Debug)]
 pub struct Range {
     element: Arc<dyn Codec>,
 }
@@ -286,6 +323,7 @@ pub fn scalar_codec(uuid: &UuidVal) -> Result<Arc<dyn Codec>, CodecError> {
         STD_JSON => Ok(Arc::new(Json {})),
         STD_BIGINT => Ok(Arc::new(BigInt {})),
         CFG_MEMORY => Ok(Arc::new(ConfigMemory {})),
+        PGVECTOR_VECTOR => Ok(Arc::new(Vector {})),
         _ => return errors::UndefinedBaseScalar { uuid: uuid.clone() }.fail()?,
     }
 }
@@ -1156,6 +1194,41 @@ impl Codec for Array {
             buf[pos..pos+4].copy_from_slice(&u32::try_from(len)
                     .ok().context(errors::ElementTooLong)?
                     .to_be_bytes());
+        }
+        Ok(())
+    }
+}
+
+impl Codec for Vector {
+    fn decode(&self, mut buf: &[u8]) -> Result<Value, DecodeError> {
+        ensure!(buf.remaining() >= 4, errors::Underflow);
+        let length = buf.get_u16() as usize;
+        let _reserved = buf.get_u16();
+        ensure!(buf.remaining() >= length*4, errors::Underflow);
+        let vec = (0..length)
+            .map(|_| f32::from_bits(buf.get_u32()))
+            .collect();
+        Ok(Value::Vector(vec))
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value)
+        -> Result<(), EncodeError>
+    {
+        let items = match val {
+            Value::Vector(items) => items,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        if items.is_empty() {
+            buf.reserve(4);
+            buf.put_i16(0);  // length
+            buf.put_i16(0);  // reserved
+            return Ok(());
+        }
+        buf.reserve(4 + items.len()*4);
+        buf.put_i16(items.len().try_into().ok()
+            .context(errors::ArrayTooLong)?);
+        buf.put_i16(0);  // reserved
+        for item in items {
+            buf.put_u32(item.to_bits());
         }
         Ok(())
     }

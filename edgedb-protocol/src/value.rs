@@ -1,9 +1,13 @@
+/*!
+Contains the [Value](crate::value::Value) enum.
+*/
 use std::iter::IntoIterator;
+use std::convert::TryFrom;
 
 use bytes::Bytes;
 
 use crate::codec::{NamedTupleShape, ObjectShape, ShapeElement};
-use crate::common::{Cardinality};
+use crate::common::Cardinality;
 use crate::model::{BigInt, Decimal, Uuid, ConfigMemory, Range};
 use crate::model::{LocalDatetime, LocalDate, LocalTime, Duration, Datetime};
 use crate::model::{RelativeDuration, DateDuration, Json};
@@ -38,6 +42,7 @@ pub enum Value {
     Tuple(Vec<Value>),
     NamedTuple { shape: NamedTupleShape, fields: Vec<Value> },
     Array(Vec<Value>),
+    Vector(Vec<f32>),
     Enum(EnumValue),
     Range(Range<Box<Value>>),
 }
@@ -52,39 +57,44 @@ impl Value {
     pub fn kind(&self) -> &'static str {
         use Value::*;
         match self {
-            Nothing => "nothing",
-            Uuid(..) => "uuid",
-            Str(..) => "string",
+            Array(..) => "array",
+            BigInt(..) => "bigint",
+            Bool(..) => "bool",
             Bytes(..) => "bytes",
+            ConfigMemory(..) => "cfg::memory",
+            DateDuration(..) => "cal::date_duration",
+            Datetime(..) => "datetime",
+            Decimal(..) => "decimal",
+            Duration(..) => "duration",
+            Enum(..) => "enum",
+            Float32(..) => "float32",
+            Float64(..) => "float64",
             Int16(..) => "int16",
             Int32(..) => "int32",
             Int64(..) => "int64",
-            Float32(..) => "float32",
-            Float64(..) => "float64",
-            BigInt(..) => "bigint",
-            ConfigMemory(..) => "cfg::memory",
-            Decimal(..) => "decimal",
-            Bool(..) => "bool",
-            Datetime(..) => "datetime",
-            LocalDatetime(..) => "cal::local_datetime",
-            LocalDate(..) => "cal::local_date",
-            LocalTime(..) => "cal::local_time",
-            Duration(..) => "duration",
-            RelativeDuration(..) => "cal::relative_duration",
-            DateDuration(..) => "cal::date_duration",
             Json(..) => "json",
-            Set(..) => "set",
-            Object { .. } => "object",
-            SparseObject { .. } => "sparse_object",
-            Tuple(..) => "tuple",
+            LocalDate(..) => "cal::local_date",
+            LocalDatetime(..) => "cal::local_datetime",
+            LocalTime(..) => "cal::local_time",
             NamedTuple { .. } => "named_tuple",
-            Array(..) => "array",
-            Enum(..) => "enum",
+            Nothing => "nothing",
+            Object { .. } => "object",
             Range{..} => "range",
+            RelativeDuration(..) => "cal::relative_duration",
+            Set(..) => "set",
+            SparseObject { .. } => "sparse_object",
+            Str(..) => "str",
+            Tuple(..) => "tuple",
+            Uuid(..) => "uuid",
+            Vector(..) => "ext::pgvector::vector",
         }
     }
     pub fn empty_tuple() -> Value {
         Value::Tuple(Vec::new())
+    }
+
+    pub fn try_from_uuid(input: &str) -> Result<Self, uuid::Error>  {
+        Ok(Self::Uuid(Uuid::parse_str(input)?))
     }
 }
 
@@ -155,6 +165,12 @@ impl From<String> for Value {
     }
 }
 
+impl From<bool> for Value {
+    fn from(b: bool) -> Value {
+        Value::Bool(b)
+    }
+}
+
 impl From<i16> for Value {
     fn from(s: i16) -> Value {
         Value::Int16(s)
@@ -170,5 +186,17 @@ impl From<i32> for Value {
 impl From<i64> for Value {
     fn from(s: i64) -> Value {
         Value::Int64(s)
+    }
+}
+
+impl From<f32> for Value {
+    fn from(num: f32) -> Value {
+        Value::Float32(num)
+    }
+}
+
+impl From<f64> for Value {
+    fn from(num: f64) -> Value {
+        Value::Float64(num)
     }
 }

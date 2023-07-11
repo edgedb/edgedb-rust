@@ -1,3 +1,7 @@
+/*!
+Contains the [QueryResult](crate::query_result::QueryResult) trait.
+*/
+
 use std::sync::Arc;
 
 use bytes::Bytes;
@@ -9,7 +13,6 @@ use crate::codec::Codec;
 use crate::queryable::{Queryable, Decoder, DescriptorContext};
 use crate::descriptors::{TypePos};
 use crate::value::Value;
-
 
 pub trait Sealed: Sized {}
 

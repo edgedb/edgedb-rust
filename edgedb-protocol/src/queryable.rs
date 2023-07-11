@@ -1,3 +1,6 @@
+/*!
+Contains the [Queryable](crate::queryable::Queryable) trait.
+*/
 use std::sync::Arc;
 use std::default::Default;
 use snafu::{Snafu, ensure};
@@ -85,8 +88,7 @@ impl DescriptorContext<'_> {
         -> DescriptorMismatch
     {
         DescriptorMismatch::WrongType {
-            // TODO(tailhook) human-readable type description
-            unexpected: format!("{:?}", descriptor),
+            unexpected: format!("{descriptor:?}"),
             expected: expected.into(),
         }
     }

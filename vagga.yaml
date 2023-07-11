@@ -11,7 +11,13 @@ commands:
   check: !Command
     description: Check the library
     container: ubuntu
+    prerequisites: [check-no-unstable]
     run: [cargo, check, --workspace, --tests, --all-features]
+
+  check-no-unstable: !Command
+    description: Check the library without unstable features
+    container: ubuntu
+    run: [cargo, check, --workspace, "--features=fs,env,derive"]
 
   doc: !Command
     description: Build documentation
@@ -87,6 +93,16 @@ commands:
     description: Run outdated tool
     container: tools
     run: [cargo, outdated]
+
+  upgrade: !Command
+    description: Run `cargo upgrade`
+    container: tools
+    run: [cargo, upgrade]
+
+  set-version: !Command
+    description: Run `cargo set-version` tool
+    container: tools
+    run: [cargo, set-version]
 
   audit: !Command
     description: Run audit tool
@@ -192,7 +208,7 @@ containers:
   tools:
     setup:
     - !Container ubuntu
-    - !Sh 'cargo install cargo-audit cargo-outdated --root=/usr'
+    - !Sh 'cargo install cargo-audit cargo-outdated cargo-edit --root=/usr'
     environ: *environ
 
   nightly:

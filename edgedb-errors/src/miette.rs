@@ -1,6 +1,6 @@
-//! Miette support for EdgeDB error
+//! Miette support for EdgeDB errors. Add "miette" feature flag to enable.
 //!
-//! [miette](https://docs.io/miette) allows nice formatting of error
+//! [miette](https://docs.rs/miette/latest/miette/) allows nice error formatting via its [Diagnostic](https://docs.rs/miette/latest/miette/trait.Diagnostic.html) trait
 //!
 use std::fmt::Display;
 use miette::{SourceCode, LabeledSpan};

@@ -20,14 +20,17 @@ use crate::state::{AliasesDelta, GlobalsDelta, ConfigDelta};
 use crate::state::{AliasesModifier, GlobalsModifier, ConfigModifier, Fn};
 
 
-/// EdgeDB Client
+/// The EdgeDB Client.
 ///
 /// Internally it contains a connection pool.
 ///
-/// To create client, use [`create_client`](crate::create_client) function (it
+/// To create a client, use [`create_client`](crate::create_client) function (it
 /// gets database connection configuration from environment). You can also use
-/// [`Builder`](crate::Builder) to [`build`](`crate::Builder::build`) custom
+/// [`Builder`](crate::Builder) to [`build`](`crate::Builder::new`) custom
 /// [`Config`] and [create a client](Client::new) using that config.
+/// 
+/// The `with_` methods ([`with_retry_options`](crate::Client::with_retry_options), [`with_transaction_options`](crate::Client::with_transaction_options), etc.)
+/// let you create a shallow copy of the client with adjusted options.
 #[derive(Debug, Clone)]
 pub struct Client {
     options: Arc<Options>,
@@ -64,6 +67,8 @@ impl Client {
     /// let greeting = pool.query::<String, _>("SELECT 'hello'", &());
     /// // or
     /// let greeting: Vec<String> = pool.query("SELECT 'hello'", &());
+    ///
+    /// let two_numbers: Vec<i32> = conn.query("select {<int32>$0, <int32>$1}", &(10, 20)).await?;
     /// ```
     ///
     /// This method can be used with both static arguments, like a tuple of
@@ -294,6 +299,19 @@ impl Client {
     /// than one element, a
     /// [`ResultCardinalityMismatchError`][crate::errors::ResultCardinalityMismatchError]
     /// is raised.
+    /// 
+    /// ```rust,ignore
+    /// let query = "select <json>(
+    ///     insert Account {
+    ///     username := <str>$0
+    ///     }) {
+    ///     username, 
+    ///     id
+    ///     };";
+    /// let json_res: Option<Json> = client
+    ///  .query_single_json(query, &("SomeUserName",))
+    ///     .await?;
+    /// ```
     pub async fn query_single_json(&self,
                                    query: &str, arguments: &impl QueryArgs)
         -> Result<Option<Json>, Error>
@@ -397,6 +415,49 @@ impl Client {
         self.query_single_json(query, arguments).await?
             .ok_or_else(|| NoDataError::with_message(
                         "query row returned zero results"))
+    }
+
+    /// Execute a query and don't expect result
+    ///
+    /// This method can be used with both static arguments, like a tuple of
+    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// Similarly, dynamically typed results are also supported.
+    pub async fn execute<A>(&self, query: &str, arguments: &A)
+        -> Result<(), Error>
+        where A: QueryArgs,
+    {
+        let mut iteration = 0;
+        loop {
+            let mut conn = self.pool.acquire().await?;
+
+            let conn = conn.inner();
+            let state = &self.options.state;
+            let caps = Capabilities::MODIFICATIONS | Capabilities::DDL;
+            match conn.execute(query, arguments, state, caps).await {
+                Ok(resp) => return Ok(resp.data),
+                Err(e) => {
+                    let allow_retry = match e.get::<QueryCapabilities>() {
+                        // Error from a weird source, or just a bug
+                        // Let's keep on the safe side
+                        None => false,
+                        Some(QueryCapabilities::Unparsed) => true,
+                        Some(QueryCapabilities::Parsed(c)) => c.is_empty(),
+                    };
+                    if allow_retry && e.has_tag(SHOULD_RETRY) {
+                        let rule = self.options.retry.get_rule(&e);
+                        iteration += 1;
+                        if iteration < rule.attempts {
+                            let duration = (rule.backoff)(iteration);
+                            log::info!("Error: {:#}. Retrying in {:?}...",
+                                       e, duration);
+                            sleep(duration).await;
+                            continue;
+                        }
+                    }
+                    return Err(e);
+                }
+            }
+        }
     }
 
     /// Execute a transaction

@@ -1,3 +1,7 @@
+/*!
+All errors from the [EdgeDB protocol](https://www.edgedb.com/docs/reference/protocol/errors#error-codes)
+*/
+
 use crate::error::Tag;
 use crate::traits::{ErrorKind, Sealed};
 
@@ -125,6 +129,7 @@ define_errors![
     (struct DivisionByZeroError, 0x05010001u32, 0x00000000),
     (struct NumericOutOfRangeError, 0x05010002u32, 0x00000000),
     (struct AccessPolicyError, 0x05010003u32, 0x00000000),
+    (struct QueryAssertionError, 0x05010004u32, 0x00000000),
     (struct IntegrityError, 0x05020000u32, 0x00000000),
     (struct ConstraintViolationError, 0x05020001u32, 0x00000000),
     (struct CardinalityViolationError, 0x05020002u32, 0x00000000),

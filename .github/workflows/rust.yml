@@ -18,7 +18,7 @@ jobs:
           profile: minimal
           toolchain: ${{ matrix.rust_version }}
           default: true
-      - name: Test all reatures
+      - name: Test all features
         uses: actions-rs/cargo@v1
         with:
           command: test
