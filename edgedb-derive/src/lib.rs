@@ -9,6 +9,7 @@ A `DescriptorMismatch` will be returned if the fields in the Rust struct
 are not in the same order as those in the query shape.
 
 ```rust
+# use edgedb_derive::Queryable;
 #[derive(Queryable)]
 struct User {
     first_name: String,
@@ -38,6 +39,7 @@ implement `serde::Deserialize`.
 
 ```rust
 # use std::collections::HashMap;
+# use edgedb_derive::Queryable;
 
 #[derive(Queryable)]
 struct User {
@@ -55,6 +57,7 @@ the returned JSON.  The underlying type must implement
 `serde::Deserialize`.
 
 ```rust
+# use edgedb_derive::Queryable;
 #[derive(Queryable, serde::Deserialize)]
 #[edgedb(json)]
 struct JsonData {
