@@ -6,7 +6,7 @@ publish = false
 
 [dependencies]
 anyhow = "1.0"
-edgedb-tokio = { version = "0.4.0", path="../../edgedb-tokio"}
+edgedb-tokio = { version = "0.5.0", path="../../edgedb-tokio"}
 edgedb-derive = { version = "0.5.0", path="../../edgedb-derive"}
 tokio = {version="1.20", features=["macros", "rt", "rt-multi-thread"]}
 env_logger = "0.10.0"
