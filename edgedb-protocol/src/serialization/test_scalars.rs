@@ -56,7 +56,7 @@ fn str() {
 
 #[test]
 fn json() {
-    let val = unsafe { Json::new_unchecked("{}".into()) };
+    let val = Json::new_unchecked("{}".into());
     assert_eq!(&encode(val)[..], b"\x01{}");
     assert_eq!(&decode::<Json>(b"\x01{}")[..], "{}");
 }
