@@ -3,9 +3,6 @@
 pub struct Json(String);
 
 impl Json {
-    pub(crate) fn _new_unchecked(value: String) -> Json {
-        Json(value)
-    }
     /// Create a JSON value without checking the contents.
     ///
     /// Two examples of use:
