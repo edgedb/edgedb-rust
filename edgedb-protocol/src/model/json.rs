@@ -8,9 +8,16 @@ impl Json {
     }
     /// Create a JSON value without checking the contents.
     ///
-    /// This is used to construct values with the data received from the
+    /// Two examples of use:
+    /// 
+    /// 1) To construct values with the data received from the
     /// database, because we trust database to produce valid JSON.
-    pub unsafe fn new_unchecked(value: String) -> Json {
+    /// 
+    /// 2) By client users who are using data that is guaranteed
+    /// to be valid JSON. If unsure, using a method such as serde_json's
+    /// [to_string](https://docs.rs/serde_json/latest/serde_json/ser/fn.to_string.html) to
+    /// construct a String is highly recommended.
+    pub fn new_unchecked(value: String) -> Json {
         Json(value)
     }
 }
