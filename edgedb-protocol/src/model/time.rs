@@ -719,9 +719,12 @@ impl Debug for LocalDate {
 }
 
 impl Datetime {
+    // -63082281600000000 micros = Jan. 1 year 1
     pub const MIN : Datetime = Datetime { micros: LocalDatetime::MIN.micros };
+    // 252455615999999999 micros = Dec. 31 year 9999
     pub const MAX : Datetime = Datetime { micros: LocalDatetime::MAX.micros };
     pub const UNIX_EPOCH : Datetime = Datetime {
+        //micros: 0
         micros: LocalDate::UNIX_EPOCH.days as i64 * MICROS_PER_DAY as i64
    };
 
@@ -791,12 +794,12 @@ impl Datetime {
     /// Convert datetime to microseconds since Unix Epoch
     pub fn to_unix_micros(self) -> i64 {
         // i64 is enough to fit our range with both epochs
-        self.micros + Datetime::UNIX_EPOCH.micros
+        self.micros - Datetime::UNIX_EPOCH.micros
     }
 
     fn postgres_epoch_unix() -> SystemTime {
         use std::time::Duration;
-        // postgres epoch starts at 2020-01-01
+        // postgres epoch starts at 2000-01-01
         UNIX_EPOCH + Duration::from_micros((-Datetime::UNIX_EPOCH.micros) as u64)
     }
 }
@@ -1303,6 +1306,21 @@ mod test {
             Datetime::UNIX_EPOCH + std::time::Duration::new(12345, 2000),
         );
     }
+
+    #[test]
+    #[allow(deprecated)]
+    fn to_and_from_unix_micros_roundtrip() {
+        let zero_micros = 0;
+        let datetime = Datetime::from_unix_micros(0);
+        // Unix micros should equal 0
+        assert_eq!(zero_micros, datetime.to_unix_micros());
+        // Datetime (Postgres epoch-based) micros should be negative
+        // Micros = negative micros to go from 2000 to 1970
+        assert_eq!(datetime.micros, datetime.to_micros());
+        assert_eq!(datetime.micros, Datetime::UNIX_EPOCH.micros);
+        assert_eq!(datetime.micros, -946684800000000);
+    }
+
 }
 
 impl RelativeDuration {
