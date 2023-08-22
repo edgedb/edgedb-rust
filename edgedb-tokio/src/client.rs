@@ -282,7 +282,7 @@ impl Client {
                     if let Some(bytes) = bytes {
                         // we trust database to produce valid json
                         let s = String::decode(&mut state, &bytes)?;
-                        return Ok(unsafe { Json::new_unchecked(s) })
+                        return Ok(Json::new_unchecked(s))
                     } else {
                         return Err(NoDataError::with_message(
                             "query row returned zero results"))
@@ -391,7 +391,7 @@ impl Client {
                     if let Some(bytes) = bytes {
                         // we trust database to produce valid json
                         let s = String::decode(&mut state, &bytes)?;
-                        return Ok(Some(unsafe { Json::new_unchecked(s) }))
+                        return Ok(Some(Json::new_unchecked(s)))
                     } else {
                         return Ok(None)
                     }
