@@ -676,6 +676,21 @@ fn local_date() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn vector() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(Some(TypePos(0)),
+        &[
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "9565dd88-04f5-11ee-a691-0b6ebe179825".parse::<Uuid>()?.into(),
+            })
+        ]
+    )?;
+
+    encoding_eq!(&codec, b"\0\x03\0\0?\x80\0\0@\0\0\0@@\0\0",
+        Value::Vector(vec![1., 2., 3.]));
+    Ok(())
+}
+
+#[test]
 fn local_time() -> Result<(), Box<dyn Error>> {
     let codec = build_codec(Some(TypePos(0)),
         &[

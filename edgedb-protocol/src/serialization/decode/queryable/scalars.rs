@@ -11,7 +11,7 @@ use crate::serialization::decode::RawCodec;
 use std::time::SystemTime;
 
 
-fn check_scalar(ctx: &DescriptorContext, type_pos: TypePos, type_id: Uuid, name: &str) -> Result<(), DescriptorMismatch> {
+pub(crate) fn check_scalar(ctx: &DescriptorContext, type_pos: TypePos, type_id: Uuid, name: &str) -> Result<(), DescriptorMismatch> {
     use crate::descriptors::Descriptor::{Scalar, BaseScalar};
     let desc = ctx.get(type_pos)?;
     match desc {
@@ -76,12 +76,12 @@ impl DecodeScalar for i64 {
 
 impl DecodeScalar for f32 {
     fn uuid() -> Uuid { codec::STD_FLOAT32 }
-    fn typename() -> &'static str { "std::int32" }
+    fn typename() -> &'static str { "std::float32" }
 }
 
 impl DecodeScalar for f64 {
     fn uuid() -> Uuid { codec::STD_FLOAT64 }
-    fn typename() -> &'static str { "std::int64" }
+    fn typename() -> &'static str { "std::float64" }
 }
 
 impl DecodeScalar for Uuid {

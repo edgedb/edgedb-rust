@@ -4,11 +4,13 @@ mod bignum;
 mod json;
 mod memory;
 mod time;
+mod vector;
 
 pub(crate) mod range;
 
 pub use memory::ConfigMemory;
 pub use range::Range;
+pub use vector::Vector;
 pub use self::bignum:: {BigInt, Decimal};
 pub use self::json::Json;
 pub use self::time::{LocalDatetime, LocalDate, LocalTime, Duration, Datetime};
