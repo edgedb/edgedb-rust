@@ -151,6 +151,12 @@ impl DecodeScalar for Datetime {
     fn typename() -> &'static str { "std::datetime" }
 }
 
+#[cfg(feature="chrono")]
+impl DecodeScalar for chrono::DateTime<chrono::Utc> {
+    fn uuid() -> Uuid { codec::STD_DATETIME }
+    fn typename() -> &'static str { "std::datetime" }
+}
+
 impl DecodeScalar for ConfigMemory {
     fn uuid() -> Uuid { codec::CFG_MEMORY }
     fn typename() -> &'static str { "cfg::memory" }
