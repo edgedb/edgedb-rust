@@ -121,12 +121,30 @@ impl DecodeScalar for LocalDatetime {
     fn typename() -> &'static str { "cal::local_datetime" }
 }
 
+#[cfg(feature="chrono")]
+impl DecodeScalar for chrono::NaiveDateTime {
+    fn uuid() -> Uuid { codec::CAL_LOCAL_DATETIME }
+    fn typename() -> &'static str { "cal::local_datetime" }
+}
+
 impl DecodeScalar for LocalDate {
     fn uuid() -> Uuid { codec::CAL_LOCAL_DATE }
     fn typename() -> &'static str { "cal::local_date" }
 }
 
+#[cfg(feature="chrono")]
+impl DecodeScalar for chrono::NaiveDate {
+    fn uuid() -> Uuid { codec::CAL_LOCAL_DATE }
+    fn typename() -> &'static str { "cal::local_date" }
+}
+
 impl DecodeScalar for LocalTime {
+    fn uuid() -> Uuid { codec::CAL_LOCAL_TIME }
+    fn typename() -> &'static str { "cal::local_time" }
+}
+
+#[cfg(feature="chrono")]
+impl DecodeScalar for chrono::NaiveTime {
     fn uuid() -> Uuid { codec::CAL_LOCAL_TIME }
     fn typename() -> &'static str { "cal::local_time" }
 }
@@ -147,6 +165,12 @@ impl DecodeScalar for SystemTime {
 }
 
 impl DecodeScalar for Datetime {
+    fn uuid() -> Uuid { codec::STD_DATETIME }
+    fn typename() -> &'static str { "std::datetime" }
+}
+
+#[cfg(feature="chrono")]
+impl DecodeScalar for chrono::DateTime<chrono::Utc> {
     fn uuid() -> Uuid { codec::STD_DATETIME }
     fn typename() -> &'static str { "std::datetime" }
 }
