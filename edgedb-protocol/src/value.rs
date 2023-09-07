@@ -2,7 +2,6 @@
 Contains the [Value](crate::value::Value) enum.
 */
 use std::iter::IntoIterator;
-use std::convert::TryFrom;
 
 use bytes::Bytes;
 
