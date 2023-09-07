@@ -15,6 +15,7 @@ use tls_api::{TlsConnectorBuilder};
 use tls_api_not_tls::TlsConnector as PlainConnector;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
+use tokio::io::ReadBuf;
 use tokio::net::TcpStream;
 use tokio::time::{Instant, sleep, timeout_at};
 use webpki::DnsNameRef;
@@ -653,13 +654,36 @@ pub async fn wait_message<'x>(stream: &mut (impl AsyncRead + Unpin),
     }
 }
 
+async fn _read_buf(stream: &mut (impl AsyncRead + Unpin),
+                   buf: &mut BytesMut)
+    -> io::Result<usize>
+{
+    // Because of a combination of multiple different API impedence
+    // mismatches, when read_buf is called on a tls_api tokio stream,
+    // tls_api will zero the entire buffer on each call. This leads to
+    // pathological quadratic repeated zeroing when the buffer is much
+    // larger than the bytes read per call.
+    // (like for the 10MiB buffers for dump packets)
+    //
+    // We fix this by capping the size of the buffer that we pass to
+    // read_buf.
+    let cap = buf.spare_capacity_mut();
+    let cap_len = cap.len();
+    let mut rbuf = ReadBuf::uninit(&mut cap[ .. min(cap_len, 16*1024)]);
+    let n = stream.read_buf(&mut rbuf).await?;
+    unsafe {
+        buf.set_len(buf.len() + n);
+    }
+    Ok(n)
+}
+
 async fn _wait_message<'x>(stream: &mut (impl AsyncRead + Unpin),
                               buf: &mut BytesMut, proto: &ProtocolVersion)
     -> Result<ServerMessage, Error>
 {
     while buf.len() < 5 {
         buf.reserve(5);
-        if stream.read_buf(buf).await.map_err(conn_err)? == 0 {
+        if _read_buf(stream, buf).await.map_err(conn_err)? == 0 {
             return Err(ClientConnectionEosError::with_message(
                 "end of stream while reading message"));
         }
@@ -669,7 +693,7 @@ async fn _wait_message<'x>(stream: &mut (impl AsyncRead + Unpin),
 
     while buf.len() < frame_len {
         buf.reserve(frame_len - buf.len());
-        if stream.read_buf(buf).await.map_err(conn_err)? == 0 {
+        if _read_buf(stream, buf).await.map_err(conn_err)? == 0 {
             return Err(ClientConnectionEosError::with_message(
                 "end of stream while reading message"));
         }
