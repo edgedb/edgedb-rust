@@ -716,7 +716,7 @@ fn json() -> Result<(), Box<dyn Error>> {
     )?;
 
     encoding_eq!(&codec, b"\x01\"txt\"",
-        Value::Json(unsafe { Json::new_unchecked(String::from(r#""txt""#)) }));
+        Value::Json(Json::new_unchecked(String::from(r#""txt""#))));
     Ok(())
 }
 

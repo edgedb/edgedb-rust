@@ -351,7 +351,7 @@ impl Transaction {
                 if let Some(bytes) = bytes {
                     // we trust database to produce valid json
                     let s = String::decode(&mut state, &bytes)?;
-                    Ok(unsafe { Json::new_unchecked(s) })
+                    Ok(Json::new_unchecked(s))
                 } else {
                     Err(NoDataError::with_message(
                         "query row returned zero results"))
@@ -409,7 +409,7 @@ impl Transaction {
                 if let Some(bytes) = bytes {
                     // we trust database to produce valid json
                     let s = String::decode(&mut state, &bytes)?;
-                    Ok(Some(unsafe { Json::new_unchecked(s) }))
+                    Ok(Some(Json::new_unchecked(s)))
                 } else {
                     Ok(None)
                 }
