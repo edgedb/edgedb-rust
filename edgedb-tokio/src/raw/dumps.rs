@@ -151,10 +151,20 @@ impl Connection {
         }
     }
     pub async fn dump(&mut self) -> Result<DumpStream<'_>, Error> {
+        self.dump_with_secrets(false).await
+    }
+    pub async fn dump_with_secrets(&mut self, with_secrets: bool)
+                       -> Result<DumpStream<'_>, Error> {
         let guard = self.begin_request()?;
+
+        let mut headers = HashMap::new();
+        if with_secrets {
+            headers.insert(0xFF10, Bytes::from(vec!(with_secrets as u8)));
+        }
+
         self.send_messages(&[
             ClientMessage::Dump(Dump {
-                headers: Default::default(),
+                headers: headers,
             }),
             ClientMessage::Sync,
         ]).await?;
