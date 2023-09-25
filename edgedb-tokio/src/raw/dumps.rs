@@ -76,7 +76,7 @@ impl Connection {
         while let Some(data) = stream.next().await.transpose()? {
             num_blocks += 1;
             total_len += data.len();
-            log::info!(target: "edgedb::restore", "Block {num_blocks} processed: {:.02} MB restored", total_len as f64 / 1000000.0);
+            log::info!(target: "edgedb::restore", "Block {num_blocks} processed: {:.02} MB restored", total_len as f64 / 1048576.0);
             let (mut rd, mut wr) = tokio::io::split(&mut self.stream);
             let block = [ClientMessage::RestoreBlock(RestoreBlock { data })];
             tokio::select! {
