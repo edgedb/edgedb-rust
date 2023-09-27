@@ -7,10 +7,10 @@ use tokio::time::sleep;
 use tokio_stream::{Stream, StreamExt};
 
 use edgedb_errors::{Error, ErrorKind};
-use edgedb_errors::{ProtocolOutOfOrderError};
+use edgedb_errors::ProtocolOutOfOrderError;
 use edgedb_protocol::server_message::{ServerMessage, RawPacket};
 use edgedb_protocol::client_message::{ClientMessage, Restore, RestoreBlock};
-use edgedb_protocol::client_message::{Dump};
+use edgedb_protocol::client_message::Dump;
 
 use crate::raw::{Connection, Response};
 use crate::raw::connection::{send_messages, wait_message};
@@ -71,7 +71,11 @@ impl Connection {
         }
 
         let start_blocks = Instant::now();
+        let mut num_blocks = 0;
+        let mut total_len = 0;
         while let Some(data) = stream.next().await.transpose()? {
+            num_blocks += 1;
+            total_len += data.len();
             let (mut rd, mut wr) = tokio::io::split(&mut self.stream);
             let block = [ClientMessage::RestoreBlock(RestoreBlock { data })];
             tokio::select! {
@@ -95,10 +99,11 @@ impl Connection {
                                   &self.proto, &block)
                     => res?,
             }
+            log::info!(target: "edgedb::restore", "Block {num_blocks} processed: {:.02} MB restored", total_len as f64 / 1048576.0);
         }
         self.send_messages(&[ClientMessage::RestoreEof]).await?;
         log::info!(target: "edgedb::restore",
-            "Blocks sent in {:?}", start_blocks.elapsed());
+            "Database restored in {:?}", start_blocks.elapsed());
 
         let wait = wait_print_loop();
         tokio::pin!(wait);
@@ -146,10 +151,20 @@ impl Connection {
         }
     }
     pub async fn dump(&mut self) -> Result<DumpStream<'_>, Error> {
+        self.dump_with_secrets(false).await
+    }
+    pub async fn dump_with_secrets(&mut self, with_secrets: bool)
+                       -> Result<DumpStream<'_>, Error> {
         let guard = self.begin_request()?;
+
+        let mut headers = HashMap::new();
+        if with_secrets {
+            headers.insert(0xFF10, Bytes::from(vec!(with_secrets as u8)));
+        }
+
         self.send_messages(&[
             ClientMessage::Dump(Dump {
-                headers: Default::default(),
+                headers: headers,
             }),
             ClientMessage::Sync,
         ]).await?;
