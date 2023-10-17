@@ -222,6 +222,11 @@ pub struct Range {
 }
 
 #[derive(Debug)]
+pub struct MultiRange {
+    element: Arc<dyn Codec>,
+}
+
+#[derive(Debug)]
 pub struct ArrayAdapter(Array);
 
 #[derive(Debug)]
@@ -275,6 +280,9 @@ impl<'a> CodecBuilder<'a> {
                 })),
                 D::Range(d) => Ok(Arc::new(Range {
                     element: self.build(d.type_pos)?,
+                })),
+                D::MultiRange(d) => Ok(Arc::new(MultiRange {
+                    element: Arc::new(Range { element: self.build(d.type_pos)? }),
                 })),
                 D::Enumeration(d) => Ok(Arc::new(Enum {
                     members: d.members.iter().map(|x| x[..].into()).collect(),
@@ -1308,6 +1316,38 @@ impl Codec for Range {
                     .to_be_bytes());
         }
 
+        Ok(())
+    }
+}
+
+
+impl Codec for MultiRange {
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        let elements = DecodeArrayLike::new_tuple_header(buf)?;
+        let items = decode_array_like(elements, &*self.element)?;
+        Ok(Value::Array(items))
+    }
+
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
+        let items = match val {
+            Value::Array(items) => items,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        buf.reserve(4);
+        buf.put_u32(items.len().try_into().ok().context(errors::ArrayTooLong)?);
+        for item in items {
+            buf.reserve(4);
+            let pos = buf.len();
+            buf.put_u32(0);  // replaced after serializing a value
+            self.element.encode(buf, item)?;
+            let len = buf.len() - pos - 4;
+            buf[pos..pos + 4].copy_from_slice(
+                &u32::try_from(len)
+                    .ok()
+                    .context(errors::ElementTooLong)?
+                    .to_be_bytes(),
+            );
+        }
         Ok(())
     }
 }

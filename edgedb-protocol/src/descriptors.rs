@@ -13,6 +13,7 @@ pub enum Descriptor {
     Enumeration(EnumerationTypeDescriptor),
     InputShape(InputShapeTypeDescriptor),
     Range(RangeTypeDescriptor),
+    MultiRange(MultiRangeTypeDescriptor),
     TypeAnnotation(TypeAnnotationDescriptor),
 }
 ```
@@ -69,6 +70,7 @@ pub enum Descriptor {
     Enumeration(EnumerationTypeDescriptor),
     InputShape(InputShapeTypeDescriptor),
     Range(RangeTypeDescriptor),
+    MultiRange(MultiRangeTypeDescriptor),
     TypeAnnotation(TypeAnnotationDescriptor),
 }
 
@@ -178,6 +180,12 @@ pub struct ArrayTypeDescriptor {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RangeTypeDescriptor {
+    pub id: DescriptorUuid,
+    pub type_pos: TypePos,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MultiRangeTypeDescriptor {
     pub id: DescriptorUuid,
     pub type_pos: TypePos,
 }
@@ -462,6 +470,7 @@ impl Descriptor {
             NamedTuple(i) => &i.id,
             Array(i) => &i.id,
             Range(i) => &i.id,
+            MultiRange(i) => &i.id,
             Enumeration(i) => &i.id,
             InputShape(i) => &i.id,
             TypeAnnotation(i) => &i.id,
@@ -487,6 +496,7 @@ impl Decode for Descriptor {
             7 => EnumerationTypeDescriptor::decode(buf).map(D::Enumeration),
             8 => InputShapeTypeDescriptor::decode(buf).map(D::InputShape),
             9 => RangeTypeDescriptor::decode(buf).map(D::Range),
+            0x0C => MultiRangeTypeDescriptor::decode(buf).map(D::MultiRange),
             0x7F..=0xFF => {
                 TypeAnnotationDescriptor::decode(buf).map(D::TypeAnnotation)
             }
@@ -644,6 +654,16 @@ impl Decode for RangeTypeDescriptor {
         let id = Uuid::decode(buf)?.into();
         let type_pos = TypePos(buf.get_u16());
         Ok(RangeTypeDescriptor { id, type_pos })
+    }
+}
+
+impl Decode for MultiRangeTypeDescriptor {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
+        ensure!(buf.remaining() >= 19, errors::Underflow);
+        assert!(buf.get_u8() == 0x0C);
+        let id = Uuid::decode(buf)?.into();
+        let type_pos = TypePos(buf.get_u16());
+        Ok(MultiRangeTypeDescriptor { id, type_pos })
     }
 }
 
