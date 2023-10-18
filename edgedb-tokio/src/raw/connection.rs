@@ -25,7 +25,7 @@ use edgedb_protocol::encoding::{Input, Output};
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::server_message::{ParameterStatus, RawTypedesc};
 use edgedb_protocol::server_message::{ServerHandshake};
-use edgedb_protocol::server_message::{ServerMessage, Authentication};
+use edgedb_protocol::server_message::{Authentication, ErrorResponse, ServerMessage};
 use edgedb_protocol::server_message::{TransactionState, MessageSeverity};
 use edgedb_protocol::value::Value;
 
@@ -472,8 +472,17 @@ async fn connect4(cfg: &Config, mut stream: TlsStream)
             ServerMessage::StateDataDescription(d) => {
                 state_desc = d.typedesc;
             }
+            ServerMessage::ErrorResponse(ErrorResponse {
+                severity, 
+                code,
+                message, 
+                attributes
+            }) => {
+                log::warn!("Error received from server: {message}. Severity: {severity:?}. Code: {code:#x}");
+                log::debug!("Error details: {attributes:?}");
+            }
             _ => {
-                log::warn!("unsolicited message {:?}", msg);
+                log::warn!("unsolicited message {msg:#?}");
             }
         }
     }
@@ -556,8 +565,17 @@ async fn scram(
         let msg = wait_message(stream, in_buf, &proto).await?;
         match msg {
             ServerMessage::Authentication(Authentication::Ok) => break,
+            ServerMessage::ErrorResponse(ErrorResponse {
+                severity, 
+                code,
+                message, 
+                attributes
+            }) => {
+                log::warn!("Error received from server: {message}. Severity: {severity:?}. Code: {code:#x}");
+                log::debug!("Error details: {attributes:?}");
+            }
             msg => {
-                log::warn!("unsolicited message {:?}", msg);
+                log::warn!("unsolicited message {msg:?}");
             }
         };
     }

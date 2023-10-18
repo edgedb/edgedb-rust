@@ -54,6 +54,11 @@ impl<'t> DecodeArrayLike<'t> {
         let inner = DecodeCompositeInner::read_array_like_header(buf, || errors::InvalidArrayOrSetShape.build())?;
         Ok(DecodeArrayLike{inner})
     }
+
+    pub fn new_tuple_header(buf: &'t [u8]) -> Result<Self, DecodeError> {
+        let inner = DecodeCompositeInner::read_tuple_like_header(buf)?;
+        Ok(Self {inner})
+    }
 }
 
 pub struct DecodeRange<'t> {

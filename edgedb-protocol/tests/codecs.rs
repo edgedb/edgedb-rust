@@ -12,7 +12,7 @@ use edgedb_protocol::common::RawTypedesc;
 use edgedb_protocol::descriptors::ArrayTypeDescriptor;
 use edgedb_protocol::descriptors::BaseScalarTypeDescriptor;
 use edgedb_protocol::descriptors::EnumerationTypeDescriptor;
-use edgedb_protocol::descriptors::RangeTypeDescriptor;
+use edgedb_protocol::descriptors::{RangeTypeDescriptor, MultiRangeTypeDescriptor};
 use edgedb_protocol::descriptors::{Descriptor, TypePos};
 use edgedb_protocol::descriptors::{NamedTupleTypeDescriptor, TupleElement};
 use edgedb_protocol::descriptors::{ObjectShapeDescriptor, ShapeElement};
@@ -980,6 +980,31 @@ fn range() -> Result<(), Box<dyn Error>> {
     encoding_eq!(&codec,
         b"\x02\0\0\0\x08\0\0\0\0\0\0\0\x07\0\0\0\x08\0\0\0\0\0\0\0'",
         std::ops::Range { start: 7i64, end: 39 }.into()
+    );
+    Ok(())
+}
+
+#[test]
+fn multi_range() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(
+        Some(TypePos(1)),
+        &[
+            Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+                id: "00000000-0000-0000-0000-000000000105".parse::<Uuid>()?.into(),
+            }),
+            Descriptor::MultiRange(MultiRangeTypeDescriptor {
+                id: "08fc943ff87d44b68e76ba8dbeed4d00".parse::<Uuid>().unwrap().into(),
+                type_pos: TypePos(0),
+            }),
+        ],
+    )?;
+
+    encoding_eq!(
+        &codec,
+        b"\0\0\0\x01\0\0\0\x19\x02\0\0\0\x08\0\0\0\0\0\0\0\x07\0\0\0\x08\0\0\0\0\0\0\0'",
+        Value::Array(vec![
+            std::ops::Range { start: 7i64, end: 39 }.into()
+        ])
     );
     Ok(())
 }
