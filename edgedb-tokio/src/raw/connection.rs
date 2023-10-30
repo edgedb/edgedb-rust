@@ -473,9 +473,9 @@ async fn connect4(cfg: &Config, mut stream: TlsStream)
                 state_desc = d.typedesc;
             }
             ServerMessage::ErrorResponse(ErrorResponse {
-                severity, 
+                severity,
                 code,
-                message, 
+                message,
                 attributes
             }) => {
                 log::warn!("Error received from server: {message}. Severity: {severity:?}. Code: {code:#x}");
@@ -566,9 +566,9 @@ async fn scram(
         match msg {
             ServerMessage::Authentication(Authentication::Ok) => break,
             ServerMessage::ErrorResponse(ErrorResponse {
-                severity, 
+                severity,
                 code,
-                message, 
+                message,
                 attributes
             }) => {
                 log::warn!("Error received from server: {message}. Severity: {severity:?}. Code: {code:#x}");
