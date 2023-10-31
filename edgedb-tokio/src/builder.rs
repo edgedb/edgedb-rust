@@ -1046,13 +1046,10 @@ impl Builder {
             }
         }
     }
-    async fn preliminary_env(&self, cfg: &mut ConfigInner,
+
+    async fn secret_key_env(&self, cfg: &mut ConfigInner,
                              errors: &mut Vec<Error>)
     {
-        cfg.cloud_profile = self.cloud_profile.clone().or_else(|| {
-            get_env("EDGEDB_CLOUD_PROFILE")
-                .map_err(|e| errors.push(e)).ok().flatten()
-        });
         cfg.secret_key = self.secret_key.clone().or_else(|| {
             get_env("EDGEDB_SECRET_KEY")
                 .map_err(|e| errors.push(e)).ok().flatten()
@@ -1334,6 +1331,11 @@ impl Builder {
             verifier: Arc::new(tls::NullVerifier),
         };
 
+        cfg.cloud_profile = self.cloud_profile.clone().or_else(|| {
+            get_env("EDGEDB_CLOUD_PROFILE")
+                .map_err(|e| errors.push(e)).ok().flatten()
+        });
+
         let complete = if self.host.is_some() ||
            self.port.is_some() ||
            self.unix_path.is_some() ||
@@ -1343,7 +1345,6 @@ impl Builder {
            self.credentials_file.is_some()
         {
             cfg.secret_key = self.secret_key.clone();
-            cfg.cloud_profile = self.cloud_profile.clone();
             self.compound_owned(&mut cfg, &mut errors).await;
             self.granular_owned(&mut cfg, &mut errors).await;
             true
@@ -1351,12 +1352,12 @@ impl Builder {
             COMPOUND_ENV_VARS.iter().any(|x| env::var_os(x).is_some()) ||
             has_port_env()
         {
-            self.preliminary_env(&mut cfg, &mut errors).await;
+            self.secret_key_env(&mut cfg, &mut errors).await;
             self.compound_env(&mut cfg, &mut errors).await;
             self.granular_env(&mut cfg, &mut errors).await;
             true
         } else {
-            self.preliminary_env(&mut cfg, &mut errors).await;
+            self.secret_key_env(&mut cfg, &mut errors).await;
             let complete = self.read_project(&mut cfg, &mut errors).await;
             self.granular_env(&mut cfg, &mut errors).await;
             complete
