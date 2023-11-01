@@ -7,7 +7,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::str::{self, FromStr};
 use std::sync::Arc;
-use std::time::{Duration};
+use std::time::Duration;
 
 use base64::Engine;
 use rustls::client::ServerCertVerifier;
@@ -18,9 +18,8 @@ use tokio::fs;
 use edgedb_protocol::model;
 
 use crate::credentials::{Credentials, TlsSecurity};
-use crate::errors::{ClientError};
 use crate::errors::{ClientNoCredentialsError, NoCloudConfigFound};
-use crate::errors::{Error, ErrorKind, ResultExt};
+use crate::errors::{ClientError, Error, ErrorKind, ResultExt};
 use crate::errors::{InterfaceError, InvalidArgumentError};
 use crate::tls;
 
@@ -93,6 +92,12 @@ pub struct Builder {
 #[derive(Clone)]
 pub struct Config(pub(crate) Arc<ConfigInner>);
 
+impl Config {
+    /// The duration for which the client will attempt to establish a connection.
+    pub fn wait_until_available(&self) -> Duration {
+        self.0.wait
+    }
+}
 
 #[derive(Clone)]
 pub(crate) struct ConfigInner {
