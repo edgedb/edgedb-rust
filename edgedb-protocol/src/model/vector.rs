@@ -4,14 +4,15 @@ use bytes::Buf;
 use snafu::ensure;
 
 use crate::codec;
-use crate::descriptors::{TypePos};
+use crate::descriptors::TypePos;
 use crate::errors::{self, DecodeError};
-use crate::queryable::{DescriptorMismatch};
+use crate::queryable::DescriptorMismatch;
 use crate::queryable::{Queryable, Decoder, DescriptorContext};
 use crate::serialization::decode::queryable::scalars::check_scalar;
 
 /// A structure that represents `ext::pgvector::vector`
 #[derive(Debug, PartialEq, Clone)]
+#[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Vector(pub Vec<f32>);
 
 impl Deref for Vector {

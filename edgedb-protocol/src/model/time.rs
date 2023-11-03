@@ -8,18 +8,21 @@ use std::str::FromStr;
 ///
 /// Precision: microseconds.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Duration {
     pub(crate) micros: i64,
 }
 
 /// A combination [`LocalDate`] and [`LocalTime`].
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LocalDatetime {
     pub(crate) micros: i64,
 }
 
 /// Naive date without a timezone.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LocalDate {
     pub(crate) days: i32,
 }
@@ -30,18 +33,21 @@ pub struct LocalDate {
 ///
 /// Precision: microseconds.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LocalTime {
     pub(crate) micros: u64,
 }
 
 /// A UTC date and time.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Datetime {
     pub(crate) micros: i64,
 }
 
 /// A type that can represent a human-friendly duration like 1 month or two days.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RelativeDuration {
     pub(crate) micros: i64,
     pub(crate) days: i32,
@@ -50,6 +56,7 @@ pub struct RelativeDuration {
 
 /// A type that can represent a human-friendly date duration like 1 month or two days.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DateDuration {
     pub(crate) days: i32,
     pub(crate) months: i32,

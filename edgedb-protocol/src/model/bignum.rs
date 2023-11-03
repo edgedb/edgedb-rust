@@ -6,6 +6,7 @@ mod bigdecimal_interop;
 
 /// Virtually unlimited precision integer.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BigInt {
     pub(crate) negative: bool,
     pub(crate) weight: i16,
@@ -14,6 +15,7 @@ pub struct BigInt {
 
 /// High-precision decimal number.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Decimal {
     pub(crate) negative: bool,
     pub(crate) weight: i16,
