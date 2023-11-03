@@ -1,5 +1,6 @@
 /// A newtype for JSON received from the database
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Json(String);
 
 impl Json {
