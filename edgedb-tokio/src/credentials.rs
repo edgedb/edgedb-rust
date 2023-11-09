@@ -168,8 +168,8 @@ impl<'de> Deserialize<'de> for Credentials {
                 .unwrap_or(false)
         {
             Err(serde::de::Error::custom(format!(
-                "detected conflicting settings: \
-                 tls_security={} but tls_verify_hostname={}",
+                "detected conflicting settings. \
+                 \ntls_security =\n{}\nbut tls_verify_hostname =\n{}",
                 serde_json::to_string(&creds.tls_security)
                     .map_err(serde::de::Error::custom)?,
                 serde_json::to_string(&creds.tls_verify_hostname)
@@ -180,8 +180,8 @@ impl<'de> Deserialize<'de> for Credentials {
             creds.tls_ca != creds.tls_cert_data
         {
             Err(serde::de::Error::custom(format!(
-                "detected conflicting settings: \
-                 tls_ca={:?} but tls_cert_data={:?}",
+                "detected conflicting settings. \
+                 \ntls_ca =\n{:#?}\nbut tls_cert_data =\n{:#?}",
                 creds.tls_ca,
                 creds.tls_cert_data,
             )))

@@ -2,6 +2,7 @@ use std::fmt::{Debug, Display};
 
 /// A type for cfg::memory received from the database
 #[derive(Copy, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ConfigMemory(pub i64);
 
 impl ConfigMemory {}

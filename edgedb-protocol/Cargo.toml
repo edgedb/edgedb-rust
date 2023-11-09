@@ -21,6 +21,7 @@ bigdecimal = {version="0.3.0", optional=true}
 chrono = {version="0.4.23", optional=true, features=["std"], default-features=false}
 edgedb-errors = {path = "../edgedb-errors", version = "0.4.0" }
 bitflags = "2.4.0"
+serde = {version="1.0.190", optional=true}
 
 [features]
 default = []
@@ -28,6 +29,7 @@ with-num-bigint = ["num-bigint", "num-traits"]
 with-bigdecimal = ["bigdecimal", "num-bigint", "num-traits"]
 with-chrono = ["chrono"]
 all-types = ["with-num-bigint", "with-bigdecimal", "with-chrono"]
+with-serde = ["serde"]
 
 [dev-dependencies]
 rand = "0.8"

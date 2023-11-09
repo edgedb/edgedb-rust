@@ -8,6 +8,7 @@ pub(crate) const UB_INF: usize = 0x10;
 
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Range<T> {
     pub(crate) lower: Option<T>,
     pub(crate) upper: Option<T>,
