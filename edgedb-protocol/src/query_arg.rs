@@ -3,6 +3,7 @@ Contains the [QueryArg](crate::query_arg::QueryArg) and [QueryArgs](crate::query
 */
 
 use std::convert::{TryFrom, TryInto};
+use std::ops::Deref;
 use std::sync::Arc;
 
 use bytes::{BytesMut, BufMut};
@@ -11,10 +12,10 @@ use uuid::Uuid;
 
 use edgedb_errors::{Error, ErrorKind};
 use edgedb_errors::{ClientEncodingError, ProtocolError, DescriptorMismatch};
-use edgedb_errors::{ParameterTypeMismatchError};
+use edgedb_errors::ParameterTypeMismatchError;
 
 use crate::codec::{self, Codec, build_codec};
-use crate::descriptors::Descriptor;
+use crate::descriptors::{Descriptor, EnumerationTypeDescriptor};
 use crate::descriptors::TypePos;
 use crate::errors;
 use crate::features::ProtocolVersion;
@@ -239,6 +240,8 @@ impl QueryArg for Value {
             (RelativeDuration(_), BaseScalar(d)) if d.id == codec::CAL_RELATIVE_DURATION => Ok(()),
             (Str(_), BaseScalar(d)) if d.id == codec::STD_STR => Ok(()),            
             (Uuid(_), BaseScalar(d)) if d.id == codec::STD_UUID => Ok(()),
+            (Enum(val), Enumeration(EnumerationTypeDescriptor{members, ..})) 
+                    if members.iter().any(|c| c == val.deref()) => Ok(()),
             // TODO(tailhook) all types
             (_, desc) => Err(ctx.wrong_type(desc, self.kind())),
         }
