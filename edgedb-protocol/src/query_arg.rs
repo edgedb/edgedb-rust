@@ -10,7 +10,7 @@ use bytes::{BytesMut, BufMut};
 use snafu::OptionExt;
 use uuid::Uuid;
 
-use edgedb_errors::{Error, ErrorKind};
+use edgedb_errors::{Error, ErrorKind, InvalidReferenceError};
 use edgedb_errors::{ClientEncodingError, ProtocolError, DescriptorMismatch};
 use edgedb_errors::ParameterTypeMismatchError;
 
@@ -240,8 +240,13 @@ impl QueryArg for Value {
             (RelativeDuration(_), BaseScalar(d)) if d.id == codec::CAL_RELATIVE_DURATION => Ok(()),
             (Str(_), BaseScalar(d)) if d.id == codec::STD_STR => Ok(()),            
             (Uuid(_), BaseScalar(d)) if d.id == codec::STD_UUID => Ok(()),
-            (Enum(val), Enumeration(EnumerationTypeDescriptor{members, ..})) 
-                    if members.iter().any(|c| c == val.deref()) => Ok(()),
+            (Enum(val), Enumeration(EnumerationTypeDescriptor{members, ..})) => {
+                    if members.iter().any(|c| c == val.deref()) { Ok(()) } else {
+                        let members = members.into_iter().map(|c| format!("'{c}'")).collect::<Vec<_>>().join(", ");
+                        let val = val.to_string();
+                        Err(InvalidReferenceError::with_message(format!("Expected one of: {members}, while enum value '{val}' was provided")))
+                    }
+            }
             // TODO(tailhook) all types
             (_, desc) => Err(ctx.wrong_type(desc, self.kind())),
         }
