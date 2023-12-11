@@ -223,15 +223,18 @@ impl QueryArg for Value {
             (Str(_), BaseScalar(d)) if d.id == codec::STD_STR => Ok(()),
             (Uuid(_), BaseScalar(d)) if d.id == codec::STD_UUID => Ok(()),
             (Enum(val), Enumeration(EnumerationTypeDescriptor { members, .. })) => {
-                if members.iter().any(|c| c == val.deref()) {
+                let val = val.deref();
+                if members.iter().any(|c| c == val) {
                     Ok(())
                 } else {
-                    let members = members
+                    let members = {
+                        let mut members = members
                         .into_iter()
                         .map(|c| format!("'{c}'"))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    let val = val.to_string();
+                        .collect::<Vec<_>>();
+                        members.sort_unstable();
+                        members.join(", ")
+                    };
                     Err(InvalidReferenceError::with_message(format!(
                         "Expected one of: {members}, while enum value '{val}' was provided"
                     )))
