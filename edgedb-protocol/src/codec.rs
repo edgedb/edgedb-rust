@@ -709,6 +709,7 @@ impl Codec for Object {
             .collect();
         // Sort server-returned fields by our order
         server_field_names.sort_unstable_by_key(|k| our_field_names.get(&k.0));
+        // Map to translate original order to new order for a field
         let old_to_new_order_map: HashMap<usize, usize> = server_field_names
             .into_iter()
             .enumerate()
@@ -716,8 +717,6 @@ impl Codec for Object {
             .collect();
         let mut sorted_fields: Vec<(usize, &Option<Value>)> =
             fields.into_iter().enumerate().collect();
-        // let mut sorted_fields: Vec<(usize, Option<Value>)> =
-        //     fields.clone().into_iter().enumerate().collect();
         sorted_fields.sort_unstable_by_key(|(old_order, _v)| old_to_new_order_map.get(old_order));
         let sorted_fields: Vec<&Option<Value>> =
             sorted_fields.into_iter().map(|(_i, value)| value).collect();
