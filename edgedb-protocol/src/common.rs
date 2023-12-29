@@ -13,8 +13,7 @@ use crate::features::ProtocolVersion;
 
 pub use crate::client_message::IoFormat;
 
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Cardinality {
     NoResult = 0x6e,
     AtMostOne = 0x6f,
@@ -77,10 +76,7 @@ impl RawTypedesc {
         }
     }
     pub fn decode(&self) -> Result<Typedesc, DecodeError> {
-        let ref mut cur = Input::new(
-            self.proto.clone(),
-            self.data.clone(),
-        );
+        let ref mut cur = Input::new(self.proto.clone(), self.data.clone());
         Typedesc::decode_with_id(self.id, cur)
     }
 }
