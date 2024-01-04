@@ -692,7 +692,7 @@ impl Codec for Object {
         );
         log::debug!(target: LOG_TARGET, "Server returned fields {:?}", fields);
         log::debug!(target: LOG_TARGET, "Our codecs: {:?}", self.codecs);
-        // In v4.3, because the server replied ObjectShape with different order of fields,
+        // In v4.3, because the server returns an ObjectShape with different order of fields,
         // we need to sort their fields to the same order as our codecs before encoding.
         let mut server_field_names: Vec<(&str, usize)> = shape
             .elements
@@ -708,7 +708,7 @@ impl Codec for Object {
             .map(|(i, e)| (e.name.as_str(), i))
             .collect();
         // Sort server-returned fields by our order
-        server_field_names.sort_unstable_by_key(|k| our_field_names.get(&k.0));
+        server_field_names.sort_unstable_by_key(|(k, _i)| our_field_names.get(k));
         // Map to translate original order to new order for a field
         let old_to_new_order_map: HashMap<usize, usize> = server_field_names
             .into_iter()
