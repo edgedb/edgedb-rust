@@ -142,7 +142,7 @@ pub use builder::{Builder, Config, InstanceName, ClientSecurity};
 pub use credentials::TlsSecurity;
 pub use client::Client;
 pub use errors::Error;
-pub use options::{TransactionOptions, RetryOptions, RetryCondition};
+pub use options::{TransactionOptions, RetryOptions, RetryCondition, IsolationLevel};
 pub use state::{GlobalsDelta, ConfigDelta};
 pub use transaction::Transaction;
 
