@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use base64::Engine;
-use rustls::client::ServerCertVerifier;
+use rustls::client::danger::ServerCertVerifier;
 use serde_json::from_slice;
 use sha1::Digest;
 use tokio::fs;
@@ -1539,9 +1539,9 @@ fn set_credentials(cfg: &mut ConfigInner, creds: &Credentials)
 }
 
 fn validate_certs(data: &str) -> Result<(), Error> {
-    let anchors = tls::OwnedTrustAnchor::read_all(data)
+    let root_store = tls::read_root_cert_pem(data)
         .map_err(|e| ClientError::with_source_ref(e))?;
-    if anchors.is_empty() {
+    if root_store.is_empty() {
         return Err(ClientError::with_message(
                 "PEM data contains no certificate"));
     }
@@ -1786,59 +1786,51 @@ impl ConfigInner {
             (_, ts) => Ok(ts),
         }
     }
-    fn trust_anchors(&self) -> Vec<tls::OwnedTrustAnchor> {
-        tls::OwnedTrustAnchor::read_all(
-            self.pem_certificates.as_deref().unwrap_or("")
-        ).expect("all certificates are verified before")
-    }
     fn root_cert_store(&self) -> rustls::RootCertStore {
-        use CloudCerts::*;
-
-        let mut roots = rustls::RootCertStore::empty();
         if self.pem_certificates.is_some() {
-            roots.add_server_trust_anchors(
-                self.trust_anchors().into_iter().map(Into::into)
-            );
+            tls::read_root_cert_pem(
+                self.pem_certificates.as_deref().unwrap_or("")
+            ).expect("all certificates have been verified previously")
         } else {
-            roots.add_server_trust_anchors(
-                webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
-                    rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
-                        ta.subject,
-                        ta.spki,
-                        ta.name_constraints,
-                    )
-                })
-            );
+            let mut root_store = rustls::RootCertStore {
+                roots: webpki_roots::TLS_SERVER_ROOTS.into()
+            };
             if let Some(certs) = self.cloud_certs {
                 let data = match certs {
                     // Staging certs retrieved from
                     // https://letsencrypt.org/docs/staging-environment/#root-certificates
-                    Staging => include_str!("letsencrypt_staging.pem"),
+                    CloudCerts::Staging => include_str!("letsencrypt_staging.pem"),
                     // Local nebula development root cert found in
                     // nebula/infra/terraform/local/ca/root.certificate.pem
-                    Local => include_str!("nebula_development.pem"),
+                    CloudCerts::Local => include_str!("nebula_development.pem"),
                 };
-                let pem = tls::OwnedTrustAnchor::read_all(data)
-                    .expect("embedded certs are correct");
-                roots.add_server_trust_anchors(
-                    pem.into_iter().map(Into::into)
+                root_store.extend(
+                    tls::read_root_cert_pem(data).expect("embedded certs are correct").roots
                 );
             }
+
+            root_store
         }
-        return roots;
     }
     fn make_verifier(&self, tls_security: TlsSecurity) -> Verifier {
         use TlsSecurity::*;
 
+        let root_store = Arc::new(self.root_cert_store());
+
         match tls_security {
-            Insecure => Arc::new(tls::NullVerifier) as Verifier,
-            NoHostVerification => Arc::new(tls::NoHostnameVerifier::new(
-                self.trust_anchors()
-            )) as Verifier,
-            Strict => Arc::new(rustls::client::WebPkiVerifier::new(
-                self.root_cert_store(),
-                None,
-            )) as Verifier,
+            Insecure => {
+                Arc::new(tls::NullVerifier) as Verifier
+            },
+            NoHostVerification => {
+                Arc::new(tls::NoHostnameVerifier::new(root_store)) as Verifier
+            },
+            Strict => {
+                rustls::client::WebPkiServerVerifier
+                    ::builder(root_store)
+                    .build()
+                    .expect("WebPkiServerVerifier to build correctly")
+                    as Verifier
+            },
             Default => unreachable!(),
         }
     }
