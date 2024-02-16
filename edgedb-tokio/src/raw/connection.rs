@@ -18,7 +18,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio::io::ReadBuf;
 use tokio::net::TcpStream;
 use tokio::time::{Instant, sleep, timeout_at};
-use webpki::DnsNameRef;
+use rustls::pki_types::DnsName;
 
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
 use edgedb_protocol::encoding::{Input, Output};
@@ -335,7 +335,7 @@ async fn connect3(cfg: &Config, tls: &TlsConnectorBox)
         Address::Tcp(addr@(host,_)) => {
             let conn = TcpStream::connect(addr).await
                 .map_err(ClientConnectionError::with_source)?;
-            let is_valid_dns = DnsNameRef::try_from_ascii_str(host).is_ok();
+            let is_valid_dns = DnsName::try_from(host.clone()).is_ok();
             let host = if !is_valid_dns {
                 // FIXME: https://github.com/rustls/rustls/issues/184
                 // If self.host is neither an IP address nor a valid DNS
@@ -778,7 +778,7 @@ fn is_temporary(e: &Error) -> bool {
 
 fn tls_fail(e: anyhow::Error) -> Error {
     if let Some(e) = e.downcast_ref::<rustls::Error>() {
-        if matches!(e, rustls::Error::CorruptMessage) {
+        if matches!(e, rustls::Error::InvalidMessage(_)) {
             return ProtocolTlsError::with_message(
                 "corrupt message, possibly server \
                  does not support TLS connection."

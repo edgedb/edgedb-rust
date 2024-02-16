@@ -14,8 +14,8 @@ edgedb-protocol = {path = "../edgedb-protocol", version = "0.6.0" }
 edgedb-errors = {path = "../edgedb-errors", version = "0.4.1" }
 edgedb-derive = {path = "../edgedb-derive", version = "0.5.1", optional=true}
 tokio = { version="1.15", features=["net", "time", "sync", "macros"] }
-bytes = "1.0.1"
-scram = "0.6.0"
+bytes = "1.5.0"
+scram = { git="https://github.com/elprans/scram" }
 serde = { version="1.0", features=["derive"] }
 serde_json = { version="1.0", optional=true }
 sha1 = {version="0.10.1", features=["std"]}
@@ -23,23 +23,21 @@ base16ct = {version="0.2.0", features=["alloc"]}
 log = "0.4.8"
 rand = "0.8"
 url = "2.1.1"
-tls-api = {version="0.9.0", default-features=false, features=["runtime-tokio"]}
-tls-api-not-tls = {version="0.9.0", default-features=false, features=["runtime-tokio"]}
-tls-api-rustls = {version="0.9.0", default-features=false, features=["runtime-tokio"]}
-rustls = {version="0.20.2", features=[
-    "dangerous_configuration",  # this allows insecure mode
-]}
-rustls-native-certs = "0.6.1"
-rustls-pemfile = "1.0.2"
-webpki = "0.22.0"
-webpki-roots = "0.22.2"
+tls-api = { git = "https://github.com/elprans/rust-tls-api.git", branch = "rustls-22", default-features=false, features=["runtime-tokio"]}
+tls-api-not-tls = { git = "https://github.com/elprans/rust-tls-api.git", branch = "rustls-22", default-features=false, features=["runtime-tokio"]}
+tls-api-rustls = { git = "https://github.com/elprans/rust-tls-api.git", branch = "rustls-22", default-features=false, features=["runtime-tokio"]}
+rustls = "0.22.2"
+rustls-native-certs = "0.7.0"
+rustls-pemfile = "2.0.0"
+webpki = { package = "rustls-webpki", version = "0.102.2", features = ["std"], default-features = false }
+webpki-roots = "0.26.1"
 async-trait = "0.1.52"
 anyhow = "1.0.53"  # needed for tls-api
 dirs = { version="5.0.0", optional=true }
 arc-swap = "1.5.1"
 once_cell = "1.9.0"
 tokio-stream = {version="0.1.11", optional=true}
-base64 = "0.21"
+base64 = "0.21.7"
 crc16 = "0.4.0"
 
 [target.'cfg(target_family="unix")'.dev-dependencies]
