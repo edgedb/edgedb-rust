@@ -8,36 +8,27 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        rust_version: [1.65, stable, beta]
+        rust_version: ["1.72", stable, beta]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@master
-      - uses: edgedb/setup-edgedb@v1.2.2
-      - uses: actions-rs/toolchain@v1
+      - uses: edgedb/setup-edgedb@v1
+      - uses: dtolnay/rust-toolchain@be73d7920c329f220ce78e0234b8f96b7ae60248
         with:
-          profile: minimal
+          components: "cargo,rustc,rust-std"
           toolchain: ${{ matrix.rust_version }}
-          default: true
       - name: Test all features
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --workspace --all-features
+        run: |
+          cargo test --workspace --all-features
       - name: Check no default features
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --no-default-features --workspace
+        run: |
+          cargo check --no-default-features --workspace
       - name: Check with `fs` feature (edgedb-tokio)
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --features=fs --package edgedb-tokio
+        run: |
+          cargo check --features=fs --package edgedb-tokio
       - name: Check with env feature, edgedb-tokio
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --features=env --package edgedb-tokio
+        run: |
+          cargo check --features=env --package edgedb-tokio
       - name: Test protocol without default features
         working-directory: ./edgedb-protocol
         run: |
