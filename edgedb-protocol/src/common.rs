@@ -14,7 +14,7 @@ use crate::features::ProtocolVersion;
 pub use crate::client_message::IoFormat;
 
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Cardinality {
     NoResult = 0x6e,
     AtMostOne = 0x6f,
