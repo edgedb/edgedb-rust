@@ -541,7 +541,18 @@ impl<'a> DsnHelper<'a> {
     }
 
     async fn retrieve_branch(&mut self) -> Result<Option<String>, Error> {
-        self.retrieve_value("branch", None, validate_branch).await
+        let v = self.url.path().strip_prefix("/").and_then(|s| {
+            if s.is_empty() {
+                None
+            } else {
+                Some(s.to_owned())
+            }
+        });
+        self.retrieve_value("branch", v, |s| {
+            let s = s.strip_prefix("/").unwrap_or(&s);
+            validate_branch(&s)?;
+            Ok(s.to_owned())
+        }).await
     }
 
     async fn retrieve_secret_key(&mut self) -> Result<Option<String>, Error> {
@@ -1239,63 +1250,44 @@ impl Builder {
         } else {
             dsn.ignore_value("password");
         }
-        let database = match dsn.retrieve_database().await {
-            Ok(v) => v,
-            Err(e) => {
-                errors.push(e);
-                None
-            }
-        };
-        if self.branch.is_none() {
-            match dsn.retrieve_branch().await {
-                Ok(Some(value)) => {
-                    if database.is_some() {
-                        errors.push(InvalidArgumentError::with_message(
-                            "Invalid DSN: `database` and `branch` cannot be present at the same\
-                            time"
-                        ));
-                        return;
-                    }
 
-                    cfg.branch = value;
-                }
-                Ok(None) => {
-                    if let Some(database) = database {
-                        cfg.database = database;
-                    }
-                },
+        let has_branch_option = dsn.query.contains_key("branch") || dsn.query.contains_key("branch_env") || dsn.query.contains_key("branch_file");
+        let has_database_option = dsn.query.contains_key("database") || dsn.query.contains_key("database_env") || dsn.query.contains_key("database_file");
+
+        let read_dsn_branch = async || match dsn.retrieve_branch().await {
+            Ok(Some(value)) => cfg.branch = value,
+            Ok(None) => {},
+            Err(e) => errors.push(e)
+        };
+
+        if has_branch_option {
+            if has_database_option {
+                errors.push(InvalidArgumentError::with_message(
+                    "Invalid DSN: `database` and `branch` cannot be present at the same time"
+                ));
+            } else if self.database.is_some() {
+                errors.push(InvalidArgumentError::with_message(
+                   "`branch` in DSN and `database` are mutually exclusive"
+                ));
+            } else {
+                read_dsn_branch().await;
+            }
+        } else if self.branch.is_some() {
+            if has_database_option {
+                errors.push(InvalidArgumentError::with_message(
+                    "`database` in DSN and `branch` are mutually exclusive"
+                ));
+            } else {
+                read_dsn_branch().await;
+            }
+        } else {
+            match dsn.retrieve_database().await {
+                Ok(Some(value)) => cfg.database = value,
+                Ok(None) => {},
                 Err(e) => errors.push(e)
             }
-        } else if database.is_some() {
-            errors.push(InvalidArgumentError::with_message(
-                "Invalid DSN: `database` in DSN and `branch` are mutually exclusive"
-            ));
-        } else {
-            dsn.ignore_value("branch")
         }
 
-        if self.database.is_some() {
-            dsn.ignore_value("database");
-        }
-
-        // if self.branch.is_none() {
-        //     match dsn.retrieve_branch().await {
-        //         Ok(Some(value)) => cfg.branch = value,
-        //         Ok(None) => {},
-        //         Err(e) => errors.push(e)
-        //     }
-        // } else {
-        //     dsn.ignore_value("branch");
-        // }
-        // if self.database.is_none() {
-        //     match dsn.retrieve_database().await {
-        //         Ok(Some(value)) => cfg.database = value,
-        //         Ok(None) => {},
-        //         Err(e) => errors.push(e),
-        //     }
-        // } else {
-        //     dsn.ignore_value("database");
-        // }
         match dsn.retrieve_secret_key().await {
             Ok(Some(value)) => cfg.secret_key = Some(value),
             Ok(None) => {},
