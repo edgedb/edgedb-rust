@@ -1254,12 +1254,6 @@ impl Builder {
         let has_branch_option = dsn.query.contains_key("branch") || dsn.query.contains_key("branch_env") || dsn.query.contains_key("branch_file");
         let has_database_option = dsn.query.contains_key("database") || dsn.query.contains_key("database_env") || dsn.query.contains_key("database_file");
 
-        let read_dsn_branch = async || match dsn.retrieve_branch().await {
-            Ok(Some(value)) => cfg.branch = value,
-            Ok(None) => {},
-            Err(e) => errors.push(e)
-        };
-
         if has_branch_option {
             if has_database_option {
                 errors.push(InvalidArgumentError::with_message(
@@ -1270,7 +1264,11 @@ impl Builder {
                    "`branch` in DSN and `database` are mutually exclusive"
                 ));
             } else {
-                read_dsn_branch().await;
+                match dsn.retrieve_branch().await {
+                    Ok(Some(value)) => cfg.branch = value,
+                    Ok(None) => {},
+                    Err(e) => errors.push(e)
+                }
             }
         } else if self.branch.is_some() {
             if has_database_option {
@@ -1278,7 +1276,11 @@ impl Builder {
                     "`database` in DSN and `branch` are mutually exclusive"
                 ));
             } else {
-                read_dsn_branch().await;
+                match dsn.retrieve_branch().await {
+                    Ok(Some(value)) => cfg.branch = value,
+                    Ok(None) => {},
+                    Err(e) => errors.push(e)
+                }
             }
         } else {
             match dsn.retrieve_database().await {
