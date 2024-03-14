@@ -335,21 +335,27 @@ async fn connect3(cfg: &Config, tls: &TlsConnectorBox)
         Address::Tcp(addr@(host,_)) => {
             let conn = TcpStream::connect(addr).await
                 .map_err(ClientConnectionError::with_source)?;
-            let is_valid_dns = DnsName::try_from(host.clone()).is_ok();
-            let host = if !is_valid_dns {
-                // FIXME: https://github.com/rustls/rustls/issues/184
-                // If self.host is neither an IP address nor a valid DNS
-                // name, the hacks below won't make it valid anyways.
-                let host = format!("{}.host-for-ip.edgedb.net", host);
-                // for ipv6addr
-                let host = host.replace(":", "-").replace("%", "-");
-                if host.starts_with("-") {
-                    Cow::from(format!("i{}", host))
-                } else {
-                    Cow::from(host)
-                }
-            } else {
-                Cow::from(host)
+            let host = match &cfg.0.tls_server_name {
+                Some(server_name) => {
+                    Cow::from(server_name)
+                },
+                None => {
+                    if !DnsName::try_from(host.clone()).is_ok() {
+                        // FIXME: https://github.com/rustls/rustls/issues/184
+                        // If self.host is neither an IP address nor a valid DNS
+                        // name, the hacks below won't make it valid anyways.
+                        let host = format!("{}.host-for-ip.edgedb.net", host);
+                        // for ipv6addr
+                        let host = host.replace(":", "-").replace("%", "-");
+                        if host.starts_with("-") {
+                            Cow::from(format!("i{}", host))
+                        } else {
+                            Cow::from(host)
+                        }
+                    } else {
+                        Cow::from(host)
+                    }
+                },
             };
             Ok(tls.connect(&host[..], conn).await.map_err(tls_fail)?)
         }

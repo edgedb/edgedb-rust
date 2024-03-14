@@ -75,6 +75,7 @@ pub struct Builder {
     password: Option<String>,
     tls_ca_file: Option<PathBuf>,
     tls_security: Option<TlsSecurity>,
+    tls_server_name: Option<String>,
     client_security: Option<ClientSecurity>,
     pem_certificates: Option<String>,
     wait_until_available: Option<Duration>,
@@ -119,6 +120,8 @@ pub(crate) struct ConfigInner {
 
     // Pool configuration
     pub max_concurrency: Option<usize>,
+
+    pub tls_server_name: Option<String>,
 
     instance_name: Option<InstanceName>,
     tls_security: TlsSecurity,
@@ -492,6 +495,10 @@ impl<'a> DsnHelper<'a> {
         }
     }
 
+    async fn retrieve_tls_server_name(&mut self) -> Result<Option<String>, Error> {
+        self.retrieve_value("tls_server_name", None, |s| Ok(s)).await
+    }
+
     async fn retrieve_port(&mut self) -> Result<Option<u16>, Error> {
         self.retrieve_value("port", self.url.port(), |s| {
             s.parse().map_err(|e| {
@@ -620,6 +627,13 @@ impl Builder {
     pub fn host(&mut self, host: &str) -> Result<&mut Self, Error> {
         validate_host(host)?;
         self.host = Some(host.to_string());
+        Ok(self)
+    }
+
+    /// Override server name indication (SNI) in TLS handshake
+    pub fn tls_server_name(&mut self, tls_server_name: &str) -> Result<&mut Self, Error> {
+        validate_host(tls_server_name)?;
+        self.tls_server_name = Some(tls_server_name.to_string());
         Ok(self)
     }
 
@@ -790,6 +804,7 @@ impl Builder {
         let creds = self.credentials.as_ref();
         let mut cfg = ConfigInner {
             address,
+            tls_server_name: self.tls_server_name.clone(),
             admin: self.admin,
             user: self.user.clone()
                 .or_else(|| creds.map(|c| c.user.clone()))
@@ -934,6 +949,10 @@ impl Builder {
 
         if let Some(password) = &self.password {
             cfg.password = Some(password.clone());
+        }
+
+        if let Some(tls_server_name) = &self.tls_server_name {
+            cfg.tls_server_name = Some(tls_server_name.clone());
         }
 
         if let Some(tls_ca_file) = &self.tls_ca_file {
@@ -1083,6 +1102,14 @@ impl Builder {
             cfg.user = user;
         }
 
+        let tls_server_name = self.tls_server_name.clone().or_else(|| {
+            get_env("EDGEDB_TLS_SERVER_NAME")
+                .map_err(|e| errors.push(e)).ok().flatten()
+        });
+        if let Some(tls_server_name) = tls_server_name {
+            cfg.tls_server_name = Some(tls_server_name);
+        }
+
         let password = self.password.clone().or_else(|| {
             get_env("EDGEDB_PASSWORD")
                 .map_err(|e| errors.push(e)).ok().flatten()
@@ -1154,6 +1181,11 @@ impl Builder {
         let port = dsn.retrieve_port().await
             .map_err(|e| errors.push(e)).ok().flatten()
             .unwrap_or(DEFAULT_PORT);
+        match dsn.retrieve_tls_server_name().await {
+            Ok(Some(value)) => cfg.tls_server_name = Some(value),
+            Ok(None) => {},
+            Err(e) => errors.push(e),
+        }
         cfg.address = Address::Tcp((host, port));
         cfg.admin = dsn.admin;
         match dsn.retrieve_user().await {
@@ -1311,6 +1343,7 @@ impl Builder {
 
         let mut cfg = ConfigInner {
             address: Address::Tcp((DEFAULT_HOST.into(), DEFAULT_PORT)),
+            tls_server_name: self.tls_server_name.clone(),
             admin: self.admin,
             user: "edgedb".into(),
             password: None,
@@ -1646,6 +1679,7 @@ impl Config {
             "secretKey": self.0.secret_key,
             "tlsCAData": self.0.pem_certificates,
             "tlsSecurity": self.0.compute_tls_security().unwrap(),
+            "tlsServerName": self.0.tls_server_name,
             "serverSettings": self.0.extra_dsn_query_args,
             "waitUntilAvailable": self.0.wait.as_micros() as i64,
         }).to_string()
