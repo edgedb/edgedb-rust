@@ -541,18 +541,7 @@ impl<'a> DsnHelper<'a> {
     }
 
     async fn retrieve_branch(&mut self) -> Result<Option<String>, Error> {
-        let v = self.url.path().strip_prefix("/").and_then(|s| {
-            if s.is_empty() {
-                None
-            } else {
-                Some(s.to_owned())
-            }
-        });
-        self.retrieve_value("branch", v, |s| {
-            let s = s.strip_prefix("/").unwrap_or(&s);
-            validate_branch(&s)?;
-            Ok(s.to_owned())
-        }).await
+        self.retrieve_value("branch", None, validate_branch).await
     }
 
     async fn retrieve_secret_key(&mut self) -> Result<Option<String>, Error> {
@@ -842,7 +831,7 @@ impl Builder {
                 .or_else(|| creds.map(|c| c.database.clone()).flatten())
                 .unwrap_or_else(|| "edgedb".into()),
             branch: self.branch.clone()
-                .or_else(|| creds.map(|c| c.database.clone()).flatten())
+                .or_else(|| creds.map(|c| c.branch.clone()).flatten())
                 .unwrap_or_else(|| "__default__".into()),
             instance_name: None,
             wait: self.wait_until_available.unwrap_or(DEFAULT_WAIT),
@@ -1250,24 +1239,63 @@ impl Builder {
         } else {
             dsn.ignore_value("password");
         }
-        if self.database.is_none() {
-            match dsn.retrieve_database().await {
-                Ok(Some(value)) => cfg.database = value,
-                Ok(None) => {},
-                Err(e) => errors.push(e),
+        let database = match dsn.retrieve_database().await {
+            Ok(v) => v,
+            Err(e) => {
+                errors.push(e);
+                None
             }
-        } else {
-            dsn.ignore_value("database");
-        }
+        };
         if self.branch.is_none() {
             match dsn.retrieve_branch().await {
-                Ok(Some(value)) => cfg.branch = value,
-                Ok(None) => {},
+                Ok(Some(value)) => {
+                    if database.is_some() {
+                        errors.push(InvalidArgumentError::with_message(
+                            "Invalid DSN: `database` and `branch` cannot be present at the same\
+                            time"
+                        ));
+                        return;
+                    }
+
+                    cfg.branch = value;
+                }
+                Ok(None) => {
+                    if let Some(database) = database {
+                        cfg.database = database;
+                    }
+                },
                 Err(e) => errors.push(e)
             }
+        } else if database.is_some() {
+            errors.push(InvalidArgumentError::with_message(
+                "Invalid DSN: `database` in DSN and `branch` are mutually exclusive"
+            ));
         } else {
-            dsn.ignore_value("branch");
+            dsn.ignore_value("branch")
         }
+
+        if self.database.is_some() {
+            dsn.ignore_value("database");
+        }
+
+        // if self.branch.is_none() {
+        //     match dsn.retrieve_branch().await {
+        //         Ok(Some(value)) => cfg.branch = value,
+        //         Ok(None) => {},
+        //         Err(e) => errors.push(e)
+        //     }
+        // } else {
+        //     dsn.ignore_value("branch");
+        // }
+        // if self.database.is_none() {
+        //     match dsn.retrieve_database().await {
+        //         Ok(Some(value)) => cfg.database = value,
+        //         Ok(None) => {},
+        //         Err(e) => errors.push(e),
+        //     }
+        // } else {
+        //     dsn.ignore_value("database");
+        // }
         match dsn.retrieve_secret_key().await {
             Ok(Some(value)) => cfg.secret_key = Some(value),
             Ok(None) => {},
@@ -1726,7 +1754,8 @@ impl Config {
             port: *port,
             user: self.0.user.clone(),
             password: self.0.password.clone(),
-            database: if self.0.branch == "__default__" { Some(self.0.database.clone()) } else { Some(self.0.database.clone()) },
+            database: if self.0.branch == "__default__" { Some(self.0.database.clone()) } else { None },
+            branch: if self.0.branch == "__default__" { None } else { Some(self.0.branch.clone()) },
             tls_ca: self.0.pem_certificates.clone(),
             tls_security: self.0.tls_security,
             file_outdated: false,
