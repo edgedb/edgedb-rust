@@ -87,9 +87,18 @@ pub struct ObjectShape(pub(crate) Arc<ObjectShapeInfo>);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NamedTupleShape(Arc<NamedTupleShapeInfo>);
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Eq)]
 pub struct ObjectShapeInfo {
     pub elements: Vec<ShapeElement>,
+}
+impl PartialEq for ObjectShapeInfo {
+    fn eq(&self, other: &Self) -> bool {
+        let mut self_sorted: Vec<&ShapeElement> = self.elements.iter().collect();
+        self_sorted.sort_unstable_by_key(|k| (k.name.as_str(), k.cardinality));
+        let mut other_sorted: Vec<&ShapeElement> = other.elements.iter().collect();
+        other_sorted.sort_unstable_by_key(|e| (e.name.as_str(), e.cardinality));
+        self_sorted == other_sorted
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -668,7 +677,46 @@ impl Codec for Object {
         buf.reserve(4 + 8*self.codecs.len());
         buf.put_u32(self.codecs.len().try_into()
                     .ok().context(errors::TooManyElements)?);
-        for (codec, field) in self.codecs.iter().zip(fields) {
+
+        
+        let sorted_fields = {
+            use std::collections::HashMap;
+            
+            let mut server_field_names: Vec<(&str, usize)> = shape.elements
+                .iter()
+                .enumerate()
+                .map(|(i, e)| (e.name.as_str(), i))
+                .collect();
+
+            let our_field_names: HashMap<&str, usize> = self.shape.elements
+                .iter()
+                .enumerate()
+                .map(|(i, e)| (e.name.as_str(), i))
+                .collect();
+            server_field_names.sort_unstable_by_key(|(k, _i)| our_field_names.get(k));
+
+            // Map to translate original order to new order for a field
+            let old_to_new_order_map: HashMap<usize, usize> = server_field_names
+                .into_iter()
+                .enumerate()
+                .map(|(new_order, (_name, old_order))| (old_order, new_order))
+                .collect();
+
+            let mut sorted_fields: Vec<(usize, &Option<Value>)> = fields
+                .into_iter()
+                .enumerate()
+                .collect();
+            sorted_fields.sort_unstable_by_key(|(old_order, _v)| old_to_new_order_map.get(old_order));
+
+            let sorted_fields: Vec<&Option<Value>> = sorted_fields
+                .into_iter()
+                .map(|(_i, value)| value)
+                .collect();
+
+            sorted_fields
+        };
+
+        for (codec, field) in self.codecs.iter().zip(sorted_fields) {
             buf.reserve(8);
             buf.put_u32(0);
             match field {
