@@ -58,7 +58,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
     let type_id_check = Some(quote! {
         if ctx.has_implicit_tid {
             if(!shape.elements[idx].flag_implicit) {
-                return Err(ctx.expected("implicit __tid__"));
+                return ::std::result::Result::Err(ctx.expected("implicit __tid__"));
             }
             idx += 1;
         }
@@ -66,7 +66,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
     let type_name_check = Some(quote! {
         if ctx.has_implicit_tname {
             if(!shape.elements[idx].flag_implicit) {
-                return Err(ctx.expected("implicit __tname__"));
+                return ::std::result::Result::Err(ctx.expected("implicit __tname__"));
             }
             idx += 1;
         }
@@ -74,7 +74,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
     let id_check = Some(quote! {
         if ctx.has_implicit_id {
             if(!shape.elements[idx].flag_implicit) {
-                return Err(ctx.expected("implicit id"));
+                return ::std::result::Result::Err(ctx.expected("implicit id"));
             }
             idx += 1;
         }
@@ -103,7 +103,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
         let mut result = quote!{
             let el = &shape.elements[idx];
             if(el.name != #name_str) {
-                return Err(ctx.wrong_field(#name_str, &el.name));
+                return ::std::result::Result::Err(ctx.wrong_field(#name_str, &el.name));
             }
             idx += 1;
         };
@@ -127,7 +127,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
         impl #impl_generics ::edgedb_protocol::queryable::Queryable
             for #name #ty_generics {
             fn decode(#decoder: &::edgedb_protocol::queryable::Decoder, #buf: &[u8])
-                -> Result<Self, ::edgedb_protocol::errors::DecodeError>
+                -> ::std::result::Result<Self, ::edgedb_protocol::errors::DecodeError>
             {
                 let #nfields = #base_fields
                     + if #decoder.has_implicit_id { 1 } else { 0 }
@@ -141,7 +141,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
                 #type_name_block
                 #id_block
                 #field_decoders
-                Ok(#name {
+                ::std::result::Result::Ok(#name {
                     #(
                         #fieldname,
                     )*
@@ -150,14 +150,14 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
             fn check_descriptor(
                 ctx: &::edgedb_protocol::queryable::DescriptorContext,
                 type_pos: ::edgedb_protocol::descriptors::TypePos)
-                -> Result<(), ::edgedb_protocol::queryable::DescriptorMismatch>
+                -> ::std::result::Result<(), ::edgedb_protocol::queryable::DescriptorMismatch>
             {
                 use ::edgedb_protocol::descriptors::Descriptor::ObjectShape;
                 let desc = ctx.get(type_pos)?;
                 let shape = match desc {
                     ObjectShape(shape) => shape,
                     _ => {
-                        return Err(ctx.wrong_type(desc, "str"))
+                        return ::std::result::Result::Err(ctx.wrong_type(desc, "str"))
                     }
                 };
 
@@ -170,10 +170,10 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
                 #field_checks
 
                 if(shape.elements.len() != idx) {
-                    return Err(ctx.field_number(
+                    return ::std::result::Result::Err(ctx.field_number(
                         shape.elements.len(), idx));
                 }
-                Ok(())
+                ::std::result::Result::Ok(())
             }
         }
     };
