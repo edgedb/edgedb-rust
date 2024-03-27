@@ -71,8 +71,8 @@ pub mod descriptors;
 pub mod value;
 pub mod codec;
 pub mod queryable;
+#[macro_use]
 pub mod query_arg;
 pub mod model;
-
 
 pub use query_result::QueryResult;
