@@ -532,58 +532,57 @@ implement_tuple! {12, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, }
 
 pub struct ValueWithCardinality(Option<Value>, Cardinality);
 
-impl<V: Into<Value>> From<V> for ValueWithCardinality 
-{
-    fn from(value: V) -> Self {
-        ValueWithCardinality(Some(value.into()), Cardinality::One)
-    }
+impl<V: Into<Value>> From<V> for ValueWithCardinality {
+	fn from(value: V) -> Self {
+		ValueWithCardinality(Some(value.into()), Cardinality::One)
+	}
 }
 
-impl<V: Into<Value>> From<Option<V>> for ValueWithCardinality 
+impl<V: Into<Value>> From<Option<V>> for ValueWithCardinality
+    where Value: From<V> 
+{
+	fn from(value: Option<V>) -> Self {
+		ValueWithCardinality(value.map(Value::from), Cardinality::AtMostOne)
+	}
+}
+
+impl<V: Into<Value>> From<Vec<V>> for ValueWithCardinality
     where Value: From<V>
 {
-    fn from(value: Option<V>) -> Self {
-        ValueWithCardinality(value.map(Value::from), Cardinality::AtMostOne)
-    }
+	fn from(value: Vec<V>) -> Self {
+		ValueWithCardinality(
+			Some(Value::Array(value.into_iter().map(Value::from).collect())),
+			Cardinality::One
+		)
+	}
 }
 
-impl<V: Into<Value>> From<Vec<V>> for ValueWithCardinality 
+impl<V: Into<Value>> From<Option<Vec<V>>> for ValueWithCardinality
     where Value: From<V>
 {
-    fn from(value: Vec<V>) -> Self {
-        ValueWithCardinality(Some(Value::Array(value.into_iter().map(Value::from).collect())), Cardinality::One)
-    }
+	fn from(value: Option<Vec<V>>) -> Self {
+		let mapped = value.map(|value| Value::Array(value.into_iter().map(Value::from).collect()));
+		ValueWithCardinality(mapped, Cardinality::AtMostOne)
+	}
 }
 
-impl<V: Into<Value>> From<Option<Vec<V>>> for ValueWithCardinality 
-    where Value: From<V>
-{
-    fn from(value: Option<Vec<V>>) -> Self {
-        let mapped = value.map(|value| 
-            Value::Array(value.into_iter().map(Value::from).collect())
-        );
-        ValueWithCardinality(mapped, Cardinality::AtMostOne)
-    }
-}
-
-pub fn object_from_pairs<K, V>(iter: impl IntoIterator<Item = (K, V)>) -> Value
+pub fn value_from_pairs<K>(pairs: &HashMap<K, ValueWithCardinality>) -> Value
 where
 	K: ToString,
-	V: Into<ValueWithCardinality>
 {
 	let mut elements = Vec::new();
 	let mut fields: Vec<Option<Value>> = Vec::new();
-	for (key, arg) in iter.into_iter() {
-		let ValueWithCardinality(value, cd) = arg.into();
+	for (key, arg) in pairs.iter() {
+		let ValueWithCardinality(value, cd) = arg;
 
 		elements.push(ShapeElement {
-            name: key.to_string(),
-            cardinality: Some(cd),
-            flag_link: false,
-            flag_link_property: false,
-            flag_implicit: false
-        });
-        fields.push(value);
+			name: key.to_string(),
+			cardinality: Some(*cd),
+			flag_link: false,
+			flag_link_property: false,
+			flag_implicit: false
+		});
+		fields.push(value.clone());
 	}
 
 	Value::Object {
@@ -592,25 +591,27 @@ where
 	}
 }
 
+use std::collections::HashMap;
+impl<K: ToString> From<&HashMap<K, ValueWithCardinality>> for Value
+{
+	fn from(value: &HashMap<K, ValueWithCardinality>) -> Self {
+        value_from_pairs(value)
+	}
+}
+
+impl<K> QueryArgs for HashMap<K, ValueWithCardinality>
+where
+	K: ToString + Send + Sync
+{
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
+        Value::from(self).encode(encoder)
+    }
+}
+
 #[cfg(feature = "macros")]
 pub mod macros {
-	use crate::query_arg::{object_from_pairs, Value, ValueWithCardinality};
-
-	pub struct EdgedbArgsIndexMap<'i>(pub std::collections::HashMap<&'i str, ValueWithCardinality>);
-	impl EdgedbArgsIndexMap<'_> {
-		pub fn to_value(self) -> Value {
-			Value::from(self)
-		}
-	}
-
-	impl From<EdgedbArgsIndexMap<'_>> for Value {
-		fn from(value: EdgedbArgsIndexMap) -> Self {
-			object_from_pairs(value.0)
-		}
-	}
-
-    #[macro_export]
-    macro_rules! eargs {
+	#[macro_export]
+	macro_rules! eargs {
         ($($key:expr => $value:expr,)+) => { $crate::eargs!($($key => $value),+) };
         ($($key:expr => $value:expr),*) => {
             {
@@ -619,7 +620,7 @@ pub mod macros {
                 $(
                     map.insert($key, $crate::query_arg::ValueWithCardinality::from($value));
                 )*
-                $crate::query_arg::macros::EdgedbArgsIndexMap(map)
+                map
             }
         };
     }
