@@ -574,7 +574,7 @@ where
 	let mut elements = Vec::new();
 	let mut fields: Vec<Option<Value>> = Vec::new();
 	for (key, arg) in iter.into_iter() {
-        let ValueWithCardinality(value, cd) = arg.into();
+		let ValueWithCardinality(value, cd) = arg.into();
 
 		elements.push(ShapeElement {
             name: key.to_string(),
