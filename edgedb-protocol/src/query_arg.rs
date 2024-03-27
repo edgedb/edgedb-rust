@@ -609,19 +609,17 @@ where
 }
 
 #[cfg(feature = "macros")]
-pub mod macros {
-	#[macro_export]
-	macro_rules! eargs {
-        ($($key:expr => $value:expr,)+) => { $crate::eargs!($($key => $value),+) };
-        ($($key:expr => $value:expr),*) => {
-            {
-                const CAP: usize = <[()]>::len(&[$({ stringify!($key); }),*]);
-                let mut map = std::collections::HashMap::with_capacity(CAP);
-                $(
-                    map.insert($key, $crate::query_arg::ValueWithCardinality::from($value));
-                )*
-                map
-            }
-        };
-    }
+#[macro_export]
+macro_rules! eargs {
+    ($($key:expr => $value:expr,)+) => { $crate::eargs!($($key => $value),+) };
+    ($($key:expr => $value:expr),*) => {
+        {
+            const CAP: usize = <[()]>::len(&[$({ stringify!($key); }),*]);
+            let mut map = std::collections::HashMap::with_capacity(CAP);
+            $(
+                map.insert($key, $crate::query_arg::ValueWithCardinality::from($value));
+            )*
+            map
+        }
+    };
 }
