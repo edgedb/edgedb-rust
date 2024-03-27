@@ -22,16 +22,15 @@ chrono = {version="0.4.23", optional=true, features=["std"], default-features=fa
 edgedb-errors = {path = "../edgedb-errors", version = "0.4.0" }
 bitflags = "2.4.0"
 serde = {version="1.0.190", optional=true}
-indexmap = {version = "2.2", optional=true}
 
 [features]
-default = []
+default = ["macros"]
 with-num-bigint = ["num-bigint", "num-traits"]
 with-bigdecimal = ["bigdecimal", "num-bigint", "num-traits"]
 with-chrono = ["chrono"]
 all-types = ["with-num-bigint", "with-bigdecimal", "with-chrono"]
 with-serde = ["serde"]
-macros = ["indexmap"]
+macros = []
 
 [dev-dependencies]
 rand = "0.8"

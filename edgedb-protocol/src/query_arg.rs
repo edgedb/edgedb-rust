@@ -594,27 +594,33 @@ where
 
 #[cfg(feature = "macros")]
 pub mod macros {
-    use crate::query_arg::{Value, ValueWithCardinality, object_from_pairs};
-    
-    pub struct EdgedbArgsIndexMap<'i>(pub indexmap::IndexMap<&'i str, ValueWithCardinality>);
-    impl EdgedbArgsIndexMap<'_> {
-        pub fn to_value(self) -> Value {
-            Value::from(self)
-        }
-    }
+	use crate::query_arg::{object_from_pairs, Value, ValueWithCardinality};
 
-    impl From<EdgedbArgsIndexMap<'_>> for Value {
-        fn from(value: EdgedbArgsIndexMap) -> Self {
-            object_from_pairs(value.0)
-        }
-    }
+	pub struct EdgedbArgsIndexMap<'i>(pub std::collections::HashMap<&'i str, ValueWithCardinality>);
+	impl EdgedbArgsIndexMap<'_> {
+		pub fn to_value(self) -> Value {
+			Value::from(self)
+		}
+	}
+
+	impl From<EdgedbArgsIndexMap<'_>> for Value {
+		fn from(value: EdgedbArgsIndexMap) -> Self {
+			object_from_pairs(value.0)
+		}
+	}
 
     #[macro_export]
     macro_rules! eargs {
+        ($($key:expr => $value:expr,)+) => { $crate::eargs!($($key => $value),+) };
         ($($key:expr => $value:expr),*) => {
-            edgedb_protocol::query_arg::macros::EdgedbArgsIndexMap(indexmap::indexmap! {
-                $($key => edgedb_protocol::query_arg::ValueWithCardinality::from($value)),*
-            })
+            {
+                const CAP: usize = <[()]>::len(&[$({ stringify!($key); }),*]);
+                let mut map = std::collections::HashMap::with_capacity(CAP);
+                $(
+                    map.insert($key, $crate::query_arg::ValueWithCardinality::from($value));
+                )*
+                $crate::query_arg::macros::EdgedbArgsIndexMap(map)
+            }
         };
     }
 }
