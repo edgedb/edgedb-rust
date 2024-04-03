@@ -101,7 +101,7 @@ impl Config {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub(crate) struct ConfigInner {
     pub address: Address,
     pub admin: bool,
@@ -556,6 +556,7 @@ impl<'a> DsnHelper<'a> {
         });
         self.retrieve_value("branch", v, |s| {
             let s = s.strip_prefix('/').unwrap_or(&s);
+            dbg!("here");
             validate_branch(&s)?;
             Ok(s.to_owned())
         }).await
@@ -702,6 +703,7 @@ impl Builder {
 
     /// Set the branch name.
     pub fn branch(&mut self, branch: &str) -> Result<&mut Self, Error> {
+        dbg!("here");
         validate_branch(branch)?;
         self.branch = Some(branch.into());
         Ok(self)
@@ -965,10 +967,10 @@ impl Builder {
             let full_path = resolve_unix(unix_path, port, self.admin);
             cfg.address = Address::Unix(full_path);
         }
-        if let Some(database) = &self.database {
-            if let Some(branch) = &self.branch {
+        if let Some((d, b)) = &self.database.as_ref().zip(self.branch.as_ref()) {
+            if d != b {
                 errors.push(InvalidArgumentError::with_message(format!(
-                    "database {} conflicts with branch {}", database, branch
+                    "database {d} conflicts with branch {b}"
                 )))
             }
         }
@@ -1123,24 +1125,26 @@ impl Builder {
     async fn granular_env(&self, cfg: &mut ConfigInner,
                           errors: &mut Vec<Error>)
     {
-        let database = self.database.clone().or_else(|| {
-            get_env("EDGEDB_DATABASE")
-                .and_then(|v| v.map(validate_database).transpose())
-                .map_err(|e| errors.push(e)).ok().flatten()
-        });
-        // TODO(tailhook) check if not empty
-        if let Some(database) = database {
-            cfg.database = database;
-        }
+        let database_branch = self.database.as_ref().or(self.branch.as_ref())
+            .cloned()
+            .or_else(|| {
+                let database = get_env("EDGEDB_DATABASE")
+                    .map_err(|e| errors.push(e)).ok()?;
+                let branch = get_env("EDGEDB_BRANCH")
+                    .map_err(|e| errors.push(e)).ok()?;
+                
+                if database.is_some() && branch.is_some() {
+                    errors.push(InvalidArgumentError::with_message(
+                        "Invalid environment: variables `EDGEDB_DATABASE` and `EDGEDB_BRANCH` are mutually exclusive",
+                    ));
+                    return None;
+                }
 
-        let branch = self.branch.clone().or_else(|| {
-            get_env("EDGEDB_BRANCH")
-                .and_then(|v| v.map(validate_branch).transpose())
-                .map_err(|e| errors.push(e)).ok().flatten()
-        });
-
-        if let Some(branch) = branch {
-            cfg.branch = branch;
+                database.or(branch)
+            });
+        if let Some(name) = database_branch {
+            cfg.database = name.clone();
+            cfg.branch = name;
         }
 
         let user = self.user.clone().or_else(|| {
@@ -1253,43 +1257,31 @@ impl Builder {
             dsn.ignore_value("password");
         }
 
-        let has_branch_option = dsn.query.contains_key("branch") || dsn.query.contains_key("branch_env") || dsn.query.contains_key("branch_file");
-        let has_database_option = dsn.query.contains_key("database") || dsn.query.contains_key("database_env") || dsn.query.contains_key("database_file");
+        let has_query_branch = dsn.query.contains_key("branch") || dsn.query.contains_key("branch_env") || dsn.query.contains_key("branch_file");
+        let has_query_database = dsn.query.contains_key("database") || dsn.query.contains_key("database_env") || dsn.query.contains_key("database_file");
+        if has_query_branch && has_query_database {
+            errors.push(InvalidArgumentError::with_message(
+                "Invalid DSN: `database` and `branch` are mutually exclusive",
+            ));
+        }
+        if self.branch.is_none() && self.database.is_none() {
+            let database_or_branch = if has_query_database {
+                dsn.retrieve_database().await
+            } else {
+                dsn.retrieve_branch().await
+            };
 
-        if has_branch_option {
-            if has_database_option {
-                errors.push(InvalidArgumentError::with_message(
-                    "Invalid DSN: `database` and `branch` cannot be present at the same time"
-                ));
-            } else if self.database.is_some() {
-                errors.push(InvalidArgumentError::with_message(
-                   "`branch` in DSN and `database` are mutually exclusive"
-                ));
-            } else {
-                match dsn.retrieve_branch().await {
-                    Ok(Some(value)) => cfg.branch = value,
-                    Ok(None) => {},
-                    Err(e) => errors.push(e)
-                }
-            }
-        } else if self.branch.is_some() {
-            if has_database_option {
-                errors.push(InvalidArgumentError::with_message(
-                    "`database` in DSN and `branch` are mutually exclusive"
-                ));
-            } else {
-                match dsn.retrieve_branch().await {
-                    Ok(Some(value)) => cfg.branch = value,
-                    Ok(None) => {},
-                    Err(e) => errors.push(e)
-                }
+            match database_or_branch {
+                Ok(Some(name)) => {
+                    cfg.branch = name.clone();
+                    cfg.database = name;
+                },
+                Ok(None) => {}
+                Err(e) => errors.push(e),
             }
         } else {
-            match dsn.retrieve_database().await {
-                Ok(Some(value)) => cfg.database = value,
-                Ok(None) => {},
-                Err(e) => errors.push(e)
-            }
+            dsn.ignore_value("branch");
+            dsn.ignore_value("database");
         }
 
         match dsn.retrieve_secret_key().await {
@@ -1394,6 +1386,7 @@ impl Builder {
                                 project_dir, path)
                     })?
                     .to_owned();
+                cfg.branch = cfg.database.clone();
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
             Err(e) => {
@@ -1645,8 +1638,17 @@ fn set_credentials(cfg: &mut ConfigInner, creds: &Credentials)
     ));
     cfg.user = creds.user.clone();
     cfg.password = creds.password.clone();
-    cfg.database = creds.database.clone().unwrap_or_else(|| "edgedb".into());
-    cfg.branch = creds.database.clone().unwrap_or_else(|| "__default__".into());
+    
+    if let Some((b, d)) = creds.branch.as_ref().zip(creds.database.as_ref()) {
+        if b != d {
+            return Err(ClientError::with_message(
+                "branch and database are mutually exclusive")
+            );
+        }
+    }
+    let db_branch = creds.branch.as_ref().or(creds.database.as_ref());
+    cfg.database = db_branch.cloned().unwrap_or_else(|| "edgedb".into());
+    cfg.branch = db_branch.cloned().unwrap_or_else(|| "__default__".into());
     cfg.tls_security = creds.tls_security;
     cfg.creds_file_outdated = creds.file_outdated;
     Ok(())
