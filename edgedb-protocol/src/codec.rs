@@ -1364,7 +1364,8 @@ impl Codec for Enum {
         -> Result<(), EncodeError>
     {
         let val = match val {
-            Value::Enum(val) => val,
+            Value::Enum(val) => val.clone(),
+            Value::Str(val) => EnumValue::from(val.as_str()),
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         ensure!(self.members.get(&val.0).is_some(), errors::MissingEnumValue);
