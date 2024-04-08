@@ -1,5 +1,4 @@
 //! Credentials file handling routines
-use std::default::Default;
 use std::fmt;
 use std::str::FromStr;
 

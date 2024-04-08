@@ -1635,7 +1635,7 @@ fn set_credentials(cfg: &mut ConfigInner, creds: &Credentials)
     -> Result<(), Error>
 {
     if let Some(cert_data) = &creds.tls_ca {
-        validate_certs(&cert_data)
+        validate_certs(cert_data)
             .context("invalid certificates in `tls_ca`")?;
         cfg.pem_certificates = Some(cert_data.into());
     }
@@ -1654,7 +1654,7 @@ fn set_credentials(cfg: &mut ConfigInner, creds: &Credentials)
 
 fn validate_certs(data: &str) -> Result<(), Error> {
     let root_store = tls::read_root_cert_pem(data)
-        .map_err(|e| ClientError::with_source_ref(e))?;
+        .map_err(ClientError::with_source_ref)?;
     if root_store.is_empty() {
         return Err(ClientError::with_message(
                 "PEM data contains no certificate"));
@@ -1667,7 +1667,7 @@ fn validate_host<T: AsRef<str>>(host: T) -> Result<T, Error> {
         return Err(InvalidArgumentError::with_message(
             "invalid host: empty string"
         ));
-    } else if host.as_ref().contains(",") {
+    } else if host.as_ref().contains(',') {
         return Err(InvalidArgumentError::with_message(
             "invalid host: multiple hosts"
         ));
@@ -1713,7 +1713,7 @@ fn validate_user<T: AsRef<str>>(user: T) -> Result<T, Error> {
 impl Config {
 
     /// A displayable form for an address this builder will connect to
-    pub fn display_addr<'x>(&'x self) -> impl fmt::Display + 'x {
+    pub fn display_addr(&self) -> impl fmt::Display + '_ {
         DisplayAddr(Some(&self.0.address))
     }
 
@@ -1848,6 +1848,7 @@ impl Config {
         Ok(self)
     }
 
+    /// Return the same config with changed database branch
     pub fn with_branch(mut self, branch: &str) -> Result<Config, Error> {
         if branch.is_empty() {
             return Err(InvalidArgumentError::with_message(
@@ -2190,8 +2191,7 @@ pub async fn get_project_dir(override_dir: Option<&Path>, search_parents: bool)
         None => {
             Cow::Owned(env::current_dir()
                 .map_err(|e| ClientError::with_source(e)
-                    .context("failed to get current directory"))?
-                .into())
+                    .context("failed to get current directory"))?)
         }
     };
 
@@ -2202,7 +2202,7 @@ pub async fn get_project_dir(override_dir: Option<&Path>, search_parents: bool)
             Ok(None)
         }
     } else {
-        if !fs::metadata(dir.join("edgedb.toml")).await.is_ok() {
+        if fs::metadata(dir.join("edgedb.toml")).await.is_err() {
             return Ok(None)
         }
         Ok(Some(dir.to_path_buf()))

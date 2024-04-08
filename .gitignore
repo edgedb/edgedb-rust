@@ -5,3 +5,10 @@
 __pycache__
 /Cargo.lock
 /.idea
+/.vscode
+
+# nix stuff
+/flake.nix
+/flake.lock
+/.envrc
+/.direnv

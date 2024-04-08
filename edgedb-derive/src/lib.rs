@@ -78,7 +78,7 @@ let query_res: Vec<JsonData> = client.query(query, &()).await?;
 extern crate proc_macro;
 
 use proc_macro::TokenStream;
-use syn::{self, parse_macro_input};
+use syn::parse_macro_input;
 
 mod attrib;
 mod enums;

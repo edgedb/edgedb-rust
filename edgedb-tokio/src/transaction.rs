@@ -10,7 +10,7 @@ use edgedb_protocol::query_arg::{QueryArgs, Encoder};
 use tokio::sync::oneshot;
 use tokio::time::sleep;
 
-use crate::errors::{ClientError};
+use crate::errors::ClientError;
 use crate::errors::{Error, ErrorKind, SHOULD_RETRY};
 use crate::errors::{ProtocolEncodingError, NoResultExpected, NoDataError};
 use crate::raw::{Pool, PoolConnection, Options, PoolState};
@@ -42,9 +42,6 @@ pub struct Inner {
     conn: PoolConnection,
     return_conn: oneshot::Sender<TransactionResult>,
 }
-
-trait Assert: Send {}
-impl Assert for Transaction {}
 
 impl Drop for Transaction {
     fn drop(&mut self) {
@@ -324,7 +321,7 @@ impl Transaction {
             expected_cardinality: Cardinality::Many,
         };
         let state = self.state.clone(); // TODO optimize using careful borrow
-        let mut conn = &mut self.inner().conn;
+        let conn = &mut self.inner().conn;
         let desc = conn.parse(&flags, query, &state).await?;
         let inp_desc = desc.input()
             .map_err(ProtocolEncodingError::with_source)?;

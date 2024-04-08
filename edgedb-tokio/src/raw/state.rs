@@ -1,11 +1,10 @@
 //! Connection state modification utilities
 
 use std::collections::{BTreeMap, HashMap};
-use std::default::Default;
 use std::sync::Arc;
 
 use arc_swap::ArcSwapOption;
-use edgedb_protocol::client_message::{State as EncodedState};
+use edgedb_protocol::client_message::State as EncodedState;
 use edgedb_protocol::descriptors::{RawTypedesc,StateBorrow};
 use edgedb_protocol::query_arg::QueryArg;
 use edgedb_protocol::value::Value;

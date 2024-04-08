@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::default::Default;
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
@@ -8,10 +7,6 @@ use rand::{thread_rng, Rng};
 use once_cell::sync::Lazy;
 
 use crate::errors::{Error, IdleSessionTimeoutError};
-
-trait Assert: Send + Sync + 'static {}
-impl Assert for RetryOptions {}
-impl Assert for TransactionOptions {}
 
 
 /// Single immediate retry on idle is fine

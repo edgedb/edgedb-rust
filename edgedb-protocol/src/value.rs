@@ -1,8 +1,6 @@
 /*!
 Contains the [Value](crate::value::Value) enum.
 */
-use std::iter::IntoIterator;
-
 use bytes::Bytes;
 
 use crate::codec::{NamedTupleShape, ObjectShape, ShapeElement};
