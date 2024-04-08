@@ -45,30 +45,26 @@ impl Connection {
                 data: header,
             }),
         ]).await?;
-        loop {
-            let msg = self.message().await?;
-            match msg {
-                ServerMessage::RestoreReady(_) => {
-                    log::info!("Schema applied in {:?}",
-                               start_headers.elapsed());
-                    break;
-                }
-                ServerMessage::ErrorResponse(err) => {
-                    self.send_messages(&[ClientMessage::Sync]).await?;
-                    self.expect_ready_or_eos(guard).await
-                        .map_err(|e| log::warn!(
-                            "Error waiting for Ready after error: {e:#}"))
-                        .ok();
-                    return Err(Into::<Error>::into(err)
-                        .context("error initiating restore protocol")
-                        .into());
-                }
-                _ => {
-                    return Err(ProtocolOutOfOrderError::with_message(format!(
-                        "unsolicited message {:?}", msg)))?;
-                }
+        
+        match self.message().await? {
+            ServerMessage::RestoreReady(_) => {
+                log::info!("Schema applied in {:?}", start_headers.elapsed());
+            }
+            ServerMessage::ErrorResponse(err) => {
+                self.send_messages(&[ClientMessage::Sync]).await?;
+                self.expect_ready_or_eos(guard).await
+                    .map_err(|e| log::warn!(
+                        "Error waiting for Ready after error: {e:#}"))
+                    .ok();
+                return Err(Into::<Error>::into(err)
+                    .context("error initiating restore protocol"));
+            }
+            msg => {
+                return Err(ProtocolOutOfOrderError::with_message(format!(
+                    "unsolicited message {:?}", msg)))?;
             }
         }
+    
 
         let start_blocks = Instant::now();
         let mut num_blocks = 0;
@@ -164,7 +160,7 @@ impl Connection {
 
         self.send_messages(&[
             ClientMessage::Dump(Dump {
-                headers: headers,
+                headers,
             }),
             ClientMessage::Sync,
         ]).await?;
@@ -177,8 +173,7 @@ impl Connection {
                         "Error waiting for Ready after error: {e:#}"))
                     .ok();
                 return Err(Into::<Error>::into(err)
-                    .context("error receiving dump header")
-                    .into());
+                    .context("error receiving dump header"));
             }
             _ => {
                 return Err(ProtocolOutOfOrderError::with_message(format!(

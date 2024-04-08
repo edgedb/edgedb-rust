@@ -415,10 +415,9 @@ impl SealedState for &PoolState {
 }
 impl State for &PoolState {}
 impl SealedState for Arc<PoolState> {
-    fn encode(&self, desc: &RawTypedesc)
-        -> Result<EncodedState, Error>
+    fn encode(&self, desc: &RawTypedesc) -> Result<EncodedState, Error>
     {
-        (&**self).encode(desc)
+        PoolState::encode(self, desc)
     }
 }
 impl State for Arc<PoolState> {}

@@ -11,7 +11,7 @@ use once_cell::sync::Lazy;
 use edgedb_tokio::{Builder, Config};
 
 pub static SHUTDOWN_INFO: Lazy<Mutex<Vec<ShutdownInfo>>> = Lazy::new(|| Mutex::new(Vec::new()));
-pub static SERVER: Lazy<ServerGuard> = Lazy::new(|| ServerGuard::start());
+pub static SERVER: Lazy<ServerGuard> = Lazy::new(ServerGuard::start);
 
 pub struct ShutdownInfo {
     process: process::Child,
@@ -57,7 +57,7 @@ impl ServerGuard {
             cmd.uid(1);
         }
 
-        let process = cmd.spawn().expect(&format!("Can run {}", bin_name));
+        let process = cmd.spawn().unwrap_or_else(|_| panic!("Can run {}", bin_name));
         let pipe = BufReader::new(unsafe { File::from_raw_fd(pipe_read) });
         let mut result = Err(anyhow::anyhow!("no server info emitted"));
         for line in pipe.lines() {

@@ -432,7 +432,7 @@ impl Client {
             let state = &self.options.state;
             let caps = Capabilities::MODIFICATIONS | Capabilities::DDL;
             match conn.execute(query, arguments, state, caps).await {
-                Ok(resp) => return Ok(resp.data),
+                Ok(_) => return Ok(()),
                 Err(e) => {
                     let allow_retry = match e.get::<QueryCapabilities>() {
                         // Error from a weird source, or just a bug

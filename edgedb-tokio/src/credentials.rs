@@ -148,7 +148,7 @@ impl Serialize for Credentials {
             },
         };
 
-        return CredentialsCompat::serialize(&creds, serializer);
+        CredentialsCompat::serialize(&creds, serializer)
     }
 }
 

@@ -138,11 +138,11 @@ impl PoolInner {
         // Make sure that connection is wrapped before we commit,
         // so that connection is returned into a pool if we fail
         // to commit because of async stuff
-        return Ok(PoolConnection {
+        Ok(PoolConnection {
             inner: Some(conn),
             permit,
             pool: self.clone(),
-        });
+        })
     }
 }
 

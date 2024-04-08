@@ -459,8 +459,7 @@ async fn connect4(cfg: &Config, mut stream: TlsStream)
                     b"pgaddr" => {
                         use crate::server_params::PostgresAddress;
 
-                        let pgaddr: PostgresAddress;
-                        pgaddr = match serde_json::from_slice(&par.value[..]) {
+                        let pgaddr: PostgresAddress = match serde_json::from_slice(&par.value[..]) {
                             Ok(a) => a,
                             Err(e) => {
                                 log::warn!("Can't decode param {:?}: {}",
