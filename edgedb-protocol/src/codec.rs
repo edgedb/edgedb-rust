@@ -247,14 +247,14 @@ impl ObjectShape {
 impl Deref for ObjectShape {
     type Target = ObjectShapeInfo;
     fn deref(&self) -> &ObjectShapeInfo {
-        &*self.0
+        &self.0
     }
 }
 
 impl Deref for NamedTupleShape {
     type Target = NamedTupleShapeInfo;
     fn deref(&self) -> &NamedTupleShapeInfo {
-        &*self.0
+        &self.0
     }
 }
 
@@ -293,7 +293,7 @@ impl<'a> CodecBuilder<'a> {
                 D::TypeAnnotation(..) => unreachable!(),
             }
         } else {
-            return errors::UnexpectedTypePos { position: pos.0 }.fail()?;
+            errors::UnexpectedTypePos { position: pos.0 }.fail()?
         }
     }
 }
@@ -332,7 +332,7 @@ pub fn scalar_codec(uuid: &UuidVal) -> Result<Arc<dyn Codec>, CodecError> {
         STD_BIGINT => Ok(Arc::new(BigInt {})),
         CFG_MEMORY => Ok(Arc::new(ConfigMemory {})),
         PGVECTOR_VECTOR => Ok(Arc::new(Vector {})),
-        _ => return errors::UndefinedBaseScalar { uuid: uuid.clone() }.fail()?,
+        _ => errors::UndefinedBaseScalar { uuid: uuid.clone() }.fail()?,
     }
 }
 
@@ -607,7 +607,7 @@ impl Tuple {
     fn build(d: &descriptors::TupleTypeDescriptor, dec: &CodecBuilder)
         -> Result<Tuple, CodecError>
     {
-        return Ok(Tuple {
+        Ok(Tuple {
             elements: d.element_types.iter()
                 .map(|&t| dec.build(t))
                 .collect::<Result<_, _>>()?,
@@ -635,7 +635,7 @@ fn decode_tuple<'t>(mut elements:DecodeTupleLike, codecs:&Vec<Arc<dyn Codec>>) -
         .collect::<Result<Vec<Value>, DecodeError>>()
 }
 
-fn decode_array_like<'t>(elements: DecodeArrayLike<'t>, codec:&dyn Codec) -> Result<Vec<Value>, DecodeError>{
+fn decode_array_like(elements: DecodeArrayLike<'_>, codec:&dyn Codec) -> Result<Vec<Value>, DecodeError>{
     elements
         .map(|element| codec.decode(element?))
         .collect::<Result<Vec<Value>, DecodeError>>()
@@ -763,7 +763,7 @@ impl Codec for ArrayAdapter {
         let len = buf.get_i32() as usize;
         ensure!(buf.remaining() >= len, errors::Underflow);
         ensure!(buf.remaining() <= len, errors::ExtraData);
-        return self.0.decode(buf);
+        self.0.decode(buf)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -831,7 +831,7 @@ impl From<&str> for EnumValue {
 impl std::ops::Deref for EnumValue {
     type Target = str;
     fn deref(&self) -> &str {
-        &*self.0
+        &self.0
     }
 }
 
@@ -1068,7 +1068,7 @@ pub(crate) fn encode_local_time(buf: &mut BytesMut, val: &model::LocalTime)
 
 impl Codec for Json {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
-        RawCodec::decode(buf).map(|json: model::Json| Value::Json(json.into()))
+        RawCodec::decode(buf).map(|json: model::Json| Value::Json(json))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -1099,7 +1099,7 @@ impl Codec for Tuple {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         let elements = DecodeTupleLike::new_object(buf, self.elements.len())?;
         let items = decode_tuple(elements, &self.elements)?;
-        return Ok(Value::Tuple(items))
+        Ok(Value::Tuple(items))
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value)
         -> Result<(), EncodeError>
@@ -1132,7 +1132,7 @@ impl Codec for NamedTuple {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         let elements = DecodeTupleLike::new_tuple(buf, self.codecs.len())?;
         let fields = decode_tuple(elements, &self.codecs)?;
-        return Ok(Value::NamedTuple {
+        Ok(Value::NamedTuple {
             shape: self.shape.clone(),
             fields,
         })
@@ -1296,7 +1296,7 @@ impl Codec for Range {
             let pos = buf.len();
             buf.reserve(4);
             buf.put_u32(0);  // replaced after serializing a value
-            self.element.encode(buf, &lower)?;
+            self.element.encode(buf, lower)?;
             let len = buf.len()-pos-4;
             buf[pos..pos+4].copy_from_slice(
                 &u32::try_from(len)
@@ -1308,7 +1308,7 @@ impl Codec for Range {
             let pos = buf.len();
             buf.reserve(4);
             buf.put_u32(0);  // replaced after serializing a value
-            self.element.encode(buf, &upper)?;
+            self.element.encode(buf, upper)?;
             let len = buf.len()-pos-4;
             buf[pos..pos+4].copy_from_slice(
                 &u32::try_from(len)

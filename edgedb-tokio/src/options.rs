@@ -157,7 +157,7 @@ impl RetryOptions {
         use RetryCondition::*;
 
         if err.is::<IdleSessionTimeoutError>() {
-            return &*IDLE_TIMEOUT_RULE;
+            &IDLE_TIMEOUT_RULE
         } else if err.is::<TransactionConflictError>() {
             self.0.overrides.get(&TransactionConflict)
                 .unwrap_or(&self.0.default)
@@ -165,7 +165,7 @@ impl RetryOptions {
             self.0.overrides.get(&NetworkError).unwrap_or(&self.0.default)
         } else {
             &self.0.default
-       }
+        }
     }
 }
 

@@ -32,7 +32,7 @@ impl BigInt {
             self.digits.remove(0);
             self.weight -= 1;
         }
-        return self
+        self
     }
 
     fn trailing_zero_groups(&self) -> i16 {
@@ -64,17 +64,17 @@ impl std::fmt::Display for BigInt {
 
 impl From<u64> for BigInt {
     fn from(v: u64) -> BigInt {
-        return BigInt {
+        BigInt {
             negative: false,
             weight: 4,
             digits: vec![
-                (v / 10000_0000_0000_0000 % 10000) as u16,
-                (v / 10000_0000_0000 % 10000) as u16,
-                (v / 10000_0000 % 10000) as u16,
+                (v / 10_000_000_000_000_000 % 10000) as u16,
+                (v / 1_000_000_000_000 % 10000) as u16,
+                (v / 100_000_000 % 10000) as u16,
                 (v / 10000 % 10000) as u16,
                 (v % 10000) as u16,
             ],
-        }.normalize();
+        }.normalize()
     }
 }
 
@@ -85,31 +85,31 @@ impl From<i64> for BigInt {
         } else {
             (v as u64, false)
         };
-        return BigInt {
+        BigInt {
             negative,
             weight: 4,
             digits: vec![
-                (abs / 10000_0000_0000_0000 % 10000) as u16,
-                (abs / 10000_0000_0000 % 10000) as u16,
-                (abs / 10000_0000 % 10000) as u16,
+                (abs / 10_000_000_000_000_000 % 10000) as u16,
+                (abs / 1_000_000_000_000 % 10000) as u16,
+                (abs / 100_000_000 % 10000) as u16,
                 (abs / 10000 % 10000) as u16,
                 (abs % 10000) as u16,
             ],
-        }.normalize();
+        }.normalize()
     }
 }
 
 impl From<u32> for BigInt {
     fn from(v: u32) -> BigInt {
-        return BigInt {
+        BigInt {
             negative: false,
             weight: 2,
             digits: vec![
-                (v / 10000_0000) as u16,
+                (v / 100_000_000) as u16,
                 (v / 10000 % 10000) as u16,
                 (v % 10000) as u16,
             ],
-        }.normalize();
+        }.normalize()
     }
 }
 
@@ -120,15 +120,15 @@ impl From<i32> for BigInt {
         } else {
             (v as u32, false)
         };
-        return BigInt {
+        BigInt {
             negative,
             weight: 2,
             digits: vec![
-                (abs / 10000_0000) as u16,
+                (abs / 100_000_000) as u16,
                 (abs / 10000 % 10000) as u16,
                 (abs % 10000) as u16,
             ],
-        }.normalize();
+        }.normalize()
     }
 }
 
@@ -142,25 +142,25 @@ impl Decimal {
             self.digits.remove(0);
             self.weight -= 1;
         }
-        return self
+        self
     }
 }
 
 #[cfg(test)]
 #[allow(dead_code)] // used by optional tests
-pub(self) mod test_helpers{
+ mod test_helpers{
     use rand::Rng;
 
     pub fn gen_u64<T: Rng>(rng: &mut T) -> u64 {
         // change distribution to generate different length more frequently
         let max = 10_u64.pow(rng.gen_range(0..20));
-        return rng.gen_range(0..max);
+        rng.gen_range(0..max)
     }
 
     pub fn gen_i64<T: Rng>(rng: &mut T) -> i64 {
         // change distribution to generate different length more frequently
         let max = 10_i64.pow(rng.gen_range(0..19));
-        return rng.gen_range(-max..max);
+        rng.gen_range(-max..max)
     }
 }
 

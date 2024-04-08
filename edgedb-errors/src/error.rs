@@ -182,12 +182,10 @@ impl fmt::Display for Error {
                 }
             }
 
+        } else if let Some(last) = self.0.messages.last() {
+            write!(f, "{}: {}", kind, last)?;
         } else {
-            if let Some(last) = self.0.messages.last() {
-                write!(f, "{}: {}", kind, last)?;
-            } else {
-                write!(f, "{}", kind)?;
-            }
+            write!(f, "{}", kind)?;
         }
         if let Some((line, col)) = self.line().zip(self.column()) {
             write!(f, " (on line {}, column {})", line, col)?;

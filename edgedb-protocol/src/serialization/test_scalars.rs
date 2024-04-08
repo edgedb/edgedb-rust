@@ -17,7 +17,7 @@ fn encode(val: impl ScalarArg) -> Bytes {
     let mut buf = BytesMut::new();
     let mut encoder = Encoder::new(&ctx, &mut buf);
     ScalarArg::encode(&val, &mut encoder).expect("encoded");
-    return buf.freeze();
+    buf.freeze()
 }
 
 fn decode<'x, T: RawCodec<'x>>(bytes: &'x [u8]) -> T {

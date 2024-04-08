@@ -154,7 +154,7 @@ impl PartialEq for SparseObject {
             }
         }
         let other_num = other.fields.iter().filter(|e| e.is_some()).count();
-        return num == other_num;
+        num == other_num
     }
 }
 

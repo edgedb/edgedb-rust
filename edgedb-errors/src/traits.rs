@@ -85,8 +85,7 @@ pub trait Sealed {
     const TAGS: u32;
     // TODO(tailhook) use uuids of errors instead
     fn is_superclass_of(code: u32) -> bool {
-        let mask = 0xFFFFFFFF_u32
-                   << (Self::CODE.trailing_zeros() / 8)*8;
+        let mask = 0xFFFFFFFF_u32 << ((Self::CODE.trailing_zeros() / 8)*8);
         code & mask == Self::CODE
     }
     fn has_tag(bit: u32) -> bool {

@@ -99,7 +99,7 @@ impl Output<'_> {
         }
     }
     pub fn proto(&self) -> &ProtocolVersion {
-        &self.proto
+        self.proto
     }
     pub fn reserve(&mut self, size: usize) {
         self.bytes.reserve(size)
@@ -170,10 +170,10 @@ impl Decode for String {
         ensure!(buf.remaining() >= len, errors::Underflow);
         let mut data = vec![0u8; len];
         buf.copy_to_slice(&mut data[..]);
-        let result = String::from_utf8(data)
+        
+        String::from_utf8(data)
             .map_err(|e| e.utf8_error())
-            .context(errors::InvalidUtf8);
-        return result;
+            .context(errors::InvalidUtf8)
     }
 }
 

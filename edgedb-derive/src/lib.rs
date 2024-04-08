@@ -105,7 +105,7 @@ fn derive(item: &syn::Item) -> syn::Result<proc_macro2::TokenStream> {
             ));
         }
     };
-    let attrs = attrib::ContainerAttrs::from_syn(&attrs)?;
+    let attrs = attrib::ContainerAttrs::from_syn(attrs)?;
     if attrs.json {
         json::derive(item)
     } else {
@@ -113,10 +113,10 @@ fn derive(item: &syn::Item) -> syn::Result<proc_macro2::TokenStream> {
             syn::Item::Struct(s) => shape::derive_struct(s),
             syn::Item::Enum(s) => enums::derive_enum(s),
             _ => {
-                return Err(syn::Error::new_spanned(item,
+                Err(syn::Error::new_spanned(item,
                     "can only derive Queryable for a struct and enum \
                      in non-JSON mode"
-                ));
+                ))
             }
         }
     }

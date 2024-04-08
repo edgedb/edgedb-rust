@@ -178,7 +178,7 @@ impl Transaction {
             expected_cardinality: Cardinality::Many,
         };
         let state = self.state.clone(); // TODO: optimize, by careful borrow
-        let ref mut conn = self.inner().conn;
+        let conn = &mut self.inner().conn;
         let desc = conn.parse(&flags, query, &state).await?;
         let inp_desc = desc.input()
             .map_err(ProtocolEncodingError::with_source)?;
@@ -241,7 +241,7 @@ impl Transaction {
             expected_cardinality: Cardinality::AtMostOne,
         };
         let state = self.state.clone(); // TODO optimize using careful borrow
-        let ref mut conn = self.inner().conn;
+        let conn = &mut self.inner().conn;
         let desc = conn.parse(&flags, query, &state).await?;
         let inp_desc = desc.input()
             .map_err(ProtocolEncodingError::with_source)?;
@@ -324,7 +324,7 @@ impl Transaction {
             expected_cardinality: Cardinality::Many,
         };
         let state = self.state.clone(); // TODO optimize using careful borrow
-        let ref mut conn = self.inner().conn;
+        let mut conn = &mut self.inner().conn;
         let desc = conn.parse(&flags, query, &state).await?;
         let inp_desc = desc.input()
             .map_err(ProtocolEncodingError::with_source)?;
@@ -382,7 +382,7 @@ impl Transaction {
             expected_cardinality: Cardinality::AtMostOne,
         };
         let state = self.state.clone(); // TODO optimize using careful borrow
-        let ref mut conn = self.inner().conn;
+        let conn = &mut self.inner().conn;
         let desc = conn.parse(&flags, query, &state).await?;
         let inp_desc = desc.input()
             .map_err(ProtocolEncodingError::with_source)?;
@@ -454,7 +454,7 @@ impl Transaction {
             expected_cardinality: Cardinality::Many,
         };
         let state = self.state.clone(); // TODO: optimize, by careful borrow
-        let ref mut conn = self.inner().conn;
+        let conn = &mut self.inner().conn;
         let desc = conn.parse(&flags, query, &state).await?;
         let inp_desc = desc.input()
             .map_err(ProtocolEncodingError::with_source)?;

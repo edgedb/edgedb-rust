@@ -7,7 +7,6 @@ use std::sync::Mutex;
 
 use command_fds::{CommandFdExt, FdMapping};
 use once_cell::sync::Lazy;
-use shutdown_hooks;
 
 use edgedb_tokio::{Builder, Config};
 

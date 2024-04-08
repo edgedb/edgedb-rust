@@ -2154,7 +2154,7 @@ fn test_instance_name() {
             Ok(InstanceName::Local(name)) => assert_eq!(name, inst_name),
             Ok(InstanceName::Cloud { org_slug, name }) => {
                 let (o, i) = inst_name
-                    .split_once("/")
+                    .split_once('/')
                     .expect("test case must have one slash");
                 assert_eq!(org_slug, o);
                 assert_eq!(name, i);
@@ -2197,14 +2197,14 @@ pub async fn get_project_dir(override_dir: Option<&Path>, search_parents: bool)
 
     if search_parents {
         if let Some(ancestor) = search_dir(&dir).await? {
-            return Ok(Some(ancestor.to_path_buf()));
+            Ok(Some(ancestor.to_path_buf()))
         } else {
-            return Ok(None);
+            Ok(None)
         }
     } else {
         if !fs::metadata(dir.join("edgedb.toml")).await.is_ok() {
             return Ok(None)
         }
-        return Ok(Some(dir.to_path_buf()))
-    };
+        Ok(Some(dir.to_path_buf()))
+    }
 }
