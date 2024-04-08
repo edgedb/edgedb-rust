@@ -87,6 +87,11 @@ impl ScalarArg for &'_ str {
     fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
         -> Result<(), Error>
     {
+        // special case: &str can express an enum variant
+        if let Descriptor::Enumeration(_) = ctx.get(pos)? {
+            return Ok(())
+        }
+
         check_scalar(ctx, pos, String::uuid(), String::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {

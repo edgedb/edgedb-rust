@@ -1,4 +1,6 @@
 module test {
+    scalar type State extending enum<'done', 'waiting', 'blocked'>;
+
     type Counter {
         required property name -> str {
             constraint std::exclusive;
