@@ -386,7 +386,7 @@ mod chrono {
     )]
     fn local_time(input: &str, micros: i64, formatted: &str) {
         let chrono = chrono::NaiveTime::from_str(input).unwrap();
-        let edgedb: LocalTime = chrono.try_into().unwrap();
+        let edgedb: LocalTime = chrono.into();
         assert_eq!(format!("{:?}", edgedb), formatted);
 
         let mut buf = BytesMut::new();
