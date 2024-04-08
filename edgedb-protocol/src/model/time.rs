@@ -1006,7 +1006,7 @@ mod test {
         assert_eq!(0, LocalDate::from_ymd(2000, 1, 1).to_days());
         assert_eq!(-365, LocalDate::from_ymd(1999, 1, 1).to_days());
         assert_eq!(366, LocalDate::from_ymd(2001, 1, 1).to_days());
-        assert_eq!(-730119, LocalDate::from_ymd(0001, 1, 1).to_days());
+        assert_eq!(-730119, LocalDate::from_ymd(1, 1, 1).to_days());
         assert_eq!(2921575, LocalDate::from_ymd(9999, 1, 1).to_days());
 
         assert_eq!(Err(OutOfRangeError), LocalDate::try_from_ymd(2001, 1, 32));

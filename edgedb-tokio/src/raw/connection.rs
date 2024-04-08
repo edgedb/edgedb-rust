@@ -749,9 +749,10 @@ async fn connect_timeout<F, T>(cfg: &Config, f: F) -> Result<T, Error>
 }
 
 fn is_temporary(e: &Error) -> bool {
-    use io::ErrorKind::{ConnectionRefused, TimedOut, NotFound};
-    use io::ErrorKind::{ConnectionAborted, ConnectionReset, UnexpectedEof};
-    use io::ErrorKind::{AddrNotAvailable};
+    use io::ErrorKind::{
+        AddrNotAvailable, ConnectionAborted, ConnectionRefused, ConnectionReset, NotFound,
+        TimedOut, UnexpectedEof,
+    };
 
     if e.is::<ClientConnectionFailedTemporarilyError>() {
         return true;

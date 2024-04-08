@@ -209,7 +209,7 @@ mod test {
         assert_eq!(BigInt::from(u64::MAX).weight, 4);
         assert_eq!(
             BigInt::from(u64::MAX).digits,
-            &[1844, 6744, 0737, 0955, 1615]
+            &[1844, 6744, 737, 955, 1615]
         );
 
         assert_eq!(BigInt::from(125i64).weight, 0);
@@ -221,7 +221,7 @@ mod test {
         assert_eq!(BigInt::from(i64::MAX).weight, 4);
         assert_eq!(
             BigInt::from(i64::MAX).digits,
-            &[922, 3372, 0368, 5477, 5807]
+            &[922, 3372, 368, 5477, 5807]
         );
 
         assert_eq!(BigInt::from(-125i64).weight, 0);
@@ -233,7 +233,7 @@ mod test {
         assert_eq!(BigInt::from(i64::MIN).weight, 4);
         assert_eq!(
             BigInt::from(i64::MIN).digits,
-            &[922, 3372, 0368, 5477, 5808]
+            &[922, 3372, 368, 5477, 5808]
         );
     }
 
