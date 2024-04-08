@@ -2,7 +2,7 @@
 mod chrono {
 
     use std::str::FromStr;
-    use std::convert::{TryInto, TryFrom};
+    use std::convert::TryInto;
 
     use bytes::{BytesMut, Buf};
     use edgedb_protocol::codec::{self, Codec};
@@ -164,7 +164,7 @@ mod chrono {
 
         assert_eq!(serialized_micros, micros);
 
-        let rev = chrono::DateTime::<chrono::Utc>::try_from(edgedb).unwrap();
+        let rev = chrono::DateTime::<chrono::Utc>::from(edgedb);
         assert_eq!(format!("{:?}", rev), formatted);
     }
 
@@ -322,7 +322,7 @@ mod chrono {
 
         assert_eq!(serialized_micros, micros);
 
-        let rev = chrono::NaiveDateTime::try_from(edgedb).unwrap();
+        let rev = chrono::NaiveDateTime::from(edgedb);
         assert_eq!(format!("{:?}", rev), formatted);
     }
 
@@ -396,7 +396,7 @@ mod chrono {
 
         assert_eq!(serialized_micros, micros);
 
-        let rev = chrono::NaiveTime::try_from(edgedb).unwrap();
+        let rev = chrono::NaiveTime::from(edgedb);
         assert_eq!(format!("{:?}", rev), formatted);
     }
 }

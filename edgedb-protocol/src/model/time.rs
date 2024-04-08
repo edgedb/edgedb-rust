@@ -1647,8 +1647,8 @@ fn nanos_to_micros(nanos: i64) -> i64 {
 #[cfg(feature = "chrono")]
 mod chrono_interop {
     use super::*;
-    use chrono::naive::{NaiveDate, NaiveDateTime, NaiveTime };
-    use std::convert::{From, Into, TryFrom};
+    use chrono::naive::{NaiveDate, NaiveDateTime, NaiveTime};
+    use chrono::DateTime;
 
     type ChronoDatetime = chrono::DateTime<chrono::Utc>;
 
@@ -1656,8 +1656,9 @@ mod chrono_interop {
         fn from(value: &LocalDatetime) -> NaiveDateTime {
             let timestamp_seconds = value.micros.wrapping_div_euclid(1000_000) - (Datetime::UNIX_EPOCH.micros / 1000_000);
             let timestamp_nanos = (value.micros.wrapping_rem_euclid(1000_000) * 1000) as u32;
-            NaiveDateTime::from_timestamp_opt(timestamp_seconds, timestamp_nanos)
+            DateTime::from_timestamp(timestamp_seconds, timestamp_nanos)
                 .expect("NaiveDateTime range is bigger than LocalDatetime")
+                .naive_utc()
         }
     }
 
@@ -1666,8 +1667,8 @@ mod chrono_interop {
         fn try_from(d: &NaiveDateTime)
             -> Result<LocalDatetime, Self::Error>
         {
-            let secs = d.timestamp();
-            let subsec_nanos = d.timestamp_subsec_nanos();
+            let secs = d.and_utc().timestamp();
+            let subsec_nanos = d.and_utc().timestamp_subsec_nanos();
             let subsec_micros = nanos_to_micros(subsec_nanos.into());
             let micros = secs.checked_mul(1_000_000)
                 .and_then(|x| x.checked_add(subsec_micros))
@@ -1822,9 +1823,6 @@ mod chrono_interop {
     mod test {
         use super::*;
         use crate::model::time::test::{ test_times, valid_test_dates, to_debug, CHRONO_MAX_YEAR};
-        use std::convert::{TryFrom, TryInto};
-        use std::str::FromStr;
-        use std::fmt::{ Display, Debug };
 
         #[test]
         fn chrono_roundtrips() -> Result<(), Box<dyn std::error::Error>> {
