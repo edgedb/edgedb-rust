@@ -1576,9 +1576,7 @@ async fn read_instance(cfg: &mut ConfigInner, name: &InstanceName)
                 config.secret_key
             };
             let claims_b64 = secret_key
-                .split('.')
-                .skip(1)
-                .next()
+                .split('.').nth(1)
                 .ok_or(ClientError::with_message("Illegal JWT token"))?;
             let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD
                 .decode(claims_b64)

@@ -467,12 +467,3 @@ impl Transaction {
     }
 }
 
-#[allow(dead_code, unreachable_code)]
-fn _transaction_assertions() {
-    let _cli: crate::Client = unimplemented!();
-    assert_send(
-        _cli.transaction(|mut tx| async move { tx.query_json("SELECT 'hello'", &()).await }),
-    );
-}
-
-fn assert_send<T: Send>(_: T) {}

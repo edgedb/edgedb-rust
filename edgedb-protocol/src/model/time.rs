@@ -539,7 +539,7 @@ impl LocalTime {
     }
 
     pub fn from_micros(micros: u64) -> LocalTime {
-        Self::try_from_micros(micros).ok().expect("LocalTime is out of range")
+        Self::try_from_micros(micros).expect("LocalTime is out of range")
     }
 
     pub fn to_micros(self) -> u64 {
@@ -938,6 +938,7 @@ impl std::ops::Add<&'_ std::time::Duration> for Datetime {
 
 impl std::ops::Add<std::time::Duration> for Datetime {
     type Output = Datetime;
+    #[allow(clippy::op_ref)]
     fn add(self, other: std::time::Duration) -> Datetime {
         self + &other
     }

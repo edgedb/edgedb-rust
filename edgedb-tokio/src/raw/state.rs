@@ -402,7 +402,7 @@ impl PoolState {
             globals: &self.raw_state.globals,
         })?;
         self.cache.store(Some(Arc::new(result.clone())));
-        return Ok(result);
+        Ok(result)
     }
 }
 
@@ -431,9 +431,9 @@ impl SealedState for EncodedState {
         {
             return Ok((*self).clone());
         }
-        return Err(ClientError::with_message(
+        Err(ClientError::with_message(
             "state doesn't match state descriptor"
-        ));
+        ))
     }
 }
 impl State for EncodedState {}
@@ -441,7 +441,7 @@ impl SealedState for Arc<EncodedState> {
     fn encode(&self, desc: &RawTypedesc)
         -> Result<EncodedState, Error>
     {
-        (&**self).encode(desc)
+        (**self).encode(desc)
     }
 }
 impl State for Arc<EncodedState> {}

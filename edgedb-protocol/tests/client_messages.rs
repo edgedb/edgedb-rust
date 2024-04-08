@@ -11,9 +11,9 @@ use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
 use edgedb_protocol::client_message::{ExecuteScript, Execute0, Execute1};
 use edgedb_protocol::client_message::{Parse, Prepare, IoFormat, Cardinality};
 use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
-use edgedb_protocol::client_message::{SaslInitialResponse};
-use edgedb_protocol::client_message::{SaslResponse};
-use edgedb_protocol::client_message::{OptimisticExecute};
+use edgedb_protocol::client_message::SaslInitialResponse;
+use edgedb_protocol::client_message::SaslResponse;
+use edgedb_protocol::client_message::OptimisticExecute;
 use edgedb_protocol::client_message::Restore;
 
 mod base;

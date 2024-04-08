@@ -616,9 +616,9 @@ impl MessageSeverity {
             _ => Unknown(code),
         }
     }
-    fn to_u8(&self) -> u8 {
+    fn to_u8(self) -> u8 {
         use MessageSeverity::*;
-        match *self {
+        match self {
             Debug => 20,
             Info => 40,
             Notice => 60,

@@ -767,13 +767,10 @@ impl ScalarArg for EnumValue {
         use crate::descriptors::Descriptor::Enumeration;
 
         let desc = ctx.get(pos)?;
-        match desc {
-            Enumeration(_) => {
-                // Should we check enum members?
-                // Should we override `QueryArg` check descriptor for that?
-                // Or maybe implement just `QueryArg` for enum?
-            }
-            _ => {}
+        if let Enumeration(_) = desc {
+            // Should we check enum members?
+            // Should we override `QueryArg` check descriptor for that?
+            // Or maybe implement just `QueryArg` for enum?
         }
         Err(ctx.wrong_type(desc, "enum"))
     }

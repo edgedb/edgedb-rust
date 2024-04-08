@@ -628,7 +628,7 @@ impl NamedTuple {
     }
 }
 
-fn decode_tuple<'t>(mut elements:DecodeTupleLike, codecs:&Vec<Arc<dyn Codec>>) -> Result<Vec<Value>, DecodeError>{
+fn decode_tuple(mut elements:DecodeTupleLike, codecs: &[Arc<dyn Codec>]) -> Result<Vec<Value>, DecodeError>{
     codecs
         .iter()
         .map(|codec| codec.decode(elements.read()?.ok_or_else(|| errors::MissingRequiredElement.build())?))
