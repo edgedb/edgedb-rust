@@ -2074,7 +2074,7 @@ async fn from_dsn() {
     ));
     assert_eq!(&cfg.0.user, "user1");
     assert_eq!(&cfg.0.database, "db2");
-    assert_eq!(&cfg.0.branch, "__default__");
+    assert_eq!(&cfg.0.branch, "db2");
     assert_eq!(cfg.0.password, Some("EiPhohl7".into()));
 
     let cfg = Builder::new()
@@ -2089,6 +2089,7 @@ async fn from_dsn() {
     ));
     assert_eq!(&cfg.0.user, "user2");
     assert_eq!(&cfg.0.database, "db2");
+    assert_eq!(&cfg.0.branch, "db2");
     assert_eq!(cfg.0.password, None);
 
     // Tests overriding
@@ -2104,6 +2105,7 @@ async fn from_dsn() {
     ));
     assert_eq!(&cfg.0.user, "edgedb");
     assert_eq!(&cfg.0.database, "edgedb");
+    assert_eq!(&cfg.0.branch, "__default__");
     assert_eq!(cfg.0.password, None);
 
     let cfg = Builder::new()
@@ -2115,6 +2117,7 @@ async fn from_dsn() {
     ));
     assert_eq!(&cfg.0.user, "user3");
     assert_eq!(&cfg.0.database, "abcdef");
+    assert_eq!(&cfg.0.branch, "abcdef");
     assert_eq!(cfg.0.password, Some("123123".into()));
 }
 
