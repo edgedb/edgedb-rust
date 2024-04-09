@@ -1364,11 +1364,12 @@ impl Codec for Enum {
         -> Result<(), EncodeError>
     {
         let val = match val {
-            Value::Enum(val) => val,
+            Value::Enum(val) => val.0.as_ref(),
+            Value::Str(val) => val.as_str(),
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
-        ensure!(self.members.get(&val.0).is_some(), errors::MissingEnumValue);
-        buf.extend(val.0.as_bytes());
+        ensure!(self.members.get(val).is_some(), errors::MissingEnumValue);
+        buf.extend(val.as_bytes());
         Ok(())
     }
 }

@@ -224,21 +224,7 @@ impl QueryArg for Value {
             (Uuid(_), BaseScalar(d)) if d.id == codec::STD_UUID => Ok(()),
             (Enum(val), Enumeration(EnumerationTypeDescriptor { members, .. })) => {
                 let val = val.deref();
-                if members.iter().any(|c| c == val) {
-                    Ok(())
-                } else {
-                    let members = {
-                        let mut members = members
-                        .iter()
-                        .map(|c| format!("'{c}'"))
-                        .collect::<Vec<_>>();
-                        members.sort_unstable();
-                        members.join(", ")
-                    };
-                    Err(InvalidReferenceError::with_message(format!(
-                        "Expected one of: {members}, while enum value '{val}' was provided"
-                    )))
-                }
+                check_enum(val, members)
             }
             // TODO(tailhook) all types
             (_, desc) => Err(ctx.wrong_type(desc, self.kind())),
@@ -246,6 +232,22 @@ impl QueryArg for Value {
     }
     fn to_value(&self) -> Result<Value, Error> {
         Ok(self.clone())
+    }
+}
+
+pub(crate) fn check_enum(variant_name: &str, expected_members: &[String]) -> Result<(), Error> {
+    if expected_members.iter().any(|c| c == variant_name) {
+        Ok(())
+    } else {
+        let mut members = expected_members
+            .into_iter()
+            .map(|c| format!("'{c}'"))
+            .collect::<Vec<_>>();
+        members.sort_unstable();
+        let members = members.join(", ");
+        Err(InvalidReferenceError::with_message(format!(
+            "Expected one of: {members}, while enum value '{variant_name}' was provided"
+        )))
     }
 }
 
