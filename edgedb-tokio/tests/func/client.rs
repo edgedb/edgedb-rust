@@ -1,4 +1,5 @@
 use edgedb_protocol::eargs;
+use edgedb_protocol::value::{EnumValue, Value};
 use edgedb_tokio::Client;
 use edgedb_errors::NoDataError;
 use futures_util::stream::{self, StreamExt};
@@ -43,6 +44,34 @@ async fn simple() -> anyhow::Result<()> {
     client.execute("SELECT 1+1", &()).await?;
     client.execute("START MIGRATION TO {}; ABORT MIGRATION", &()).await?;
 
+    // basic enum param
+    let enum_query = "SELECT <str>(<test::State>$0) = 'waiting'";
+    assert_eq!(
+        client.query_required_single::<bool, _>(
+            enum_query, &(Value::Enum(EnumValue::from("waiting")),)
+        ).await.unwrap(),
+        true
+    );
+
+    // unsupported: enum param as Value::Str
+    client.query_required_single::<bool, (Value, )>(
+        enum_query, &(Value::Str("waiting".to_string()), ),
+    ).await.unwrap_err();
+
+    // unsupported: enum param as String
+    client.query_required_single::<bool, (String, )>(
+        enum_query, &("waiting".to_string(), ),
+    ).await.unwrap_err();
+
+    // enum param as &str
+    assert_eq!(
+        client.query_required_single::<bool, (&'_ str, )>(
+            enum_query, &("waiting", ),
+        ).await.unwrap(),
+        true
+    );
+
+    // params as macro
     let value = client.query_required_single::<String, _>(
         "select (
             std::array_join(<array<str>>$msg1, ' ')
