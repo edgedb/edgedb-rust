@@ -8,8 +8,8 @@ use edgedb_protocol::QueryResult;
 use edgedb_protocol::client_message::{ClientMessage, Parse, Prepare};
 use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
 use edgedb_protocol::client_message::{Execute0, Execute1};
-use edgedb_protocol::client_message::{OptimisticExecute};
-use edgedb_protocol::common::{CompilationOptions};
+use edgedb_protocol::client_message::OptimisticExecute;
+use edgedb_protocol::common::CompilationOptions;
 use edgedb_protocol::common::{IoFormat, Cardinality, Capabilities};
 use edgedb_protocol::descriptors::Typedesc;
 use edgedb_protocol::features::ProtocolVersion;
@@ -42,8 +42,7 @@ impl Connection {
                                       ::with_message("interrupted ping")),
         }
     }
-    pub(crate) fn end_request(&mut self, guard: Guard) {
-        drop(guard);
+    pub(crate) fn end_request(&mut self, _guard: Guard) {
         self.mode = Mode::Normal {
             idle_since: Instant::now()
         };
@@ -53,15 +52,14 @@ impl Connection {
     {
         loop {
             let msg = self.message().await?;
-            match msg {
-                ServerMessage::ReadyForCommand(ready) => {
-                    self.transaction_state = ready.transaction_state;
-                    self.end_request(guard);
-                    return Ok(())
-                }
-                // TODO(tailhook) should we react on messages somehow?
-                //                At least parse LogMessage's?
-                _ => {},
+
+            // TODO(tailhook) should we react on messages somehow?
+            //                At least parse LogMessage's?
+
+            if let ServerMessage::ReadyForCommand(ready) = msg {
+                self.transaction_state = ready.transaction_state;
+                self.end_request(guard);
+                return Ok(())
             }
         }
     }
@@ -137,25 +135,22 @@ impl Connection {
             ClientMessage::Prepare(Prepare::new(flags, query)),
             ClientMessage::Sync,
         ]).await?;
-
-        loop {
-            let msg = self.message().await?;
-            match msg {
-                ServerMessage::PrepareComplete(data) => {
-                    self.expect_ready(guard).await?;
-                    return Ok(data);
-                }
-                ServerMessage::ErrorResponse(err) => {
-                    self.expect_ready_or_eos(guard).await
-                        .map_err(|e| log::warn!(
-                            "Error waiting for Ready after error: {e:#}"))
-                        .ok();
-                    return Err(err.into());
-                }
-                _ => {
-                    return Err(ProtocolOutOfOrderError::with_message(format!(
-                        "Unsolicited message {:?}", msg)));
-                }
+    
+        match self.message().await? {
+            ServerMessage::PrepareComplete(data) => {
+                self.expect_ready(guard).await?;
+                Ok(data)
+            }
+            ServerMessage::ErrorResponse(err) => {
+                self.expect_ready_or_eos(guard).await
+                    .map_err(|e| log::warn!(
+                        "Error waiting for Ready after error: {e:#}"))
+                    .ok();
+                Err(err.into())
+            }
+            msg => {
+                Err(ProtocolOutOfOrderError::with_message(format!(
+                    "Unsolicited message {:?}", msg)))
             }
         }
     }
@@ -172,24 +167,21 @@ impl Connection {
             ClientMessage::Sync,
         ]).await?;
 
-        let desc = loop {
-            let msg = self.message().await?;
-            match msg {
-                ServerMessage::CommandDataDescription0(data_desc) => {
-                    self.expect_ready(guard).await?;
-                    break data_desc;
-                }
-                ServerMessage::ErrorResponse(err) => {
-                    self.expect_ready_or_eos(guard).await
-                        .map_err(|e| log::warn!(
-                            "Error waiting for Ready after error: {e:#}"))
-                        .ok();
-                    return Err(err.into());
-                }
-                _ => {
-                    return Err(ProtocolOutOfOrderError::with_message(format!(
-                        "Unsolicited message {:?}", msg)));
-                }
+        let desc = match self.message().await? {
+            ServerMessage::CommandDataDescription0(data_desc) => {
+                self.expect_ready(guard).await?;
+                data_desc
+            }
+            ServerMessage::ErrorResponse(err) => {
+                self.expect_ready_or_eos(guard).await
+                    .map_err(|e| log::warn!(
+                        "Error waiting for Ready after error: {e:#}"))
+                    .ok();
+                return Err(err.into());
+            }
+            msg => {
+                return Err(ProtocolOutOfOrderError::with_message(format!(
+                    "Unsolicited message {:?}", msg)));
             }
         };
         // normalize CommandDataDescription0 into Parse (proto 1.x) output
@@ -371,7 +363,7 @@ impl Connection {
 
         let out_desc = desc.output()
             .map_err(ProtocolEncodingError::with_source)?;
-        return ResponseStream::new(self, &out_desc, guard).await;
+        ResponseStream::new(self, &out_desc, guard).await
     }
     pub async fn try_execute_stream<R, A>(&mut self,
         opts: &CompilationOptions, query: &str,
@@ -414,7 +406,7 @@ impl Connection {
             ]).await?;
         }
 
-        return ResponseStream::new(self, output, guard).await;
+        ResponseStream::new(self, output, guard).await
     }
     pub async fn statement(&mut self, flags: &CompilationOptions, query: &str,
                            state: &dyn State)
@@ -556,12 +548,12 @@ impl Connection {
                         .map(|chunk| R::decode(&mut state, &chunk))
                         .collect::<Result<_, _>>()
                     })?;
-                    return Ok(rows)
+                    Ok(rows)
                 }
-                None => return Err(NoResultExpected::build()),
+                None => Err(NoResultExpected::build()),
             }
         }.await;
-        return result.map_err(|e| e.set::<QueryCapabilities>(caps));
+        result.map_err(|e| e.set::<QueryCapabilities>(caps))
     }
 
     pub async fn query_single<R, A>(&mut self, query: &str, arguments: &A,
@@ -604,7 +596,7 @@ impl Connection {
                 Some(root_pos) => {
                     let ctx = out_desc.as_queryable_context();
                     let mut state = R::prepare(&ctx, root_pos)?;
-                    return response.map(|data| {
+                    response.map(|data| {
                         let bytes = data.into_iter().next()
                         .and_then(|chunk| chunk.data.into_iter().next());
                         if let Some(bytes) = bytes {
@@ -612,12 +604,12 @@ impl Connection {
                         } else {
                             Ok(None)
                         }
-                    });
+                    })
                 }
-                None => return Err(NoResultExpected::build()),
+                None => Err(NoResultExpected::build()),
             }
         }.await;
-        return result.map_err(|e| e.set::<QueryCapabilities>(caps));
+        result.map_err(|e| e.set::<QueryCapabilities>(caps))
     }
 
     pub async fn query_required_single<R, A>(
@@ -666,9 +658,9 @@ impl Connection {
             let res = self._execute(
                 &flags, query, state, &desc, &arg_buf.freeze(),
             ).await?;
-            Ok(res.map(|_| Ok::<_, Error>(()))?)
+            res.map(|_| Ok::<_, Error>(()))
         }.await;
-        return result.map_err(|e| e.set::<QueryCapabilities>(caps));
+        result.map_err(|e| e.set::<QueryCapabilities>(caps))
     }
 
 }

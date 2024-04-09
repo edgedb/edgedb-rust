@@ -11,9 +11,6 @@ use crate::sealed::SealedParam;
 #[derive(Debug)]
 pub(crate) struct ServerParams(HashMap<TypeId, Box<dyn Any + Send + Sync>>);
 
-trait AssertParams: Send + Sync + 'static {}
-impl AssertParams for ServerParams {}
-
 /// Address of the underlying postgres, available only in dev mode.
 #[derive(Deserialize, Debug, Serialize)]
 pub struct PostgresAddress {

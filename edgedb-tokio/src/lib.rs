@@ -68,7 +68,7 @@ pub use client::Client;
 pub use errors::Error;
 pub use options::{TransactionOptions, RetryOptions, RetryCondition};
 pub use state::{GlobalsDelta, ConfigDelta};
-pub use transaction::{Transaction};
+pub use transaction::Transaction;
 
 #[cfg(feature="unstable")]
 pub use builder::get_project_dir;

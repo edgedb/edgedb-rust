@@ -26,8 +26,8 @@ pub fn derive(item: &syn::Item) -> syn::Result<TokenStream> {
             {
                 let json: ::edgedb_protocol::model::Json =
                     ::edgedb_protocol::queryable::Queryable::decode(decoder, buf)?;
-                Ok(::serde_json::from_str(json.as_ref())
-                    .map_err(::edgedb_protocol::errors::decode_error)?)
+                ::serde_json::from_str(json.as_ref())
+                    .map_err(::edgedb_protocol::errors::decode_error)
             }
             fn check_descriptor(
                 ctx: &::edgedb_protocol::queryable::DescriptorContext,

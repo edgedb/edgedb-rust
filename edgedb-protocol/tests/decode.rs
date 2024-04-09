@@ -1,5 +1,3 @@
-use std::default::Default;
-
 use edgedb_protocol::queryable::Queryable;
 use edgedb_protocol::model::Vector;
 

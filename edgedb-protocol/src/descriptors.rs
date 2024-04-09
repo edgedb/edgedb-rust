@@ -436,7 +436,7 @@ fn serialize_variables(enc: &mut Encoder, variables: &BTreeMap<String, Value>,
     let mut serialized = 0;
     for (idx, el) in desc.elements.iter().enumerate() {
         if let Some(value) = variables.get(&el.name) {
-            value.check_descriptor(&enc.ctx, el.type_pos)?;
+            value.check_descriptor(enc.ctx, el.type_pos)?;
             serialized += 1;
             enc.buf.reserve(8);
             enc.buf.put_u32(idx as u32);

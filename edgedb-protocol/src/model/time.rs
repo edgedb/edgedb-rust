@@ -112,15 +112,15 @@ impl Duration {
     // Note: `std::time::Duration` can't be negative
     pub fn abs_duration(&self) -> std::time::Duration {
         if self.micros.is_negative() {
-            return std::time::Duration::from_micros(
-                u64::MAX - self.micros as u64 + 1);
+            std::time::Duration::from_micros(
+                u64::MAX - self.micros as u64 + 1)
         } else {
-            return std::time::Duration::from_micros(self.micros as u64);
+            std::time::Duration::from_micros(self.micros as u64)
         }
     }
 
     fn try_from_pg_simple_format(input: &str) -> Result<Self, ParseDurationError> {
-        let mut split = input.trim_end().splitn(3, ":");
+        let mut split = input.trim_end().splitn(3, ':');
         let mut value: i64 = 0;
         let negative;
         let mut pos: usize = 0;
@@ -128,7 +128,7 @@ impl Duration {
         {
             let hour_str = split
                 .next()
-                .filter(|s| s.len() > 0)
+                .filter(|s| !s.is_empty())
                 .ok_or_else(|| ParseDurationError::new(
                     "EOF met, expecting `+`, `-` or int")
                     .not_final()
@@ -137,13 +137,13 @@ impl Duration {
             pos += hour_str.len() - 1;
             let hour_str = hour_str.trim_start();
             let hour = hour_str
-                .strip_prefix("-")
+                .strip_prefix('-')
                 .unwrap_or(hour_str)
                 .parse::<i32>()
                 .map_err(|e|
                     ParseDurationError::from(e).not_final().pos(pos)
                 )?;
-            negative = hour_str.starts_with("-");
+            negative = hour_str.starts_with('-');
             value += (hour.abs() as i64) * MICROS_PER_HOUR;
         }
 
@@ -156,7 +156,7 @@ impl Duration {
                         .not_final()
                         .pos(pos)
                 )?;
-            if minute_str.len() > 0 {
+            if !minute_str.is_empty() {
                 pos += minute_str.len();
                 let minute = minute_str
                     .parse::<u8>()
@@ -177,7 +177,7 @@ impl Duration {
 
         if let Some(remaining) = split.last() {
             pos += 1;
-            let mut sec_split = remaining.splitn(2, ".");
+            let mut sec_split = remaining.splitn(2, '.');
 
             {
                 let second_str = sec_split.next().unwrap();
@@ -233,7 +233,7 @@ impl Duration {
             let mut current = parts.next();
 
             if let Some(part) = current {
-                if let Some(hour_str) = part.strip_suffix("H") {
+                if let Some(hour_str) = part.strip_suffix('H') {
                     let hour = hour_str
                         .parse::<i32>()
                         .map_err(|e| ParseDurationError::from(e)
@@ -246,7 +246,7 @@ impl Duration {
             }
 
             if let Some(part) = current {
-                if let Some(minute_str) = part.strip_suffix("M") {
+                if let Some(minute_str) = part.strip_suffix('M') {
                     let minute = minute_str
                         .parse::<i32>()
                         .map_err(|e| ParseDurationError::from(e)
@@ -259,11 +259,11 @@ impl Duration {
             }
 
             if let Some(part) = current {
-                if let Some(second_str) = part.strip_suffix("S") {
+                if let Some(second_str) = part.strip_suffix('S') {
                     let (second_str, subsec_str) = second_str
                         .split_once('.')
                         .map(|(sec, sub)|
-                            (sec, sub.get(..6).or_else(||Some(sub))))
+                            (sec, sub.get(..6).or(Some(sub))))
                         .unwrap_or_else(|| (second_str, None));
 
                     let second = second_str
@@ -433,7 +433,7 @@ impl FromStr for Duration {
         if let Ok(seconds) = input.trim().parse::<i64>() {
             seconds
                 .checked_mul(MICROS_PER_SECOND)
-                .map(|micros| Self::from_micros(micros))
+                .map(Self::from_micros)
                 .ok_or_else(|| Self::Err::new("seconds value out of range")
                     .pos(input.len() - 1))
         } else {
@@ -465,7 +465,7 @@ impl LocalDatetime {
     pub(crate) fn from_postgres_micros(micros: i64)
         -> Result<LocalDatetime, OutOfRangeError>
     {
-        if micros < Self::MIN.micros || micros > Self::MAX.micros {
+        if !(Self::MIN.micros..=Self::MAX.micros).contains(&micros) {
             return Err(OutOfRangeError);
         }
         Ok(LocalDatetime { micros })
@@ -476,8 +476,7 @@ impl LocalDatetime {
         note="use Datetime::try_from_unix_micros(v).into() instead",
     )]
     pub fn from_micros(micros: i64) -> LocalDatetime {
-        Self::from_postgres_micros(micros).expect(&format!(
-            "LocalDatetime::from_micros({}) is outside the valid datetime range",
+        Self::from_postgres_micros(micros).unwrap_or_else(|_| panic!("LocalDatetime::from_micros({}) is outside the valid datetime range",
              micros))
     }
 
@@ -510,7 +509,7 @@ impl LocalDatetime {
 
 impl From<Datetime> for LocalDatetime {
     fn from(d: Datetime) -> LocalDatetime {
-        return LocalDatetime { micros: d.micros }
+        LocalDatetime { micros: d.micros }
     }
 }
 
@@ -533,14 +532,14 @@ impl LocalTime {
 
     pub(crate) fn try_from_micros(micros: u64) -> Result<LocalTime, OutOfRangeError> {
         if micros < MICROS_PER_DAY {
-            Ok(LocalTime { micros: micros })
+            Ok(LocalTime { micros })
         } else {
              Err(OutOfRangeError)
         }
     }
 
     pub fn from_micros(micros: u64) -> LocalTime {
-        Self::try_from_micros(micros).ok().expect("LocalTime is out of range")
+        Self::try_from_micros(micros).expect("LocalTime is out of range")
     }
 
     pub fn to_micros(self) -> u64 {
@@ -568,14 +567,14 @@ impl LocalTime {
 
     #[cfg(test)] // currently only used by tests, will be used by parsing later
     fn from_hmsu(hour: u8, minute: u8, second:u8, microsecond: u32) -> LocalTime {
-        assert!(microsecond < 1000_000);
+        assert!(microsecond < 1_000_000);
         assert!(second < 60);
         assert!(minute < 60);
         assert!(hour < 24);
 
         let micros =
         microsecond as u64
-        + 1000_000 * (second as u64
+        + 1_000_000 * (second as u64
              + 60 * (minute as u64
                 + 60 * (hour as u64)));
         LocalTime::from_micros(micros)
@@ -610,7 +609,7 @@ impl LocalDate {
     pub const UNIX_EPOCH : LocalDate = LocalDate { days: -(30 * 365 + 7) }; // 1970-01-01
 
     fn try_from_days(days: i32) -> Result<LocalDate, OutOfRangeError> {
-        if days < Self::MIN.days || days > Self::MAX.days {
+        if !(Self::MIN.days..=Self::MAX.days).contains(&days) {
             return Err(OutOfRangeError);
         }
         Ok(LocalDate { days })
@@ -618,7 +617,7 @@ impl LocalDate {
 
     pub fn from_days(days: i32) -> LocalDate {
         Self::try_from_days(days)
-            .expect(&format!("LocalDate::from_days({}) is outside the valid date range", days))
+            .unwrap_or_else(|_| panic!("LocalDate::from_days({}) is outside the valid date range", days))
     }
 
     pub fn to_days(self) -> i32 {
@@ -626,19 +625,18 @@ impl LocalDate {
     }
 
     pub fn from_ymd(year:i32, month: u8, day:u8) -> LocalDate {
-        Self::try_from_ymd(year, month, day).expect(&format!(
-            "invalid date {:04}-{:02}-{:02}",
+        Self::try_from_ymd(year, month, day).unwrap_or_else(|_| panic!("invalid date {:04}-{:02}-{:02}",
             year, month, day))
     }
 
     fn try_from_ymd(year:i32, month: u8, day:u8) -> Result<LocalDate, OutOfRangeError> {
-        if day < 1 || day > 31 {
+        if !(1..=31).contains(&day) {
             return Err(OutOfRangeError);
         }
-        if month < 1 || month > 12 {
+        if !(1..=12).contains(&month) {
             return Err(OutOfRangeError);
         }
-        if year < MIN_YEAR || year > MAX_YEAR {
+        if !(MIN_YEAR..=MAX_YEAR).contains(&year) {
            return Err(OutOfRangeError);
         }
 
@@ -753,7 +751,7 @@ impl Datetime {
     pub(crate) fn from_postgres_micros(micros: i64)
         -> Result<Datetime, OutOfRangeError>
     {
-        if micros < Self::MIN.micros || micros > Self::MAX.micros {
+        if !(Self::MIN.micros..=Self::MAX.micros).contains(&micros) {
             return Err(OutOfRangeError);
         }
         Ok(Datetime { micros })
@@ -761,7 +759,7 @@ impl Datetime {
 
     fn _from_micros(micros: i64) -> Option<Datetime> {
         let micros = micros.checked_add(Self::UNIX_EPOCH.micros)?;
-        if micros < Self::MIN.micros || micros > Self::MAX.micros {
+        if !(Self::MIN.micros..=Self::MAX.micros).contains(&micros) {
             return None;
         }
         Some(Datetime { micros })
@@ -772,8 +770,7 @@ impl Datetime {
         note="use from_unix_micros instead",
     )]
     pub fn from_micros(micros: i64) -> Datetime {
-        Self::from_postgres_micros(micros).expect(&format!(
-            "Datetime::from_micros({}) is outside the valid datetime range",
+        Self::from_postgres_micros(micros).unwrap_or_else(|_| panic!("Datetime::from_micros({}) is outside the valid datetime range",
              micros))
     }
 
@@ -930,17 +927,18 @@ impl std::ops::Add<&'_ std::time::Duration> for Datetime {
             return Datetime::MAX;
         };
         if let Some(micros) = self.micros.checked_add(duration.micros) {
-            return Datetime { micros };
+            Datetime { micros }
         } else {
             debug_assert!(false,
                 "duration is out of range");
-            return Datetime::MAX;
+            Datetime::MAX
         }
     }
 }
 
 impl std::ops::Add<std::time::Duration> for Datetime {
     type Output = Datetime;
+    #[allow(clippy::op_ref)]
     fn add(self, other: std::time::Duration) -> Datetime {
         self + &other
     }
@@ -1008,7 +1006,7 @@ mod test {
         assert_eq!(0, LocalDate::from_ymd(2000, 1, 1).to_days());
         assert_eq!(-365, LocalDate::from_ymd(1999, 1, 1).to_days());
         assert_eq!(366, LocalDate::from_ymd(2001, 1, 1).to_days());
-        assert_eq!(-730119, LocalDate::from_ymd(0001, 1, 1).to_days());
+        assert_eq!(-730119, LocalDate::from_ymd(1, 1, 1).to_days());
         assert_eq!(2921575, LocalDate::from_ymd(9999, 1, 1).to_days());
 
         assert_eq!(Err(OutOfRangeError), LocalDate::try_from_ymd(2001, 1, 32));
@@ -1046,7 +1044,7 @@ mod test {
             let days_in_current_month = DAYS_IN_MONTH_LEAP[month - 1];
             total_days += days_in_current_month as i32;
 
-            let end_of_month = LocalDate::from_ymd(2001, month as u8, days_in_current_month as u8).to_days();
+            let end_of_month = LocalDate::from_ymd(2001, month as u8, days_in_current_month).to_days();
             assert_eq!(total_days - 1, end_of_month - start_of_year);
         }
         assert_eq!(365, total_days);
@@ -1114,9 +1112,9 @@ mod test {
             0,
             10,
             10_020,
-            12345 * 1000_000,
-            12345 * 1001_000,
-            12345 * 1001_001,
+            12345 * 1_000_000,
+            12345 * 1_001_000,
+            12345 * 1_001_001,
             MICROS_PER_DAY - 1,
         ];
         TIMES.iter().copied()
@@ -1206,8 +1204,8 @@ mod test {
         assert_eq!(dur_str(1_000_000), "0:00:01");
         assert_eq!(dur_str(1), "0:00:00.000001");
         assert_eq!(dur_str(7_015_000), "0:00:07.015");
-        assert_eq!(dur_str(10_000_000__015_000), "2777:46:40.015");
-        assert_eq!(dur_str(12_345_678__000_000), "3429:21:18");
+        assert_eq!(dur_str(10_000_000_015_000), "2777:46:40.015");
+        assert_eq!(dur_str(12_345_678_000_000), "3429:21:18");
     }
 
     #[test]
@@ -1218,19 +1216,19 @@ mod test {
         assert_eq!(micros(" 100   "), 100_000_000);
         assert_eq!(micros("123"), 123_000_000);
         assert_eq!(micros("-123"), -123_000_000);
-        assert_eq!(micros("  20 mins 1hr "), 4800_000_000);
-        assert_eq!(micros("  20 mins -1hr "), -2400_000_000);
-        assert_eq!(micros("  20us  1h    20   "), 3620_000_020);
-        assert_eq!(micros("  -20us  1h    20   "), 3619_999_980);
-        assert_eq!(micros("  -20US  1H    20   "), 3619_999_980);
-        assert_eq!(micros("1 hour 20 minutes 30 seconds 40 milliseconds 50 microseconds"), 4830_040_050);
-        assert_eq!(micros("1 hour 20 minutes +30seconds 40 milliseconds -50microseconds"), 4830_039_950);
-        assert_eq!(micros("1 houR  20 minutes 30SECOND 40 milliseconds 50 us"), 4830_040_050);
-        assert_eq!(micros("  20 us 1H 20 minutes "), 4800_000_020);
-        assert_eq!(micros("-1h"), -3600_000_000);
-        assert_eq!(micros("100h"), 3600_000_000_00);
-        let h12 = 12 * 3600_000_000 as i64;
-        let m12 = 12 * 60_000_000 as i64;
+        assert_eq!(micros("  20 mins 1hr "), 4_800_000_000);
+        assert_eq!(micros("  20 mins -1hr "), -2_400_000_000);
+        assert_eq!(micros("  20us  1h    20   "), 3_620_000_020);
+        assert_eq!(micros("  -20us  1h    20   "), 3_619_999_980);
+        assert_eq!(micros("  -20US  1H    20   "), 3_619_999_980);
+        assert_eq!(micros("1 hour 20 minutes 30 seconds 40 milliseconds 50 microseconds"), 4_830_040_050);
+        assert_eq!(micros("1 hour 20 minutes +30seconds 40 milliseconds -50microseconds"), 4_830_039_950);
+        assert_eq!(micros("1 houR  20 minutes 30SECOND 40 milliseconds 50 us"), 4_830_040_050);
+        assert_eq!(micros("  20 us 1H 20 minutes "), 4_800_000_020);
+        assert_eq!(micros("-1h"), -3_600_000_000);
+        assert_eq!(micros("100h"), 360_000_000_000);
+        let h12 = 12 * 3_600_000_000_i64;
+        let m12 = 12 * 60_000_000_i64;
         assert_eq!(micros("   12:12:12.2131   "), h12 + m12 + 12_213_100);
         assert_eq!(micros("-12:12:12.21313"), -(h12 + m12 + 12_213_130));
         assert_eq!(micros("-12:12:12.213134"), -(h12 + m12 + 12_213_134));
@@ -1257,18 +1255,18 @@ mod test {
         assert_eq!(micros("  +00005"), 5_000_000);
         assert_eq!(micros("  -00005"), -5_000_000);
         assert_eq!(micros("PT"), 0);
-        assert_eq!(micros("PT1H1M1S"), 3661_000_000);
+        assert_eq!(micros("PT1H1M1S"), 3_661_000_000);
         assert_eq!(micros("PT1M1S"), 61_000_000);
         assert_eq!(micros("PT1S"), 1_000_000);
-        assert_eq!(micros("PT1H1S"), 3601_000_000);
-        assert_eq!(micros("PT1H1M1.1S"), 3661_100_000);
-        assert_eq!(micros("PT1H1M1.01S"), 3661_010_000);
-        assert_eq!(micros("PT1H1M1.10S"), 3661_100_000);
-        assert_eq!(micros("PT1H1M1.1234567S"), 3661_123_456);
-        assert_eq!(micros("PT1H1M1.1234564S"), 3661_123_456);
-        assert_eq!(micros("PT-1H1M1.1S"), -3538_900_000);
-        assert_eq!(micros("PT+1H-1M1.1S"), 3541_100_000);
-        assert_eq!(micros("PT1H+1M-1.1S"), 3658_900_000);
+        assert_eq!(micros("PT1H1S"), 3_601_000_000);
+        assert_eq!(micros("PT1H1M1.1S"), 3_661_100_000);
+        assert_eq!(micros("PT1H1M1.01S"), 3_661_010_000);
+        assert_eq!(micros("PT1H1M1.10S"), 3_661_100_000);
+        assert_eq!(micros("PT1H1M1.1234567S"), 3_661_123_456);
+        assert_eq!(micros("PT1H1M1.1234564S"), 3_661_123_456);
+        assert_eq!(micros("PT-1H1M1.1S"), -3_538_900_000);
+        assert_eq!(micros("PT+1H-1M1.1S"), 3_541_100_000);
+        assert_eq!(micros("PT1H+1M-1.1S"), 3_658_900_000);
 
         fn assert_error(input: &str, expected_pos: usize, pat: &str) {
             let ParseDurationError {
@@ -1347,7 +1345,7 @@ impl RelativeDuration {
         -> Result<RelativeDuration, OutOfRangeError>
     {
         Ok(RelativeDuration {
-            months: months,
+            months,
             days: 0,
             micros: 0,
         })
@@ -1565,7 +1563,7 @@ impl DateDuration {
         -> Result<DateDuration, OutOfRangeError>
     {
         Ok(DateDuration {
-            months: months,
+            months,
             days: 0,
         })
     }
@@ -1643,14 +1641,14 @@ fn nanos_to_micros(nanos: i64) -> i64 {
    if remainder == 500 && micros % 2 == 1 || remainder > 500 {
        micros += 1;
    }
-   return micros;
+   micros
 }
 
 #[cfg(feature = "chrono")]
 mod chrono_interop {
     use super::*;
-    use chrono::naive::{NaiveDate, NaiveDateTime, NaiveTime };
-    use std::convert::{From, Into, TryFrom};
+    use chrono::naive::{NaiveDate, NaiveDateTime, NaiveTime};
+    use chrono::DateTime;
 
     type ChronoDatetime = chrono::DateTime<chrono::Utc>;
 
@@ -1658,8 +1656,9 @@ mod chrono_interop {
         fn from(value: &LocalDatetime) -> NaiveDateTime {
             let timestamp_seconds = value.micros.wrapping_div_euclid(1000_000) - (Datetime::UNIX_EPOCH.micros / 1000_000);
             let timestamp_nanos = (value.micros.wrapping_rem_euclid(1000_000) * 1000) as u32;
-            NaiveDateTime::from_timestamp_opt(timestamp_seconds, timestamp_nanos)
+            DateTime::from_timestamp(timestamp_seconds, timestamp_nanos)
                 .expect("NaiveDateTime range is bigger than LocalDatetime")
+                .naive_utc()
         }
     }
 
@@ -1668,8 +1667,8 @@ mod chrono_interop {
         fn try_from(d: &NaiveDateTime)
             -> Result<LocalDatetime, Self::Error>
         {
-            let secs = d.timestamp();
-            let subsec_nanos = d.timestamp_subsec_nanos();
+            let secs = d.and_utc().timestamp();
+            let subsec_nanos = d.and_utc().timestamp_subsec_nanos();
             let subsec_micros = nanos_to_micros(subsec_nanos.into());
             let micros = secs.checked_mul(1_000_000)
                 .and_then(|x| x.checked_add(subsec_micros))
@@ -1824,9 +1823,6 @@ mod chrono_interop {
     mod test {
         use super::*;
         use crate::model::time::test::{ test_times, valid_test_dates, to_debug, CHRONO_MAX_YEAR};
-        use std::convert::{TryFrom, TryInto};
-        use std::str::FromStr;
-        use std::fmt::{ Display, Debug };
 
         #[test]
         fn chrono_roundtrips() -> Result<(), Box<dyn std::error::Error>> {

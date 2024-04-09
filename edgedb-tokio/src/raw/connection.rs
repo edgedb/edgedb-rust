@@ -5,13 +5,13 @@ use std::error::Error as _;
 use std::future::{self, Future};
 use std::io;
 use std::str;
-use std::time::{Duration};
+use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
 use rand::{thread_rng, Rng};
 use scram::ScramClient;
 use tls_api::{TlsConnector, TlsConnectorBox, TlsStream, TlsStreamDyn};
-use tls_api::{TlsConnectorBuilder};
+use tls_api::TlsConnectorBuilder;
 use tls_api_not_tls::TlsConnector as PlainConnector;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
@@ -23,20 +23,17 @@ use rustls::pki_types::DnsName;
 use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
 use edgedb_protocol::encoding::{Input, Output};
 use edgedb_protocol::features::ProtocolVersion;
-use edgedb_protocol::server_message::{ParameterStatus, RawTypedesc};
-use edgedb_protocol::server_message::{ServerHandshake};
-use edgedb_protocol::server_message::{Authentication, ErrorResponse, ServerMessage};
-use edgedb_protocol::server_message::{TransactionState, MessageSeverity};
+use edgedb_protocol::server_message::{ParameterStatus, RawTypedesc, TransactionState, MessageSeverity};
+use edgedb_protocol::server_message::{ServerHandshake, Authentication, ErrorResponse, ServerMessage};
 use edgedb_protocol::value::Value;
 
 use crate::builder::{Config, Address};
-use crate::errors::{AuthenticationError, PasswordRequired};
-use crate::errors::{ClientConnectionError, ClientConnectionFailedError};
-use crate::errors::{ClientConnectionFailedTemporarilyError, ProtocolTlsError};
-use crate::errors::{ClientEncodingError, ClientConnectionEosError};
-use crate::errors::{Error, ClientError, ErrorKind};
-use crate::errors::{IdleSessionTimeoutError};
-use crate::errors::{ProtocolEncodingError, ProtocolError};
+use crate::errors::{
+    AuthenticationError, PasswordRequired, ClientConnectionError, ClientConnectionFailedError,
+    ClientConnectionFailedTemporarilyError, ProtocolTlsError, ClientEncodingError,
+    ClientConnectionEosError, Error, ClientError, ErrorKind, IdleSessionTimeoutError,
+    ProtocolEncodingError, ProtocolError
+};
 use crate::raw::{Connection, PingInterval};
 use crate::raw::queries::Guard;
 use crate::server_params::{ServerParams, ServerParam, SystemConfig};
@@ -269,7 +266,7 @@ async fn connect(cfg: &Config) -> Result<Connection, Error> {
 
     let start = Instant::now();
     let wait = cfg.0.wait;
-    let ref mut warned = false;
+    let warned = &mut false;
     let conn = loop {
         match connect_timeout(cfg, connect2(cfg, &tls, warned)).await {
             Err(e) if is_temporary(&e) => {
@@ -340,14 +337,14 @@ async fn connect3(cfg: &Config, tls: &TlsConnectorBox)
                     Cow::from(server_name)
                 },
                 None => {
-                    if !DnsName::try_from(host.clone()).is_ok() {
+                    if DnsName::try_from(host.clone()).is_err() {
                         // FIXME: https://github.com/rustls/rustls/issues/184
                         // If self.host is neither an IP address nor a valid DNS
                         // name, the hacks below won't make it valid anyways.
                         let host = format!("{}.host-for-ip.edgedb.net", host);
                         // for ipv6addr
-                        let host = host.replace(":", "-").replace("%", "-");
-                        if host.starts_with("-") {
+                        let host = host.replace([':', '%'], "-");
+                        if host.starts_with('-') {
                             Cow::from(format!("i{}", host))
                         } else {
                             Cow::from(host)
@@ -459,8 +456,7 @@ async fn connect4(cfg: &Config, mut stream: TlsStream)
                     b"pgaddr" => {
                         use crate::server_params::PostgresAddress;
 
-                        let pgaddr: PostgresAddress;
-                        pgaddr = match serde_json::from_slice(&par.value[..]) {
+                        let pgaddr: PostgresAddress = match serde_json::from_slice(&par.value[..]) {
                             Ok(a) => a,
                             Err(e) => {
                                 log::warn!("Can't decode param {:?}: {}",
@@ -515,17 +511,17 @@ async fn scram(
     use edgedb_protocol::client_message::SaslInitialResponse;
     use edgedb_protocol::client_message::SaslResponse;
 
-    let scram = ScramClient::new(&user, &password, None);
+    let scram = ScramClient::new(user, password, None);
 
     let (scram, first) = scram.client_first();
-    send_messages(stream, out_buf, &proto, &[
+    send_messages(stream, out_buf, proto, &[
         ClientMessage::AuthenticationSaslInitialResponse(
             SaslInitialResponse {
             method: "SCRAM-SHA-256".into(),
             data: Bytes::copy_from_slice(first.as_bytes()),
         }),
     ]).await?;
-    let msg = wait_message(stream, in_buf, &proto).await?;
+    let msg = wait_message(stream, in_buf, proto).await?;
     let data = match msg {
         ServerMessage::Authentication(
             Authentication::SaslContinue { data }
@@ -541,16 +537,16 @@ async fn scram(
     let data = str::from_utf8(&data[..])
         .map_err(|e| ProtocolError::with_source(e).context(
             "invalid utf-8 in SCRAM-SHA-256 auth"))?;
-    let scram = scram.handle_server_first(&data)
+    let scram = scram.handle_server_first(data)
         .map_err(AuthenticationError::with_source)?;
     let (scram, data) = scram.client_final();
-    send_messages(stream, out_buf, &proto, &[
+    send_messages(stream, out_buf, proto, &[
         ClientMessage::AuthenticationSaslResponse(
             SaslResponse {
                 data: Bytes::copy_from_slice(data.as_bytes()),
             }),
     ]).await?;
-    let msg = wait_message(stream, in_buf, &proto).await?;
+    let msg = wait_message(stream, in_buf, proto).await?;
     let data = match msg {
         ServerMessage::Authentication(Authentication::SaslFinal { data })
         => data,
@@ -565,11 +561,11 @@ async fn scram(
     let data = str::from_utf8(&data[..])
         .map_err(|_| ProtocolError::with_message(
             "invalid utf-8 in SCRAM-SHA-256 auth"))?;
-    scram.handle_server_final(&data)
+    scram.handle_server_final(data)
         .map_err(|e| AuthenticationError::with_message(format!(
             "Authentication error: {}", e)))?;
     loop {
-        let msg = wait_message(stream, in_buf, &proto).await?;
+        let msg = wait_message(stream, in_buf, proto).await?;
         match msg {
             ServerMessage::Authentication(Authentication::Ok) => break,
             ServerMessage::ErrorResponse(ErrorResponse {
@@ -732,7 +728,7 @@ async fn _wait_message<'x>(stream: &mut (impl AsyncRead + Unpin),
     log::debug!(target: "edgedb::incoming::frame",
                 "Frame Contents: {:#?}", result);
 
-    return Ok(result)
+    Ok(result)
 }
 
 fn connect_sleep() -> Duration {
@@ -753,9 +749,10 @@ async fn connect_timeout<F, T>(cfg: &Config, f: F) -> Result<T, Error>
 }
 
 fn is_temporary(e: &Error) -> bool {
-    use io::ErrorKind::{ConnectionRefused, TimedOut, NotFound};
-    use io::ErrorKind::{ConnectionAborted, ConnectionReset, UnexpectedEof};
-    use io::ErrorKind::{AddrNotAvailable};
+    use io::ErrorKind::{
+        AddrNotAvailable, ConnectionAborted, ConnectionRefused, ConnectionReset, NotFound,
+        TimedOut, UnexpectedEof,
+    };
 
     if e.is::<ClientConnectionFailedTemporarilyError>() {
         return true;
@@ -780,7 +777,7 @@ fn is_temporary(e: &Error) -> bool {
             }
         }
     }
-    return false;
+    false
 }
 
 fn tls_fail(e: anyhow::Error) -> Error {

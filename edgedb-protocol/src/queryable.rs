@@ -12,21 +12,14 @@ use crate::descriptors::{Descriptor, TypePos};
 
 
 #[non_exhaustive]
+#[derive(Default)]
 pub struct Decoder {
     pub has_implicit_id: bool,
     pub has_implicit_tid: bool,
     pub has_implicit_tname: bool,
 }
 
-impl Default for Decoder {
-    fn default() -> Decoder {
-        Decoder {
-            has_implicit_id: false,
-            has_implicit_tid: false,
-            has_implicit_tname: false,
-        }
-    }
-}
+
 
 pub trait Queryable: Sized {
     fn decode(decoder: &Decoder, buf: &[u8])

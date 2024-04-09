@@ -6,8 +6,8 @@ use std::env::args;
 fn find_tag<'x>(template: &'x str, tag: &str) -> (usize, usize, &'x str) {
     let tag_line = format!("// <{}>\n", tag);
     let pos = template.find(&tag_line)
-        .expect(&format!("missing tag <{}>", tag));
-    let indent = template[..pos].rfind("\n").unwrap_or(0) + 1;
+        .unwrap_or_else(|| panic!("missing tag <{}>", tag));
+    let indent = template[..pos].rfind('\n').unwrap_or(0) + 1;
     (pos, pos + tag_line.len(), &template[indent..pos])
 }
 
@@ -15,9 +15,9 @@ fn find_macro<'x>(template: &'x str, name: &str) -> &'x str {
     let macro_line = format!("macro_rules! {} {{", name);
     let pos = template.find(&macro_line)
         .map(|pos| pos + macro_line.len())
-        .expect(&format!("missing macro {}", name));
+        .unwrap_or_else(|| panic!("missing macro {}", name));
     let body = template[pos..]
-        .find("{").map(|x| pos + x + 1)
+        .find('{').map(|x| pos + x + 1)
         .and_then(|open| {
             let mut level = 0;
             for (idx, c) in template[open..].char_indices() {
@@ -32,11 +32,11 @@ fn find_macro<'x>(template: &'x str, name: &str) -> &'x str {
         })
         .map(|(begin, end)| template[begin..end].trim())
         .expect("invalid macro");
-    return body;
+    body
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let filename = args().skip(1).next().expect("single argument");
+    let filename = args().nth(1).expect("single argument");
     let mut all_errors = Vec::new();
     let mut all_tags = BTreeSet::<&str>::new();
     let data = fs::read_to_string(filename)?;
@@ -49,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let code = u32::from_str_radix(
             &parts.next().expect("code always specified")
             .strip_prefix("0x").expect("code contains 0x")
-            .replace("_", ""),
+            .replace('_', ""),
             16
         ).expect("code is valid hex");
         let name = parts.next().expect("name always specified");

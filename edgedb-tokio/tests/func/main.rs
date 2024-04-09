@@ -1,7 +1,7 @@
 #[cfg(not(windows))]
 mod server;
 
-#[cfg(all(not(windows), features="unstable"))]
+#[cfg(all(not(windows), feature="unstable"))]
 mod raw;
 
 #[cfg(not(windows))]

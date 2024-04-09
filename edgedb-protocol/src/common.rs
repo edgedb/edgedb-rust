@@ -77,7 +77,7 @@ impl RawTypedesc {
         }
     }
     pub fn decode(&self) -> Result<Typedesc, DecodeError> {
-        let ref mut cur = Input::new(
+        let cur = &mut Input::new(
             self.proto.clone(),
             self.data.clone(),
         );
@@ -134,6 +134,6 @@ impl CompilationOptions {
             cflags |= CompilationFlags::INJECT_OUTPUT_TYPE_IDS;
         }
         // TODO(tailhook) object ids
-        return cflags;
+        cflags
     }
 }

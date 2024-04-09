@@ -51,7 +51,7 @@ impl<T: Queryable> QueryResult for T {
     fn decode(decoder: &mut Decoder, msg: &Bytes)
         -> Result<Self, Error>
     {
-        Queryable::decode(&decoder, msg)
+        Queryable::decode(decoder, msg)
             .map_err(ProtocolEncodingError::with_source)
     }
 }

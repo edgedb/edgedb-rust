@@ -140,7 +140,7 @@ mod inner {
             ensure!(self.raw.len() >= position, self.underflow());
             let result = &self.raw[..position];
             self.raw.advance(position);
-            ensure!(self.count > 0 || self.raw.len() == 0, errors::ExtraData);
+            ensure!(self.count > 0 || self.raw.is_empty(), errors::ExtraData);
             Ok(result)
         }
 
@@ -164,7 +164,7 @@ mod inner {
         pub fn read_array_like_element(&mut self) -> Result<&'t [u8], DecodeError> {
             ensure!(self.raw.remaining() >= 4, self.underflow());
             let len = self.raw.get_i32() as usize;
-            Ok(self.read_element(len)?)
+            self.read_element(len)
         }
 
         pub fn read_tuple_like_header(mut buf:&'t [u8]) -> Result<Self, DecodeError> {
