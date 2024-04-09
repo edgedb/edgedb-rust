@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::default::Default;
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
@@ -8,10 +7,6 @@ use rand::{thread_rng, Rng};
 use once_cell::sync::Lazy;
 
 use crate::errors::{Error, IdleSessionTimeoutError};
-
-trait Assert: Send + Sync + 'static {}
-impl Assert for RetryOptions {}
-impl Assert for TransactionOptions {}
 
 
 /// Single immediate retry on idle is fine
@@ -157,7 +152,7 @@ impl RetryOptions {
         use RetryCondition::*;
 
         if err.is::<IdleSessionTimeoutError>() {
-            return &*IDLE_TIMEOUT_RULE;
+            &IDLE_TIMEOUT_RULE
         } else if err.is::<TransactionConflictError>() {
             self.0.overrides.get(&TransactionConflict)
                 .unwrap_or(&self.0.default)
@@ -165,7 +160,7 @@ impl RetryOptions {
             self.0.overrides.get(&NetworkError).unwrap_or(&self.0.default)
         } else {
             &self.0.default
-       }
+        }
     }
 }
 

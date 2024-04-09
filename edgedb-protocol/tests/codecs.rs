@@ -221,7 +221,7 @@ fn uuid() -> Result<(), Box<dyn Error>> {
         ]
     )?;
     encoding_eq!(&codec, b"I(\xcc\x1e e\x11\xea\x88H{S\xa6\xad\xb3\x83",
-               Value::Uuid("4928cc1e-2065-11ea-8848-7b53a6adb383".parse::<Uuid>()?.into()));
+               Value::Uuid("4928cc1e-2065-11ea-8848-7b53a6adb383".parse::<Uuid>()?));
     Ok(())
 }
 
@@ -237,10 +237,10 @@ fn duration() -> Result<(), Box<dyn Error>> {
 
     // SELECT <datetime>'2019-11-29T00:00:00Z'-<datetime>'2000-01-01T00:00:00Z'
     encoding_eq!(&codec, b"\0\x02;o\xad\xff\0\0\0\0\0\0\0\0\0\0",
-               Value::Duration(Duration::from_micros(7272*86400*1000_000)));
+               Value::Duration(Duration::from_micros(7272*86400*1_000_000)));
     // SELECT <datetime>'2019-11-29T00:00:00Z'-<datetime>'2019-11-28T01:00:00Z'
     encoding_eq!(&codec, b"\0\0\0\x13GC\xbc\0\0\0\0\0\0\0\0\0",
-               Value::Duration(Duration::from_micros(82800*1000_000)));
+               Value::Duration(Duration::from_micros(82800*1_000_000)));
     encoding_eq!(&codec, b"\xff\xff\xff\xff\xd3,\xba\xe0\0\0\0\0\0\0\0\0",
                Value::Duration(Duration::from_micros(-752043296)));
 
@@ -374,7 +374,7 @@ fn input_codec() -> Result<(), Box<dyn Error>> {
     };
     let out_desc = sdd.parse()?;
     let codec = build_codec(Some(TypePos(16)),
-        &out_desc.descriptors(),
+        out_desc.descriptors(),
     )?;
     encoding_eq!(&codec,
         b"\0\0\0\x03\0\0\0\0\0\0\0\x07default\0\0\0\x02\0\0\0\x1c\

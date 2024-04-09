@@ -1,5 +1,4 @@
 //! Credentials file handling routines
-use std::default::Default;
 use std::fmt;
 use std::str::FromStr;
 
@@ -38,6 +37,7 @@ pub struct Credentials {
     pub user: String,
     pub password: Option<String>,
     pub database: Option<String>,
+    pub branch: Option<String>,
     pub tls_ca: Option<String>,
     pub tls_security: TlsSecurity,
     pub(crate) file_outdated: bool,
@@ -55,6 +55,8 @@ struct CredentialsCompat {
     password: Option<String>,
     #[serde(default, skip_serializing_if="Option::is_none")]
     database: Option<String>,
+    #[serde(default, skip_serializing_if="Option::is_none")]
+    branch: Option<String>,
     #[serde(default, skip_serializing_if="Option::is_none")]
     tls_cert_data: Option<String>,  // deprecated
     #[serde(default, skip_serializing_if="Option::is_none")]
@@ -114,6 +116,7 @@ impl Default for Credentials {
             user: "edgedb".into(),
             password: None,
             database: None,
+            branch: None,
             tls_ca: None,
             tls_security: TlsSecurity::Default,
             file_outdated: false,
@@ -133,6 +136,7 @@ impl Serialize for Credentials {
             user: self.user.clone(),
             password: self.password.clone(),
             database: self.database.clone(),
+            branch: self.branch.clone(),
             tls_ca: self.tls_ca.clone(),
             tls_cert_data: self.tls_ca.clone(),
             tls_security: Some(self.tls_security),
@@ -144,7 +148,7 @@ impl Serialize for Credentials {
             },
         };
 
-        return CredentialsCompat::serialize(&creds, serializer);
+        CredentialsCompat::serialize(&creds, serializer)
     }
 }
 
@@ -192,6 +196,7 @@ impl<'de> Deserialize<'de> for Credentials {
                 user: creds.user,
                 password: creds.password,
                 database: creds.database,
+                branch: creds.branch,
                 tls_ca: creds.tls_ca.or(creds.tls_cert_data.clone()),
                 tls_security: creds.tls_security.unwrap_or(
                     match creds.tls_verify_hostname {

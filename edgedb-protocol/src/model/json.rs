@@ -37,8 +37,8 @@ impl std::ops::Deref for Json {
     }
 }
 
-impl Into<String> for Json {
-    fn into(self) -> String {
-        self.0
+impl From<Json> for String {
+    fn from(val: Json) -> Self {
+        val.0
     }
 }

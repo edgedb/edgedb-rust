@@ -229,7 +229,7 @@ impl QueryArg for Value {
                 } else {
                     let members = {
                         let mut members = members
-                        .into_iter()
+                        .iter()
                         .map(|c| format!("'{c}'"))
                         .collect::<Vec<_>>();
                         members.sort_unstable();
@@ -253,7 +253,7 @@ impl QueryArgs for Value {
     fn encode(&self, enc: &mut Encoder) -> Result<(), Error> {
         let codec = enc.ctx.build_codec()?;
         codec
-            .encode(&mut enc.buf, self)
+            .encode(enc.buf, self)
             .map_err(ClientEncodingError::with_source)
     }
 }

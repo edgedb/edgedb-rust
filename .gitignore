@@ -4,3 +4,11 @@
 /edgeql_python.cpython-*.so
 __pycache__
 /Cargo.lock
+/.idea
+/.vscode
+
+# nix stuff
+/flake.nix
+/flake.lock
+/.envrc
+/.direnv

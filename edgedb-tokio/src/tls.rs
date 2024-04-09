@@ -26,7 +26,7 @@ pub struct NoHostnameVerifier {
 impl NoHostnameVerifier {
     pub fn new(roots: Arc<rustls::RootCertStore>) -> Self {
         NoHostnameVerifier {
-            roots: roots,
+            roots,
             supported: ring::default_provider().signature_verification_algorithms,
         }
     }

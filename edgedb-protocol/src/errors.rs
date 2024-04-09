@@ -2,7 +2,6 @@ use std::str;
 use std::error::Error;
 
 use snafu::{Snafu, Backtrace, IntoError};
-use uuid;
 
 use crate::value::Value;
 
