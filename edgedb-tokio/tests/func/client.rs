@@ -1,4 +1,4 @@
-use edgedb_protocol::{eargs, value::Value};
+use edgedb_protocol::eargs;
 use edgedb_tokio::Client;
 use edgedb_errors::NoDataError;
 use futures_util::stream::{self, StreamExt};
@@ -48,12 +48,12 @@ async fn simple() -> anyhow::Result<()> {
             std::array_join(<array<str>>$msg1, ' ')
             ++ (<optional str>$question ?? ' the ultimate question of life')
             ++ ': '
-            ++ <str><int>$answer
+            ++ <str><int64>$answer
         );",
         &eargs! {
             "msg1" => vec!["the".to_string(), "answer".to_string(), "to".to_string()],
             "question" => None::<String>,
-            "answer" => 42,
+            "answer" => 42 as i64,
         }
     ).await.unwrap();
     assert_eq!(value.as_str(), "the answer to the ultimate question of life: 42");
