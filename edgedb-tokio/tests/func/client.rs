@@ -1,3 +1,4 @@
+use edgedb_protocol::{eargs, value::Value};
 use edgedb_tokio::Client;
 use edgedb_errors::NoDataError;
 use futures_util::stream::{self, StreamExt};
@@ -41,6 +42,21 @@ async fn simple() -> anyhow::Result<()> {
 
     client.execute("SELECT 1+1", &()).await?;
     client.execute("START MIGRATION TO {}; ABORT MIGRATION", &()).await?;
+
+    let value = client.query_required_single::<String, _>(
+        "select (
+            std::array_join(<array<str>>$msg1, ' ')
+            ++ (<optional str>$question ?? ' the ultimate question of life')
+            ++ ': '
+            ++ <str><int>$answer
+        );",
+        &eargs! {
+            "msg1" => vec!["the".to_string(), "answer".to_string(), "to".to_string()],
+            "question" => None::<String>,
+            "answer" => 42,
+        }
+    ).await.unwrap();
+    assert_eq!(value.as_str(), "the answer to the ultimate question of life: 42");
 
     Ok(())
 }
