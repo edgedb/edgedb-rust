@@ -572,10 +572,14 @@ impl From<UserValue> for Option<Value> {
 use std::collections::HashMap;
 impl QueryArgs for HashMap<&str, UserValue> {
     fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
+        if self.len() == 0 && encoder.ctx.root_pos.is_none() {
+            return Ok(());
+        }
+
         let target_shape = {
             let root_pos = encoder.ctx.root_pos.ok_or_else(|| {
                 let msg = format!(
-                    "provided {} positional arguments, but no arguments expected by the server",
+                    "provided {} positional arguments, but no arguments were expected by the server",
                     self.len()
                 );
                 ClientEncodingError::with_message(msg)
