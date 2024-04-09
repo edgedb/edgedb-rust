@@ -11,9 +11,9 @@ use edgedb_protocol::client_message::{ClientMessage, ClientHandshake};
 use edgedb_protocol::client_message::{ExecuteScript, Execute0, Execute1};
 use edgedb_protocol::client_message::{Parse, Prepare, IoFormat, Cardinality};
 use edgedb_protocol::client_message::{DescribeStatement, DescribeAspect};
-use edgedb_protocol::client_message::{SaslInitialResponse};
-use edgedb_protocol::client_message::{SaslResponse};
-use edgedb_protocol::client_message::{OptimisticExecute};
+use edgedb_protocol::client_message::SaslInitialResponse;
+use edgedb_protocol::client_message::SaslResponse;
+use edgedb_protocol::client_message::OptimisticExecute;
 use edgedb_protocol::client_message::Restore;
 
 mod base;
@@ -149,7 +149,7 @@ fn optimistic_execute() -> Result<(), Box<dyn Error>> {
             input_typedesc_id: Uuid::from_u128(0xFF),
             output_typedesc_id: Uuid::from_u128(0x0),
             arguments: Bytes::new(),
-        }),  b"O\0\0\06\0\0bo\0\0\0\x06COMMIT\
+        }),  b"O\0\0\x006\0\0bo\0\0\0\x06COMMIT\
                \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\
                \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
     Ok(())

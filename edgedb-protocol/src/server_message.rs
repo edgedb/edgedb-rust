@@ -269,18 +269,18 @@ impl StateDataDescription {
 
 impl ParameterStatus {
     pub fn parse_system_config(self) -> Result<(Typedesc, Bytes), DecodeError> {
-        let ref mut cur = Input::new(
+        let cur = &mut Input::new(
             self.proto.clone(),
             self.value,
         );
         let typedesc_data = Bytes::decode(cur)?;
         let data = Bytes::decode(cur)?;
 
-        let ref mut typedesc_buf = Input::new(
+        let typedesc_buf = &mut Input::new(
             self.proto,
             typedesc_data,
         );
-        let typedesc_id = Uuid::decode(typedesc_buf)?.into();
+        let typedesc_id = Uuid::decode(typedesc_buf)?;
         let typedesc = Typedesc::decode_with_id(typedesc_id, typedesc_buf)?;
         Ok((typedesc, data))
     }
@@ -320,7 +320,7 @@ impl ServerMessage {
     /// in the buffer or if extra data is present.
     pub fn decode(buf: &mut Input) -> Result<ServerMessage, DecodeError> {
         use self::ServerMessage as M;
-        let ref mut data = buf.slice(5..);
+        let data = &mut buf.slice(5..);
         let result = match buf[0] {
             0x76 => ServerHandshake::decode(data).map(M::ServerHandshake)?,
             0x45 => ErrorResponse::decode(data).map(M::ErrorResponse)?,
@@ -442,7 +442,7 @@ impl Decode for ErrorResponse {
             ensure!(buf.remaining() >= 4, errors::Underflow);
             attributes.insert(buf.get_u16(), Bytes::decode(buf)?);
         }
-        return Ok(ErrorResponse {
+        Ok(ErrorResponse {
             severity, code, message, attributes,
         })
     }
@@ -481,7 +481,7 @@ impl Decode for LogMessage {
             ensure!(buf.remaining() >= 4, errors::Underflow);
             attributes.insert(buf.get_u16(), Bytes::decode(buf)?);
         }
-        return Ok(LogMessage {
+        Ok(LogMessage {
             severity, code, text, attributes,
         })
     }
@@ -616,9 +616,9 @@ impl MessageSeverity {
             _ => Unknown(code),
         }
     }
-    fn to_u8(&self) -> u8 {
+    fn to_u8(self) -> u8 {
         use MessageSeverity::*;
-        match *self {
+        match self {
             Debug => 20,
             Info => 40,
             Notice => 60,
@@ -946,7 +946,7 @@ impl Decode for Data {
         for _ in 0..num_chunks {
             data.push(Bytes::decode(buf)?);
         }
-        return Ok(Data { data })
+        Ok(Data { data })
     }
 }
 
@@ -979,7 +979,7 @@ impl Decode for RestoreReady {
         }
         ensure!(buf.remaining() >= 2, errors::Underflow);
         let jobs = buf.get_u16();
-        return Ok(RestoreReady { jobs, headers })
+        Ok(RestoreReady { jobs, headers })
     }
 }
 
@@ -994,7 +994,7 @@ impl Encode for RawPacket {
 
 impl Decode for RawPacket {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
-        return Ok(RawPacket { data: buf.copy_to_bytes(buf.remaining()) })
+        Ok(RawPacket { data: buf.copy_to_bytes(buf.remaining()) })
     }
 }
 

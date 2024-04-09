@@ -738,7 +738,7 @@ impl Decode for Restore {
         let jobs = buf.get_u16();
 
         let data = buf.copy_to_bytes(buf.remaining());
-        return Ok(Restore { jobs, headers, data })
+        Ok(Restore { jobs, headers, data })
     }
 }
 
@@ -754,7 +754,7 @@ impl Encode for RestoreBlock {
 impl Decode for RestoreBlock {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         let data = buf.copy_to_bytes(buf.remaining());
-        return Ok(RestoreBlock { data })
+        Ok(RestoreBlock { data })
     }
 }
 

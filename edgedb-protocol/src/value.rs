@@ -1,8 +1,6 @@
 /*!
 Contains the [Value](crate::value::Value) enum.
 */
-use std::iter::IntoIterator;
-
 use bytes::Bytes;
 
 use crate::codec::{NamedTupleShape, ObjectShape, ShapeElement};
@@ -154,7 +152,7 @@ impl PartialEq for SparseObject {
             }
         }
         let other_num = other.fields.iter().filter(|e| e.is_some()).count();
-        return num == other_num;
+        num == other_num
     }
 }
 

@@ -1,11 +1,10 @@
 //! Connection state modification utilities
 
 use std::collections::{BTreeMap, HashMap};
-use std::default::Default;
 use std::sync::Arc;
 
 use arc_swap::ArcSwapOption;
-use edgedb_protocol::client_message::{State as EncodedState};
+use edgedb_protocol::client_message::State as EncodedState;
 use edgedb_protocol::descriptors::{RawTypedesc,StateBorrow};
 use edgedb_protocol::query_arg::QueryArg;
 use edgedb_protocol::value::Value;
@@ -403,7 +402,7 @@ impl PoolState {
             globals: &self.raw_state.globals,
         })?;
         self.cache.store(Some(Arc::new(result.clone())));
-        return Ok(result);
+        Ok(result)
     }
 }
 
@@ -416,10 +415,9 @@ impl SealedState for &PoolState {
 }
 impl State for &PoolState {}
 impl SealedState for Arc<PoolState> {
-    fn encode(&self, desc: &RawTypedesc)
-        -> Result<EncodedState, Error>
+    fn encode(&self, desc: &RawTypedesc) -> Result<EncodedState, Error>
     {
-        (&**self).encode(desc)
+        PoolState::encode(self, desc)
     }
 }
 impl State for Arc<PoolState> {}
@@ -433,9 +431,9 @@ impl SealedState for EncodedState {
         {
             return Ok((*self).clone());
         }
-        return Err(ClientError::with_message(
+        Err(ClientError::with_message(
             "state doesn't match state descriptor"
-        ));
+        ))
     }
 }
 impl State for EncodedState {}
@@ -443,7 +441,7 @@ impl SealedState for Arc<EncodedState> {
     fn encode(&self, desc: &RawTypedesc)
         -> Result<EncodedState, Error>
     {
-        (&**self).encode(desc)
+        (**self).encode(desc)
     }
 }
 impl State for Arc<EncodedState> {}

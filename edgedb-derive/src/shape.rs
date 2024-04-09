@@ -80,7 +80,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
         }
     });
     let field_decoders = fields.iter().map(|field| {
-        let ref fieldname = field.name;
+        let fieldname = &field.name;
         if field.attrs.json {
             quote!{
                 let #fieldname: ::edgedb_protocol::model::Json =
@@ -99,7 +99,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
         }
     }).collect::<TokenStream>();
     let field_checks = fields.iter().map(|field| {
-        let ref name_str = field.str_name;
+        let name_str = &field.str_name;
         let mut result = quote!{
             let el = &shape.elements[idx];
             if(el.name != #name_str) {
@@ -107,7 +107,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
             }
             idx += 1;
         };
-        let ref fieldtype = field.ty;
+        let fieldtype = &field.ty;
         if field.attrs.json {
             result.extend(quote!{
                 <::edgedb_protocol::model::Json as

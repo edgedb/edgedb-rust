@@ -199,7 +199,7 @@ impl ScalarArg for bool {
 impl<'t> RawCodec<'t> for i16 {
     fn decode(mut buf: &[u8]) -> Result<Self, DecodeError> {
         ensure_exact_size(buf, size_of::<Self>())?;
-        return Ok(buf.get_i16());
+        Ok(buf.get_i16())
     }
 }
 
@@ -224,7 +224,7 @@ impl ScalarArg for i16 {
 impl<'t> RawCodec<'t> for i32 {
     fn decode(mut buf: &[u8]) -> Result<Self, DecodeError> {
         ensure_exact_size(buf, size_of::<Self>())?;
-        return Ok(buf.get_i32());
+        Ok(buf.get_i32())
     }
 }
 
@@ -249,14 +249,14 @@ impl ScalarArg for i32 {
 impl<'t> RawCodec<'t> for i64 {
     fn decode(mut buf: &[u8]) -> Result<Self, DecodeError> {
         ensure_exact_size(buf, size_of::<Self>())?;
-        return Ok(buf.get_i64());
+        Ok(buf.get_i64())
     }
 }
 
 impl<'t> RawCodec<'t> for ConfigMemory {
     fn decode(mut buf: &[u8]) -> Result<Self, DecodeError> {
         ensure_exact_size(buf, size_of::<Self>())?;
-        return Ok(ConfigMemory(buf.get_i64()));
+        Ok(ConfigMemory(buf.get_i64()))
     }
 }
 
@@ -281,7 +281,7 @@ impl ScalarArg for i64 {
 impl<'t> RawCodec<'t> for f32 {
     fn decode(mut buf: &[u8]) -> Result<Self, DecodeError> {
         ensure_exact_size(buf, size_of::<Self>())?;
-        return Ok(buf.get_f32());
+        Ok(buf.get_f32())
     }
 }
 
@@ -306,7 +306,7 @@ impl ScalarArg for f32 {
 impl<'t> RawCodec<'t> for f64 {
     fn decode(mut buf: &[u8]) -> Result<Self, DecodeError> {
         ensure_exact_size(buf, size_of::<Self>())?;
-        return Ok(buf.get_f64());
+        Ok(buf.get_f64())
     }
 }
 
@@ -430,7 +430,7 @@ impl ScalarArg for Decimal {
         -> Result<(), Error>
     {
         codec::encode_decimal(encoder.buf, self)
-        .map_err(|e| ClientEncodingError::with_source(e))
+        .map_err(ClientEncodingError::with_source)
     }
     fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
         -> Result<(), Error>
@@ -504,7 +504,7 @@ impl ScalarArg for BigInt {
         -> Result<(), Error>
     {
         codec::encode_big_int(encoder.buf, self)
-        .map_err(|e| ClientEncodingError::with_source(e))
+        .map_err(ClientEncodingError::with_source)
     }
     fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
         -> Result<(), Error>
@@ -563,7 +563,7 @@ impl ScalarArg for Duration {
         -> Result<(), Error>
     {
         codec::encode_duration(encoder.buf, self)
-            .map_err(|e| ClientEncodingError::with_source(e))
+            .map_err(ClientEncodingError::with_source)
     }
     fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
         -> Result<(), Error>
@@ -601,7 +601,7 @@ impl ScalarArg for RelativeDuration {
         -> Result<(), Error>
     {
         codec::encode_relative_duration(encoder.buf, self)
-            .map_err(|e| ClientEncodingError::with_source(e))
+            .map_err(ClientEncodingError::with_source)
     }
     fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
         -> Result<(), Error>
@@ -628,7 +628,7 @@ impl ScalarArg for SystemTime {
             .map_err(|e| ClientEncodingError::with_source(e)
                 .context("cannot serialize SystemTime value"))?;
         codec::encode_datetime(encoder.buf, &val)
-            .map_err(|e| ClientEncodingError::with_source(e))
+            .map_err(ClientEncodingError::with_source)
     }
     fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
         -> Result<(), Error>
@@ -646,8 +646,8 @@ impl ScalarArg for SystemTime {
 impl<'t> RawCodec<'t> for Datetime {
     fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
         let micros = i64::decode(buf)?;
-        Ok(Datetime::from_postgres_micros(micros)
-            .map_err(|_| errors::InvalidDate.build())?)
+        Datetime::from_postgres_micros(micros)
+            .map_err(|_| errors::InvalidDate.build())
     }
 }
 
@@ -656,7 +656,7 @@ impl ScalarArg for Datetime {
         -> Result<(), Error>
     {
         codec::encode_datetime(encoder.buf, self)
-            .map_err(|e| ClientEncodingError::with_source(e))
+            .map_err(ClientEncodingError::with_source)
     }
     fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
         -> Result<(), Error>
@@ -681,7 +681,7 @@ impl ScalarArg for LocalDatetime {
         -> Result<(), Error>
     {
         codec::encode_local_datetime(encoder.buf, self)
-            .map_err(|e| ClientEncodingError::with_source(e))
+            .map_err(ClientEncodingError::with_source)
     }
     fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
         -> Result<(), Error>
@@ -705,7 +705,7 @@ impl ScalarArg for LocalDate {
         -> Result<(), Error>
     {
         codec::encode_local_date(encoder.buf, self)
-            .map_err(|e| ClientEncodingError::with_source(e))
+            .map_err(ClientEncodingError::with_source)
     }
     fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
         -> Result<(), Error>
@@ -720,7 +720,7 @@ impl ScalarArg for LocalDate {
 impl<'t> RawCodec<'t> for LocalTime {
     fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
         let micros = i64::decode(buf)?;
-        ensure!(micros >= 0 && micros < 86_400 * 1_000_000, errors::InvalidDate);
+        ensure!((0..86_400 * 1_000_000).contains(&micros), errors::InvalidDate);
         Ok(LocalTime { micros: micros as u64 })
     }
 }
@@ -730,7 +730,7 @@ impl ScalarArg for DateDuration {
         -> Result<(), Error>
     {
         codec::encode_date_duration(encoder.buf, self)
-            .map_err(|e| ClientEncodingError::with_source(e))
+            .map_err(ClientEncodingError::with_source)
     }
     fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
         -> Result<(), Error>
@@ -747,7 +747,7 @@ impl ScalarArg for LocalTime {
         -> Result<(), Error>
     {
         codec::encode_local_time(encoder.buf, self)
-            .map_err(|e| ClientEncodingError::with_source(e))
+            .map_err(ClientEncodingError::with_source)
     }
     fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
         -> Result<(), Error>
@@ -772,13 +772,10 @@ impl ScalarArg for EnumValue {
         use crate::descriptors::Descriptor::Enumeration;
 
         let desc = ctx.get(pos)?;
-        match desc {
-            Enumeration(_) => {
-                // Should we check enum members?
-                // Should we override `QueryArg` check descriptor for that?
-                // Or maybe implement just `QueryArg` for enum?
-            }
-            _ => {}
+        if let Enumeration(_) = desc {
+            // Should we check enum members?
+            // Should we override `QueryArg` check descriptor for that?
+            // Or maybe implement just `QueryArg` for enum?
         }
         Err(ctx.wrong_type(desc, "enum"))
     }

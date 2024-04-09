@@ -198,11 +198,11 @@ pub async fn search_dir(base: &Path) -> Result<Option<&Path>, Error>
 {
     let mut path = base;
     if fs::metadata(path.join("edgedb.toml")).await.is_ok() {
-        return Ok(Some(path.into()));
+        return Ok(Some(path));
     }
     while let Some(parent) = path.parent() {
         if fs::metadata(parent.join("edgedb.toml")).await.is_ok() {
-            return Ok(Some(parent.into()));
+            return Ok(Some(parent));
         }
         path = parent;
     }
@@ -210,7 +210,7 @@ pub async fn search_dir(base: &Path) -> Result<Option<&Path>, Error>
 }
 
 #[cfg(unix)]
-fn path_bytes<'x>(path: &'x Path) -> &'x [u8] {
+fn path_bytes(path: &Path) -> &'_ [u8] {
     use std::os::unix::ffi::OsStrExt;
     path.as_os_str().as_bytes()
 }
@@ -230,7 +230,7 @@ fn stash_name(path: &Path) -> OsString {
     let mut base = base.to_os_string();
     base.push("-");
     base.push(&hash);
-    return base;
+    base
 }
 
 fn config_dir() -> Result<PathBuf, Error> {
@@ -293,7 +293,7 @@ fn is_valid_local_instance_name(name: &str) -> bool {
             was_dash = false;
         }
     }
-    return !was_dash;
+    !was_dash
 }
 
 fn is_valid_cloud_name(name: &str) -> bool {
@@ -321,7 +321,7 @@ fn is_valid_cloud_name(name: &str) -> bool {
             was_dash = false;
         }
     }
-    return !was_dash;
+    !was_dash
 }
 
 impl fmt::Display for InstanceName {
@@ -396,15 +396,21 @@ impl fmt::Display for DisplayAddr<'_> {
 
 impl<'a> DsnHelper<'a> {
     fn from_url(url: &'a url::Url) -> Result<Self, Error> {
+        use std::collections::hash_map::Entry::*;
+        
         let admin = url.scheme() == "edgedbadmin";
         let mut query = HashMap::new();
         for (k, v) in url.query_pairs() {
-            if query.contains_key(&k) {
-                return Err(ClientError::with_message(format!(
-                    "{k:?} is defined multiple times in the DSN query"
-                )).context("invalid DSN"));
-            } else {
-                query.insert(k, v);
+            match query.entry(k) {
+                Vacant(e) => {
+                    e.insert(v);
+                },
+                Occupied(e) => {
+                    return Err(ClientError::with_message(format!(
+                        "{:?} is defined multiple times in the DSN query",
+                        e.key()
+                    )).context("invalid DSN"));
+                }
             }
         }
         Ok(Self { url, admin, query })
@@ -498,7 +504,7 @@ impl<'a> DsnHelper<'a> {
     }
 
     async fn retrieve_tls_server_name(&mut self) -> Result<Option<String>, Error> {
-        self.retrieve_value("tls_server_name", None, |s| Ok(s)).await
+        self.retrieve_value("tls_server_name", None, Ok).await
     }
 
     async fn retrieve_port(&mut self) -> Result<Option<u16>, Error> {
@@ -522,11 +528,11 @@ impl<'a> DsnHelper<'a> {
 
     async fn retrieve_password(&mut self) -> Result<Option<String>, Error> {
         let v = self.url.password().map(|s| s.to_owned());
-        self.retrieve_value("password", v, |s| Ok(s)).await
+        self.retrieve_value("password", v, Ok).await
     }
 
     async fn retrieve_database(&mut self) -> Result<Option<String>, Error> {
-        let v = self.url.path().strip_prefix("/").and_then(|s| {
+        let v = self.url.path().strip_prefix('/').and_then(|s| {
             if s.is_empty() {
                 None
             } else {
@@ -534,14 +540,14 @@ impl<'a> DsnHelper<'a> {
             }
         });
         self.retrieve_value("database", v, |s| {
-            let s = s.strip_prefix("/").unwrap_or(&s);
+            let s = s.strip_prefix('/').unwrap_or(&s);
             validate_database(&s)?;
             Ok(s.to_owned())
         }).await
     }
 
     async fn retrieve_branch(&mut self) -> Result<Option<String>, Error> {
-        let v = self.url.path().strip_prefix("/").and_then(|s| {
+        let v = self.url.path().strip_prefix('/').and_then(|s| {
             if s.is_empty() {
                 None
             } else {
@@ -549,18 +555,18 @@ impl<'a> DsnHelper<'a> {
             }
         });
         self.retrieve_value("branch", v, |s| {
-            let s = s.strip_prefix("/").unwrap_or(&s);
+            let s = s.strip_prefix('/').unwrap_or(&s);
             validate_branch(&s)?;
             Ok(s.to_owned())
         }).await
     }
 
     async fn retrieve_secret_key(&mut self) -> Result<Option<String>, Error> {
-        self.retrieve_value("secret_key", None, |s| Ok(s)).await
+        self.retrieve_value("secret_key", None, Ok).await
     }
 
     async fn retrieve_tls_ca_file(&mut self) -> Result<Option<String>, Error> {
-        self.retrieve_value("tls_ca_file", None, |s| Ok(s)).await
+        self.retrieve_value("tls_ca_file", None, Ok).await
     }
 
     async fn retrieve_tls_security(&mut self) -> Result<Option<TlsSecurity>, Error> {
@@ -623,8 +629,7 @@ impl Builder {
         -> Result<&mut Self, Error>
     {
         if let Some(cert_data) = &credentials.tls_ca {
-            validate_certs(&cert_data)
-                .context("invalid certificates in `tls_ca`")?;
+            validate_certs(cert_data).context("invalid certificates in `tls_ca`")?;
         }
         self.credentials = Some(credentials.clone());
         Ok(self)
@@ -834,15 +839,15 @@ impl Builder {
                 .or_else(|| creds.map(|c| c.user.clone()))
                 .unwrap_or_else(|| "edgedb".into()),
             password: self.password.clone()
-                .or_else(|| creds.map(|c| c.password.clone()).flatten()),
+                .or_else(|| creds.and_then(|c| c.password.clone())),
             secret_key: self.secret_key.clone(),
             cloud_profile: self.cloud_profile.clone(),
             cloud_certs: None,
             database: self.database.clone()
-                .or_else(|| creds.map(|c| c.database.clone()).flatten())
+                .or_else(|| creds.and_then(|c| c.database.clone()))
                 .unwrap_or_else(|| "edgedb".into()),
             branch: self.branch.clone()
-                .or_else(|| creds.map(|c| c.branch.clone()).flatten())
+                .or_else(|| creds.and_then(|c| c.branch.clone()))
                 .unwrap_or_else(|| "__default__".into()),
             instance_name: None,
             wait: self.wait_until_available.unwrap_or(DEFAULT_WAIT),
@@ -851,7 +856,7 @@ impl Builder {
             extra_dsn_query_args: HashMap::new(),
             creds_file_outdated: false,
             pem_certificates: self.pem_certificates.clone()
-                .or_else(|| creds.map(|c| c.tls_ca.clone()).flatten()),
+                .or_else(|| creds.and_then(|c| c.tls_ca.clone())),
 
             // Pool configuration
             max_concurrency: self.max_concurrency,
@@ -940,9 +945,8 @@ impl Builder {
                     "port argument conflicts with {}", conflict
                 )));
             }
-            match &mut cfg.address {
-                Address::Tcp((_, ref mut portref)) => *portref = *port,
-                _ => {},
+            if let Address::Tcp((_, ref mut portref)) = &mut cfg.address {
+                *portref = *port
             }
         }
         if let Some(unix_path) = &self.unix_path {
@@ -1076,23 +1080,21 @@ impl Builder {
         if let Some(host) = str_env("EDGEDB_HOST", errors) {
             match validate_host(&host) {
                 Ok(_) => {
-                    cfg.address = Address::Tcp((
-                        host.into(),
-                        DEFAULT_PORT,
-                    ));
+                    cfg.address = Address::Tcp((host, DEFAULT_PORT));
                 }
                 Err(e) => errors.push(e.context("EDGEDB_HOST is invalid")),
             }
         }
         if let Some(port_str) = str_env("EDGEDB_PORT", errors) {
             let port = port_str.parse()
-                .map_err(|e| ClientError::with_source(e))
+                .map_err(ClientError::with_source)
                 .and_then(validate_port)
                 .context("EDGEDB_PORT is invalid");
             match port {
-                Ok(port) => match &mut cfg.address {
-                    Address::Tcp((_, ref mut portref)) => *portref = port,
-                    _ => {},
+                Ok(port) => {
+                    if let Address::Tcp((_, ref mut portref)) = &mut cfg.address {
+                        *portref = port
+                    }
                 },
                 Err(e) => {
                     if port_str.starts_with("tcp://") {
@@ -1216,7 +1218,7 @@ impl Builder {
     async fn read_dsn(&self, cfg: &mut ConfigInner, url: &url::Url,
                       errors: &mut Vec<Error>)
     {
-        let mut dsn = match DsnHelper::from_url(&url) {
+        let mut dsn = match DsnHelper::from_url(url) {
             Ok(dsn) => dsn,
             Err(e) => {
                 errors.push(e);
@@ -1506,7 +1508,7 @@ impl Builder {
             .unwrap_or(TlsSecurity::Strict);
         cfg.verifier = cfg.make_verifier(tls_security);
 
-        return (complete, Config(Arc::new(cfg)), errors);
+        (complete, Config(Arc::new(cfg)), errors)
     }
 
 }
@@ -1527,7 +1529,7 @@ fn resolve_unix(path: impl AsRef<Path>, port: u16, admin: bool) -> PathBuf {
         };
         path.as_ref().join(socket_name)
     };
-    return path;
+    path
 }
 
 async fn read_instance(cfg: &mut ConfigInner, name: &InstanceName)
@@ -1547,7 +1549,7 @@ async fn read_instance(cfg: &mut ConfigInner, name: &InstanceName)
                 secret_key.clone()
             } else {
                 let profile = cfg.cloud_profile.as_deref().unwrap_or("default");
-                let path = cloud_config_file(&profile)?;
+                let path = cloud_config_file(profile)?;
                 let data = match fs::read(path).await {
                     Ok(data) => data,
                     Err(e) if e.kind() == io::ErrorKind::NotFound => {
@@ -1574,12 +1576,10 @@ async fn read_instance(cfg: &mut ConfigInner, name: &InstanceName)
                 config.secret_key
             };
             let claims_b64 = secret_key
-                .splitn(3, ".")
-                .skip(1)
-                .next()
+                .split('.').nth(1)
                 .ok_or(ClientError::with_message("Illegal JWT token"))?;
             let claims = base64::engine::general_purpose::URL_SAFE_NO_PAD
-                .decode(&claims_b64)
+                .decode(claims_b64)
                 .map_err(ClientError::with_source)?;
             let claims: Claims = from_slice(&claims)
                 .map_err(ClientError::with_source)?;
@@ -1635,7 +1635,7 @@ fn set_credentials(cfg: &mut ConfigInner, creds: &Credentials)
     -> Result<(), Error>
 {
     if let Some(cert_data) = &creds.tls_ca {
-        validate_certs(&cert_data)
+        validate_certs(cert_data)
             .context("invalid certificates in `tls_ca`")?;
         cfg.pem_certificates = Some(cert_data.into());
     }
@@ -1654,7 +1654,7 @@ fn set_credentials(cfg: &mut ConfigInner, creds: &Credentials)
 
 fn validate_certs(data: &str) -> Result<(), Error> {
     let root_store = tls::read_root_cert_pem(data)
-        .map_err(|e| ClientError::with_source_ref(e))?;
+        .map_err(ClientError::with_source_ref)?;
     if root_store.is_empty() {
         return Err(ClientError::with_message(
                 "PEM data contains no certificate"));
@@ -1667,7 +1667,7 @@ fn validate_host<T: AsRef<str>>(host: T) -> Result<T, Error> {
         return Err(InvalidArgumentError::with_message(
             "invalid host: empty string"
         ));
-    } else if host.as_ref().contains(",") {
+    } else if host.as_ref().contains(',') {
         return Err(InvalidArgumentError::with_message(
             "invalid host: multiple hosts"
         ));
@@ -1713,7 +1713,7 @@ fn validate_user<T: AsRef<str>>(user: T) -> Result<T, Error> {
 impl Config {
 
     /// A displayable form for an address this builder will connect to
-    pub fn display_addr<'x>(&'x self) -> impl fmt::Display + 'x {
+    pub fn display_addr(&self) -> impl fmt::Display + '_ {
         DisplayAddr(Some(&self.0.address))
     }
 
@@ -1848,6 +1848,7 @@ impl Config {
         Ok(self)
     }
 
+    /// Return the same config with changed database branch
     pub fn with_branch(mut self, branch: &str) -> Result<Config, Error> {
         if branch.is_empty() {
             return Err(InvalidArgumentError::with_message(
@@ -2154,7 +2155,7 @@ fn test_instance_name() {
             Ok(InstanceName::Local(name)) => assert_eq!(name, inst_name),
             Ok(InstanceName::Cloud { org_slug, name }) => {
                 let (o, i) = inst_name
-                    .split_once("/")
+                    .split_once('/')
                     .expect("test case must have one slash");
                 assert_eq!(org_slug, o);
                 assert_eq!(name, i);
@@ -2190,21 +2191,20 @@ pub async fn get_project_dir(override_dir: Option<&Path>, search_parents: bool)
         None => {
             Cow::Owned(env::current_dir()
                 .map_err(|e| ClientError::with_source(e)
-                    .context("failed to get current directory"))?
-                .into())
+                    .context("failed to get current directory"))?)
         }
     };
 
     if search_parents {
         if let Some(ancestor) = search_dir(&dir).await? {
-            return Ok(Some(ancestor.to_path_buf()));
+            Ok(Some(ancestor.to_path_buf()))
         } else {
-            return Ok(None);
+            Ok(None)
         }
     } else {
-        if !fs::metadata(dir.join("edgedb.toml")).await.is_ok() {
+        if fs::metadata(dir.join("edgedb.toml")).await.is_err() {
             return Ok(None)
         }
-        return Ok(Some(dir.to_path_buf()))
-    };
+        Ok(Some(dir.to_path_buf()))
+    }
 }

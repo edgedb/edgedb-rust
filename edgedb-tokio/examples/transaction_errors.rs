@@ -10,7 +10,7 @@ struct CounterError;
 fn check_val0(val: i64) -> anyhow::Result<()> {
     if val % 3 == 0 {
         if thread_rng().gen_bool(0.9) {
-            return Err(CounterError)?;
+            Err(CounterError)?;
         }
     }
     Ok(())
@@ -19,7 +19,7 @@ fn check_val0(val: i64) -> anyhow::Result<()> {
 fn check_val1(val: i64) -> Result<(), CounterError> {
     if val % 3 == 1 {
         if thread_rng().gen_bool(0.1) {
-            return Err(CounterError)?;
+            Err(CounterError)?;
         }
     }
     Ok(())

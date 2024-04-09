@@ -1,5 +1,4 @@
 //! Credentials file handling routines
-use std::default::Default;
 use std::fmt;
 use std::str::FromStr;
 
@@ -149,7 +148,7 @@ impl Serialize for Credentials {
             },
         };
 
-        return CredentialsCompat::serialize(&creds, serializer);
+        CredentialsCompat::serialize(&creds, serializer)
     }
 }
 

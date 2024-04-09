@@ -255,7 +255,7 @@ impl QueryArgs for Value {
     fn encode(&self, enc: &mut Encoder) -> Result<(), Error> {
         let codec = enc.ctx.build_codec()?;
         codec
-            .encode(&mut enc.buf, self)
+            .encode(enc.buf, self)
             .map_err(ClientEncodingError::with_source)
     }
 }

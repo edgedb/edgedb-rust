@@ -219,9 +219,8 @@ impl Client {
                 io_format: IoFormat::Json,
                 expected_cardinality: Cardinality::Many,
             };
-            let desc;
-            match conn.parse(&flags, query, &self.options.state).await {
-                Ok(parsed) => desc = parsed,
+            let desc = match conn.parse(&flags, query, &self.options.state).await {
+                Ok(parsed) => parsed,
                 Err(e) => {
                     if e.has_tag(SHOULD_RETRY) {
                         let rule = self.options.retry.get_rule(&e);
@@ -329,9 +328,8 @@ impl Client {
                 io_format: IoFormat::Json,
                 expected_cardinality: Cardinality::AtMostOne,
             };
-            let desc;
-            match conn.parse(&flags, query, &self.options.state).await {
-                Ok(parsed) => desc = parsed,
+            let desc = match conn.parse(&flags, query, &self.options.state).await {
+                Ok(parsed) => parsed,
                 Err(e) => {
                     if e.has_tag(SHOULD_RETRY) {
                         let rule = self.options.retry.get_rule(&e);
@@ -434,7 +432,7 @@ impl Client {
             let state = &self.options.state;
             let caps = Capabilities::MODIFICATIONS | Capabilities::DDL;
             match conn.execute(query, arguments, state, caps).await {
-                Ok(resp) => return Ok(resp.data),
+                Ok(_) => return Ok(()),
                 Err(e) => {
                     let allow_retry = match e.get::<QueryCapabilities>() {
                         // Error from a weird source, or just a bug

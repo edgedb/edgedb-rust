@@ -5,30 +5,32 @@ mod options;
 mod queries;
 mod response;
 pub mod state;
-#[cfg(feature="unstable")] mod dumps;
+#[cfg(feature="unstable")]
+mod dumps;
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex as BlockingMutex};
 use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
-use tls_api::{TlsStream};
+use tls_api::TlsStream;
 use tokio::sync::{self, Semaphore};
 
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::common::{RawTypedesc, Capabilities};
-use edgedb_protocol::server_message::{TransactionState};
-use edgedb_protocol::server_message::{CommandDataDescription1};
+use edgedb_protocol::server_message::TransactionState;
+use edgedb_protocol::server_message::CommandDataDescription1;
 
 use crate::errors::{Error, ErrorKind, ClientError};
 use crate::builder::Config;
 use crate::server_params::ServerParams;
 
 pub use options::Options;
-pub use response::{ResponseStream};
+pub use response::ResponseStream;
 pub use state::{State, PoolState};
 
-#[cfg(feature="unstable")] pub use dumps::{DumpStream};
+#[cfg(feature="unstable")]
+pub use dumps::DumpStream;
 
 #[derive(Clone, Debug)]
 pub struct Pool(Arc<PoolInner>);
@@ -82,12 +84,6 @@ pub(crate) enum PingInterval {
     Interval(Duration),
 }
 
-trait AssertConn: Send + 'static {}
-impl AssertConn for PoolConnection {}
-impl AssertConn for Connection {}
-
-trait AssertPool: Send + Sync + 'static {}
-impl AssertPool for Pool {}
 
 impl edgedb_errors::Field for QueryCapabilities {
     const NAME: &'static str = "capabilities";
@@ -142,11 +138,11 @@ impl PoolInner {
         // Make sure that connection is wrapped before we commit,
         // so that connection is returned into a pool if we fail
         // to commit because of async stuff
-        return Ok(PoolConnection {
+        Ok(PoolConnection {
             inner: Some(conn),
             permit,
             pool: self.clone(),
-        });
+        })
     }
 }
 

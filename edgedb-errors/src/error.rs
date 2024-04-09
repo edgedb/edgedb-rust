@@ -6,7 +6,7 @@ use std::fmt;
 use std::str;
 
 use crate::kinds::{tag_check, error_name};
-use crate::kinds::{UserError};
+use crate::kinds::UserError;
 use crate::traits::{ErrorKind, Field};
 
 
@@ -52,9 +52,6 @@ pub(crate) struct Inner {
     pub headers: HashMap<u16, bytes::Bytes>,
     pub fields: HashMap<(&'static str, TypeId), Box<dyn Any + Send + Sync>>,
 }
-
-trait Assert: Send + Sync + 'static {}
-impl Assert for Error {}
 
 impl Error {
     pub fn is<T: ErrorKind>(&self) -> bool {
@@ -182,12 +179,10 @@ impl fmt::Display for Error {
                 }
             }
 
+        } else if let Some(last) = self.0.messages.last() {
+            write!(f, "{}: {}", kind, last)?;
         } else {
-            if let Some(last) = self.0.messages.last() {
-                write!(f, "{}: {}", kind, last)?;
-            } else {
-                write!(f, "{}", kind)?;
-            }
+            write!(f, "{}", kind)?;
         }
         if let Some((line, col)) = self.line().zip(self.column()) {
             write!(f, " (on line {}, column {})", line, col)?;

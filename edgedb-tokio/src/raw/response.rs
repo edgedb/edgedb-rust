@@ -236,7 +236,7 @@ impl<'a, T: QueryResult> ResponseStream<'a, T>
                         .map_err(|e| log::warn!(
                             "Error waiting for Ready after error: {e:#}"))
                         .ok();
-                    self.buffer = ErrorResponse(err.into());
+                    self.buffer = ErrorResponse(err);
                     return None;
                 }
                 Ok(msg) => {
@@ -271,7 +271,7 @@ impl<'a, T: QueryResult> ResponseStream<'a, T>
                 if let Some(desc) = self.description.take() {
                     err = err.set::<Description>(desc);
                 }
-                Err(err.into())
+                Err(err)
             }
             Reset => panic!("process_complete() called twice"),
         }
