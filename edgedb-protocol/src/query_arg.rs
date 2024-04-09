@@ -527,9 +527,10 @@ implement_tuple! {10, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, }
 implement_tuple! {11, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, }
 implement_tuple! {12, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, }
 
-// This supertype allows user to provide both
-// Into<Value>, Option<Into<Value>>, Vec<Into<Value>>, Option<Vec<Into<Value>>>
-// types in HashMap
+/// An optional [Value] that can be constructed from `impl Into<Value>`,
+/// `Option<impl Into<Value>>`, `Vec<impl Into<Value>>` or
+/// `Option<Vec<impl Into<Value>>>`.
+/// Used by [eargs!] macro.
 pub struct UserValue(Option<Value>);
 
 impl<V: Into<Value>> From<V> for UserValue {
