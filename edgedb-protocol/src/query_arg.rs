@@ -617,7 +617,6 @@ impl QueryArgs for HashMap<&str, UserValue> {
 	}
 }
 
-#[cfg(feature = "macros")]
 #[macro_export]
 macro_rules! eargs {
     ($($key:expr => $value:expr,)+) => { $crate::eargs!($($key => $value),+) };

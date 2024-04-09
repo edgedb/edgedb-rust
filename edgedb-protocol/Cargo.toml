@@ -24,13 +24,12 @@ bitflags = "2.4.0"
 serde = {version="1.0.190", optional=true}
 
 [features]
-default = ["macros"]
+default = []
 with-num-bigint = ["num-bigint", "num-traits"]
 with-bigdecimal = ["bigdecimal", "num-bigint", "num-traits"]
 with-chrono = ["chrono"]
 all-types = ["with-num-bigint", "with-bigdecimal", "with-chrono"]
 with-serde = ["serde"]
-macros = []
 
 [dev-dependencies]
 rand = "0.8"
