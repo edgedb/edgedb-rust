@@ -108,7 +108,6 @@ impl ServerGuard {
             .status()
             .expect("cannot run edgedb-cli to create a migration")
             .success());
-        dbg!("2");
         assert!(Command::new("edgedb")
             .current_dir("./tests/func")
             .arg("--tls-security")
