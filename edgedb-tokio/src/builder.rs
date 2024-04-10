@@ -1733,6 +1733,11 @@ impl Config {
         &self.0.database
     }
 
+    /// Database branch name
+    pub fn branch(&self) -> &str {
+        &self.0.branch
+    }
+
     /// Extract credentials from the [Builder] so they can be saved as JSON.
     pub fn as_credentials(&self) -> Result<Credentials, Error> {
         let (host, port) = match &self.0.address {
