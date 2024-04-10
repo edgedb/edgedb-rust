@@ -57,7 +57,9 @@ impl ServerGuard {
             cmd.uid(1);
         }
 
-        let process = cmd.spawn().unwrap_or_else(|_| panic!("Can run {}", bin_name));
+        let process = cmd
+            .spawn()
+            .unwrap_or_else(|_| panic!("Can run {}", bin_name));
         let pipe = BufReader::new(unsafe { File::from_raw_fd(pipe_read) });
         let mut result = Err(anyhow::anyhow!("no server info emitted"));
         for line in pipe.lines() {
@@ -86,7 +88,14 @@ impl ServerGuard {
         sinfo.push(ShutdownInfo { process });
         let info = result.unwrap();
 
-        fs::remove_file("tests/func/dbschema/migrations/00001.edgeql").ok();
+        // delete all migration files generated in previous runs
+        if let Ok(read_dir) = fs::read_dir("tests/func/dbschema/migrations/") {
+            for entry in read_dir {
+                let dir_entry = entry.unwrap();
+                fs::remove_file(dir_entry.path()).ok();
+            }
+        }
+
         assert!(Command::new("edgedb")
             .current_dir("./tests/func")
             .arg("--tls-security")
