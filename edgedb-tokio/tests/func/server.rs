@@ -89,9 +89,11 @@ impl ServerGuard {
         let info = result.unwrap();
 
         // delete all migration files generated in previous runs
-        for entry in fs::read_dir("tests/func/dbschema/migrations/").unwrap() {
-            let dir_entry = entry.unwrap();
-            fs::remove_file(dir_entry.path()).ok();
+        if let Ok(read_dir) = fs::read_dir("tests/func/dbschema/migrations/") {
+            for entry in read_dir {
+                let dir_entry = entry.unwrap();
+                fs::remove_file(dir_entry.path()).ok();
+            }
         }
 
         assert!(Command::new("edgedb")
