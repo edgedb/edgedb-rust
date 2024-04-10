@@ -1745,13 +1745,21 @@ impl Config {
                     be saved as credentials file"));
             }
         };
+
+        let branch = Some(&self.0.branch)
+            .filter(|x| x.as_str() != "__default__");
+
         Ok(Credentials {
             host: Some(host.clone()),
             port: *port,
             user: self.0.user.clone(),
             password: self.0.password.clone(),
-            database: if self.0.branch == "__default__" { Some(self.0.database.clone()) } else { None },
-            branch: if self.0.branch == "__default__" { None } else { Some(self.0.branch.clone()) },
+            branch: branch.cloned(),
+
+            // this is not strictly needed (it gets overwritten when reading),
+            // but we want to keep backward compatibility. If you downgrade CLI,
+            // we want it to be able to interact with the new format of credentials.
+            database: branch.cloned(),
             tls_ca: self.0.pem_certificates.clone(),
             tls_security: self.0.tls_security,
             file_outdated: false,
