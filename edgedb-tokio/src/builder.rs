@@ -556,7 +556,6 @@ impl<'a> DsnHelper<'a> {
         });
         self.retrieve_value("branch", v, |s| {
             let s = s.strip_prefix('/').unwrap_or(&s);
-            dbg!("here");
             validate_branch(&s)?;
             Ok(s.to_owned())
         }).await
@@ -703,7 +702,6 @@ impl Builder {
 
     /// Set the branch name.
     pub fn branch(&mut self, branch: &str) -> Result<&mut Self, Error> {
-        dbg!("here");
         validate_branch(branch)?;
         self.branch = Some(branch.into());
         Ok(self)

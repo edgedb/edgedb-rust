@@ -251,7 +251,6 @@ impl Client {
             let data = match res {
                 Ok(data) => data,
                 Err(e) => {
-                    dbg!(&e, e.has_tag(SHOULD_RETRY));
                     if desc.capabilities == Capabilities::empty() &&
                         e.has_tag(SHOULD_RETRY)
                     {
