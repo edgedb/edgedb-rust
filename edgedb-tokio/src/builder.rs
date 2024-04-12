@@ -1638,13 +1638,14 @@ fn set_credentials(cfg: &mut ConfigInner, creds: &Credentials)
     cfg.password = creds.password.clone();
     
     if let Some((b, d)) = creds.branch.as_ref().zip(creds.database.as_ref()) {
-        if b != d {
+        if b != "__default__" && b != d {
             return Err(ClientError::with_message(
                 "branch and database are mutually exclusive")
             );
         }
     }
-    let db_branch = creds.branch.as_ref().or(creds.database.as_ref());
+    let db_branch = creds.branch.as_ref().or(creds.database.as_ref())
+        .filter(|d| d.as_str() != "__default__");
     cfg.database = db_branch.cloned().unwrap_or_else(|| "edgedb".into());
     cfg.branch = db_branch.cloned().unwrap_or_else(|| "__default__".into());
     cfg.tls_security = creds.tls_security;
