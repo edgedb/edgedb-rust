@@ -59,19 +59,20 @@ pub enum Value {
 
 mod query_result; // sealed trait should remain non-public
 
-pub mod encoding;
-pub mod common;
-pub mod features;
-pub mod serialization;
 pub mod client_message;
-pub mod server_message;
-pub mod errors;
-pub mod error_response;
-pub mod descriptors;
-pub mod value;
 pub mod codec;
+pub mod common;
+pub mod descriptors;
+pub mod encoding;
+pub mod error_response;
+pub mod errors;
+pub mod features;
 pub mod queryable;
+pub mod serialization;
+pub mod server_message;
+pub mod value;
 #[macro_use]
+pub mod value_opt;
 pub mod query_arg;
 pub mod model;
 

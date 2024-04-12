@@ -11,7 +11,7 @@ use edgedb_errors::{ProtocolEncodingError, DescriptorMismatch};
 
 use crate::codec::Codec;
 use crate::queryable::{Queryable, Decoder, DescriptorContext};
-use crate::descriptors::{TypePos};
+use crate::descriptors::TypePos;
 use crate::value::Value;
 
 pub trait Sealed: Sized {}

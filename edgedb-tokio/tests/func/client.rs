@@ -1,4 +1,4 @@
-use edgedb_protocol::eargs;
+use edgedb_protocol::named_args;
 use edgedb_protocol::value::{EnumValue, Value};
 use edgedb_tokio::Client;
 use edgedb_errors::NoDataError;
@@ -71,7 +71,7 @@ async fn simple() -> anyhow::Result<()> {
         true
     );
 
-    // params as macro
+    // named args
     let value = client.query_required_single::<String, _>(
         "select (
             std::array_join(<array<str>>$msg1, ' ')
@@ -79,7 +79,7 @@ async fn simple() -> anyhow::Result<()> {
             ++ ': '
             ++ <str><int64>$answer
         );",
-        &eargs! {
+        &named_args! {
             "msg1" => vec!["the".to_string(), "answer".to_string(), "to".to_string()],
             "question" => None::<String>,
             "answer" => 42 as i64,
