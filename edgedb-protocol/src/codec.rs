@@ -785,24 +785,28 @@ impl Codec for ArrayAdapter {
 impl<'a> From<&'a [descriptors::ShapeElement]> for ObjectShape {
     fn from(shape: &'a [descriptors::ShapeElement]) -> ObjectShape {
         ObjectShape(Arc::new(ObjectShapeInfo {
-                elements: shape.iter().map(|e| {
-                    let descriptors::ShapeElement {
-                        flag_implicit,
-                        flag_link_property,
-                        flag_link,
-                        cardinality,
-                        name,
-                        type_pos: _,
-                    } = e;
-                    ShapeElement {
-                        flag_implicit: *flag_implicit,
-                        flag_link_property: *flag_link_property,
-                        flag_link: *flag_link,
-                        cardinality: *cardinality,
-                        name: name.clone(),
-                    }
-                }).collect(),
-            }))
+            elements: shape.iter().map(ShapeElement::from).collect(),
+        }))
+    }
+}
+
+impl<'a> From<&'a descriptors::ShapeElement> for ShapeElement {
+    fn from(e: &'a descriptors::ShapeElement) -> ShapeElement {
+        let descriptors::ShapeElement {
+            flag_implicit,
+            flag_link_property,
+            flag_link,
+            cardinality,
+            name,
+            type_pos: _,
+        } = e;
+        ShapeElement {
+            flag_implicit: *flag_implicit,
+            flag_link_property: *flag_link_property,
+            flag_link: *flag_link,
+            cardinality: *cardinality,
+            name: name.clone(),
+        }
     }
 }
 

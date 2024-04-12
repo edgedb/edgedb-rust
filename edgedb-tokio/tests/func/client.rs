@@ -1,3 +1,4 @@
+use edgedb_protocol::named_args;
 use edgedb_protocol::value::{EnumValue, Value};
 use edgedb_tokio::Client;
 use edgedb_errors::NoDataError;
@@ -69,6 +70,22 @@ async fn simple() -> anyhow::Result<()> {
         ).await.unwrap(),
         true
     );
+
+    // named args
+    let value = client.query_required_single::<String, _>(
+        "select (
+            std::array_join(<array<str>>$msg1, ' ')
+            ++ (<optional str>$question ?? ' the ultimate question of life')
+            ++ ': '
+            ++ <str><int64>$answer
+        );",
+        &named_args! {
+            "msg1" => vec!["the".to_string(), "answer".to_string(), "to".to_string()],
+            "question" => None::<String>,
+            "answer" => 42 as i64,
+        }
+    ).await.unwrap();
+    assert_eq!(value.as_str(), "the answer to the ultimate question of life: 42");
 
     Ok(())
 }
