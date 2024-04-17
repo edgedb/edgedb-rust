@@ -1644,7 +1644,10 @@ fn set_credentials(cfg: &mut ConfigInner, creds: &Credentials)
             );
         }
     }
-    let db_branch = creds.branch.as_ref().or(creds.database.as_ref());
+    let mut db_branch = creds.branch.as_ref().or(creds.database.as_ref());
+    if creds.branch.is_none() && creds.database.as_ref().map_or(false, |d| d == "edgedb") {
+        db_branch = None;
+    }
     cfg.database = db_branch.cloned().unwrap_or_else(|| "edgedb".into());
     cfg.branch = db_branch.cloned().unwrap_or_else(|| "__default__".into());
     cfg.tls_security = creds.tls_security;
@@ -1749,20 +1752,25 @@ impl Config {
             }
         };
 
-        let branch = Some(&self.0.branch)
-            .filter(|x| x.as_str() != "__default__");
-
         Ok(Credentials {
             host: Some(host.clone()),
             port: *port,
             user: self.0.user.clone(),
             password: self.0.password.clone(),
-            branch: branch.cloned(),
+            branch: if self.0.branch == "__default__" {
+                None
+            } else {
+                Some(self.0.branch.clone())
+            },
 
             // this is not strictly needed (it gets overwritten when reading),
             // but we want to keep backward compatibility. If you downgrade CLI,
             // we want it to be able to interact with the new format of credentials.
-            database: branch.cloned(),
+            database: Some(if self.0.branch == "__default__" {
+                "edgedb".into()
+            } else {
+                self.0.branch.clone()
+            }),
             tls_ca: self.0.pem_certificates.clone(),
             tls_security: self.0.tls_security,
             file_outdated: false,
