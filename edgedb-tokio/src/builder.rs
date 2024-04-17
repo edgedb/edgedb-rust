@@ -1638,14 +1638,16 @@ fn set_credentials(cfg: &mut ConfigInner, creds: &Credentials)
     cfg.password = creds.password.clone();
     
     if let Some((b, d)) = creds.branch.as_ref().zip(creds.database.as_ref()) {
-        if b != "__default__" && b != d {
+        if b != d {
             return Err(ClientError::with_message(
                 "branch and database are mutually exclusive")
             );
         }
     }
-    let db_branch = creds.branch.as_ref().or(creds.database.as_ref())
-        .filter(|d| d.as_str() != "__default__");
+    let mut db_branch = creds.branch.as_ref().or(creds.database.as_ref());
+    if creds.branch.is_none() && creds.database.as_ref().map_or(false, |d| d == "edgedb") {
+        db_branch = None;
+    }
     cfg.database = db_branch.cloned().unwrap_or_else(|| "edgedb".into());
     cfg.branch = db_branch.cloned().unwrap_or_else(|| "__default__".into());
     cfg.tls_security = creds.tls_security;
@@ -1755,7 +1757,11 @@ impl Config {
             port: *port,
             user: self.0.user.clone(),
             password: self.0.password.clone(),
-            branch: Some(self.0.branch.clone()),
+            branch: if self.0.branch == "__default__" {
+                None
+            } else {
+                Some(self.0.branch.clone())
+            },
 
             // this is not strictly needed (it gets overwritten when reading),
             // but we want to keep backward compatibility. If you downgrade CLI,
