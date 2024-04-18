@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 #[cfg(feature = "num-bigint")]
 mod num_bigint_interop;
 
@@ -146,9 +148,58 @@ impl Decimal {
     }
 }
 
+impl std::fmt::Display for Decimal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.negative {
+            write!(f, "-")?;
+        }
+
+        let mut index = 0;
+
+        // integer part
+        while self.weight - index >= 0 {
+            if let Some(digit) = self.digits.get(index as usize) {
+                if index == 0 {
+                    write!(f, "{}", digit)?;
+                } else {
+                    write!(f, "{:04}", digit)?;
+                }
+                index += 1;
+            } else {
+                break;
+            }
+        }
+        if index == 0 {
+            write!(f, "0")?;
+        }
+
+        // dot
+        write!(f, ".")?;
+
+        // decimal part
+        let mut decimals = self.decimal_digits;
+        while decimals > 0 {
+            if let Some(digit) = self.digits.get(index as usize) {
+                let digit = format!("{digit:04}");
+                let consumed = u16::min(4, decimals);
+                f.write_str(&digit[0..consumed as usize])?;
+                decimals -= consumed;
+                index += 1;
+            } else {
+                break;
+            }
+        }
+        // trailing zeros
+        for _ in 0..decimals {
+            f.write_char('0')?;
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 #[allow(dead_code)] // used by optional tests
- mod test_helpers{
+mod test_helpers{
     use rand::Rng;
 
     pub fn gen_u64<T: Rng>(rng: &mut T) -> u64 {
@@ -161,6 +212,10 @@ impl Decimal {
         // change distribution to generate different length more frequently
         let max = 10_i64.pow(rng.gen_range(0..19));
         rng.gen_range(-max..max)
+    }
+
+    pub fn gen_f64<T: Rng>(rng: &mut T) -> f64 {
+        rng.gen::<f64>()
     }
 }
 
@@ -238,7 +293,7 @@ mod test {
     }
 
     #[test]
-    fn display() {
+    fn bigint_display() {
         let cases = [
             0,
             1,
@@ -255,7 +310,7 @@ mod test {
     }
 
     #[test]
-    fn display_rand() {
+    fn bigint_display_rand() {
         use rand::{Rng, SeedableRng, rngs::StdRng};
         let mut rng = StdRng::seed_from_u64(4);
         for _ in 0..1000 {
