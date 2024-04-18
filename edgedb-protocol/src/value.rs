@@ -197,3 +197,23 @@ impl From<f64> for Value {
         Value::Float64(num)
     }
 }
+
+macro_rules! implement_model_to_value {
+    ($t:ty) => {
+        impl From<$t> for Value {
+            fn from(model: $t) -> Value {
+                model.to_value().expect("failed to convert model to Value")
+            }
+        }
+    };
+}
+
+use crate::query_arg::ScalarArg;
+implement_model_to_value!(crate::model::BigInt);
+implement_model_to_value!(crate::model::Decimal);
+implement_model_to_value!(crate::model::Uuid);
+implement_model_to_value!(crate::model::Json);
+implement_model_to_value!(crate::model::Duration);
+implement_model_to_value!(crate::model::Datetime);
+implement_model_to_value!(crate::model::LocalDate);
+implement_model_to_value!(crate::model::LocalDatetime);
