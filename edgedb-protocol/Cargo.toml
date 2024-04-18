@@ -17,7 +17,7 @@ snafu = {version="0.8.0"}
 uuid = "1.1.2"
 num-bigint = {version="0.4.3", optional=true}
 num-traits = {version="0.2.10", optional=true}
-bigdecimal = {version="0.3.0", optional=true}
+bigdecimal = {version="0.4.0", optional=true}
 chrono = {version="0.4.23", optional=true, features=["std"], default-features=false}
 edgedb-errors = {path = "../edgedb-errors", version = "0.4.0" }
 bitflags = "2.4.0"

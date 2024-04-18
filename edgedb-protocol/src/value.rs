@@ -5,7 +5,7 @@ use bytes::Bytes;
 
 use crate::codec::{NamedTupleShape, ObjectShape, ShapeElement};
 use crate::common::Cardinality;
-use crate::model::{BigInt, Decimal, Uuid, ConfigMemory, Range};
+use crate::model::{BigInt, ConfigMemory, Decimal, Range, Uuid};
 use crate::model::{LocalDatetime, LocalDate, LocalTime, Duration, Datetime};
 use crate::model::{RelativeDuration, DateDuration, Json};
 pub use crate::codec::EnumValue;
@@ -195,5 +195,53 @@ impl From<f32> for Value {
 impl From<f64> for Value {
     fn from(num: f64) -> Value {
         Value::Float64(num)
+    }
+}
+
+impl From<BigInt>for Value {
+    fn from(model: BigInt) -> Value {
+        Value::BigInt(model)
+    }
+}
+
+impl From<Decimal> for Value {
+    fn from(v: Decimal) -> Value {
+        Value::Decimal(v)
+    }
+}
+
+impl From<Uuid> for Value {
+    fn from(v: Uuid) -> Value {
+        Value::Uuid(v)
+    }
+}
+
+impl From<Json> for Value {
+    fn from(v: Json) -> Value {
+        Value::Json(v)
+    }
+}
+
+impl From<Duration> for Value {
+    fn from(v: Duration) -> Value {
+        Value::Duration(v)
+    }
+}
+
+impl From<Datetime> for Value {
+    fn from(v: Datetime) -> Value {
+        Value::Datetime(v)
+    }
+}
+
+impl From<LocalDate> for Value {
+    fn from(v: LocalDate) -> Value {
+        Value::LocalDate(v)
+    }
+}
+
+impl From<LocalDatetime> for Value {
+    fn from(v: LocalDatetime) -> Value {
+        Value::LocalDatetime(v)
     }
 }
