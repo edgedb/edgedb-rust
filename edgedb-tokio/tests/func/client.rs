@@ -123,3 +123,41 @@ async fn parallel_queries() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn big_num() -> anyhow::Result<()> {
+    let client = Client::new(&SERVER.config);
+    client.ensure_connected().await?;
+
+    let res = client
+        .query_required_single::<Value, _>("select 1234567890123456789012345678900000n", &())
+        .await
+        .unwrap();
+    if let Value::BigInt(res) = res {
+        assert_eq!(res.to_string(), "1234567890123456789012345678900000");
+    } else {
+        panic!();
+    }
+
+    let res = client
+        .query_required_single::<Value, _>("select 1234567891234567890.12345678900000n", &())
+        .await
+        .unwrap();
+    if let Value::Decimal(res) = res {
+        assert_eq!(res.to_string(), "1234567891234567890.12345678900000");
+    } else {
+        panic!();
+    }
+
+    let res = client
+        .query_required_single::<Value, _>("select 0.00012n", &())
+        .await
+        .unwrap();
+    if let Value::Decimal(res) = res {
+        assert_eq!(res.to_string(), "0.00012");
+    } else {
+        panic!();
+    }
+
+    Ok(())
+}
