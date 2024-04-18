@@ -1,3 +1,6 @@
+use std::str::FromStr;
+
+use edgedb_protocol::model::Uuid;
 use edgedb_protocol::named_args;
 use edgedb_protocol::value::{EnumValue, Value};
 use edgedb_tokio::Client;
@@ -86,6 +89,16 @@ async fn simple() -> anyhow::Result<()> {
         }
     ).await.unwrap();
     assert_eq!(value.as_str(), "the answer to the ultimate question of life: 42");
+
+    // args for values
+    let uuid = "43299d0a-f993-4dcb-a8a2-50041bf5af79";
+    let value = client.query_required_single::<Uuid, _>(
+        "select <uuid>$my_uuid;",
+        &named_args! {
+            "my_uuid" => Uuid::from_str("43299d0a-f993-4dcb-a8a2-50041bf5af79").unwrap(),
+        }
+    ).await.unwrap();
+    assert_eq!(value, Uuid::from_str(uuid).unwrap());
 
     Ok(())
 }
