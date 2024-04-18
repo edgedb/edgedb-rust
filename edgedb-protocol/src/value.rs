@@ -5,7 +5,7 @@ use bytes::Bytes;
 
 use crate::codec::{NamedTupleShape, ObjectShape, ShapeElement};
 use crate::common::Cardinality;
-use crate::model::{BigInt, Decimal, Uuid, ConfigMemory, Range};
+use crate::model::{BigInt, ConfigMemory, Decimal, Range, Uuid};
 use crate::model::{LocalDatetime, LocalDate, LocalTime, Duration, Datetime};
 use crate::model::{RelativeDuration, DateDuration, Json};
 pub use crate::codec::EnumValue;
@@ -198,22 +198,50 @@ impl From<f64> for Value {
     }
 }
 
-macro_rules! implement_model_to_value {
-    ($t:ty) => {
-        impl From<$t> for Value {
-            fn from(model: $t) -> Value {
-                model.to_value().expect("failed to convert model to Value")
-            }
-        }
-    };
+impl From<BigInt>for Value {
+    fn from(model: BigInt) -> Value {
+        Value::BigInt(model)
+    }
 }
 
-use crate::query_arg::ScalarArg;
-implement_model_to_value!(crate::model::BigInt);
-implement_model_to_value!(crate::model::Decimal);
-implement_model_to_value!(crate::model::Uuid);
-implement_model_to_value!(crate::model::Json);
-implement_model_to_value!(crate::model::Duration);
-implement_model_to_value!(crate::model::Datetime);
-implement_model_to_value!(crate::model::LocalDate);
-implement_model_to_value!(crate::model::LocalDatetime);
+impl From<Decimal> for Value {
+    fn from(v: Decimal) -> Value {
+        Value::Decimal(v)
+    }
+}
+
+impl From<Uuid> for Value {
+    fn from(v: Uuid) -> Value {
+        Value::Uuid(v)
+    }
+}
+
+impl From<Json> for Value {
+    fn from(v: Json) -> Value {
+        Value::Json(v)
+    }
+}
+
+impl From<Duration> for Value {
+    fn from(v: Duration) -> Value {
+        Value::Duration(v)
+    }
+}
+
+impl From<Datetime> for Value {
+    fn from(v: Datetime) -> Value {
+        Value::Datetime(v)
+    }
+}
+
+impl From<LocalDate> for Value {
+    fn from(v: LocalDate) -> Value {
+        Value::LocalDate(v)
+    }
+}
+
+impl From<LocalDatetime> for Value {
+    fn from(v: LocalDatetime) -> Value {
+        Value::LocalDatetime(v)
+    }
+}
