@@ -1,8 +1,9 @@
 use edgedb_protocol::named_args;
 use edgedb_protocol::value::{EnumValue, Value};
-use edgedb_tokio::Client;
+use edgedb_tokio::{Client, Queryable};
 use edgedb_errors::NoDataError;
 use futures_util::stream::{self, StreamExt};
+use serde::{Deserialize, Serialize};
 
 use crate::server::SERVER;
 
@@ -107,6 +108,41 @@ async fn parallel_queries() -> anyhow::Result<()> {
     result.sort();
 
     assert_eq!(result, (0..100).step_by(10).collect::<Vec<_>>());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn json() -> anyhow::Result<()> {
+    let client = Client::new(&SERVER.config);
+    client.ensure_connected().await?;
+
+    client.execute::<_>(
+        "insert test::OtpPhoneRequest {
+            phone := '0123456789',
+            sent_at := datetime_of_statement(),
+            otp := 98271
+        }",
+        &()
+    )
+    .await
+    .unwrap();
+
+    #[derive(Clone, Debug, Serialize, Deserialize, Queryable)]
+    #[edgedb(json)]
+    pub struct OtpPhoneRequest {
+       pub phone: String,
+       pub otp: i32,
+    }
+    
+    let res = client.query::<OtpPhoneRequest, _>(
+        "select <json>(select test::OtpPhoneRequest { phone, otp } filter .phone = '0123456789')",
+        &()
+    )
+    .await?;
+    let res = res.into_iter().next().unwrap();
+    assert_eq!(res.phone, "0123456789");
+    assert_eq!(res.otp, 98271);
 
     Ok(())
 }

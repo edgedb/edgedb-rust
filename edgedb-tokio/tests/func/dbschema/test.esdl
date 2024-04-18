@@ -12,4 +12,11 @@ module test {
 
     global str_val -> str;
     global int_val -> int32;
+
+    type OtpPhoneRequest {
+        required phone: str;
+        required otp: int32;
+        required sent_at: datetime;
+        confirmed_at: datetime;
+    }
 }

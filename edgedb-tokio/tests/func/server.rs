@@ -155,9 +155,7 @@ fn wait_for_server_status(status_read: i32) -> Result<ServerInfo, anyhow::Error>
 
 /// Writes a stream to a log file
 fn write_log_into_file(stream: impl std::io::Read) {
-    let target_tmp_dir = std::env::var("CARGO_TARGET_TMPDIR").unwrap();
-    let mut log_dir = std::path::PathBuf::from_str(&target_tmp_dir).unwrap();
-    log_dir.push("server-logs");
+    let log_dir = std::path::PathBuf::from_str("../target/server-logs").unwrap();
 
     let time_the_epoch = std::time::SystemTime::now()
         .duration_since(std::time::SystemTime::UNIX_EPOCH)
