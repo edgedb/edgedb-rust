@@ -171,7 +171,7 @@ fn write_log_into_file(stream: impl std::io::Read) {
     eprintln!("Writing server logs into {:?}", &log_file);
 
     std::fs::create_dir_all(&log_dir).unwrap();
-    let mut log_file = File::create_new(log_file).unwrap();
+    let mut log_file = File::create(log_file).unwrap();
 
     let mut reader = BufReader::new(stream);
     std::io::copy(&mut reader, &mut log_file).unwrap();
