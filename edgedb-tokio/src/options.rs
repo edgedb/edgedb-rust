@@ -18,15 +18,6 @@ static IDLE_TIMEOUT_RULE: Lazy<RetryRule> = Lazy::new(|| RetryRule {
 });
 
 
-/// Transaction isolation level
-///
-/// Only single isolation level is supported for now
-#[derive(Debug, Clone)]
-pub enum IsolationLevel {
-    /// Serializable isolation level
-    Serializable,
-}
-
 /// Specific condition for retrying queries
 ///
 /// This is used for fine-grained control for retrying queries and transactions
@@ -45,7 +36,6 @@ pub enum RetryCondition {
 /// [`with_transaction_options`](crate::Client::with_transaction_options).
 #[derive(Debug, Clone)]
 pub struct TransactionOptions {
-    isolation: IsolationLevel,
     read_only: bool,
     deferrable: bool,
 }
@@ -72,7 +62,6 @@ pub(crate) struct RetryRule {
 impl Default for TransactionOptions {
     fn default() -> TransactionOptions {
         TransactionOptions {
-            isolation: IsolationLevel::Serializable,
             read_only: false,
             deferrable: false,
         }
@@ -80,11 +69,6 @@ impl Default for TransactionOptions {
 }
 
 impl TransactionOptions {
-    /// Set isolation level for the transaction
-    pub fn isolation(mut self, isolation: IsolationLevel) -> Self {
-        self.isolation = isolation;
-        self
-    }
     /// Set whether transaction is read-only
     pub fn read_only(mut self, read_only: bool) -> Self {
         self.read_only = read_only;
