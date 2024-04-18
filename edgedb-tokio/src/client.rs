@@ -28,7 +28,7 @@ use crate::state::{AliasesModifier, GlobalsModifier, ConfigModifier, Fn};
 /// gets database connection configuration from environment). You can also use
 /// [`Builder`](crate::Builder) to [`build`](`crate::Builder::new`) custom
 /// [`Config`] and [create a client](Client::new) using that config.
-/// 
+///
 /// The `with_` methods ([`with_retry_options`](crate::Client::with_retry_options), [`with_transaction_options`](crate::Client::with_transaction_options), etc.)
 /// let you create a shallow copy of the client with adjusted options.
 #[derive(Debug, Clone)]
@@ -74,7 +74,7 @@ impl Client {
     /// This method can be used with both static arguments, like a tuple of
     /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
-    pub async fn query<R, A>(&self, query: &str, arguments: &A)
+    pub async fn query<R, A>(&self, query: impl AsRef<str>, arguments: &A)
         -> Result<Vec<R>, Error>
         where A: QueryArgs,
               R: QueryResult,
@@ -86,7 +86,7 @@ impl Client {
             let conn = conn.inner();
             let state = &self.options.state;
             let caps = Capabilities::MODIFICATIONS | Capabilities::DDL;
-            match conn.query(query, arguments, state, caps).await {
+            match conn.query(query.as_ref(), arguments, state, caps).await {
                 Ok(resp) => return Ok(resp.data),
                 Err(e) => {
                     let allow_retry = match e.get::<QueryCapabilities>() {
@@ -129,7 +129,7 @@ impl Client {
     /// This method can be used with both static arguments, like a tuple of
     /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
-    pub async fn query_single<R, A>(&self, query: &str, arguments: &A)
+    pub async fn query_single<R, A>(&self, query: impl AsRef<str>, arguments: &A)
         -> Result<Option<R>, Error>
         where A: QueryArgs,
               R: QueryResult,
@@ -140,7 +140,7 @@ impl Client {
             let conn = conn.inner();
             let state = &self.options.state;
             let caps = Capabilities::MODIFICATIONS | Capabilities::DDL;
-            match conn.query_single(query, arguments, state, caps).await {
+            match conn.query_single(query.as_ref(), arguments, state, caps).await {
                 Ok(resp) => return Ok(resp.data),
                 Err(e) => {
                     let allow_retry = match e.get::<QueryCapabilities>() {
@@ -192,7 +192,7 @@ impl Client {
     /// This method can be used with both static arguments, like a tuple of
     /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
-    pub async fn query_required_single<R, A>(&self, query: &str, arguments: &A)
+    pub async fn query_required_single<R, A>(&self, query: impl AsRef<str>, arguments: &A)
         -> Result<R, Error>
         where A: QueryArgs,
               R: QueryResult,
@@ -203,7 +203,7 @@ impl Client {
     }
 
     /// Execute a query and return the result as JSON.
-    pub async fn query_json(&self, query: &str, arguments: &impl QueryArgs)
+    pub async fn query_json(&self, query: impl AsRef<str>, arguments: &impl QueryArgs)
         -> Result<Json, Error>
     {
         let mut iteration = 0;
@@ -219,7 +219,7 @@ impl Client {
                 io_format: IoFormat::Json,
                 expected_cardinality: Cardinality::Many,
             };
-            let desc = match conn.parse(&flags, query, &self.options.state).await {
+            let desc = match conn.parse(&flags, query.as_ref(), &self.options.state).await {
                 Ok(parsed) => parsed,
                 Err(e) => {
                     if e.has_tag(SHOULD_RETRY) {
@@ -246,7 +246,7 @@ impl Client {
             ))?;
 
             let res = conn.execute(
-                    &flags, query, &self.options.state, &desc, &arg_buf.freeze(),
+                    &flags, query.as_ref(), &self.options.state, &desc, &arg_buf.freeze(),
                 ).await;
             let data = match res {
                 Ok(data) => data,
@@ -297,13 +297,13 @@ impl Client {
     /// than one element, a
     /// [`ResultCardinalityMismatchError`][crate::errors::ResultCardinalityMismatchError]
     /// is raised.
-    /// 
+    ///
     /// ```rust,ignore
     /// let query = "select <json>(
     ///     insert Account {
     ///     username := <str>$0
     ///     }) {
-    ///     username, 
+    ///     username,
     ///     id
     ///     };";
     /// let json_res: Option<Json> = client
@@ -311,9 +311,10 @@ impl Client {
     ///     .await?;
     /// ```
     pub async fn query_single_json(&self,
-                                   query: &str, arguments: &impl QueryArgs)
+                                   query: impl AsRef<str>, arguments: &impl QueryArgs)
         -> Result<Option<Json>, Error>
     {
+        let query = query.as_ref();
         let mut iteration = 0;
         loop {
             let mut conn = self.pool.acquire().await?;
@@ -327,7 +328,7 @@ impl Client {
                 io_format: IoFormat::Json,
                 expected_cardinality: Cardinality::AtMostOne,
             };
-            let desc = match conn.parse(&flags, query, &self.options.state).await {
+            let desc = match conn.parse(&flags, &query, &self.options.state).await {
                 Ok(parsed) => parsed,
                 Err(e) => {
                     if e.has_tag(SHOULD_RETRY) {
@@ -354,7 +355,7 @@ impl Client {
             ))?;
 
             let res = conn.execute(
-                    &flags, query, &self.options.state, &desc, &arg_buf.freeze(),
+                    &flags, &query, &self.options.state, &desc, &arg_buf.freeze(),
                 ).await;
             let data = match res {
                 Ok(data) => data,
@@ -406,7 +407,7 @@ impl Client {
     /// is raised. If the query returns an empty set, a
     /// [`NoDataError`][crate::errors::NoDataError] is raised.
     pub async fn query_required_single_json(&self,
-                                   query: &str, arguments: &impl QueryArgs)
+                                   query: impl AsRef<str>, arguments: &impl QueryArgs)
         -> Result<Json, Error>
     {
         self.query_single_json(query, arguments).await?
@@ -419,7 +420,7 @@ impl Client {
     /// This method can be used with both static arguments, like a tuple of
     /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
-    pub async fn execute<A>(&self, query: &str, arguments: &A)
+    pub async fn execute<A>(&self, query: impl AsRef<str>, arguments: &A)
         -> Result<(), Error>
         where A: QueryArgs,
     {
@@ -430,7 +431,7 @@ impl Client {
             let conn = conn.inner();
             let state = &self.options.state;
             let caps = Capabilities::MODIFICATIONS | Capabilities::DDL;
-            match conn.execute(query, arguments, state, caps).await {
+            match conn.execute(query.as_ref(), arguments, state, caps).await {
                 Ok(_) => return Ok(()),
                 Err(e) => {
                     let allow_retry = match e.get::<QueryCapabilities>() {
