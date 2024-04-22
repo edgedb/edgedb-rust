@@ -5,12 +5,12 @@ use std::sync::Arc;
 
 use arc_swap::ArcSwapOption;
 use edgedb_protocol::client_message::State as EncodedState;
-use edgedb_protocol::descriptors::{RawTypedesc,StateBorrow};
+use edgedb_protocol::descriptors::{RawTypedesc, StateBorrow};
+use edgedb_protocol::model::Uuid;
 use edgedb_protocol::query_arg::QueryArg;
 use edgedb_protocol::value::Value;
-use edgedb_protocol::model::Uuid;
 
-use crate::errors::{ClientError, ProtocolEncodingError, Error, ErrorKind};
+use crate::errors::{ClientError, Error, ErrorKind, ProtocolEncodingError};
 
 /// Unset a set of global or config variables
 ///
@@ -42,7 +42,6 @@ pub struct Unset<I>(pub I);
 /// ```
 #[derive(Debug)]
 pub struct Fn<F>(pub F);
-
 
 #[derive(Debug)]
 pub struct PoolState {
@@ -114,15 +113,13 @@ pub trait AliasesDelta {
 }
 
 pub trait SealedState {
-    fn encode(&self, desc: &RawTypedesc)
-        -> Result<EncodedState, Error>;
+    fn encode(&self, desc: &RawTypedesc) -> Result<EncodedState, Error>;
 }
 
 /// Provides state of the session in the binary form
 ///
 /// This trait is sealed.
-pub trait State: SealedState + Send + Sync {
-}
+pub trait State: SealedState + Send + Sync {}
 
 impl GlobalsModifier<'_> {
     /// Set global variable to a value
@@ -157,14 +154,15 @@ impl GlobalsModifier<'_> {
         if let Some(ns_off) = key.rfind("::") {
             if let Some(alias) = self.aliases.get(&key[..ns_off]) {
                 self.globals.insert(
-                    format!("{alias}::{suffix}", suffix=&key[ns_off+2..]),
+                    format!("{alias}::{suffix}", suffix = &key[ns_off + 2..]),
                     value,
                 );
             } else {
                 self.globals.insert(key.into(), value);
             }
         } else {
-            self.globals.insert(format!("{}::{}", self.module, key), value);
+            self.globals
+                .insert(format!("{}::{}", self.module, key), value);
         }
     }
     /// Unset the global variable
@@ -179,8 +177,8 @@ impl GlobalsModifier<'_> {
     pub fn unset(&mut self, key: &str) {
         if let Some(ns_off) = key.rfind("::") {
             if let Some(alias) = self.aliases.get(&key[..ns_off]) {
-                self.globals.remove(
-                    &format!("{alias}::{suffix}", suffix=&key[ns_off+2..]));
+                self.globals
+                    .remove(&format!("{alias}::{suffix}", suffix = &key[ns_off + 2..]));
             } else {
                 self.globals.remove(key);
             }
@@ -227,8 +225,7 @@ impl AliasesModifier<'_> {
     }
 }
 
-
-impl<S: AsRef<str>, I: IntoIterator<Item=S>> GlobalsDelta for Unset<I> {
+impl<S: AsRef<str>, I: IntoIterator<Item = S>> GlobalsDelta for Unset<I> {
     fn apply(self, man: &mut GlobalsModifier) {
         for key in self.0.into_iter() {
             man.unset(key.as_ref());
@@ -236,7 +233,7 @@ impl<S: AsRef<str>, I: IntoIterator<Item=S>> GlobalsDelta for Unset<I> {
     }
 }
 
-impl<S: AsRef<str>, I: IntoIterator<Item=S>> ConfigDelta for Unset<I> {
+impl<S: AsRef<str>, I: IntoIterator<Item = S>> ConfigDelta for Unset<I> {
     fn apply(self, man: &mut ConfigModifier) {
         for key in self.0.into_iter() {
             man.unset(key.as_ref());
@@ -244,7 +241,7 @@ impl<S: AsRef<str>, I: IntoIterator<Item=S>> ConfigDelta for Unset<I> {
     }
 }
 
-impl<S: AsRef<str>, I: IntoIterator<Item=S>> AliasesDelta for Unset<I> {
+impl<S: AsRef<str>, I: IntoIterator<Item = S>> AliasesDelta for Unset<I> {
     fn apply(self, man: &mut AliasesModifier) {
         for key in self.0.into_iter() {
             man.unset(key.as_ref());
@@ -321,9 +318,7 @@ impl<K: AsRef<str>, V: QueryArg> ConfigDelta for BTreeMap<K, V> {
 }
 
 impl PoolState {
-    pub fn with_default_module(&self, module: Option<String>)
-        -> Self
-    {
+    pub fn with_default_module(&self, module: Option<String>) -> Self {
         PoolState {
             raw_state: RawState {
                 common: Arc::new(CommonState {
@@ -339,8 +334,7 @@ impl PoolState {
     pub fn with_globals(&self, delta: impl GlobalsDelta) -> Self {
         let mut globals = self.raw_state.globals.clone();
         delta.apply(&mut GlobalsModifier {
-            module: self.raw_state.common.module
-                .as_deref().unwrap_or("default"),
+            module: self.raw_state.common.module.as_deref().unwrap_or("default"),
             aliases: &self.raw_state.common.aliases,
             globals: &mut globals,
         });
@@ -385,16 +379,13 @@ impl PoolState {
             cache: ArcSwapOption::new(None),
         }
     }
-    pub fn encode(&self, desc: &RawTypedesc)
-        -> Result<EncodedState, Error>
-    {
+    pub fn encode(&self, desc: &RawTypedesc) -> Result<EncodedState, Error> {
         if let Some(cache) = &*self.cache.load() {
             if cache.typedesc_id == desc.id {
                 return Ok((**cache).clone());
             }
         }
-        let typedesc = desc.decode()
-            .map_err(ProtocolEncodingError::with_source)?;
+        let typedesc = desc.decode().map_err(ProtocolEncodingError::with_source)?;
         let result = typedesc.serialize_state(&StateBorrow {
             module: &self.raw_state.common.module,
             aliases: &self.raw_state.common.aliases,
@@ -407,40 +398,31 @@ impl PoolState {
 }
 
 impl SealedState for &PoolState {
-    fn encode(&self, desc: &RawTypedesc)
-        -> Result<EncodedState, Error>
-    {
+    fn encode(&self, desc: &RawTypedesc) -> Result<EncodedState, Error> {
         PoolState::encode(self, desc)
     }
 }
 impl State for &PoolState {}
 impl SealedState for Arc<PoolState> {
-    fn encode(&self, desc: &RawTypedesc) -> Result<EncodedState, Error>
-    {
+    fn encode(&self, desc: &RawTypedesc) -> Result<EncodedState, Error> {
         PoolState::encode(self, desc)
     }
 }
 impl State for Arc<PoolState> {}
 
 impl SealedState for EncodedState {
-    fn encode(&self, desc: &RawTypedesc)
-        -> Result<EncodedState, Error>
-    {
-        if self.typedesc_id == Uuid::from_u128(0) ||
-            self.typedesc_id == desc.id
-        {
+    fn encode(&self, desc: &RawTypedesc) -> Result<EncodedState, Error> {
+        if self.typedesc_id == Uuid::from_u128(0) || self.typedesc_id == desc.id {
             return Ok((*self).clone());
         }
         Err(ClientError::with_message(
-            "state doesn't match state descriptor"
+            "state doesn't match state descriptor",
         ))
     }
 }
 impl State for EncodedState {}
 impl SealedState for Arc<EncodedState> {
-    fn encode(&self, desc: &RawTypedesc)
-        -> Result<EncodedState, Error>
-    {
+    fn encode(&self, desc: &RawTypedesc) -> Result<EncodedState, Error> {
         (**self).encode(desc)
     }
 }

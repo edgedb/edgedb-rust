@@ -1,15 +1,14 @@
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::ops::{RangeBounds, Deref, DerefMut};
+use std::ops::{Deref, DerefMut, RangeBounds};
 use std::u32;
 
+use bytes::{Buf, BufMut, Bytes, BytesMut};
+use snafu::{ensure, OptionExt, ResultExt};
 use uuid::Uuid;
-use bytes::{Bytes, BytesMut, BufMut, Buf};
-use snafu::{ResultExt, OptionExt, ensure};
 
+use crate::errors::{self, DecodeError, EncodeError};
 use crate::features::ProtocolVersion;
-use crate::errors::{self, EncodeError, DecodeError};
-
 
 pub type KeyValues = HashMap<u16, Bytes>;
 pub type Annotations = HashMap<String, String>;
@@ -27,13 +26,11 @@ pub struct Output<'a> {
 }
 
 pub(crate) trait Encode {
-    fn encode(&self, buf: &mut Output)
-        -> Result<(), EncodeError>;
+    fn encode(&self, buf: &mut Output) -> Result<(), EncodeError>;
 }
 
 pub(crate) trait Decode: Sized {
-    fn decode(buf: &mut Input)
-        -> Result<Self, DecodeError>;
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError>;
 }
 
 impl Input {
@@ -90,13 +87,8 @@ impl DerefMut for Output<'_> {
 }
 
 impl Output<'_> {
-    pub fn new<'x>(proto: &'x ProtocolVersion, bytes: &'x mut BytesMut)
-        -> Output<'x>
-    {
-        Output {
-            proto,
-            bytes,
-        }
+    pub fn new<'x>(proto: &'x ProtocolVersion, bytes: &'x mut BytesMut) -> Output<'x> {
+        Output { proto, bytes }
     }
     pub fn proto(&self) -> &ProtocolVersion {
         self.proto
@@ -121,10 +113,7 @@ unsafe impl BufMut for Output<'_> {
     }
 }
 
-
-pub(crate) fn encode<T: Encode>(buf: &mut Output, code: u8, msg: &T)
-    -> Result<(), EncodeError>
-{
+pub(crate) fn encode<T: Encode>(buf: &mut Output, code: u8, msg: &T) -> Result<(), EncodeError> {
     buf.reserve(5);
     buf.put_u8(code);
     let base = buf.len();
@@ -132,31 +121,34 @@ pub(crate) fn encode<T: Encode>(buf: &mut Output, code: u8, msg: &T)
 
     msg.encode(buf)?;
 
-    let size = u32::try_from(buf.len() - base).ok()
+    let size = u32::try_from(buf.len() - base)
+        .ok()
         .context(errors::MessageTooLong)?;
-    buf[base..base+4].copy_from_slice(&size.to_be_bytes()[..]);
+    buf[base..base + 4].copy_from_slice(&size.to_be_bytes()[..]);
     Ok(())
 }
 
 impl Encode for String {
-    fn encode(&self, buf: &mut Output)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         buf.reserve(2 + self.len());
-        buf.put_u32(u32::try_from(self.len()).ok()
-            .context(errors::StringTooLong)?);
+        buf.put_u32(
+            u32::try_from(self.len())
+                .ok()
+                .context(errors::StringTooLong)?,
+        );
         buf.extend(self.as_bytes());
         Ok(())
     }
 }
 
 impl Encode for Bytes {
-    fn encode(&self, buf: &mut Output)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         buf.reserve(2 + self.len());
-        buf.put_u32(u32::try_from(self.len()).ok()
-            .context(errors::StringTooLong)?);
+        buf.put_u32(
+            u32::try_from(self.len())
+                .ok()
+                .context(errors::StringTooLong)?,
+        );
         buf.extend(&self[..]);
         Ok(())
     }
@@ -170,7 +162,7 @@ impl Decode for String {
         ensure!(buf.remaining() >= len, errors::Underflow);
         let mut data = vec![0u8; len];
         buf.copy_to_slice(&mut data[..]);
-        
+
         String::from_utf8(data)
             .map_err(|e| e.utf8_error())
             .context(errors::InvalidUtf8)
@@ -192,16 +184,13 @@ impl Decode for Uuid {
         ensure!(buf.remaining() >= 16, errors::Underflow);
         let mut bytes = [0u8; 16];
         buf.copy_to_slice(&mut bytes[..]);
-        let result = Uuid::from_slice(&bytes)
-            .context(errors::InvalidUuid)?;
+        let result = Uuid::from_slice(&bytes).context(errors::InvalidUuid)?;
         Ok(result)
     }
 }
 
 impl Encode for Uuid {
-    fn encode(&self, buf: &mut Output)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         buf.extend(self.as_bytes());
         Ok(())
     }

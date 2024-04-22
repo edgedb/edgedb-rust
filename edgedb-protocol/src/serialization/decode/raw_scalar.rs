@@ -3,9 +3,9 @@ use std::mem::size_of;
 use std::str;
 use std::time::SystemTime;
 
-use bytes::{Bytes, Buf, BufMut};
-use edgedb_errors::{Error, ErrorKind, ClientEncodingError};
-use snafu::{ResultExt, ensure};
+use bytes::{Buf, BufMut, Bytes};
+use edgedb_errors::{ClientEncodingError, Error, ErrorKind};
+use snafu::{ensure, ResultExt};
 
 use crate::codec;
 use crate::descriptors::{Descriptor, TypePos};
@@ -13,19 +13,18 @@ use crate::errors::{self, DecodeError};
 use crate::model::range;
 use crate::model::{BigInt, Decimal};
 use crate::model::{ConfigMemory, Range};
-use crate::model::{Duration, LocalDate, LocalTime, LocalDatetime, Datetime};
+use crate::model::{DateDuration, RelativeDuration};
+use crate::model::{Datetime, Duration, LocalDate, LocalDatetime, LocalTime};
 use crate::model::{Json, Uuid};
-use crate::model::{RelativeDuration, DateDuration};
-use crate::query_arg::{ScalarArg, Encoder, DescriptorContext};
+use crate::query_arg::{DescriptorContext, Encoder, ScalarArg};
 use crate::serialization::decode::queryable::scalars::DecodeScalar;
-use crate::value::{Value, EnumValue};
-
+use crate::value::{EnumValue, Value};
 
 pub trait RawCodec<'t>: Sized {
-    fn decode(buf: &'t[u8]) -> Result<Self, DecodeError>;
+    fn decode(buf: &'t [u8]) -> Result<Self, DecodeError>;
 }
 
-fn ensure_exact_size(buf:&[u8], expected_size: usize) -> Result<(), DecodeError> {
+fn ensure_exact_size(buf: &[u8], expected_size: usize) -> Result<(), DecodeError> {
     if buf.len() != expected_size {
         if buf.len() < expected_size {
             return errors::Underflow.fail();
@@ -38,15 +37,17 @@ fn ensure_exact_size(buf:&[u8], expected_size: usize) -> Result<(), DecodeError>
 
 impl<'t> RawCodec<'t> for String {
     fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
-        <&str>::decode(buf).map(|s|s.to_owned())
+        <&str>::decode(buf).map(|s| s.to_owned())
     }
 }
 
-fn check_scalar(ctx: &DescriptorContext, type_pos: TypePos,
-                type_id: Uuid, name: &str)
-    -> Result<(), Error>
-{
-    use crate::descriptors::Descriptor::{Scalar, BaseScalar};
+fn check_scalar(
+    ctx: &DescriptorContext,
+    type_pos: TypePos,
+    type_id: Uuid,
+    name: &str,
+) -> Result<(), Error> {
+    use crate::descriptors::Descriptor::{BaseScalar, Scalar};
     let desc = ctx.get(type_pos)?;
     match desc {
         Scalar(scalar) => {
@@ -61,15 +62,11 @@ fn check_scalar(ctx: &DescriptorContext, type_pos: TypePos,
 }
 
 impl ScalarArg for String {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
         encoder.buf.extend(self.as_bytes());
         Ok(())
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
@@ -78,18 +75,14 @@ impl ScalarArg for String {
 }
 
 impl ScalarArg for &'_ str {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
         encoder.buf.extend(self.as_bytes());
         Ok(())
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         // special case: &str can express an enum variant
         if let Descriptor::Enumeration(_) = ctx.get(pos)? {
-            return Ok(())
+            return Ok(());
         }
 
         check_scalar(ctx, pos, String::uuid(), String::typename())
@@ -100,24 +93,20 @@ impl ScalarArg for &'_ str {
 }
 
 impl<'t> RawCodec<'t> for &'t str {
-    fn decode(buf:&'t [u8]) -> Result<Self, DecodeError> {
+    fn decode(buf: &'t [u8]) -> Result<Self, DecodeError> {
         let val = str::from_utf8(buf).context(errors::InvalidUtf8)?;
         Ok(val)
     }
 }
 
 impl ScalarArg for Json {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
         encoder.buf.reserve(self.len() + 1);
         encoder.buf.put_u8(1);
         encoder.buf.extend(self.as_bytes());
         Ok(())
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Json::uuid(), Json::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
@@ -130,9 +119,7 @@ impl<'t> RawCodec<'t> for Json {
         ensure!(buf.remaining() >= 1, errors::Underflow);
         let format = buf.get_u8();
         ensure!(format == 1, errors::InvalidJsonFormat);
-        let val = str::from_utf8(buf)
-            .context(errors::InvalidUtf8)?
-            .to_owned();
+        let val = str::from_utf8(buf).context(errors::InvalidUtf8)?.to_owned();
         Ok(Json::new_unchecked(val))
     }
 }
@@ -146,16 +133,12 @@ impl<'t> RawCodec<'t> for Uuid {
 }
 
 impl ScalarArg for Uuid {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
         encoder.buf.reserve(16);
         encoder.buf.extend(self.as_bytes());
         Ok(())
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
@@ -164,7 +147,7 @@ impl ScalarArg for Uuid {
 }
 
 impl<'t> RawCodec<'t> for bool {
-    fn decode(buf:&[u8]) -> Result<Self, DecodeError> {
+    fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
         ensure_exact_size(buf, 1)?;
         let res = match buf[0] {
             0x00 => false,
@@ -176,9 +159,7 @@ impl<'t> RawCodec<'t> for bool {
 }
 
 impl ScalarArg for bool {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
         encoder.buf.reserve(1);
         encoder.buf.put_u8(match self {
             false => 0x00,
@@ -186,9 +167,7 @@ impl ScalarArg for bool {
         });
         Ok(())
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
@@ -204,16 +183,12 @@ impl<'t> RawCodec<'t> for i16 {
 }
 
 impl ScalarArg for i16 {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
         encoder.buf.reserve(2);
         encoder.buf.put_i16(*self);
         Ok(())
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
@@ -229,16 +204,12 @@ impl<'t> RawCodec<'t> for i32 {
 }
 
 impl ScalarArg for i32 {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
         encoder.buf.reserve(4);
         encoder.buf.put_i32(*self);
         Ok(())
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
@@ -261,16 +232,12 @@ impl<'t> RawCodec<'t> for ConfigMemory {
 }
 
 impl ScalarArg for i64 {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
         encoder.buf.reserve(8);
         encoder.buf.put_i64(*self);
         Ok(())
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
@@ -286,16 +253,12 @@ impl<'t> RawCodec<'t> for f32 {
 }
 
 impl ScalarArg for f32 {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
         encoder.buf.reserve(4);
         encoder.buf.put_f32(*self);
         Ok(())
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
@@ -311,16 +274,12 @@ impl<'t> RawCodec<'t> for f64 {
 }
 
 impl ScalarArg for f64 {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
         encoder.buf.reserve(8);
         encoder.buf.put_f64(*self);
         Ok(())
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
@@ -335,15 +294,11 @@ impl<'t> RawCodec<'t> for &'t [u8] {
 }
 
 impl ScalarArg for &'_ [u8] {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
         encoder.buf.extend(*self);
         Ok(())
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, codec::STD_BYTES, "std::bytes")
     }
     fn to_value(&self) -> Result<Value, Error> {
@@ -358,15 +313,11 @@ impl<'t> RawCodec<'t> for Bytes {
 }
 
 impl ScalarArg for Bytes {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
         encoder.buf.extend(&self[..]);
         Ok(())
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, codec::STD_BYTES, "std::bytes")
     }
     fn to_value(&self) -> Result<Value, Error> {
@@ -375,16 +326,12 @@ impl ScalarArg for Bytes {
 }
 
 impl ScalarArg for ConfigMemory {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
         encoder.buf.reserve(8);
         encoder.buf.put_i64(self.0);
         Ok(())
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
@@ -403,38 +350,38 @@ impl<'t> RawCodec<'t> for Decimal {
             _ => errors::BadSign.fail()?,
         };
         let decimal_digits = buf.get_u16();
-        ensure_exact_size(buf, ndigits*2)?;
+        ensure_exact_size(buf, ndigits * 2)?;
         let mut digits = Vec::with_capacity(ndigits);
         for _ in 0..ndigits {
             digits.push(buf.get_u16());
         }
         Ok(Decimal {
-            negative, weight, decimal_digits, digits,
+            negative,
+            weight,
+            decimal_digits,
+            digits,
         })
     }
 }
 
-#[cfg(feature="bigdecimal")]
+#[cfg(feature = "bigdecimal")]
 impl<'t> RawCodec<'t> for bigdecimal::BigDecimal {
     fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
-        use snafu::IntoError;
         use crate::errors::DecodeValue;
+        use snafu::IntoError;
 
         let dec: Decimal = RawCodec::decode(buf)?;
-        Ok(dec.try_into().map_err(|e| DecodeValue.into_error(Box::new(e)))?)
+        Ok(dec
+            .try_into()
+            .map_err(|e| DecodeValue.into_error(Box::new(e)))?)
     }
 }
 
 impl ScalarArg for Decimal {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
-        codec::encode_decimal(encoder.buf, self)
-        .map_err(ClientEncodingError::with_source)
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
+        codec::encode_decimal(encoder.buf, self).map_err(ClientEncodingError::with_source)
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
@@ -442,36 +389,35 @@ impl ScalarArg for Decimal {
     }
 }
 
-#[cfg(feature="num-bigint")]
+#[cfg(feature = "num-bigint")]
 impl<'t> RawCodec<'t> for num_bigint::BigInt {
     fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
-        use snafu::IntoError;
         use crate::errors::DecodeValue;
+        use snafu::IntoError;
 
         let dec: BigInt = RawCodec::decode(buf)?;
-        Ok(dec.try_into().map_err(|e| DecodeValue.into_error(Box::new(e)))?)
+        Ok(dec
+            .try_into()
+            .map_err(|e| DecodeValue.into_error(Box::new(e)))?)
     }
 }
 
-#[cfg(feature="bigdecimal")]
+#[cfg(feature = "bigdecimal")]
 impl ScalarArg for bigdecimal::BigDecimal {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
-        let val = self.clone().try_into()
-            .map_err(|e| ClientEncodingError::with_source(e)
-                .context("cannot serialize BigDecimal value"))?;
-        codec::encode_decimal(encoder.buf, &val)
-            .map_err(|e| ClientEncodingError::with_source(e))
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
+        let val = self.clone().try_into().map_err(|e| {
+            ClientEncodingError::with_source(e).context("cannot serialize BigDecimal value")
+        })?;
+        codec::encode_decimal(encoder.buf, &val).map_err(|e| ClientEncodingError::with_source(e))
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
         Ok(Value::Decimal(
-            self.clone().try_into().map_err(ClientEncodingError::with_source)?
+            self.clone()
+                .try_into()
+                .map_err(ClientEncodingError::with_source)?,
         ))
     }
 }
@@ -489,26 +435,23 @@ impl<'t> RawCodec<'t> for BigInt {
         let decimal_digits = buf.get_u16();
         ensure!(decimal_digits == 0, errors::NonZeroReservedBytes);
         let mut digits = Vec::with_capacity(ndigits);
-        ensure_exact_size(buf, ndigits*2)?;
+        ensure_exact_size(buf, ndigits * 2)?;
         for _ in 0..ndigits {
             digits.push(buf.get_u16());
         }
         Ok(BigInt {
-            negative, weight, digits,
+            negative,
+            weight,
+            digits,
         })
     }
 }
 
 impl ScalarArg for BigInt {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
-        codec::encode_big_int(encoder.buf, self)
-        .map_err(ClientEncodingError::with_source)
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
+        codec::encode_big_int(encoder.buf, self).map_err(ClientEncodingError::with_source)
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
@@ -516,26 +459,21 @@ impl ScalarArg for BigInt {
     }
 }
 
-#[cfg(feature="bigdecimal")]
+#[cfg(feature = "bigdecimal")]
 impl ScalarArg for num_bigint::BigInt {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
-        let val = self.clone().try_into()
-            .map_err(|e| ClientEncodingError::with_source(e)
-                .context("cannot serialize BigInt value"))?;
-        codec::encode_big_int(encoder.buf, &val)
-            .map_err(|e| ClientEncodingError::with_source(e))
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
+        let val = self.clone().try_into().map_err(|e| {
+            ClientEncodingError::with_source(e).context("cannot serialize BigInt value")
+        })?;
+        codec::encode_big_int(encoder.buf, &val).map_err(|e| ClientEncodingError::with_source(e))
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
-        let val = self.clone().try_into()
-            .map_err(|e| ClientEncodingError::with_source(e)
-                .context("cannot serialize BigInt value"))?;
+        let val = self.clone().try_into().map_err(|e| {
+            ClientEncodingError::with_source(e).context("cannot serialize BigInt value")
+        })?;
         Ok(Value::BigInt(val))
     }
 }
@@ -559,15 +497,10 @@ impl<'t> RawCodec<'t> for std::time::Duration {
 }
 
 impl ScalarArg for Duration {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
-        codec::encode_duration(encoder.buf, self)
-            .map_err(ClientEncodingError::with_source)
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
+        codec::encode_duration(encoder.buf, self).map_err(ClientEncodingError::with_source)
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
@@ -581,7 +514,11 @@ impl<'t> RawCodec<'t> for RelativeDuration {
         let micros = buf.get_i64();
         let days = buf.get_i32();
         let months = buf.get_i32();
-        Ok(RelativeDuration { micros, days, months })
+        Ok(RelativeDuration {
+            micros,
+            days,
+            months,
+        })
     }
 }
 
@@ -597,15 +534,10 @@ impl<'t> RawCodec<'t> for DateDuration {
 }
 
 impl ScalarArg for RelativeDuration {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
-        codec::encode_relative_duration(encoder.buf, self)
-            .map_err(ClientEncodingError::with_source)
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
+        codec::encode_relative_duration(encoder.buf, self).map_err(ClientEncodingError::with_source)
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
@@ -621,24 +553,19 @@ impl<'t> RawCodec<'t> for SystemTime {
 }
 
 impl ScalarArg for SystemTime {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
-        let val = self.clone().try_into()
-            .map_err(|e| ClientEncodingError::with_source(e)
-                .context("cannot serialize SystemTime value"))?;
-        codec::encode_datetime(encoder.buf, &val)
-            .map_err(ClientEncodingError::with_source)
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
+        let val = self.clone().try_into().map_err(|e| {
+            ClientEncodingError::with_source(e).context("cannot serialize SystemTime value")
+        })?;
+        codec::encode_datetime(encoder.buf, &val).map_err(ClientEncodingError::with_source)
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
-        let val = self.clone().try_into()
-            .map_err(|e| ClientEncodingError::with_source(e)
-                .context("cannot serialize SystemTime value"))?;
+        let val = self.clone().try_into().map_err(|e| {
+            ClientEncodingError::with_source(e).context("cannot serialize SystemTime value")
+        })?;
         Ok(Value::Datetime(val))
     }
 }
@@ -646,21 +573,15 @@ impl ScalarArg for SystemTime {
 impl<'t> RawCodec<'t> for Datetime {
     fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
         let micros = i64::decode(buf)?;
-        Datetime::from_postgres_micros(micros)
-            .map_err(|_| errors::InvalidDate.build())
+        Datetime::from_postgres_micros(micros).map_err(|_| errors::InvalidDate.build())
     }
 }
 
 impl ScalarArg for Datetime {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
-        codec::encode_datetime(encoder.buf, self)
-            .map_err(ClientEncodingError::with_source)
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
+        codec::encode_datetime(encoder.buf, self).map_err(ClientEncodingError::with_source)
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
@@ -671,21 +592,15 @@ impl ScalarArg for Datetime {
 impl<'t> RawCodec<'t> for LocalDatetime {
     fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
         let micros = i64::decode(buf)?;
-        LocalDatetime::from_postgres_micros(micros)
-           .map_err(|_| errors::InvalidDate.build())
+        LocalDatetime::from_postgres_micros(micros).map_err(|_| errors::InvalidDate.build())
     }
 }
 
 impl ScalarArg for LocalDatetime {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
-        codec::encode_local_datetime(encoder.buf, self)
-            .map_err(ClientEncodingError::with_source)
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
+        codec::encode_local_datetime(encoder.buf, self).map_err(ClientEncodingError::with_source)
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
@@ -701,15 +616,10 @@ impl<'t> RawCodec<'t> for LocalDate {
 }
 
 impl ScalarArg for LocalDate {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
-        codec::encode_local_date(encoder.buf, self)
-            .map_err(ClientEncodingError::with_source)
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
+        codec::encode_local_date(encoder.buf, self).map_err(ClientEncodingError::with_source)
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
@@ -720,21 +630,21 @@ impl ScalarArg for LocalDate {
 impl<'t> RawCodec<'t> for LocalTime {
     fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
         let micros = i64::decode(buf)?;
-        ensure!((0..86_400 * 1_000_000).contains(&micros), errors::InvalidDate);
-        Ok(LocalTime { micros: micros as u64 })
+        ensure!(
+            (0..86_400 * 1_000_000).contains(&micros),
+            errors::InvalidDate
+        );
+        Ok(LocalTime {
+            micros: micros as u64,
+        })
     }
 }
 
 impl ScalarArg for DateDuration {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
-        codec::encode_date_duration(encoder.buf, self)
-            .map_err(ClientEncodingError::with_source)
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
+        codec::encode_date_duration(encoder.buf, self).map_err(ClientEncodingError::with_source)
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
@@ -743,15 +653,10 @@ impl ScalarArg for DateDuration {
 }
 
 impl ScalarArg for LocalTime {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
-        codec::encode_local_time(encoder.buf, self)
-            .map_err(ClientEncodingError::with_source)
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
+        codec::encode_local_time(encoder.buf, self).map_err(ClientEncodingError::with_source)
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
@@ -760,15 +665,11 @@ impl ScalarArg for LocalTime {
 }
 
 impl ScalarArg for EnumValue {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
         encoder.buf.extend(self.as_bytes());
         Ok(())
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         use crate::descriptors::Descriptor::Enumeration;
 
         let desc = ctx.get(pos)?;
@@ -785,35 +686,36 @@ impl ScalarArg for EnumValue {
 }
 
 impl<T: ScalarArg + Clone> ScalarArg for Range<T> {
-    fn encode(&self, encoder: &mut Encoder)
-        -> Result<(), Error>
-    {
-        let flags =
-            if self.empty { range::EMPTY } else {
-                (if self.inc_lower { range::LB_INC } else { 0 }) |
-                (if self.inc_upper { range::UB_INC } else { 0 }) |
-                (if self.lower.is_none() { range::LB_INF } else { 0 }) |
-                (if self.upper.is_none() { range::UB_INF } else { 0 })
-            };
+    fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
+        let flags = if self.empty {
+            range::EMPTY
+        } else {
+            (if self.inc_lower { range::LB_INC } else { 0 })
+                | (if self.inc_upper { range::UB_INC } else { 0 })
+                | (if self.lower.is_none() {
+                    range::LB_INF
+                } else {
+                    0
+                })
+                | (if self.upper.is_none() {
+                    range::UB_INF
+                } else {
+                    0
+                })
+        };
         encoder.buf.reserve(1);
         encoder.buf.put_u8(flags as u8);
 
         if let Some(lower) = &self.lower {
-            encoder.length_prefixed(|encoder| {
-                lower.encode(encoder)
-            })?
+            encoder.length_prefixed(|encoder| lower.encode(encoder))?
         }
 
         if let Some(upper) = &self.upper {
-            encoder.length_prefixed(|encoder| {
-                upper.encode(encoder)
-            })?;
+            encoder.length_prefixed(|encoder| upper.encode(encoder))?;
         }
         Ok(())
     }
-    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos)
-        -> Result<(), Error>
-    {
+    fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         let desc = ctx.get(pos)?;
         if let Descriptor::Range(rng) = desc {
             T::check_descriptor(ctx, rng.type_pos)
@@ -823,10 +725,14 @@ impl<T: ScalarArg + Clone> ScalarArg for Range<T> {
     }
     fn to_value(&self) -> Result<Value, Error> {
         Ok(Value::Range(Range {
-            lower: self.lower.as_ref()
+            lower: self
+                .lower
+                .as_ref()
                 .map(|v| v.to_value().map(Box::new))
                 .transpose()?,
-            upper: self.upper.as_ref()
+            upper: self
+                .upper
+                .as_ref()
                 .map(|v| v.to_value().map(Box::new))
                 .transpose()?,
             inc_lower: self.inc_lower,

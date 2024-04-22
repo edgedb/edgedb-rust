@@ -1,24 +1,24 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-
 pub fn derive_enum(s: &syn::ItemEnum) -> syn::Result<TokenStream> {
     let type_name = &s.ident;
     let (impl_generics, ty_generics, _) = s.generics.split_for_impl();
-    let branches = s.variants.iter().map(|v| {
-        match v.fields {
+    let branches = s
+        .variants
+        .iter()
+        .map(|v| match v.fields {
             syn::Fields::Unit => {
                 let name = &v.ident;
-                let name_bstr = syn::LitByteStr::new(
-                    name.to_string().as_bytes(),
-                    name.span(),
-                );
+                let name_bstr = syn::LitByteStr::new(name.to_string().as_bytes(), name.span());
                 Ok(quote!(#name_bstr => Ok(#type_name::#name)))
             }
             _ => Err(syn::Error::new_spanned(
-                    &v.fields, "fields are not allowed in enum variants")),
-        }
-    }).collect::<Result<Vec<_>, _>>()?;
+                &v.fields,
+                "fields are not allowed in enum variants",
+            )),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     let expanded = quote! {
         impl #impl_generics ::edgedb_protocol::queryable::Queryable
             for #type_name #ty_generics {

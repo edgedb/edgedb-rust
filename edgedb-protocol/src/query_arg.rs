@@ -89,8 +89,7 @@ impl DescriptorContext<'_> {
     }
     pub fn build_codec(&self) -> Result<Arc<dyn Codec>, Error> {
         build_codec(self.root_pos, self.descriptors)
-        .map_err(|e| ProtocolError::with_source(e)
-            .context("error decoding input codec"))
+            .map_err(|e| ProtocolError::with_source(e).context("error decoding input codec"))
     }
     pub fn wrong_type(&self, descriptor: &Descriptor, expected: &str) -> Error {
         DescriptorMismatch::with_message(format!(
@@ -100,7 +99,8 @@ impl DescriptorContext<'_> {
     pub fn field_number(&self, expected: usize, unexpected: usize) -> Error {
         DescriptorMismatch::with_message(format!(
             "expected {} fields, got {}",
-            expected, unexpected))
+            expected, unexpected
+        ))
     }
 }
 
@@ -174,16 +174,31 @@ impl QueryArg for Value {
             RelativeDuration(v) => v.encode_slot(enc)?,
             DateDuration(v) => v.encode_slot(enc)?,
             Json(v) => v.encode_slot(enc)?,
-            Set(_) => return Err(ClientEncodingError::with_message(
-                    "set cannot be query argument")),
-            Object {..} => return Err(ClientEncodingError::with_message(
-                    "object cannot be query argument")),
-            SparseObject(_) => return Err(ClientEncodingError::with_message(
-                    "sparse object cannot be query argument")),
-            Tuple(_) => return Err(ClientEncodingError::with_message(
-                    "tuple object cannot be query argument")),
-            NamedTuple {..} => return Err(ClientEncodingError::with_message(
-                    "named tuple object cannot be query argument")),
+            Set(_) => {
+                return Err(ClientEncodingError::with_message(
+                    "set cannot be query argument",
+                ))
+            }
+            Object { .. } => {
+                return Err(ClientEncodingError::with_message(
+                    "object cannot be query argument",
+                ))
+            }
+            SparseObject(_) => {
+                return Err(ClientEncodingError::with_message(
+                    "sparse object cannot be query argument",
+                ))
+            }
+            Tuple(_) => {
+                return Err(ClientEncodingError::with_message(
+                    "tuple object cannot be query argument",
+                ))
+            }
+            NamedTuple { .. } => {
+                return Err(ClientEncodingError::with_message(
+                    "named tuple object cannot be query argument",
+                ))
+            }
             Array(v) => v.encode_slot(enc)?,
             Enum(v) => v.encode_slot(enc)?,
             Range(v) => v.encode_slot(enc)?,

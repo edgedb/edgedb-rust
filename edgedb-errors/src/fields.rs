@@ -1,6 +1,5 @@
 use crate::traits::Field;
 
-
 pub struct QueryText;
 
 impl Field for QueryText {

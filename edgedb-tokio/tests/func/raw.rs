@@ -28,7 +28,9 @@ async fn poll_connect() -> anyhow::Result<()> {
     let desc = conn.parse(&options, "SELECT 7*8", &state).await?;
     assert!(conn.is_consistent());
 
-    let data = conn.execute(&options, "SELECT 7*8", &state, &desc, &Bytes::new()).await?;
+    let data = conn
+        .execute(&options, "SELECT 7*8", &state, &desc, &Bytes::new())
+        .await?;
     assert!(conn.is_consistent());
     assert_eq!(data.len(), 1);
     assert_eq!(data[0].data.len(), 1);
