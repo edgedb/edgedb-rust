@@ -35,6 +35,7 @@ pub enum RetryCondition {
 /// Must be set on a [`Client`](crate::Client) via
 /// [`with_transaction_options`](crate::Client::with_transaction_options).
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct TransactionOptions {
     read_only: bool,
     deferrable: bool,
@@ -59,14 +60,7 @@ pub(crate) struct RetryRule {
     pub(crate) backoff: Arc<dyn Fn(u32) -> Duration + Send + Sync>,
 }
 
-impl Default for TransactionOptions {
-    fn default() -> TransactionOptions {
-        TransactionOptions {
-            read_only: false,
-            deferrable: false,
-        }
-    }
-}
+
 
 impl TransactionOptions {
     /// Set whether transaction is read-only

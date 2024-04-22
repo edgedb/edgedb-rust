@@ -328,7 +328,7 @@ impl Client {
                 io_format: IoFormat::Json,
                 expected_cardinality: Cardinality::AtMostOne,
             };
-            let desc = match conn.parse(&flags, &query, &self.options.state).await {
+            let desc = match conn.parse(&flags, query, &self.options.state).await {
                 Ok(parsed) => parsed,
                 Err(e) => {
                     if e.has_tag(SHOULD_RETRY) {
@@ -355,7 +355,7 @@ impl Client {
             ))?;
 
             let res = conn.execute(
-                    &flags, &query, &self.options.state, &desc, &arg_buf.freeze(),
+                    &flags, query, &self.options.state, &desc, &arg_buf.freeze(),
                 ).await;
             let data = match res {
                 Ok(data) => data,

@@ -50,11 +50,10 @@ async fn simple() -> anyhow::Result<()> {
 
     // basic enum param
     let enum_query = "SELECT <str>(<test::State>$0) = 'waiting'";
-    assert_eq!(
+    assert!(
         client.query_required_single::<bool, _>(
             enum_query, &(Value::Enum(EnumValue::from("waiting")),)
-        ).await.unwrap(),
-        true
+        ).await.unwrap()
     );
 
     // unsupported: enum param as Value::Str
@@ -68,11 +67,10 @@ async fn simple() -> anyhow::Result<()> {
     ).await.unwrap_err();
 
     // enum param as &str
-    assert_eq!(
+    assert!(
         client.query_required_single::<bool, (&'_ str, )>(
             enum_query, &("waiting", ),
-        ).await.unwrap(),
-        true
+        ).await.unwrap()
     );
 
     // named args
@@ -86,7 +84,7 @@ async fn simple() -> anyhow::Result<()> {
         &named_args! {
             "msg1" => vec!["the".to_string(), "answer".to_string(), "to".to_string()],
             "question" => None::<String>,
-            "answer" => 42 as i64,
+            "answer" => 42_i64,
         }
     ).await.unwrap();
     assert_eq!(value.as_str(), "the answer to the ultimate question of life: 42");

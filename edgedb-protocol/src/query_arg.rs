@@ -240,7 +240,7 @@ pub(crate) fn check_enum(variant_name: &str, expected_members: &[String]) -> Res
         Ok(())
     } else {
         let mut members = expected_members
-            .into_iter()
+            .iter()
             .map(|c| format!("'{c}'"))
             .collect::<Vec<_>>();
         members.sort_unstable();
