@@ -162,6 +162,12 @@ impl From<String> for Value {
     }
 }
 
+impl From<&str> for Value {
+    fn from(s: &str) -> Value {
+        Value::Str(s.to_string())
+    }
+}
+
 impl From<bool> for Value {
     fn from(b: bool) -> Value {
         Value::Bool(b)
