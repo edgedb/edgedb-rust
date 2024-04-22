@@ -156,6 +156,8 @@ async fn json() -> anyhow::Result<()> {
     let res = res.into_iter().next().unwrap();
     assert_eq!(res.phone, "0123456789");
     assert_eq!(res.otp, 98271);
+
+    Ok(())
 }
 
 #[tokio::test]
