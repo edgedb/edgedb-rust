@@ -77,6 +77,11 @@ impl QueryArgs for HashMap<&str, ValueOpt> {
             let value = self.get(param_descriptor.name.as_str());
 
             let Some(value) = value else {
+                if param_descriptor.cardinality.is_some_and(|cardinality| cardinality.is_optional()) {
+                    shape_elements.push(ShapeElement::from(param_descriptor));
+                    fields.push(None);
+                    continue;
+                }
                 return Err(ClientEncodingError::with_message(format!(
                     "argument for ${} missing",
                     param_descriptor.name

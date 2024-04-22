@@ -82,6 +82,7 @@ async fn simple() -> anyhow::Result<()> {
             ++ (<optional str>$question ?? ' the ultimate question of life')
             ++ ': '
             ++ <str><int64>$answer
+            ++ <optional str>$not_an_answer
         );",
         &named_args! {
             "msg1" => vec!["the".to_string(), "answer".to_string(), "to".to_string()],
@@ -147,7 +148,7 @@ async fn json() -> anyhow::Result<()> {
        pub phone: String,
        pub otp: i32,
     }
-    
+
     let res = client.query::<OtpPhoneRequest, _>(
         "select <json>(select test::OtpPhoneRequest { phone, otp } filter .phone = '0123456789')",
         &()
