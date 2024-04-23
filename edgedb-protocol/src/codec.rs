@@ -379,6 +379,7 @@ impl Codec for Int64 {
     {
         let &val = match val {
             Value::Int64(val) => val,
+            Value::Int32(val) => &(*val as i64),
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(8);
