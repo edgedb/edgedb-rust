@@ -33,67 +33,72 @@ impl std::convert::TryFrom<bigdecimal::BigDecimal> for Decimal {
         let weight = i16::try_from(digits.len() as i64 - scale_4digits - 1)?;
 
         // TODO(tailhook) normalization can be optimized here
-        return Ok(Decimal {
+        Ok(Decimal {
             negative,
             weight,
             decimal_digits,
             digits,
         }
-        .normalize());
+        .normalize())
     }
 }
 
-impl Into<bigdecimal::BigDecimal> for Decimal {
-    fn into(self) -> bigdecimal::BigDecimal {
-        (&self).into()
+impl From<Decimal> for bigdecimal::BigDecimal {
+    fn from(v: Decimal) -> bigdecimal::BigDecimal {
+        (&v).into()
     }
 }
 
-impl Into<bigdecimal::BigDecimal> for &Decimal {
-    fn into(self) -> bigdecimal::BigDecimal {
+impl From<&Decimal> for bigdecimal::BigDecimal {
+    fn from(val: &Decimal) -> bigdecimal::BigDecimal {
         use bigdecimal::BigDecimal;
         use num_bigint::BigInt;
         use num_traits::pow;
         use std::cmp::max;
-        if self.digits.len() == 0 {
+        if val.digits.is_empty() {
             return BigDecimal::from(0);
         }
 
         let mut r = BigInt::from(0);
         // TODO(tailhook) this is quite slow, use preallocated vector
-        for &digit in &self.digits {
+        for &digit in &val.digits {
             r *= 10000;
             r += digit;
         }
-        let decimal_stored = 4 * max(0, self.digits.len() as i64 - self.weight as i64 - 1) as usize;
+        let decimal_stored = 4 * max(0, val.digits.len() as i64 - val.weight as i64 - 1) as usize;
         let pad = if decimal_stored > 0 {
-            let pad = decimal_stored as i64 - self.decimal_digits as i64;
-            if pad > 0 {
-                r /= pow(10, pad as usize);
-            } else if pad < 0 {
-                r *= pow(10, (-pad) as usize);
+            let pad = decimal_stored as i64 - val.decimal_digits as i64;
+            match pad {
+                1.. => {
+                    r /= pow(10, pad as usize);
+                }
+                0 => {}
+                ..=-1 => {
+                    r *= pow(10, (-pad) as usize);
+                }
             }
+
             pad
         } else {
             0
         };
 
-        let scale = if self.decimal_digits == 0 {
-            -(self.weight as i64 + 1 - self.digits.len() as i64) * 4 - pad as i64
+        let scale = if val.decimal_digits == 0 {
+            -(val.weight as i64 + 1 - val.digits.len() as i64) * 4 - pad as i64
         } else {
             if decimal_stored == 0 {
-                let power = (self.weight as usize + 1 - self.digits.len()) * 4
-                    + self.decimal_digits as usize;
+                let power =
+                    (val.weight as usize + 1 - val.digits.len()) * 4 + val.decimal_digits as usize;
                 if power > 0 {
                     r *= pow(BigInt::from(10), power);
                 }
             }
-            self.decimal_digits as i64
+            val.decimal_digits as i64
         };
-        if self.negative {
+        if val.negative {
             r = -r;
         }
-        return BigDecimal::new(r, scale);
+        BigDecimal::new(r, scale)
     }
 }
 
@@ -207,7 +212,7 @@ mod test {
     fn dec_roundtrip(s: &str) -> BigDecimal {
         let rust = BigDecimal::from_str(s).expect("can parse big decimal");
         let edgedb = Decimal::try_from(rust).expect("can convert for edgedb");
-        BigDecimal::try_from(edgedb).expect("can convert back to big decimal")
+        BigDecimal::from(edgedb)
     }
 
     #[test]

@@ -367,13 +367,8 @@ impl<'t> RawCodec<'t> for Decimal {
 #[cfg(feature = "bigdecimal")]
 impl<'t> RawCodec<'t> for bigdecimal::BigDecimal {
     fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
-        use crate::errors::DecodeValue;
-        use snafu::IntoError;
-
         let dec: Decimal = RawCodec::decode(buf)?;
-        Ok(dec
-            .try_into()
-            .map_err(|e| DecodeValue.into_error(Box::new(e)))?)
+        Ok(dec.into())
     }
 }
 
@@ -392,13 +387,8 @@ impl ScalarArg for Decimal {
 #[cfg(feature = "num-bigint")]
 impl<'t> RawCodec<'t> for num_bigint::BigInt {
     fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
-        use crate::errors::DecodeValue;
-        use snafu::IntoError;
-
         let dec: BigInt = RawCodec::decode(buf)?;
-        Ok(dec
-            .try_into()
-            .map_err(|e| DecodeValue.into_error(Box::new(e)))?)
+        Ok(dec.into())
     }
 }
 
@@ -408,7 +398,7 @@ impl ScalarArg for bigdecimal::BigDecimal {
         let val = self.clone().try_into().map_err(|e| {
             ClientEncodingError::with_source(e).context("cannot serialize BigDecimal value")
         })?;
-        codec::encode_decimal(encoder.buf, &val).map_err(|e| ClientEncodingError::with_source(e))
+        codec::encode_decimal(encoder.buf, &val).map_err(ClientEncodingError::with_source)
     }
     fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
@@ -465,7 +455,7 @@ impl ScalarArg for num_bigint::BigInt {
         let val = self.clone().try_into().map_err(|e| {
             ClientEncodingError::with_source(e).context("cannot serialize BigInt value")
         })?;
-        codec::encode_big_int(encoder.buf, &val).map_err(|e| ClientEncodingError::with_source(e))
+        codec::encode_big_int(encoder.buf, &val).map_err(ClientEncodingError::with_source)
     }
     fn check_descriptor(ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())

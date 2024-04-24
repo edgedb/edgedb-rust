@@ -1634,9 +1634,9 @@ mod chrono_interop {
 
     impl From<&LocalDatetime> for NaiveDateTime {
         fn from(value: &LocalDatetime) -> NaiveDateTime {
-            let timestamp_seconds = value.micros.wrapping_div_euclid(1000_000)
-                - (Datetime::UNIX_EPOCH.micros / 1000_000);
-            let timestamp_nanos = (value.micros.wrapping_rem_euclid(1000_000) * 1000) as u32;
+            let timestamp_seconds = value.micros.wrapping_div_euclid(1_000_000)
+                - (Datetime::UNIX_EPOCH.micros / 1_000_000);
+            let timestamp_nanos = (value.micros.wrapping_rem_euclid(1_000_000) * 1000) as u32;
             DateTime::from_timestamp(timestamp_seconds, timestamp_nanos)
                 .expect("NaiveDateTime range is bigger than LocalDatetime")
                 .naive_utc()
@@ -1654,7 +1654,7 @@ mod chrono_interop {
                 .and_then(|x| x.checked_add(subsec_micros))
                 .and_then(|x| x.checked_add(Datetime::UNIX_EPOCH.micros))
                 .ok_or(OutOfRangeError)?;
-            if micros < LocalDatetime::MIN.micros || micros > LocalDatetime::MAX.micros {
+            if !(LocalDatetime::MIN.micros..=LocalDatetime::MAX.micros).contains(&micros) {
                 return Err(OutOfRangeError);
             }
             Ok(LocalDatetime { micros })
@@ -1683,7 +1683,7 @@ mod chrono_interop {
         type Error = OutOfRangeError;
 
         fn try_from(value: &ChronoDatetime) -> Result<Datetime, Self::Error> {
-            let min = ChronoDatetime::try_from(Datetime::MIN).unwrap();
+            let min = ChronoDatetime::from(Datetime::MIN);
             let duration = value
                 .signed_duration_since(min)
                 .to_std()
@@ -1728,8 +1728,8 @@ mod chrono_interop {
     impl From<&LocalTime> for NaiveTime {
         fn from(value: &LocalTime) -> NaiveTime {
             NaiveTime::from_num_seconds_from_midnight_opt(
-                (value.micros / 1000_000) as u32,
-                ((value.micros % 1000_000) * 1000) as u32,
+                (value.micros / 1_000_000) as u32,
+                ((value.micros % 1_000_000) * 1000) as u32,
             )
             .expect("localtime and native time have equal range")
         }
@@ -1739,12 +1739,12 @@ mod chrono_interop {
         fn from(time: &NaiveTime) -> LocalTime {
             let sec = chrono::Timelike::num_seconds_from_midnight(time);
             let nanos = nanos_to_micros(chrono::Timelike::nanosecond(time) as i64) as u64;
-            let mut micros = sec as u64 * 1000_000 + nanos;
+            let mut micros = sec as u64 * 1_000_000 + nanos;
 
-            if micros >= 86400_000_000 {
+            if micros >= 86_400_000_000 {
                 // this is only possible due to rounding:
                 // >= 23:59:59.999999500
-                micros -= 86400_000_000;
+                micros -= 86_400_000_000;
             }
 
             LocalTime { micros }
@@ -1806,17 +1806,17 @@ mod chrono_interop {
             let naive = NaiveDateTime::from_str("2019-12-27T01:02:03.123456")?;
             assert_eq!(
                 naive,
-                TryInto::<NaiveDateTime>::try_into(LocalDatetime::try_from(naive)?)?
+                Into::<NaiveDateTime>::into(LocalDatetime::try_from(naive)?)
             );
             let naive = NaiveDate::from_str("2019-12-27")?;
             assert_eq!(
                 naive,
-                TryInto::<NaiveDate>::try_into(LocalDate::try_from(naive)?)?
+                Into::<NaiveDate>::into(LocalDate::try_from(naive)?)
             );
             let naive = NaiveTime::from_str("01:02:03.123456")?;
             assert_eq!(
                 naive,
-                TryInto::<NaiveTime>::try_into(LocalTime::try_from(naive)?)?
+                Into::<NaiveTime>::into(LocalTime::from(naive))
             );
             Ok(())
         }
@@ -1837,7 +1837,7 @@ mod chrono_interop {
         fn format_local_time() {
             for time in test_times() {
                 let actual_value = LocalTime::from_micros(time);
-                let expected_value = NaiveTime::try_from(actual_value).unwrap();
+                let expected_value = NaiveTime::from(actual_value);
 
                 check_display(expected_value, actual_value);
                 check_debug(expected_value, actual_value);
@@ -1864,10 +1864,7 @@ mod chrono_interop {
                     let actual_date = LocalDate::from_ymd(date.0, date.1, date.2);
                     let actual_time = LocalTime::from_micros(time);
                     let actual_value = LocalDatetime::new(actual_date, actual_time);
-                    let expected_value = NaiveDateTime::try_from(actual_value).expect(&format!(
-                        "Could not convert LocalDatetime '{}'",
-                        actual_value
-                    ));
+                    let expected_value = NaiveDateTime::from(actual_value);
 
                     check_display(expected_value, actual_value);
                     check_debug(expected_value, actual_value);
@@ -1884,8 +1881,7 @@ mod chrono_interop {
                     let actual_time = LocalTime::from_micros(time);
                     let local_datetime = LocalDatetime::new(actual_date, actual_time);
                     let actual_value = local_datetime.to_utc();
-                    let expected_value = ChronoDatetime::try_from(actual_value)
-                        .expect(&format!("Could not convert Datetime '{}'", actual_value));
+                    let expected_value = ChronoDatetime::from(actual_value);
 
                     check_display(expected_value, actual_value);
                     check_debug(expected_value, actual_value);

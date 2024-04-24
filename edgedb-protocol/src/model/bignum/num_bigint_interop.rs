@@ -32,41 +32,42 @@ impl std::convert::TryFrom<num_bigint::BigInt> for BigInt {
         let weight = (digits.len() - 1).try_into()?;
 
         // TODO(tailhook) normalization can be optimized here
-        return Ok(BigInt {
+        Ok(BigInt {
             negative,
             weight,
             digits,
         }
-        .normalize());
+        .normalize())
     }
 }
 
-impl Into<num_bigint::BigInt> for BigInt {
-    fn into(self) -> num_bigint::BigInt {
-        (&self).into()
+impl From<BigInt> for num_bigint::BigInt {
+    fn from(v: BigInt) -> num_bigint::BigInt {
+        (&v).into()
     }
 }
 
-impl Into<num_bigint::BigInt> for &BigInt {
-    fn into(self) -> num_bigint::BigInt {
+impl From<&BigInt> for num_bigint::BigInt {
+    fn from(v: &BigInt) -> num_bigint::BigInt {
         use num_bigint::BigInt;
         use num_traits::pow;
 
         let mut r = BigInt::from(0);
-        for &digit in &self.digits {
+        for &digit in &v.digits {
             r *= 10000;
             r += digit;
         }
-        if (self.weight + 1) as usize > self.digits.len() {
+        if (v.weight + 1) as usize > v.digits.len() {
             r *= pow(
                 BigInt::from(10000),
-                (self.weight + 1) as usize - self.digits.len(),
+                (v.weight + 1) as usize - v.digits.len(),
             );
         }
-        if self.negative {
-            return -r;
+        if v.negative {
+            -r
+        } else {
+            r
         }
-        return r;
     }
 }
 
@@ -110,7 +111,7 @@ mod test_with_decimal {
         let decimal = BigDecimal::from_str(s).expect("can parse decimal");
         let rust = decimal.to_bigint().expect("can convert to big int");
         let edgedb = BigInt::try_from(rust).expect("can convert for edgedb");
-        num_bigint::BigInt::try_from(edgedb).expect("can convert back to big int")
+        num_bigint::BigInt::from(edgedb)
     }
 
     #[test]
