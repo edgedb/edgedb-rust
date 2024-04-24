@@ -1809,15 +1809,9 @@ mod chrono_interop {
                 Into::<NaiveDateTime>::into(LocalDatetime::try_from(naive)?)
             );
             let naive = NaiveDate::from_str("2019-12-27")?;
-            assert_eq!(
-                naive,
-                Into::<NaiveDate>::into(LocalDate::try_from(naive)?)
-            );
+            assert_eq!(naive, Into::<NaiveDate>::into(LocalDate::try_from(naive)?));
             let naive = NaiveTime::from_str("01:02:03.123456")?;
-            assert_eq!(
-                naive,
-                Into::<NaiveTime>::into(LocalTime::from(naive))
-            );
+            assert_eq!(naive, Into::<NaiveTime>::into(LocalTime::from(naive)));
             Ok(())
         }
 
