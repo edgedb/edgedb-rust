@@ -45,7 +45,6 @@ command-fds = "0.2.1"
 
 [dev-dependencies]
 nix = "0.26.2"
-command-fds = "0.2.1"
 shutdown_hooks = "0.1.0"
 env_logger = "0.10"
 thiserror = "1.0.30"
@@ -53,6 +52,7 @@ test-log = "0.2.8"
 futures-util = "0.3.21"
 miette = {version = "5.3.0", features = ["fancy"]}
 edgedb-errors = {path = "../edgedb-errors", features = ["miette"]}
+test-utils = {git = "https://github.com/edgedb/test-utils.git"}
 
 [features]
 default = ["derive", "env"]
