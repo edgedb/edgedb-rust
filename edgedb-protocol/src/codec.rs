@@ -330,21 +330,6 @@ pub fn scalar_codec(uuid: &UuidVal) -> Result<Arc<dyn Codec>, CodecError> {
     }
 }
 
-impl Codec for Int32 {
-    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
-        RawCodec::decode(buf).map(Value::Int32)
-    }
-    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
-        let &val = match val {
-            Value::Int32(val) => val,
-            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
-        };
-        buf.reserve(4);
-        buf.put_i32(val);
-        Ok(())
-    }
-}
-
 impl Codec for Int16 {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         RawCodec::decode(buf).map(Value::Int16)
@@ -360,13 +345,31 @@ impl Codec for Int16 {
     }
 }
 
+impl Codec for Int32 {
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::Int32)
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
+        let val = match val {
+            Value::Int32(val) => *val,
+            Value::Int16(val) => *val as i32,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        buf.reserve(4);
+        buf.put_i32(val);
+        Ok(())
+    }
+}
+
 impl Codec for Int64 {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         RawCodec::decode(buf).map(Value::Int64)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
-        let &val = match val {
-            Value::Int64(val) => val,
+        let val = match val {
+            Value::Int64(val) => *val,
+            Value::Int32(val) => *val as i64,
+            Value::Int16(val) => *val as i64,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(8);
@@ -410,8 +413,9 @@ impl Codec for Float64 {
         RawCodec::decode(buf).map(Value::Float64)
     }
     fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
-        let &val = match val {
-            Value::Float64(val) => val,
+        let val = match val {
+            Value::Float64(val) => *val,
+            Value::Float32(val) => *val as f64,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         buf.reserve(8);
