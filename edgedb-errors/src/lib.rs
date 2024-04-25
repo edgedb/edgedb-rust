@@ -79,12 +79,12 @@ mod error;
 mod traits;
 
 pub mod display;
-pub mod kinds;
 pub mod fields;
+pub mod kinds;
 
-#[cfg(feature="miette")]
+#[cfg(feature = "miette")]
 pub mod miette;
 
-pub use traits::{ErrorKind, ResultExt, Field};
 pub use error::{Error, Tag};
 pub use kinds::*;
+pub use traits::{ErrorKind, Field, ResultExt};

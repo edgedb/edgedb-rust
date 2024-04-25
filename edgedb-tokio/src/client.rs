@@ -1,24 +1,23 @@
-use std::sync::Arc;
 use std::future::Future;
+use std::sync::Arc;
 
 use bytes::BytesMut;
-use edgedb_protocol::model::Json;
 use edgedb_protocol::common::CompilationOptions;
-use edgedb_protocol::common::{IoFormat, Capabilities, Cardinality};
-use edgedb_protocol::query_arg::{QueryArgs, Encoder};
+use edgedb_protocol::common::{Capabilities, Cardinality, IoFormat};
+use edgedb_protocol::model::Json;
+use edgedb_protocol::query_arg::{Encoder, QueryArgs};
 use edgedb_protocol::QueryResult;
 use tokio::time::sleep;
 
-use crate::raw::{Pool, QueryCapabilities};
 use crate::builder::Config;
 use crate::errors::{Error, ErrorKind, SHOULD_RETRY};
-use crate::errors::{ProtocolEncodingError, NoResultExpected, NoDataError};
-use crate::transaction::{Transaction, transaction};
-use crate::options::{TransactionOptions, RetryOptions};
+use crate::errors::{NoDataError, NoResultExpected, ProtocolEncodingError};
+use crate::options::{RetryOptions, TransactionOptions};
 use crate::raw::{Options, PoolState};
-use crate::state::{AliasesDelta, GlobalsDelta, ConfigDelta};
-use crate::state::{AliasesModifier, GlobalsModifier, ConfigModifier, Fn};
-
+use crate::raw::{Pool, QueryCapabilities};
+use crate::state::{AliasesDelta, ConfigDelta, GlobalsDelta};
+use crate::state::{AliasesModifier, ConfigModifier, Fn, GlobalsModifier};
+use crate::transaction::{transaction, Transaction};
 
 /// The EdgeDB Client.
 ///
@@ -74,10 +73,10 @@ impl Client {
     /// This method can be used with both static arguments, like a tuple of
     /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
-    pub async fn query<R, A>(&self, query: impl AsRef<str>, arguments: &A)
-        -> Result<Vec<R>, Error>
-        where A: QueryArgs,
-              R: QueryResult,
+    pub async fn query<R, A>(&self, query: impl AsRef<str>, arguments: &A) -> Result<Vec<R>, Error>
+    where
+        A: QueryArgs,
+        R: QueryResult,
     {
         let mut iteration = 0;
         loop {
@@ -101,8 +100,7 @@ impl Client {
                         iteration += 1;
                         if iteration < rule.attempts {
                             let duration = (rule.backoff)(iteration);
-                            log::info!("Error: {:#}. Retrying in {:?}...",
-                                       e, duration);
+                            log::info!("Error: {:#}. Retrying in {:?}...", e, duration);
                             sleep(duration).await;
                             continue;
                         }
@@ -129,10 +127,14 @@ impl Client {
     /// This method can be used with both static arguments, like a tuple of
     /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
-    pub async fn query_single<R, A>(&self, query: impl AsRef<str>, arguments: &A)
-        -> Result<Option<R>, Error>
-        where A: QueryArgs,
-              R: QueryResult,
+    pub async fn query_single<R, A>(
+        &self,
+        query: impl AsRef<str>,
+        arguments: &A,
+    ) -> Result<Option<R>, Error>
+    where
+        A: QueryArgs,
+        R: QueryResult,
     {
         let mut iteration = 0;
         loop {
@@ -140,7 +142,10 @@ impl Client {
             let conn = conn.inner();
             let state = &self.options.state;
             let caps = Capabilities::MODIFICATIONS | Capabilities::DDL;
-            match conn.query_single(query.as_ref(), arguments, state, caps).await {
+            match conn
+                .query_single(query.as_ref(), arguments, state, caps)
+                .await
+            {
                 Ok(resp) => return Ok(resp.data),
                 Err(e) => {
                     let allow_retry = match e.get::<QueryCapabilities>() {
@@ -155,8 +160,7 @@ impl Client {
                         iteration += 1;
                         if iteration < rule.attempts {
                             let duration = (rule.backoff)(iteration);
-                            log::info!("Error: {:#}. Retrying in {:?}...",
-                                       e, duration);
+                            log::info!("Error: {:#}. Retrying in {:?}...", e, duration);
                             sleep(duration).await;
                             continue;
                         }
@@ -192,20 +196,26 @@ impl Client {
     /// This method can be used with both static arguments, like a tuple of
     /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
-    pub async fn query_required_single<R, A>(&self, query: impl AsRef<str>, arguments: &A)
-        -> Result<R, Error>
-        where A: QueryArgs,
-              R: QueryResult,
+    pub async fn query_required_single<R, A>(
+        &self,
+        query: impl AsRef<str>,
+        arguments: &A,
+    ) -> Result<R, Error>
+    where
+        A: QueryArgs,
+        R: QueryResult,
     {
-        self.query_single(query, arguments).await?
-            .ok_or_else(|| NoDataError::with_message(
-                        "query row returned zero results"))
+        self.query_single(query, arguments)
+            .await?
+            .ok_or_else(|| NoDataError::with_message("query row returned zero results"))
     }
 
     /// Execute a query and return the result as JSON.
-    pub async fn query_json(&self, query: impl AsRef<str>, arguments: &impl QueryArgs)
-        -> Result<Json, Error>
-    {
+    pub async fn query_json(
+        &self,
+        query: impl AsRef<str>,
+        arguments: &impl QueryArgs,
+    ) -> Result<Json, Error> {
         let mut iteration = 0;
         loop {
             let mut conn = self.pool.acquire().await?;
@@ -219,7 +229,10 @@ impl Client {
                 io_format: IoFormat::Json,
                 expected_cardinality: Cardinality::Many,
             };
-            let desc = match conn.parse(&flags, query.as_ref(), &self.options.state).await {
+            let desc = match conn
+                .parse(&flags, query.as_ref(), &self.options.state)
+                .await
+            {
                 Ok(parsed) => parsed,
                 Err(e) => {
                     if e.has_tag(SHOULD_RETRY) {
@@ -227,8 +240,7 @@ impl Client {
                         iteration += 1;
                         if iteration < rule.attempts {
                             let duration = (rule.backoff)(iteration);
-                            log::info!("Error: {:#}. Retrying in {:?}...",
-                                       e, duration);
+                            log::info!("Error: {:#}. Retrying in {:?}...", e, duration);
                             sleep(duration).await;
                             continue;
                         }
@@ -236,8 +248,7 @@ impl Client {
                     return Err(e);
                 }
             };
-            let inp_desc = desc.input()
-                .map_err(ProtocolEncodingError::with_source)?;
+            let inp_desc = desc.input().map_err(ProtocolEncodingError::with_source)?;
 
             let mut arg_buf = BytesMut::with_capacity(8);
             arguments.encode(&mut Encoder::new(
@@ -245,21 +256,24 @@ impl Client {
                 &mut arg_buf,
             ))?;
 
-            let res = conn.execute(
-                    &flags, query.as_ref(), &self.options.state, &desc, &arg_buf.freeze(),
-                ).await;
+            let res = conn
+                .execute(
+                    &flags,
+                    query.as_ref(),
+                    &self.options.state,
+                    &desc,
+                    &arg_buf.freeze(),
+                )
+                .await;
             let data = match res {
                 Ok(data) => data,
                 Err(e) => {
-                    if desc.capabilities == Capabilities::empty() &&
-                        e.has_tag(SHOULD_RETRY)
-                    {
+                    if desc.capabilities == Capabilities::empty() && e.has_tag(SHOULD_RETRY) {
                         let rule = self.options.retry.get_rule(&e);
                         iteration += 1;
                         if iteration < rule.attempts {
                             let duration = (rule.backoff)(iteration);
-                            log::info!("Error: {:#}. Retrying in {:?}...",
-                                       e, duration);
+                            log::info!("Error: {:#}. Retrying in {:?}...", e, duration);
                             sleep(duration).await;
                             continue;
                         }
@@ -268,22 +282,22 @@ impl Client {
                 }
             };
 
-            let out_desc = desc.output()
-                .map_err(ProtocolEncodingError::with_source)?;
+            let out_desc = desc.output().map_err(ProtocolEncodingError::with_source)?;
             match out_desc.root_pos() {
                 Some(root_pos) => {
                     let ctx = out_desc.as_queryable_context();
                     // JSON objects are returned as strings :(
                     let mut state = String::prepare(&ctx, root_pos)?;
-                    let bytes = data.into_iter().next()
+                    let bytes = data
+                        .into_iter()
+                        .next()
                         .and_then(|chunk| chunk.data.into_iter().next());
                     if let Some(bytes) = bytes {
                         // we trust database to produce valid json
                         let s = String::decode(&mut state, &bytes)?;
-                        return Ok(Json::new_unchecked(s))
+                        return Ok(Json::new_unchecked(s));
                     } else {
-                        return Err(NoDataError::with_message(
-                            "query row returned zero results"))
+                        return Err(NoDataError::with_message("query row returned zero results"));
                     }
                 }
                 None => return Err(NoResultExpected::build()),
@@ -310,10 +324,11 @@ impl Client {
     ///  .query_single_json(query, &("SomeUserName",))
     ///     .await?;
     /// ```
-    pub async fn query_single_json(&self,
-                                   query: impl AsRef<str>, arguments: &impl QueryArgs)
-        -> Result<Option<Json>, Error>
-    {
+    pub async fn query_single_json(
+        &self,
+        query: impl AsRef<str>,
+        arguments: &impl QueryArgs,
+    ) -> Result<Option<Json>, Error> {
         let query = query.as_ref();
         let mut iteration = 0;
         loop {
@@ -328,7 +343,7 @@ impl Client {
                 io_format: IoFormat::Json,
                 expected_cardinality: Cardinality::AtMostOne,
             };
-            let desc = match conn.parse(&flags, &query, &self.options.state).await {
+            let desc = match conn.parse(&flags, query, &self.options.state).await {
                 Ok(parsed) => parsed,
                 Err(e) => {
                     if e.has_tag(SHOULD_RETRY) {
@@ -336,8 +351,7 @@ impl Client {
                         iteration += 1;
                         if iteration < rule.attempts {
                             let duration = (rule.backoff)(iteration);
-                            log::info!("Error: {:#}. Retrying in {:?}...",
-                                       e, duration);
+                            log::info!("Error: {:#}. Retrying in {:?}...", e, duration);
                             sleep(duration).await;
                             continue;
                         }
@@ -345,8 +359,7 @@ impl Client {
                     return Err(e);
                 }
             };
-            let inp_desc = desc.input()
-                .map_err(ProtocolEncodingError::with_source)?;
+            let inp_desc = desc.input().map_err(ProtocolEncodingError::with_source)?;
 
             let mut arg_buf = BytesMut::with_capacity(8);
             arguments.encode(&mut Encoder::new(
@@ -354,21 +367,18 @@ impl Client {
                 &mut arg_buf,
             ))?;
 
-            let res = conn.execute(
-                    &flags, &query, &self.options.state, &desc, &arg_buf.freeze(),
-                ).await;
+            let res = conn
+                .execute(&flags, query, &self.options.state, &desc, &arg_buf.freeze())
+                .await;
             let data = match res {
                 Ok(data) => data,
                 Err(e) => {
-                    if desc.capabilities == Capabilities::empty() &&
-                        e.has_tag(SHOULD_RETRY)
-                    {
+                    if desc.capabilities == Capabilities::empty() && e.has_tag(SHOULD_RETRY) {
                         let rule = self.options.retry.get_rule(&e);
                         iteration += 1;
                         if iteration < rule.attempts {
                             let duration = (rule.backoff)(iteration);
-                            log::info!("Error: {:#}. Retrying in {:?}...",
-                                       e, duration);
+                            log::info!("Error: {:#}. Retrying in {:?}...", e, duration);
                             sleep(duration).await;
                             continue;
                         }
@@ -377,21 +387,22 @@ impl Client {
                 }
             };
 
-            let out_desc = desc.output()
-                .map_err(ProtocolEncodingError::with_source)?;
+            let out_desc = desc.output().map_err(ProtocolEncodingError::with_source)?;
             match out_desc.root_pos() {
                 Some(root_pos) => {
                     let ctx = out_desc.as_queryable_context();
                     // JSON objects are returned as strings :(
                     let mut state = String::prepare(&ctx, root_pos)?;
-                    let bytes = data.into_iter().next()
+                    let bytes = data
+                        .into_iter()
+                        .next()
                         .and_then(|chunk| chunk.data.into_iter().next());
                     if let Some(bytes) = bytes {
                         // we trust database to produce valid json
                         let s = String::decode(&mut state, &bytes)?;
-                        return Ok(Some(Json::new_unchecked(s)))
+                        return Ok(Some(Json::new_unchecked(s)));
                     } else {
-                        return Ok(None)
+                        return Ok(None);
                     }
                 }
                 None => return Err(NoResultExpected::build()),
@@ -406,13 +417,14 @@ impl Client {
     /// [`ResultCardinalityMismatchError`][crate::errors::ResultCardinalityMismatchError]
     /// is raised. If the query returns an empty set, a
     /// [`NoDataError`][crate::errors::NoDataError] is raised.
-    pub async fn query_required_single_json(&self,
-                                   query: impl AsRef<str>, arguments: &impl QueryArgs)
-        -> Result<Json, Error>
-    {
-        self.query_single_json(query, arguments).await?
-            .ok_or_else(|| NoDataError::with_message(
-                        "query row returned zero results"))
+    pub async fn query_required_single_json(
+        &self,
+        query: impl AsRef<str>,
+        arguments: &impl QueryArgs,
+    ) -> Result<Json, Error> {
+        self.query_single_json(query, arguments)
+            .await?
+            .ok_or_else(|| NoDataError::with_message("query row returned zero results"))
     }
 
     /// Execute a query and don't expect result
@@ -420,9 +432,9 @@ impl Client {
     /// This method can be used with both static arguments, like a tuple of
     /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
-    pub async fn execute<A>(&self, query: impl AsRef<str>, arguments: &A)
-        -> Result<(), Error>
-        where A: QueryArgs,
+    pub async fn execute<A>(&self, query: impl AsRef<str>, arguments: &A) -> Result<(), Error>
+    where
+        A: QueryArgs,
     {
         let mut iteration = 0;
         loop {
@@ -446,8 +458,7 @@ impl Client {
                         iteration += 1;
                         if iteration < rule.attempts {
                             let duration = (rule.backoff)(iteration);
-                            log::info!("Error: {:#}. Retrying in {:?}...",
-                                       e, duration);
+                            log::info!("Error: {:#}. Retrying in {:?}...", e, duration);
                             sleep(duration).await;
                             continue;
                         }
@@ -494,8 +505,9 @@ impl Client {
     /// # }
     /// ```
     pub async fn transaction<T, B, F>(&self, body: B) -> Result<T, Error>
-        where B: FnMut(Transaction) -> F,
-              F: Future<Output=Result<T, Error>>,
+    where
+        B: FnMut(Transaction) -> F,
+        F: Future<Output = Result<T, Error>>,
     {
         transaction(&self.pool, &self.options, body).await
     }
@@ -509,9 +521,7 @@ impl Client {
     /// them transaction options applied will be different.
     ///
     /// Transaction options are used by the ``transaction`` method.
-    pub fn with_transaction_options(&self, options: TransactionOptions)
-        -> Self
-    {
+    pub fn with_transaction_options(&self, options: TransactionOptions) -> Self {
         Client {
             options: Arc::new(Options {
                 transaction: options,
@@ -529,9 +539,7 @@ impl Client {
     ///
     /// Both ``self`` and returned client can be used after, but when using
     /// them transaction options applied will be different.
-    pub fn with_retry_options(&self, options: RetryOptions)
-        -> Self
-    {
+    pub fn with_retry_options(&self, options: RetryOptions) -> Self {
         Client {
             options: Arc::new(Options {
                 transaction: self.options.transaction.clone(),
@@ -580,9 +588,7 @@ impl Client {
     ///
     /// This is equivalent to `.with_globals(Fn(f))` but more ergonomic as it
     /// allows type inference for lambda.
-    pub fn with_globals_fn(&self, f: impl FnOnce(&mut GlobalsModifier))
-        -> Self
-    {
+    pub fn with_globals_fn(&self, f: impl FnOnce(&mut GlobalsModifier)) -> Self {
         self.with_state(|s| s.with_globals(Fn(f)))
     }
 
@@ -607,9 +613,7 @@ impl Client {
     ///
     /// This is equivalent to `.with_aliases(Fn(f))` but more ergonomic as it
     /// allows type inference for lambda.
-    pub fn with_aliases_fn(&self, f: impl FnOnce(&mut AliasesModifier))
-        -> Self
-    {
+    pub fn with_aliases_fn(&self, f: impl FnOnce(&mut AliasesModifier)) -> Self {
         self.with_state(|s| s.with_aliases(Fn(f)))
     }
 
@@ -620,9 +624,7 @@ impl Client {
     ///
     /// Both ``self`` and returned client can be used after, but when using
     /// them transaction options applied will be different.
-    pub fn with_default_module(&self, module: Option<impl Into<String>>)
-        -> Self
-    {
+    pub fn with_default_module(&self, module: Option<impl Into<String>>) -> Self {
         self.with_state(|s| s.with_default_module(module.map(|m| m.into())))
     }
 
@@ -653,9 +655,7 @@ impl Client {
     ///
     /// This is equivalent to `.with_config(Fn(f))` but more ergonomic as it
     /// allows type inference for lambda.
-    pub fn with_config_fn(&self, f: impl FnOnce(&mut ConfigModifier))
-        -> Self
-    {
+    pub fn with_config_fn(&self, f: impl FnOnce(&mut ConfigModifier)) -> Self {
         self.with_state(|s| s.with_config(Fn(f)))
     }
 }

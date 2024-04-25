@@ -3,25 +3,25 @@ Implementations of the [Codec](crate::codec::Codec) trait into types found in th
 */
 
 use std::any::type_name;
-use std::convert::{TryInto, TryFrom};
+use std::collections::HashSet;
+use std::convert::{TryFrom, TryInto};
 use std::fmt;
+use std::ops::Deref;
 use std::str;
 use std::sync::Arc;
-use std::collections::HashSet;
-use std::ops::Deref;
 
-use bytes::{BytesMut, Buf, BufMut};
-use uuid::Uuid as UuidVal;
+use bytes::{Buf, BufMut, BytesMut};
 use snafu::{ensure, OptionExt};
+use uuid::Uuid as UuidVal;
 
 use crate::common::Cardinality;
 use crate::descriptors::{self, Descriptor, TypePos};
 use crate::errors::{self, CodecError, DecodeError, EncodeError};
-use crate::value::{Value, SparseObject};
 use crate::model;
-use crate::serialization::decode::{RawCodec, DecodeTupleLike, DecodeArrayLike};
-use crate::serialization::decode::DecodeRange;
 use crate::model::range;
+use crate::serialization::decode::DecodeRange;
+use crate::serialization::decode::{DecodeArrayLike, DecodeTupleLike, RawCodec};
+use crate::value::{SparseObject, Value};
 
 pub const STD_UUID: UuidVal = UuidVal::from_u128(0x100);
 pub const STD_STR: UuidVal = UuidVal::from_u128(0x101);
@@ -43,11 +43,9 @@ pub const CAL_DATE_DURATION: UuidVal = UuidVal::from_u128(0x112);
 pub const STD_JSON: UuidVal = UuidVal::from_u128(0x10f);
 pub const STD_BIGINT: UuidVal = UuidVal::from_u128(0x110);
 pub const CFG_MEMORY: UuidVal = UuidVal::from_u128(0x130);
-pub const PGVECTOR_VECTOR: UuidVal =
-    UuidVal::from_u128(0x9565dd88_04f5_11ee_a691_0b6ebe179825);
+pub const PGVECTOR_VECTOR: UuidVal = UuidVal::from_u128(0x9565dd88_04f5_11ee_a691_0b6ebe179825);
 
 pub(crate) fn uuid_to_known_name(uuid: &UuidVal) -> Option<&'static str> {
-
     match *uuid {
         STD_UUID => Some("BaseScalar(uuid)"),
         STD_STR => Some("BaseScalar(str)"),
@@ -70,14 +68,13 @@ pub(crate) fn uuid_to_known_name(uuid: &UuidVal) -> Option<&'static str> {
         STD_BIGINT => Some("BaseScalar(bigint)"),
         CFG_MEMORY => Some("BaseScalar(cfg::memory)"),
         PGVECTOR_VECTOR => Some("BaseScalar(ext::pgvector::vector)"),
-        _ => None
+        _ => None,
     }
 }
 
 pub trait Codec: fmt::Debug + Send + Sync + 'static {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError>;
-    fn encode(&self, buf: &mut BytesMut, value: &Value)
-        -> Result<(), EncodeError>;
+    fn encode(&self, buf: &mut BytesMut, value: &Value) -> Result<(), EncodeError>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -213,8 +210,7 @@ pub struct Array {
 }
 
 #[derive(Debug)]
-pub struct Vector {
-}
+pub struct Vector {}
 
 #[derive(Debug)]
 pub struct Range {
@@ -269,12 +265,8 @@ impl<'a> CodecBuilder<'a> {
                 D::Scalar(d) => Ok(Arc::new(Scalar {
                     inner: self.build(d.base_type_pos)?,
                 })),
-                D::Tuple(d) => {
-                    Ok(Arc::new(Tuple::build(d, self)?))
-                }
-                D::NamedTuple(d) => {
-                    Ok(Arc::new(NamedTuple::build(d, self)?))
-                }
+                D::Tuple(d) => Ok(Arc::new(Tuple::build(d, self)?)),
+                D::NamedTuple(d) => Ok(Arc::new(NamedTuple::build(d, self)?)),
                 D::Array(d) => Ok(Arc::new(Array {
                     element: self.build(d.type_pos)?,
                 })),
@@ -282,7 +274,9 @@ impl<'a> CodecBuilder<'a> {
                     element: self.build(d.type_pos)?,
                 })),
                 D::MultiRange(d) => Ok(Arc::new(MultiRange {
-                    element: Arc::new(Range { element: self.build(d.type_pos)? }),
+                    element: Arc::new(Range {
+                        element: self.build(d.type_pos)?,
+                    }),
                 })),
                 D::Enumeration(d) => Ok(Arc::new(Enum {
                     members: d.members.iter().map(|x| x[..].into()).collect(),
@@ -298,10 +292,10 @@ impl<'a> CodecBuilder<'a> {
     }
 }
 
-pub fn build_codec(root_pos: Option<TypePos>,
-    descriptors: &[Descriptor])
-    -> Result<Arc<dyn Codec>, CodecError>
-{
+pub fn build_codec(
+    root_pos: Option<TypePos>,
+    descriptors: &[Descriptor],
+) -> Result<Arc<dyn Codec>, CodecError> {
     let dec = CodecBuilder { descriptors };
     match root_pos {
         Some(pos) => dec.build(pos),
@@ -340,9 +334,7 @@ impl Codec for Int32 {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         RawCodec::decode(buf).map(Value::Int32)
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let &val = match val {
             Value::Int32(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
@@ -357,9 +349,7 @@ impl Codec for Int16 {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         RawCodec::decode(buf).map(Value::Int16)
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let &val = match val {
             Value::Int16(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
@@ -374,9 +364,7 @@ impl Codec for Int64 {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         RawCodec::decode(buf).map(Value::Int64)
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let &val = match val {
             Value::Int64(val) => val,
             Value::Int32(val) => &(*val as i64),
@@ -392,9 +380,7 @@ impl Codec for ConfigMemory {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         RawCodec::decode(buf).map(Value::ConfigMemory)
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let &val = match val {
             Value::ConfigMemory(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
@@ -409,9 +395,7 @@ impl Codec for Float32 {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         RawCodec::decode(buf).map(Value::Float32)
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let &val = match val {
             Value::Float32(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
@@ -426,9 +410,7 @@ impl Codec for Float64 {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         RawCodec::decode(buf).map(Value::Float64)
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let &val = match val {
             Value::Float64(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
@@ -443,9 +425,7 @@ impl Codec for Str {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         RawCodec::decode(buf).map(Value::Str)
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let val = match val {
             Value::Str(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
@@ -459,9 +439,7 @@ impl Codec for Bytes {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         RawCodec::decode(buf).map(Value::Bytes)
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let val = match val {
             Value::Bytes(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
@@ -475,9 +453,7 @@ impl Codec for Duration {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         RawCodec::decode(buf).map(Value::Duration)
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let val = match val {
             Value::Duration(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
@@ -486,9 +462,10 @@ impl Codec for Duration {
     }
 }
 
-pub(crate) fn encode_duration(buf: &mut BytesMut, val: &model::Duration)
-    -> Result<(), EncodeError>
-{
+pub(crate) fn encode_duration(
+    buf: &mut BytesMut,
+    val: &model::Duration,
+) -> Result<(), EncodeError> {
     buf.reserve(16);
     buf.put_i64(val.micros);
     buf.put_u32(0);
@@ -500,9 +477,7 @@ impl Codec for RelativeDuration {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         RawCodec::decode(buf).map(Value::RelativeDuration)
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let val = match val {
             Value::RelativeDuration(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
@@ -511,10 +486,10 @@ impl Codec for RelativeDuration {
     }
 }
 
-pub(crate) fn encode_relative_duration(buf: &mut BytesMut,
-                                       val: &model::RelativeDuration)
-    -> Result<(), EncodeError>
-{
+pub(crate) fn encode_relative_duration(
+    buf: &mut BytesMut,
+    val: &model::RelativeDuration,
+) -> Result<(), EncodeError> {
     buf.reserve(16);
     buf.put_i64(val.micros);
     buf.put_i32(val.days);
@@ -526,9 +501,7 @@ impl Codec for DateDuration {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         RawCodec::decode(buf).map(Value::DateDuration)
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let val = match val {
             Value::DateDuration(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
@@ -537,10 +510,10 @@ impl Codec for DateDuration {
     }
 }
 
-pub(crate) fn encode_date_duration(buf: &mut BytesMut,
-                                   val: &model::DateDuration)
-    -> Result<(), EncodeError>
-{
+pub(crate) fn encode_date_duration(
+    buf: &mut BytesMut,
+    val: &model::DateDuration,
+) -> Result<(), EncodeError> {
     buf.reserve(16);
     buf.put_i64(0);
     buf.put_i32(val.days);
@@ -552,9 +525,7 @@ impl Codec for Uuid {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         RawCodec::decode(buf).map(Value::Uuid)
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let &val = match val {
             Value::Uuid(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
@@ -568,9 +539,7 @@ impl Codec for Nothing {
     fn decode(&self, _buf: &[u8]) -> Result<Value, DecodeError> {
         Ok(Value::Nothing)
     }
-    fn encode(&self, _buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, _buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         match val {
             Value::Nothing => Ok(()),
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
@@ -579,12 +548,15 @@ impl Codec for Nothing {
 }
 
 impl Object {
-    fn build(d: &descriptors::ObjectShapeDescriptor, dec: &CodecBuilder)
-        -> Result<Object, CodecError>
-    {
+    fn build(
+        d: &descriptors::ObjectShapeDescriptor,
+        dec: &CodecBuilder,
+    ) -> Result<Object, CodecError> {
         Ok(Object {
             shape: d.elements.as_slice().into(),
-            codecs: d.elements.iter()
+            codecs: d
+                .elements
+                .iter()
                 .map(|e| dec.build(e.type_pos))
                 .collect::<Result<_, _>>()?,
         })
@@ -592,12 +564,15 @@ impl Object {
 }
 
 impl Input {
-    fn build(d: &descriptors::InputShapeTypeDescriptor, dec: &CodecBuilder)
-        -> Result<Input, CodecError>
-    {
+    fn build(
+        d: &descriptors::InputShapeTypeDescriptor,
+        dec: &CodecBuilder,
+    ) -> Result<Input, CodecError> {
         Ok(Input {
             shape: d.elements.as_slice().into(),
-            codecs: d.elements.iter()
+            codecs: d
+                .elements
+                .iter()
                 .map(|e| dec.build(e.type_pos))
                 .collect::<Result<_, _>>()?,
         })
@@ -605,11 +580,14 @@ impl Input {
 }
 
 impl Tuple {
-    fn build(d: &descriptors::TupleTypeDescriptor, dec: &CodecBuilder)
-        -> Result<Tuple, CodecError>
-    {
+    fn build(
+        d: &descriptors::TupleTypeDescriptor,
+        dec: &CodecBuilder,
+    ) -> Result<Tuple, CodecError> {
         Ok(Tuple {
-            elements: d.element_types.iter()
+            elements: d
+                .element_types
+                .iter()
                 .map(|&t| dec.build(t))
                 .collect::<Result<_, _>>()?,
         })
@@ -617,26 +595,41 @@ impl Tuple {
 }
 
 impl NamedTuple {
-    fn build(d: &descriptors::NamedTupleTypeDescriptor, dec: &CodecBuilder)
-        -> Result<NamedTuple, CodecError>
-    {
+    fn build(
+        d: &descriptors::NamedTupleTypeDescriptor,
+        dec: &CodecBuilder,
+    ) -> Result<NamedTuple, CodecError> {
         Ok(NamedTuple {
             shape: d.elements.as_slice().into(),
-            codecs: d.elements.iter()
+            codecs: d
+                .elements
+                .iter()
                 .map(|e| dec.build(e.type_pos))
                 .collect::<Result<_, _>>()?,
         })
     }
 }
 
-fn decode_tuple(mut elements:DecodeTupleLike, codecs: &[Arc<dyn Codec>]) -> Result<Vec<Value>, DecodeError>{
+fn decode_tuple(
+    mut elements: DecodeTupleLike,
+    codecs: &[Arc<dyn Codec>],
+) -> Result<Vec<Value>, DecodeError> {
     codecs
         .iter()
-        .map(|codec| codec.decode(elements.read()?.ok_or_else(|| errors::MissingRequiredElement.build())?))
+        .map(|codec| {
+            codec.decode(
+                elements
+                    .read()?
+                    .ok_or_else(|| errors::MissingRequiredElement.build())?,
+            )
+        })
         .collect::<Result<Vec<Value>, DecodeError>>()
 }
 
-fn decode_array_like(elements: DecodeArrayLike<'_>, codec:&dyn Codec) -> Result<Vec<Value>, DecodeError>{
+fn decode_array_like(
+    elements: DecodeArrayLike<'_>,
+    codec: &dyn Codec,
+) -> Result<Vec<Value>, DecodeError> {
     elements
         .map(|element| codec.decode(element?))
         .collect::<Result<Vec<Value>, DecodeError>>()
@@ -645,9 +638,15 @@ fn decode_array_like(elements: DecodeArrayLike<'_>, codec:&dyn Codec) -> Result<
 impl Codec for Object {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         let mut elements = DecodeTupleLike::new_object(buf, self.codecs.len())?;
-        let fields = self.codecs
+        let fields = self
+            .codecs
             .iter()
-            .map(|codec| elements.read()?.map(|element| codec.decode(element)).transpose())
+            .map(|codec| {
+                elements
+                    .read()?
+                    .map(|element| codec.decode(element))
+                    .transpose()
+            })
             .collect::<Result<Vec<Option<Value>>, DecodeError>>()?;
 
         Ok(Value::Object {
@@ -655,32 +654,40 @@ impl Codec for Object {
             fields,
         })
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let (shape, fields) = match val {
             Value::Object { shape, fields } => (shape, fields),
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         ensure!(shape == &self.shape, errors::ObjectShapeMismatch);
-        ensure!(self.codecs.len() == fields.len(),
-                errors::ObjectShapeMismatch);
+        ensure!(
+            self.codecs.len() == fields.len(),
+            errors::ObjectShapeMismatch
+        );
         debug_assert_eq!(self.codecs.len(), shape.0.elements.len());
-        buf.reserve(4 + 8*self.codecs.len());
-        buf.put_u32(self.codecs.len().try_into()
-                    .ok().context(errors::TooManyElements)?);
+        buf.reserve(4 + 8 * self.codecs.len());
+        buf.put_u32(
+            self.codecs
+                .len()
+                .try_into()
+                .ok()
+                .context(errors::TooManyElements)?,
+        );
         for (codec, field) in self.codecs.iter().zip(fields) {
             buf.reserve(8);
             buf.put_u32(0);
             match field {
                 Some(v) => {
                     let pos = buf.len();
-                    buf.put_i32(0);  // replaced after serializing a value
+                    buf.put_i32(0); // replaced after serializing a value
                     codec.encode(buf, v)?;
-                    let len = buf.len()-pos-4;
-                    buf[pos..pos+4].copy_from_slice(&i32::try_from(len)
-                            .ok().context(errors::ElementTooLong)?
-                            .to_be_bytes());
+                    let len = buf.len() - pos - 4;
+                    buf[pos..pos + 4].copy_from_slice(
+                        &i32::try_from(len)
+                            .ok()
+                            .context(errors::ElementTooLong)?
+                            .to_be_bytes(),
+                    );
                 }
                 None => {
                     buf.put_i32(-1);
@@ -715,9 +722,7 @@ impl Codec for Input {
             fields,
         }))
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let ob = match val {
             Value::SparseObject(ob) => ob,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
@@ -726,27 +731,33 @@ impl Codec for Input {
         let dest_els = &self.shape.0.elements;
         for (fld, el) in ob.fields.iter().zip(&ob.shape.0.elements) {
             if let Some(value) = fld {
-                if let Some(index) =
-                    dest_els.iter().position(|x| x.name == el.name)
-                {
+                if let Some(index) = dest_els.iter().position(|x| x.name == el.name) {
                     items.push((index, value));
                 }
             }
         }
-        buf.reserve(4 + 8*items.len());
-        buf.put_u32(items.len().try_into()
-                    .ok().context(errors::TooManyElements)?);
+        buf.reserve(4 + 8 * items.len());
+        buf.put_u32(
+            items
+                .len()
+                .try_into()
+                .ok()
+                .context(errors::TooManyElements)?,
+        );
         for (index, value) in items {
             buf.reserve(8);
             buf.put_u32(index as u32);
             let pos = buf.len();
             if let Some(value) = value {
-                buf.put_i32(0);  // replaced after serializing a value
+                buf.put_i32(0); // replaced after serializing a value
                 self.codecs[index].encode(buf, value)?;
-                let len = buf.len()-pos-4;
-                buf[pos..pos+4].copy_from_slice(&i32::try_from(len)
-                        .ok().context(errors::ElementTooLong)?
-                        .to_be_bytes());
+                let len = buf.len() - pos - 4;
+                buf[pos..pos + 4].copy_from_slice(
+                    &i32::try_from(len)
+                        .ok()
+                        .context(errors::ElementTooLong)?
+                        .to_be_bytes(),
+                );
             } else {
                 buf.put_i32(-1);
             }
@@ -766,19 +777,20 @@ impl Codec for ArrayAdapter {
         ensure!(buf.remaining() <= len, errors::ExtraData);
         self.0.decode(buf)
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         buf.reserve(12);
         buf.put_u32(1);
         buf.put_u32(0);
         let pos = buf.len();
-        buf.put_i32(0);  // replaced after serializing a value
+        buf.put_i32(0); // replaced after serializing a value
         self.0.encode(buf, val)?;
-        let len = buf.len()-pos-4;
-        buf[pos..pos+4].copy_from_slice(&i32::try_from(len)
-                .ok().context(errors::ElementTooLong)?
-                .to_be_bytes());
+        let len = buf.len() - pos - 4;
+        buf[pos..pos + 4].copy_from_slice(
+            &i32::try_from(len)
+                .ok()
+                .context(errors::ElementTooLong)?
+                .to_be_bytes(),
+        );
         Ok(())
     }
 }
@@ -814,16 +826,14 @@ impl<'a> From<&'a descriptors::ShapeElement> for ShapeElement {
 impl<'a> From<&'a [descriptors::TupleElement]> for NamedTupleShape {
     fn from(shape: &'a [descriptors::TupleElement]) -> NamedTupleShape {
         NamedTupleShape(Arc::new(NamedTupleShapeInfo {
-                elements: shape.iter().map(|e| {
-                    let descriptors::TupleElement {
-                        name,
-                        type_pos: _,
-                    } = e;
-                    TupleElement {
-                        name: name.clone(),
-                    }
-                }).collect(),
-            }))
+            elements: shape
+                .iter()
+                .map(|e| {
+                    let descriptors::TupleElement { name, type_pos: _ } = e;
+                    TupleElement { name: name.clone() }
+                })
+                .collect(),
+        }))
     }
 }
 
@@ -841,15 +851,11 @@ impl std::ops::Deref for EnumValue {
 }
 
 impl Set {
-    fn build(d: &descriptors::SetDescriptor, dec: &CodecBuilder)
-        -> Result<Set, CodecError>
-    {
+    fn build(d: &descriptors::SetDescriptor, dec: &CodecBuilder) -> Result<Set, CodecError> {
         let element = match dec.descriptors.get(d.type_pos.0 as usize) {
-            Some(Descriptor::Array(d)) => {
-                Arc::new(ArrayAdapter(Array {
-                    element: dec.build(d.type_pos)?,
-                }))
-            }
+            Some(Descriptor::Array(d)) => Arc::new(ArrayAdapter(Array {
+                element: dec.build(d.type_pos)?,
+            })),
             _ => dec.build(d.type_pos)?,
         };
         Ok(Set { element })
@@ -862,36 +868,36 @@ impl Codec for Set {
         let items = decode_array_like(elements, &*self.element)?;
         Ok(Value::Set(items))
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let items = match val {
             Value::Set(items) => items,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         if items.is_empty() {
             buf.reserve(12);
-            buf.put_u32(0);  // ndims
-            buf.put_u32(0);  // reserved0
-            buf.put_u32(0);  // reserved1
+            buf.put_u32(0); // ndims
+            buf.put_u32(0); // reserved0
+            buf.put_u32(0); // reserved1
             return Ok(());
         }
         buf.reserve(20);
-        buf.put_u32(1);  // ndims
-        buf.put_u32(0);  // reserved0
-        buf.put_u32(0);  // reserved1
-        buf.put_u32(items.len().try_into().ok()
-            .context(errors::ArrayTooLong)?);
-        buf.put_u32(1);  // lower
+        buf.put_u32(1); // ndims
+        buf.put_u32(0); // reserved0
+        buf.put_u32(0); // reserved1
+        buf.put_u32(items.len().try_into().ok().context(errors::ArrayTooLong)?);
+        buf.put_u32(1); // lower
         for item in items {
             buf.reserve(4);
             let pos = buf.len();
-            buf.put_u32(0);  // replaced after serializing a value
+            buf.put_u32(0); // replaced after serializing a value
             self.element.encode(buf, item)?;
-            let len = buf.len()-pos-4;
-            buf[pos..pos+4].copy_from_slice(&u32::try_from(len)
-                    .ok().context(errors::ElementTooLong)?
-                    .to_be_bytes());
+            let len = buf.len() - pos - 4;
+            buf[pos..pos + 4].copy_from_slice(
+                &u32::try_from(len)
+                    .ok()
+                    .context(errors::ElementTooLong)?
+                    .to_be_bytes(),
+            );
         }
         Ok(())
     }
@@ -901,9 +907,7 @@ impl Codec for Decimal {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         RawCodec::decode(buf).map(Value::Decimal)
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let val = match val {
             Value::Decimal(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
@@ -912,12 +916,15 @@ impl Codec for Decimal {
     }
 }
 
-pub(crate) fn encode_decimal(buf: &mut BytesMut, val: &model::Decimal)
-    -> Result<(), EncodeError>
-{
-    buf.reserve(8 + val.digits.len()*2);
-    buf.put_u16(val.digits.len().try_into().ok()
-            .context(errors::BigIntTooLong)?);
+pub(crate) fn encode_decimal(buf: &mut BytesMut, val: &model::Decimal) -> Result<(), EncodeError> {
+    buf.reserve(8 + val.digits.len() * 2);
+    buf.put_u16(
+        val.digits
+            .len()
+            .try_into()
+            .ok()
+            .context(errors::BigIntTooLong)?,
+    );
     buf.put_i16(val.weight);
     buf.put_u16(if val.negative { 0x4000 } else { 0x0000 });
     buf.put_u16(val.decimal_digits);
@@ -931,9 +938,7 @@ impl Codec for BigInt {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         RawCodec::decode(buf).map(Value::BigInt)
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let val = match val {
             Value::BigInt(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
@@ -942,13 +947,15 @@ impl Codec for BigInt {
     }
 }
 
-
-pub(crate) fn encode_big_int(buf: &mut BytesMut, val: &model::BigInt)
-    -> Result<(), EncodeError>
-{
-    buf.reserve(8 + val.digits.len()*2);
-    buf.put_u16(val.digits.len().try_into().ok()
-            .context(errors::BigIntTooLong)?);
+pub(crate) fn encode_big_int(buf: &mut BytesMut, val: &model::BigInt) -> Result<(), EncodeError> {
+    buf.reserve(8 + val.digits.len() * 2);
+    buf.put_u16(
+        val.digits
+            .len()
+            .try_into()
+            .ok()
+            .context(errors::BigIntTooLong)?,
+    );
     buf.put_i16(val.weight);
     buf.put_u16(if val.negative { 0x4000 } else { 0x0000 });
     buf.put_u16(0);
@@ -962,9 +969,7 @@ impl Codec for Bool {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         RawCodec::decode(buf).map(Value::Bool)
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let val = match val {
             Value::Bool(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
@@ -982,9 +987,7 @@ impl Codec for Datetime {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         RawCodec::decode(buf).map(Value::Datetime)
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let val = match val {
             Value::Datetime(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
@@ -993,9 +996,10 @@ impl Codec for Datetime {
     }
 }
 
-pub(crate) fn encode_datetime(buf: &mut BytesMut, val: &model::Datetime)
-    -> Result<(), EncodeError>
-{
+pub(crate) fn encode_datetime(
+    buf: &mut BytesMut,
+    val: &model::Datetime,
+) -> Result<(), EncodeError> {
     buf.reserve(8);
     buf.put_i64(val.micros);
     Ok(())
@@ -1005,9 +1009,7 @@ impl Codec for LocalDatetime {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         RawCodec::decode(buf).map(Value::LocalDatetime)
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let val = match val {
             Value::LocalDatetime(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
@@ -1016,10 +1018,10 @@ impl Codec for LocalDatetime {
     }
 }
 
-pub(crate) fn encode_local_datetime(buf: &mut BytesMut,
-                                    val: &model::LocalDatetime)
-    -> Result<(), EncodeError>
-{
+pub(crate) fn encode_local_datetime(
+    buf: &mut BytesMut,
+    val: &model::LocalDatetime,
+) -> Result<(), EncodeError> {
     buf.reserve(8);
     buf.put_i64(val.micros);
     Ok(())
@@ -1029,9 +1031,7 @@ impl Codec for LocalDate {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         RawCodec::decode(buf).map(Value::LocalDate)
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let val = match val {
             Value::LocalDate(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
@@ -1040,9 +1040,10 @@ impl Codec for LocalDate {
     }
 }
 
-pub(crate) fn encode_local_date(buf: &mut BytesMut, val: &model::LocalDate)
-    -> Result<(), EncodeError>
-{
+pub(crate) fn encode_local_date(
+    buf: &mut BytesMut,
+    val: &model::LocalDate,
+) -> Result<(), EncodeError> {
     buf.reserve(4);
     buf.put_i32(val.days);
     Ok(())
@@ -1052,9 +1053,7 @@ impl Codec for LocalTime {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         RawCodec::decode(buf).map(Value::LocalTime)
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let val = match val {
             Value::LocalTime(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
@@ -1063,9 +1062,10 @@ impl Codec for LocalTime {
     }
 }
 
-pub(crate) fn encode_local_time(buf: &mut BytesMut, val: &model::LocalTime)
-    -> Result<(), EncodeError>
-{
+pub(crate) fn encode_local_time(
+    buf: &mut BytesMut,
+    val: &model::LocalTime,
+) -> Result<(), EncodeError> {
     buf.reserve(8);
     buf.put_i64(val.micros as i64);
     Ok(())
@@ -1075,9 +1075,7 @@ impl Codec for Json {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         RawCodec::decode(buf).map(|json: model::Json| Value::Json(json))
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let val = match val {
             Value::Json(val) => val,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
@@ -1093,9 +1091,7 @@ impl Codec for Scalar {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
         self.inner.decode(buf)
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         self.inner.encode(buf, val)
     }
 }
@@ -1106,28 +1102,36 @@ impl Codec for Tuple {
         let items = decode_tuple(elements, &self.elements)?;
         Ok(Value::Tuple(items))
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let items = match val {
             Value::Tuple(items) => items,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
-        ensure!(self.elements.len() == items.len(),
-            errors::TupleShapeMismatch);
-        buf.reserve(4 + 8*self.elements.len());
-        buf.put_u32(self.elements.len().try_into()
-                    .ok().context(errors::TooManyElements)?);
+        ensure!(
+            self.elements.len() == items.len(),
+            errors::TupleShapeMismatch
+        );
+        buf.reserve(4 + 8 * self.elements.len());
+        buf.put_u32(
+            self.elements
+                .len()
+                .try_into()
+                .ok()
+                .context(errors::TooManyElements)?,
+        );
         for (codec, item) in self.elements.iter().zip(items) {
             buf.reserve(8);
             buf.put_u32(0);
             let pos = buf.len();
-            buf.put_u32(0);  // replaced after serializing a value
+            buf.put_u32(0); // replaced after serializing a value
             codec.encode(buf, item)?;
-            let len = buf.len()-pos-4;
-            buf[pos..pos+4].copy_from_slice(&u32::try_from(len)
-                    .ok().context(errors::ElementTooLong)?
-                    .to_be_bytes());
+            let len = buf.len() - pos - 4;
+            buf[pos..pos + 4].copy_from_slice(
+                &u32::try_from(len)
+                    .ok()
+                    .context(errors::ElementTooLong)?
+                    .to_be_bytes(),
+            );
         }
         Ok(())
     }
@@ -1142,30 +1146,38 @@ impl Codec for NamedTuple {
             fields,
         })
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let (shape, fields) = match val {
             Value::NamedTuple { shape, fields } => (shape, fields),
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         ensure!(shape == &self.shape, errors::TupleShapeMismatch);
-        ensure!(self.codecs.len() == fields.len(),
-                errors::ObjectShapeMismatch);
+        ensure!(
+            self.codecs.len() == fields.len(),
+            errors::ObjectShapeMismatch
+        );
         debug_assert_eq!(self.codecs.len(), shape.0.elements.len());
-        buf.reserve(4 + 8*self.codecs.len());
-        buf.put_u32(self.codecs.len().try_into()
-                    .ok().context(errors::TooManyElements)?);
+        buf.reserve(4 + 8 * self.codecs.len());
+        buf.put_u32(
+            self.codecs
+                .len()
+                .try_into()
+                .ok()
+                .context(errors::TooManyElements)?,
+        );
         for (codec, field) in self.codecs.iter().zip(fields) {
             buf.reserve(8);
             buf.put_u32(0);
             let pos = buf.len();
-            buf.put_u32(0);  // replaced after serializing a value
+            buf.put_u32(0); // replaced after serializing a value
             codec.encode(buf, field)?;
-            let len = buf.len()-pos-4;
-            buf[pos..pos+4].copy_from_slice(&u32::try_from(len)
-                    .ok().context(errors::ElementTooLong)?
-                    .to_be_bytes());
+            let len = buf.len() - pos - 4;
+            buf[pos..pos + 4].copy_from_slice(
+                &u32::try_from(len)
+                    .ok()
+                    .context(errors::ElementTooLong)?
+                    .to_be_bytes(),
+            );
         }
         Ok(())
     }
@@ -1177,36 +1189,36 @@ impl Codec for Array {
         let items = decode_array_like(elements, &*self.element)?;
         Ok(Value::Array(items))
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let items = match val {
             Value::Array(items) => items,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         if items.is_empty() {
             buf.reserve(12);
-            buf.put_u32(0);  // ndims
-            buf.put_u32(0);  // reserved0
-            buf.put_u32(0);  // reserved1
+            buf.put_u32(0); // ndims
+            buf.put_u32(0); // reserved0
+            buf.put_u32(0); // reserved1
             return Ok(());
         }
         buf.reserve(20);
-        buf.put_u32(1);  // ndims
-        buf.put_u32(0);  // reserved0
-        buf.put_u32(0);  // reserved1
-        buf.put_u32(items.len().try_into().ok()
-            .context(errors::ArrayTooLong)?);
-        buf.put_u32(1);  // lower
+        buf.put_u32(1); // ndims
+        buf.put_u32(0); // reserved0
+        buf.put_u32(0); // reserved1
+        buf.put_u32(items.len().try_into().ok().context(errors::ArrayTooLong)?);
+        buf.put_u32(1); // lower
         for item in items {
             buf.reserve(4);
             let pos = buf.len();
-            buf.put_u32(0);  // replaced after serializing a value
+            buf.put_u32(0); // replaced after serializing a value
             self.element.encode(buf, item)?;
-            let len = buf.len()-pos-4;
-            buf[pos..pos+4].copy_from_slice(&u32::try_from(len)
-                    .ok().context(errors::ElementTooLong)?
-                    .to_be_bytes());
+            let len = buf.len() - pos - 4;
+            buf[pos..pos + 4].copy_from_slice(
+                &u32::try_from(len)
+                    .ok()
+                    .context(errors::ElementTooLong)?
+                    .to_be_bytes(),
+            );
         }
         Ok(())
     }
@@ -1217,29 +1229,24 @@ impl Codec for Vector {
         ensure!(buf.remaining() >= 4, errors::Underflow);
         let length = buf.get_u16() as usize;
         let _reserved = buf.get_u16();
-        ensure!(buf.remaining() >= length*4, errors::Underflow);
-        let vec = (0..length)
-            .map(|_| f32::from_bits(buf.get_u32()))
-            .collect();
+        ensure!(buf.remaining() >= length * 4, errors::Underflow);
+        let vec = (0..length).map(|_| f32::from_bits(buf.get_u32())).collect();
         Ok(Value::Vector(vec))
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let items = match val {
             Value::Vector(items) => items,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
         if items.is_empty() {
             buf.reserve(4);
-            buf.put_i16(0);  // length
-            buf.put_i16(0);  // reserved
+            buf.put_i16(0); // length
+            buf.put_i16(0); // reserved
             return Ok(());
         }
-        buf.reserve(4 + items.len()*4);
-        buf.put_i16(items.len().try_into().ok()
-            .context(errors::ArrayTooLong)?);
-        buf.put_i16(0);  // reserved
+        buf.reserve(4 + items.len() * 4);
+        buf.put_i16(items.len().try_into().ok().context(errors::ArrayTooLong)?);
+        buf.put_i16(0); // reserved
         for item in items {
             buf.put_u32(item.to_bits());
         }
@@ -1279,52 +1286,62 @@ impl Codec for Range {
             empty,
         }))
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let rng = match val {
             Value::Range(rng) => rng,
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
 
-        let flags =
-            if rng.empty { range::EMPTY } else {
-                (if rng.inc_lower { range::LB_INC } else { 0 }) |
-                (if rng.inc_upper { range::UB_INC } else { 0 }) |
-                (if rng.lower.is_none() { range::LB_INF } else { 0 }) |
-                (if rng.upper.is_none() { range::UB_INF } else { 0 })
-            };
+        let flags = if rng.empty {
+            range::EMPTY
+        } else {
+            (if rng.inc_lower { range::LB_INC } else { 0 })
+                | (if rng.inc_upper { range::UB_INC } else { 0 })
+                | (if rng.lower.is_none() {
+                    range::LB_INF
+                } else {
+                    0
+                })
+                | (if rng.upper.is_none() {
+                    range::UB_INF
+                } else {
+                    0
+                })
+        };
         buf.reserve(1);
         buf.put_u8(flags as u8);
 
         if let Some(lower) = &rng.lower {
             let pos = buf.len();
             buf.reserve(4);
-            buf.put_u32(0);  // replaced after serializing a value
+            buf.put_u32(0); // replaced after serializing a value
             self.element.encode(buf, lower)?;
-            let len = buf.len()-pos-4;
-            buf[pos..pos+4].copy_from_slice(
+            let len = buf.len() - pos - 4;
+            buf[pos..pos + 4].copy_from_slice(
                 &u32::try_from(len)
-                    .ok().context(errors::ElementTooLong)?
-                    .to_be_bytes());
+                    .ok()
+                    .context(errors::ElementTooLong)?
+                    .to_be_bytes(),
+            );
         }
 
         if let Some(upper) = &rng.upper {
             let pos = buf.len();
             buf.reserve(4);
-            buf.put_u32(0);  // replaced after serializing a value
+            buf.put_u32(0); // replaced after serializing a value
             self.element.encode(buf, upper)?;
-            let len = buf.len()-pos-4;
-            buf[pos..pos+4].copy_from_slice(
+            let len = buf.len() - pos - 4;
+            buf[pos..pos + 4].copy_from_slice(
                 &u32::try_from(len)
-                    .ok().context(errors::ElementTooLong)?
-                    .to_be_bytes());
+                    .ok()
+                    .context(errors::ElementTooLong)?
+                    .to_be_bytes(),
+            );
         }
 
         Ok(())
     }
 }
-
 
 impl Codec for MultiRange {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
@@ -1343,7 +1360,7 @@ impl Codec for MultiRange {
         for item in items {
             buf.reserve(4);
             let pos = buf.len();
-            buf.put_u32(0);  // replaced after serializing a value
+            buf.put_u32(0); // replaced after serializing a value
             self.element.encode(buf, item)?;
             let len = buf.len() - pos - 4;
             buf[pos..pos + 4].copy_from_slice(
@@ -1357,17 +1374,13 @@ impl Codec for MultiRange {
     }
 }
 
-
 impl Codec for Enum {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
-        let val : &str = RawCodec::decode(buf)?;
-        let val = self.members.get(val)
-            .context(errors::ExtraEnumValue)?;
+        let val: &str = RawCodec::decode(buf)?;
+        let val = self.members.get(val).context(errors::ExtraEnumValue)?;
         Ok(Value::Enum(EnumValue(val.clone())))
     }
-    fn encode(&self, buf: &mut BytesMut, val: &Value)
-        -> Result<(), EncodeError>
-    {
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
         let val = match val {
             Value::Enum(val) => val.0.as_ref(),
             Value::Str(val) => val.as_str(),

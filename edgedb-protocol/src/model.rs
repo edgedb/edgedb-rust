@@ -8,14 +8,14 @@ mod vector;
 
 pub(crate) mod range;
 
+pub use self::bignum::{BigInt, Decimal};
+pub use self::json::Json;
+pub use self::time::{DateDuration, RelativeDuration};
+pub use self::time::{Datetime, Duration, LocalDate, LocalDatetime, LocalTime};
 pub use memory::ConfigMemory;
 pub use range::Range;
-pub use vector::Vector;
-pub use self::bignum:: {BigInt, Decimal};
-pub use self::json::Json;
-pub use self::time::{LocalDatetime, LocalDate, LocalTime, Duration, Datetime};
-pub use self::time::{RelativeDuration,DateDuration};
 pub use uuid::Uuid;
+pub use vector::Vector;
 
 use std::fmt;
 use std::num::ParseIntError;
@@ -37,7 +37,6 @@ impl From<std::num::TryFromIntError> for OutOfRangeError {
     }
 }
 
-
 /// Error parsing string into EdgeDB Duration type.
 #[derive(Debug, PartialEq)]
 pub struct ParseDurationError {
@@ -51,9 +50,9 @@ impl fmt::Display for ParseDurationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         format!(
             "Error parsing input at position {}: {}",
-            self.pos,
-            self.message,
-        ).fmt(f)
+            self.pos, self.message,
+        )
+        .fmt(f)
     }
 }
 

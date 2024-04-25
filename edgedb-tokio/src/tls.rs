@@ -2,17 +2,16 @@ use std::io;
 use std::sync::Arc;
 
 use anyhow::Context;
-use rustls::{SignatureScheme, DigitallySignedStruct};
-use rustls::client::danger::{ServerCertVerifier, ServerCertVerified};
 use rustls::client::danger::HandshakeSignatureValid;
-use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+use rustls::client::danger::{ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::ring;
-use rustls::crypto::{verify_tls12_signature, verify_tls13_signature};
 use rustls::crypto::WebPkiSupportedAlgorithms;
-use tls_api::{TlsConnector as _, TlsConnectorBuilder as _};
+use rustls::crypto::{verify_tls12_signature, verify_tls13_signature};
+use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+use rustls::{DigitallySignedStruct, SignatureScheme};
 use tls_api::TlsConnectorBox;
+use tls_api::{TlsConnector as _, TlsConnectorBuilder as _};
 use tls_api_rustls::TlsConnector;
-
 
 #[derive(Debug)]
 pub struct NullVerifier;
@@ -33,7 +32,8 @@ impl NoHostnameVerifier {
 }
 
 impl ServerCertVerifier for NoHostnameVerifier {
-    fn verify_server_cert(&self,
+    fn verify_server_cert(
+        &self,
         end_entity: &CertificateDer<'_>,
         intermediates: &[CertificateDer<'_>],
         _server_name: &ServerName,
@@ -77,12 +77,15 @@ impl ServerCertVerifier for NoHostnameVerifier {
     }
 
     fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
-        ring::default_provider().signature_verification_algorithms.supported_schemes()
+        ring::default_provider()
+            .signature_verification_algorithms
+            .supported_schemes()
     }
 }
 
 impl ServerCertVerifier for NullVerifier {
-    fn verify_server_cert(&self,
+    fn verify_server_cert(
+        &self,
         _end_entity: &CertificateDer<'_>,
         _intermediates: &[CertificateDer<'_>],
         _server_name: &ServerName,
@@ -111,16 +114,18 @@ impl ServerCertVerifier for NullVerifier {
     }
 
     fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
-        ring::default_provider().signature_verification_algorithms.supported_schemes()
+        ring::default_provider()
+            .signature_verification_algorithms
+            .supported_schemes()
     }
 }
 
-pub fn connector(
-    cert_verifier: Arc<dyn ServerCertVerifier>,
-) -> anyhow::Result<TlsConnectorBox>
-{
+pub fn connector(cert_verifier: Arc<dyn ServerCertVerifier>) -> anyhow::Result<TlsConnectorBox> {
     let mut builder = TlsConnector::builder()?;
-    builder.config.dangerous().set_certificate_verifier(cert_verifier);
+    builder
+        .config
+        .dangerous()
+        .set_certificate_verifier(cert_verifier);
     builder.set_alpn_protocols(&[b"edgedb-binary"])?;
     let connector = builder.build()?.into_dyn();
     Ok(connector)
@@ -133,22 +138,21 @@ pub fn read_root_cert_pem(data: &str) -> anyhow::Result<rustls::RootCertStore> {
     for item in open_data {
         match item {
             Ok(rustls_pemfile::Item::X509Certificate(data)) => {
-                    cert_store.add(data)
-                        .context("certificate data found, but is not a valid root certificate")?;
-            },
+                cert_store
+                    .add(data)
+                    .context("certificate data found, but is not a valid root certificate")?;
+            }
             Ok(rustls_pemfile::Item::Pkcs1Key(_))
             | Ok(rustls_pemfile::Item::Pkcs8Key(_))
-            | Ok(rustls_pemfile::Item::Sec1Key(_))
-            => {
+            | Ok(rustls_pemfile::Item::Sec1Key(_)) => {
                 log::debug!("Skipping private key in cert data");
-            },
-            Ok(rustls_pemfile::Item::Crl(_))
-            => {
+            }
+            Ok(rustls_pemfile::Item::Crl(_)) => {
                 log::debug!("Skipping CRL in cert data");
-            },
+            }
             Ok(_) => {
                 log::debug!("Skipping unknown item cert data");
-            },
+            }
             Err(e) => {
                 log::error!("could not parse item in PEM file: {:?}", e);
             }
@@ -160,16 +164,14 @@ pub fn read_root_cert_pem(data: &str) -> anyhow::Result<rustls::RootCertStore> {
 fn pki_error(error: webpki::Error) -> rustls::Error {
     use webpki::Error::*;
     match error {
-        BadDer | BadDerTime
-            => rustls::Error::InvalidCertificate(rustls::CertificateError::BadEncoding),
-        InvalidSignatureForPublicKey
-            => rustls::Error::InvalidCertificate(rustls::CertificateError::BadSignature),
-        e => {
-            rustls::Error::InvalidCertificate(
-                rustls::CertificateError::Other(
-                    rustls::OtherError(Arc::new(e)),
-                ),
-            )
+        BadDer | BadDerTime => {
+            rustls::Error::InvalidCertificate(rustls::CertificateError::BadEncoding)
         }
+        InvalidSignatureForPublicKey => {
+            rustls::Error::InvalidCertificate(rustls::CertificateError::BadSignature)
+        }
+        e => rustls::Error::InvalidCertificate(rustls::CertificateError::Other(
+            rustls::OtherError(Arc::new(e)),
+        )),
     }
 }

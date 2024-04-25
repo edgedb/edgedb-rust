@@ -1,13 +1,13 @@
-#[cfg(feature="chrono")]
+#[cfg(feature = "chrono")]
 mod chrono {
 
-    use std::str::FromStr;
     use std::convert::TryInto;
+    use std::str::FromStr;
 
-    use bytes::{BytesMut, Buf};
+    use bytes::{Buf, BytesMut};
     use edgedb_protocol::codec::{self, Codec};
-    use edgedb_protocol::value::Value;
     use edgedb_protocol::model::{Datetime, LocalDatetime, LocalTime};
+    use edgedb_protocol::value::Value;
     use test_case::test_case;
 
     // ========
@@ -29,7 +29,6 @@ mod chrono {
         /*formatted*/ "0001-01-01T00:00:00Z"
         ; "minimum"
     )]
-
     // Rounding in Various Ranges
     // --------------------------
     #[test_case(
@@ -187,7 +186,6 @@ mod chrono {
         /*formatted*/ "0001-01-01T00:00:00"
         ; "minimum"
     )]
-
     // Rounding in Various Ranges
     // --------------------------
     #[test_case(

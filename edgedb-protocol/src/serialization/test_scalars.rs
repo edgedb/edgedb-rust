@@ -1,11 +1,11 @@
-use std::str::FromStr;
 use bytes::{Bytes, BytesMut};
+use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::features::ProtocolVersion;
-use crate::query_arg::{Encoder, DescriptorContext, ScalarArg};
-use crate::serialization::decode::RawCodec;
 use crate::model::Json;
+use crate::query_arg::{DescriptorContext, Encoder, ScalarArg};
+use crate::serialization::decode::RawCodec;
 
 fn encode(val: impl ScalarArg) -> Bytes {
     let proto = ProtocolVersion::current();
@@ -37,7 +37,7 @@ macro_rules! encoding_eq {
         let buf = encode($data);
         println!("Encoded value: {:?}", &buf[..]);
         assert_eq!(&buf[..], $bytes, "encoding failed");
-    }
+    };
 }
 
 #[test]
@@ -78,7 +78,6 @@ fn int32() {
     encoding_eq!(i32::MIN, b"\x80\x00\x00\x00");
     encoding_eq!(-1i32, b"\xFF\xFF\xFF\xFF");
 }
-
 
 #[test]
 fn int64() {
@@ -128,16 +127,18 @@ fn bytes() {
     encoding_eq!(&b"\x00\x01\x02\x03\x81"[..], b"\x00\x01\x02\x03\x81");
     encoding_eq!(Bytes::copy_from_slice(b"hello"), b"hello");
     encoding_eq!(Bytes::new(), b"");
-    encoding_eq!(Bytes::copy_from_slice(b"\x00\x01\x02\x03\x81"),
-                 b"\x00\x01\x02\x03\x81");
+    encoding_eq!(
+        Bytes::copy_from_slice(b"\x00\x01\x02\x03\x81"),
+        b"\x00\x01\x02\x03\x81"
+    );
 }
 
 #[test]
-#[cfg(feature="bigdecimal")]
+#[cfg(feature = "bigdecimal")]
 fn decimal() {
-    use std::convert::TryInto;
-    use bigdecimal::BigDecimal;
     use crate::model::Decimal;
+    use bigdecimal::BigDecimal;
+    use std::convert::TryInto;
 
     fn dec(s: &str) -> Decimal {
         bdec(s).try_into().expect("bigdecimal -> decimal")
@@ -150,27 +151,39 @@ fn decimal() {
     encoding_eq!(bdec("42.00"), b"\0\x01\0\0\0\0\0\x02\0*");
     encoding_eq!(dec("42.00"), b"\0\x01\0\0\0\0\0\x02\0*");
 
-    encoding_eq!(bdec("12345678.901234567"),
-        b"\0\x05\0\x01\0\0\0\t\x04\xd2\x16.#4\r\x80\x1bX");
-    encoding_eq!(dec("12345678.901234567"),
-        b"\0\x05\0\x01\0\0\0\t\x04\xd2\x16.#4\r\x80\x1bX");
+    encoding_eq!(
+        bdec("12345678.901234567"),
+        b"\0\x05\0\x01\0\0\0\t\x04\xd2\x16.#4\r\x80\x1bX"
+    );
+    encoding_eq!(
+        dec("12345678.901234567"),
+        b"\0\x05\0\x01\0\0\0\t\x04\xd2\x16.#4\r\x80\x1bX"
+    );
     encoding_eq!(bdec("1e100"), b"\0\x01\0\x19\0\0\0\0\0\x01");
     encoding_eq!(dec("1e100"), b"\0\x01\0\x19\0\0\0\0\0\x01");
-    encoding_eq!(bdec("-703367234220692490200000000000000000000000000"),
-        b"\0\x06\0\x0b@\0\0\0\0\x07\x01P\x1cB\x08\x9e$!\0\xc8");
-    encoding_eq!(dec("-703367234220692490200000000000000000000000000"),
-        b"\0\x06\0\x0b@\0\0\0\0\x07\x01P\x1cB\x08\x9e$!\0\xc8");
-    encoding_eq!(bdec("-7033672342206924902e26"),
-        b"\0\x06\0\x0b@\0\0\0\0\x07\x01P\x1cB\x08\x9e$!\0\xc8");
-    encoding_eq!(dec("-7033672342206924902e26"),
-        b"\0\x06\0\x0b@\0\0\0\0\x07\x01P\x1cB\x08\x9e$!\0\xc8");
+    encoding_eq!(
+        bdec("-703367234220692490200000000000000000000000000"),
+        b"\0\x06\0\x0b@\0\0\0\0\x07\x01P\x1cB\x08\x9e$!\0\xc8"
+    );
+    encoding_eq!(
+        dec("-703367234220692490200000000000000000000000000"),
+        b"\0\x06\0\x0b@\0\0\0\0\x07\x01P\x1cB\x08\x9e$!\0\xc8"
+    );
+    encoding_eq!(
+        bdec("-7033672342206924902e26"),
+        b"\0\x06\0\x0b@\0\0\0\0\x07\x01P\x1cB\x08\x9e$!\0\xc8"
+    );
+    encoding_eq!(
+        dec("-7033672342206924902e26"),
+        b"\0\x06\0\x0b@\0\0\0\0\x07\x01P\x1cB\x08\x9e$!\0\xc8"
+    );
 }
 
 #[test]
-#[cfg(feature="num-bigint")]
+#[cfg(feature = "num-bigint")]
 fn bigint() {
-    use std::convert::TryInto;
     use crate::model::BigInt;
+    use std::convert::TryInto;
 
     fn bint1(val: i32) -> num_bigint::BigInt {
         val.into()
@@ -193,13 +206,20 @@ fn bigint() {
     encoding_eq!(bint1(30001), b"\0\x02\0\x01\0\0\0\0\0\x03\0\x01");
     encoding_eq!(bint1(-15000), b"\0\x02\0\x01@\0\0\0\0\x01\x13\x88");
     encoding_eq!(bint2(-15000), b"\0\x02\0\x01@\0\0\0\0\x01\x13\x88");
-    encoding_eq!(bint1s("1000000000000000000000"), b"\0\x01\0\x05\0\0\0\0\0\n");
-    encoding_eq!(bint2s("1000000000000000000000"), b"\0\x01\0\x05\0\0\0\0\0\n");
+    encoding_eq!(
+        bint1s("1000000000000000000000"),
+        b"\0\x01\0\x05\0\0\0\0\0\n"
+    );
+    encoding_eq!(
+        bint2s("1000000000000000000000"),
+        b"\0\x01\0\x05\0\0\0\0\0\n"
+    );
 }
 
 #[test]
 fn uuid() {
     encoding_eq!(
         Uuid::from_str("4928cc1e-2065-11ea-8848-7b53a6adb383").unwrap(),
-        b"I(\xcc\x1e e\x11\xea\x88H{S\xa6\xad\xb3\x83");
+        b"I(\xcc\x1e e\x11\xea\x88H{S\xa6\xad\xb3\x83"
+    );
 }

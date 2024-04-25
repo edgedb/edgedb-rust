@@ -100,8 +100,9 @@ fn derive(item: &syn::Item) -> syn::Result<proc_macro2::TokenStream> {
         syn::Item::Struct(s) => &s.attrs,
         syn::Item::Enum(e) => &e.attrs,
         _ => {
-            return Err(syn::Error::new_spanned(item,
-                "can only derive Queryable for structs and enums"
+            return Err(syn::Error::new_spanned(
+                item,
+                "can only derive Queryable for structs and enums",
             ));
         }
     };
@@ -112,12 +113,11 @@ fn derive(item: &syn::Item) -> syn::Result<proc_macro2::TokenStream> {
         match item {
             syn::Item::Struct(s) => shape::derive_struct(s),
             syn::Item::Enum(s) => enums::derive_enum(s),
-            _ => {
-                Err(syn::Error::new_spanned(item,
-                    "can only derive Queryable for a struct and enum \
-                     in non-JSON mode"
-                ))
-            }
+            _ => Err(syn::Error::new_spanned(
+                item,
+                "can only derive Queryable for a struct and enum \
+                     in non-JSON mode",
+            )),
         }
     }
 }

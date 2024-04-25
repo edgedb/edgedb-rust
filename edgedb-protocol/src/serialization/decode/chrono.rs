@@ -1,7 +1,6 @@
-use chrono::{DateTime, NaiveDateTime, NaiveDate, NaiveTime, Utc};
 use crate::errors::DecodeError;
 use crate::serialization::decode::raw_scalar::RawCodec;
-
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 
 impl<'t> RawCodec<'t> for DateTime<Utc> {
     fn decode(buf: &[u8]) -> Result<Self, DecodeError> {
