@@ -1,7 +1,6 @@
 use edgedb_derive::Queryable;
-use edgedb_protocol::queryable::{Queryable, Decoder};
+use edgedb_protocol::queryable::{Decoder, Queryable};
 use serde::Deserialize;
-
 
 #[derive(Debug, PartialEq, Deserialize)]
 struct Data {
@@ -36,19 +35,18 @@ fn json_field() {
         \xa0<\x83\x9f\xd9\xbd\x88\x94\0\0\0\x19\
         \0\0\0\x02id\0\0\x0e\xda\0\0\0\x10\x01{\"field1\": 123}";
     let res = ShapeWithJson::decode(&old_decoder(), data);
-    assert_eq!(res.unwrap(), ShapeWithJson {
-        name: "id".into(),
-        data: Data {
-            field1: 123,
-        },
-    });
+    assert_eq!(
+        res.unwrap(),
+        ShapeWithJson {
+            name: "id".into(),
+            data: Data { field1: 123 },
+        }
+    );
 }
 
 #[test]
 fn json_row() {
     let data = b"\x01{\"field2\": 234}";
     let res = JsonRow::decode(&old_decoder(), data);
-    assert_eq!(res.unwrap(), JsonRow {
-        field2: 234,
-    });
+    assert_eq!(res.unwrap(), JsonRow { field2: 234 });
 }

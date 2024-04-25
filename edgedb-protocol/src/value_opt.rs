@@ -53,7 +53,7 @@ impl From<ValueOpt> for Option<Value> {
 
 impl QueryArgs for HashMap<&str, ValueOpt> {
     fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
-        if self.len() == 0 && encoder.ctx.root_pos.is_none() {
+        if self.is_empty() && encoder.ctx.root_pos.is_none() {
             return Ok(());
         }
 

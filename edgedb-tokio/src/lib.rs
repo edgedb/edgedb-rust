@@ -106,25 +106,27 @@ reader.
 [anyhow]: https://crates.io/crates/anyhow
 */
 
-#![cfg_attr(not(feature="unstable"),
-   warn(missing_docs, missing_debug_implementations))]
+#![cfg_attr(
+    not(feature = "unstable"),
+    warn(missing_docs, missing_debug_implementations)
+)]
 
-#[cfg(feature="unstable")]
-pub mod raw;
-#[cfg(feature="unstable")]
-pub mod server_params;
-#[cfg(feature="unstable")]
+#[cfg(feature = "unstable")]
 pub mod credentials;
-#[cfg(feature="unstable")]
+#[cfg(feature = "unstable")]
+pub mod raw;
+#[cfg(feature = "unstable")]
+pub mod server_params;
+#[cfg(feature = "unstable")]
 pub mod tls;
 
-#[cfg(not(feature="unstable"))]
-mod raw;
-#[cfg(not(feature="unstable"))]
-mod server_params;
-#[cfg(not(feature="unstable"))]
+#[cfg(not(feature = "unstable"))]
 mod credentials;
-#[cfg(not(feature="unstable"))]
+#[cfg(not(feature = "unstable"))]
+mod raw;
+#[cfg(not(feature = "unstable"))]
+mod server_params;
+#[cfg(not(feature = "unstable"))]
 mod tls;
 
 mod builder;
@@ -133,20 +135,20 @@ mod errors;
 mod options;
 mod sealed;
 pub mod state;
-pub mod tutorial;
 mod transaction;
+pub mod tutorial;
 
-pub use edgedb_derive::{Queryable, GlobalsDelta, ConfigDelta};
+pub use edgedb_derive::{ConfigDelta, GlobalsDelta, Queryable};
 
-pub use builder::{Builder, Config, InstanceName, ClientSecurity};
-pub use credentials::TlsSecurity;
+pub use builder::{Builder, ClientSecurity, Config, InstanceName};
 pub use client::Client;
+pub use credentials::TlsSecurity;
 pub use errors::Error;
-pub use options::{TransactionOptions, RetryOptions, RetryCondition};
-pub use state::{GlobalsDelta, ConfigDelta};
+pub use options::{RetryCondition, RetryOptions, TransactionOptions};
+pub use state::{ConfigDelta, GlobalsDelta};
 pub use transaction::Transaction;
 
-#[cfg(feature="unstable")]
+#[cfg(feature = "unstable")]
 pub use builder::get_project_dir;
 
 /// Create a connection to the database with default parameters
@@ -160,7 +162,7 @@ pub use builder::get_project_dir;
 ///
 /// For more fine-grained setup see [`Client`] and [`Builder`] documentation
 /// and the source of this function.
-#[cfg(feature="env")]
+#[cfg(feature = "env")]
 pub async fn create_client() -> Result<Client, Error> {
     let pool = Client::new(&Builder::new().build_env().await?);
     pool.ensure_connected().await?;

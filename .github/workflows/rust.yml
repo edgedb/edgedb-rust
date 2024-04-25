@@ -15,7 +15,7 @@ jobs:
       - uses: edgedb/setup-edgedb@v1
       - uses: dtolnay/rust-toolchain@be73d7920c329f220ce78e0234b8f96b7ae60248
         with:
-          components: "cargo,rustc,rust-std"
+          components: "cargo,rustc,rust-std,clippy,rustfmt"
           toolchain: ${{ matrix.rust_version }}
       - name: Test all features
         run: |
@@ -29,11 +29,25 @@ jobs:
       - name: Check with env feature, edgedb-tokio
         run: |
           cargo check --features=env --package edgedb-tokio
-      - name: Test protocol without default features
-        working-directory: ./edgedb-protocol
+      - name: Test edgedb-protocol without default features
         run: |
-          cargo test --no-default-features
-      - name: Test protocol with "all-types" feature
-        working-directory: ./edgedb-protocol
+          cargo test --package=edgedb-protocol --no-default-features
+      - name: Test edgedb-protocol with "all-types" feature
         run: |
-          cargo test --features=all-types
+          cargo test --package=edgedb-protocol --features=all-types
+
+      - run: |
+          cargo clippy --all-features --workspace --all-targets -- \
+            -A clippy::collapsible_if \
+            -A clippy::derive_partial_eq_without_eq \
+            -A clippy::zero_ptr \
+            -A clippy::manual_strip \
+            -A clippy::new_ret_no_self \
+            -A clippy::type_complexity \
+            -A clippy::vec_init_then_push \
+            -A clippy::while_let_on_iterator \
+            -A clippy::useless_format \
+            -A clippy::too_many_arguments \
+            -A clippy::clone_on_copy
+      - run: |
+          cargo fmt --check

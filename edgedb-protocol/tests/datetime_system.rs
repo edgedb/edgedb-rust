@@ -1,10 +1,10 @@
-use std::convert::{TryInto, TryFrom};
-use std::time::{SystemTime, Duration as StdDuration, UNIX_EPOCH};
+use std::convert::{TryFrom, TryInto};
+use std::time::{Duration as StdDuration, SystemTime, UNIX_EPOCH};
 
-use bytes::{BytesMut, Buf};
+use bytes::{Buf, BytesMut};
 use edgedb_protocol::codec::{self, Codec};
-use edgedb_protocol::value::Value;
 use edgedb_protocol::model::{Datetime, Duration};
+use edgedb_protocol::value::Value;
 use test_case::test_case;
 
 // ========
@@ -22,7 +22,6 @@ use test_case::test_case;
     /*formatted*/ "9999-12-31T23:59:59.999999000Z"
     ; "maximum"
 )]
-
 // Rounding in Various Ranges >= 1970
 // ---------------------------------
 #[test_case(
@@ -119,7 +118,6 @@ fn datetime(input: &str, micros: i64, formatted: &str) {
     let rev = SystemTime::try_from(edgedb).unwrap();
     assert_eq!(humantime::format_rfc3339(rev).to_string(), formatted);
 }
-
 
 #[test_case(
     /*input: "0001-01-01T00:00:00.000000Z",*/
