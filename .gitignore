@@ -8,7 +8,5 @@ __pycache__
 /.vscode
 
 # nix stuff
-/flake.nix
-/flake.lock
 /.envrc
 /.direnv

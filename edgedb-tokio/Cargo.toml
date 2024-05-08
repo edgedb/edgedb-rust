@@ -8,6 +8,7 @@ description = """
     EdgeDB database client implementation for tokio.
 """
 readme = "README.md"
+rust-version.workspace = true
 
 [dependencies]
 edgedb-protocol = { path = "../edgedb-protocol", version = "0.6.0" }
@@ -72,3 +73,6 @@ admin_socket = ["dirs"]
 unstable = ["serde_json", "tokio-stream"] # features for CLI and Wasm
 fs = ["tokio/fs", "dirs", "serde_json"]
 miette-errors = ["edgedb-errors/miette"]
+
+[lints]
+workspace = true
