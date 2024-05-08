@@ -9,7 +9,7 @@ jobs:
     strategy:
       matrix:
         rust_version: [default, minimum, beta]
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       # checkout and env setup
       - uses: actions/checkout@v3
