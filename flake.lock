@@ -1,0 +1,109 @@
+{
+  "nodes": {
+    "edgedb": {
+      "inputs": {
+        "flake-parts": [
+          "flake-parts"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1709819111,
+        "narHash": "sha256-8yHlJLdyvSrDg2dVpL7c55CGjPlGenTvXsogk2Gnl+w=",
+        "owner": "edgedb",
+        "repo": "packages-nix",
+        "rev": "2dac891f0cf38b7ee00749243c5908389cdf24d9",
+        "type": "github"
+      },
+      "original": {
+        "owner": "edgedb",
+        "repo": "packages-nix",
+        "type": "github"
+      }
+    },
+    "fenix": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "rust-analyzer-src": []
+      },
+      "locked": {
+        "lastModified": 1708928609,
+        "narHash": "sha256-LcXC2NP/TzHMmJThZGG1e+7rht5HeuZK5WOirIDg+lU=",
+        "owner": "nix-community",
+        "repo": "fenix",
+        "rev": "e928fb6b5179ebd032c19afac5c461ccc0b6de55",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "repo": "fenix",
+        "type": "github"
+      }
+    },
+    "flake-parts": {
+      "inputs": {
+        "nixpkgs-lib": "nixpkgs-lib"
+      },
+      "locked": {
+        "lastModified": 1706830856,
+        "narHash": "sha256-a0NYyp+h9hlb7ddVz4LUn1vT/PLwqfrWYcHMvFB1xYg=",
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "rev": "b253292d9c0a5ead9bc98c4e9a26c6312e27d69f",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1709816690,
+        "narHash": "sha256-ugzGLZd+LPVigd8psiEpHokxsA6a3kXkVvkpH125FmM=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "00f00e0663ee05d58b8f9bdc937018409d49d48a",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs-lib": {
+      "locked": {
+        "dir": "lib",
+        "lastModified": 1706550542,
+        "narHash": "sha256-UcsnCG6wx++23yeER4Hg18CXWbgNpqNXcHIo5/1Y+hc=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "97b17f32362e475016f942bbdfda4a4a72a8a652",
+        "type": "github"
+      },
+      "original": {
+        "dir": "lib",
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "edgedb": "edgedb",
+        "fenix": "fenix",
+        "flake-parts": "flake-parts",
+        "nixpkgs": "nixpkgs"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
