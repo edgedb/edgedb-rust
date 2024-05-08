@@ -4,8 +4,8 @@ use std::sync::Arc;
 use anyhow::Context;
 use rustls::client::danger::HandshakeSignatureValid;
 use rustls::client::danger::{ServerCertVerified, ServerCertVerifier};
-use rustls::crypto::ring;
 use rustls::crypto::WebPkiSupportedAlgorithms;
+use rustls::crypto::{self, ring};
 use rustls::crypto::{verify_tls12_signature, verify_tls13_signature};
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use rustls::{DigitallySignedStruct, SignatureScheme};
@@ -121,6 +121,12 @@ impl ServerCertVerifier for NullVerifier {
 }
 
 pub fn connector(cert_verifier: Arc<dyn ServerCertVerifier>) -> anyhow::Result<TlsConnectorBox> {
+    // ensure that crypto provider is installed per-process
+    // if users of edgedb-tokio have not installed a provider, we install ring here
+    if crypto::CryptoProvider::get_default().is_none() {
+        crypto::ring::default_provider().install_default().ok();
+    }
+
     let mut builder = TlsConnector::builder()?;
     builder
         .config

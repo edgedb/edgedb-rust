@@ -29,7 +29,7 @@ fn start_server() -> ServerGuard {
         .unwrap()
         .pem_certificates(&cert_data)
         .unwrap()
-        .constrained_build()
+        .constrained_build() // if this method is not found, you need --features=unstable
         .unwrap();
     ServerGuard { instance, config }
 }

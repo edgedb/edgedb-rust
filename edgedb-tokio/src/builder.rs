@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use base64::Engine;
 use rustls::client::danger::ServerCertVerifier;
+use rustls::crypto;
 use serde_json::from_slice;
 use sha1::Digest;
 use tokio::fs;
@@ -2051,10 +2052,18 @@ impl ConfigInner {
         match tls_security {
             Insecure => Arc::new(tls::NullVerifier) as Verifier,
             NoHostVerification => Arc::new(tls::NoHostnameVerifier::new(root_store)) as Verifier,
-            Strict => rustls::client::WebPkiServerVerifier::builder(root_store)
+            Strict => {
+                let cryto_provider = crypto::CryptoProvider::get_default()
+                    .cloned()
+                    .unwrap_or_else(|| Arc::new(crypto::ring::default_provider()));
+
+                rustls::client::WebPkiServerVerifier::builder_with_provider(
+                    root_store,
+                    cryto_provider,
+                )
                 .build()
-                .expect("WebPkiServerVerifier to build correctly")
-                as Verifier,
+                .expect("WebPkiServerVerifier to build correctly") as Verifier
+            }
             Default => unreachable!(),
         }
     }
