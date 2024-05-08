@@ -16,9 +16,9 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
       - name: Build the nix shell
-        run: nix develop .#${{ matrix.rust_version }} --command "just --version"
+        run: nix develop .#${{ matrix.rust_version }} --command just --version
       - uses: Swatinem/rust-cache@v2
 
       # run tests
       - name: Run tests
-        run: nix develop .#${{ matrix.rust_version }} --command "just test"
+        run: nix develop .#${{ matrix.rust_version }} --command just test
