@@ -9,6 +9,9 @@ jobs:
   test_and_publish:
     name: Test and publish
     runs-on: ubuntu-latest
+    permissions:
+      id-token: "write"
+      contents: "read"
     steps:
            # checkout and env setup
       - uses: actions/checkout@v3

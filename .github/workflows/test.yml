@@ -10,6 +10,9 @@ jobs:
       matrix:
         rust_version: [default, minimum, beta]
     timeout-minutes: 30
+    permissions:
+      id-token: "write"
+      contents: "read"
     steps:
       # checkout and env setup
       - uses: actions/checkout@v3

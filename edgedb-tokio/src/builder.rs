@@ -1457,7 +1457,8 @@ impl Builder {
                             "error reading project settings {:?}: {:?}",
                             project_dir, path
                         )
-                    })?.clone_into(&mut cfg.database);
+                    })?
+                    .clone_into(&mut cfg.database);
                 cfg.branch.clone_from(&cfg.database);
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
