@@ -6,8 +6,8 @@ publish = false
 
 [dependencies]
 anyhow = "1.0"
-edgedb-tokio = {path="../../edgedb-tokio", features=["miette-errors"]}
-edgedb-derive = {path="../../edgedb-derive"}
-tokio = {version="1.20", features=["macros", "rt", "rt-multi-thread"]}
-env_logger = "0.10.0"
-miette = {version="5.3.0", features=["fancy"]}
+edgedb-tokio = { path = "../../edgedb-tokio", features = ["miette-errors"] }
+edgedb-derive = { path = "../../edgedb-derive" }
+tokio = { version = "1.20", features = ["macros", "rt", "rt-multi-thread"] }
+env_logger = "0.11.3"
+miette = { version = "7.2.0", features = ["fancy"] }
