@@ -15,6 +15,7 @@
       url = "github:edgedb/packages-nix";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-parts.follows = "flake-parts";
+      inputs.fenix.follows = "fenix";
     };
   };
 
@@ -30,8 +31,7 @@
 
             # needed for tests
             edgedb.packages.${system}.edgedb-server
-
-            # TODO: also install edgedb-cli, needed for tests
+            edgedb.packages.${system}.edgedb-cli
           ]
           ++ pkgs.lib.optional pkgs.stdenv.isDarwin [
             pkgs.libiconv
