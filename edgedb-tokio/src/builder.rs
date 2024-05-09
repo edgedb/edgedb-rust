@@ -996,15 +996,15 @@ impl Builder {
 
     async fn granular_owned(&self, cfg: &mut ConfigInner, errors: &mut Vec<Error>) {
         if let Some(database) = &self.database {
-            cfg.database = database.clone();
+            cfg.database.clone_from(database);
         }
 
         if let Some(branch) = &self.branch {
-            cfg.branch = branch.clone();
+            cfg.branch.clone_from(branch);
         }
 
         if let Some(user) = &self.user {
-            cfg.user = user.clone();
+            cfg.user.clone_from(user);
         }
 
         if let Some(password) = &self.password {
@@ -1167,7 +1167,7 @@ impl Builder {
                 database.or(branch)
             });
         if let Some(name) = database_branch {
-            cfg.database = name.clone();
+            cfg.database.clone_from(&name);
             cfg.branch = name;
         }
 
@@ -1337,7 +1337,7 @@ impl Builder {
 
             match database_or_branch {
                 Ok(Some(name)) => {
-                    cfg.branch = name.clone();
+                    cfg.branch.clone_from(&name);
                     cfg.database = name;
                 }
                 Ok(None) => {}
@@ -1451,15 +1451,15 @@ impl Builder {
         let path = stash_path.join("database");
         match fs::read_to_string(&path).await {
             Ok(text) => {
-                cfg.database = validate_database(text.trim())
+                validate_database(text.trim())
                     .with_context(|| {
                         format!(
                             "error reading project settings {:?}: {:?}",
                             project_dir, path
                         )
                     })?
-                    .to_owned();
-                cfg.branch = cfg.database.clone();
+                    .clone_into(&mut cfg.database);
+                cfg.branch.clone_from(&cfg.database);
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
             Err(e) => {
@@ -1529,7 +1529,7 @@ impl Builder {
             || self.credentials.is_some()
             || self.credentials_file.is_some()
         {
-            cfg.secret_key = self.secret_key.clone();
+            cfg.secret_key.clone_from(&self.secret_key);
             self.compound_owned(&mut cfg, &mut errors).await;
             self.granular_owned(&mut cfg, &mut errors).await;
             true
@@ -1706,8 +1706,8 @@ fn set_credentials(cfg: &mut ConfigInner, creds: &Credentials) -> Result<(), Err
         creds.host.clone().unwrap_or_else(|| DEFAULT_HOST.into()),
         creds.port,
     ));
-    cfg.user = creds.user.clone();
-    cfg.password = creds.password.clone();
+    cfg.user.clone_from(&creds.user);
+    cfg.password.clone_from(&creds.password);
 
     if let Some((b, d)) = creds.branch.as_ref().zip(creds.database.as_ref()) {
         if b != d {
@@ -1939,7 +1939,7 @@ impl Config {
                 "invalid database: empty string",
             ));
         }
-        Arc::make_mut(&mut self.0).database = database.to_owned();
+        database.clone_into(&mut Arc::make_mut(&mut self.0).database);
         Ok(self)
     }
 
@@ -1950,7 +1950,7 @@ impl Config {
                 "invalid branch: empty string",
             ));
         }
-        Arc::make_mut(&mut self.0).branch = branch.to_owned();
+        branch.clone_into(&mut Arc::make_mut(&mut self.0).branch);
         Ok(self)
     }
 

@@ -1389,7 +1389,7 @@ impl Codec for Enum {
             Value::Str(val) => val.as_str(),
             _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
         };
-        ensure!(self.members.get(val).is_some(), errors::MissingEnumValue);
+        ensure!(self.members.contains(val), errors::MissingEnumValue);
         buf.extend(val.as_bytes());
         Ok(())
     }
