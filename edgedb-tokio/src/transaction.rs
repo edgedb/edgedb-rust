@@ -64,6 +64,12 @@ impl EdgeDBErrorRef for Error {
     }
 }
 
+impl EdgeDBErrorRef for anyhow::Error {
+    fn as_edgedb_error_ref(&self) -> Option<&Error> {
+        self.downcast_ref::<Error>()
+    }
+}
+
 pub(crate) async fn transaction<T, B, F, E>(
     pool: &Pool,
     options: &Options,
