@@ -54,14 +54,25 @@ impl Drop for Transaction {
     }
 }
 
-pub(crate) async fn transaction<T, B, F>(
+pub trait EdgeDBErrorRef {
+    fn as_edgedb_error_ref(&self) -> Option<&Error>;
+}
+
+impl EdgeDBErrorRef for Error {
+    fn as_edgedb_error_ref(&self) -> Option<&Error> {
+        Some(self)
+    }
+}
+
+pub(crate) async fn transaction<T, B, F, E>(
     pool: &Pool,
     options: &Options,
     mut body: B,
-) -> Result<T, Error>
+) -> Result<T, E>
 where
     B: FnMut(Transaction) -> F,
-    F: Future<Output = Result<T, Error>>,
+    E: From<Error> + EdgeDBErrorRef,
+    F: Future<Output = Result<T, E>>,
 {
     let mut iteration = 0;
     'transaction: loop {
@@ -94,14 +105,15 @@ where
                 if started {
                     conn.statement("ROLLBACK", &options.state).await?;
                 }
-
-                let some_retry = outer.chain().find_map(|e| {
-                    e.downcast_ref::<Error>().and_then(|e| {
-                        if e.has_tag(SHOULD_RETRY) {
-                            Some(e)
-                        } else {
-                            None
-                        }
+                let some_retry = outer.as_edgedb_error_ref().and_then(|edgedb_error| {
+                    edgedb_error.chain().find_map(|e| {
+                        e.downcast_ref::<Error>().and_then(|e| {
+                            if e.has_tag(SHOULD_RETRY) {
+                                Some(e)
+                            } else {
+                                None
+                            }
+                        })
                     })
                 });
 
