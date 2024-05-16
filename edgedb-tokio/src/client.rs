@@ -17,7 +17,7 @@ use crate::raw::{Options, PoolState};
 use crate::raw::{Pool, QueryCapabilities};
 use crate::state::{AliasesDelta, ConfigDelta, GlobalsDelta};
 use crate::state::{AliasesModifier, ConfigModifier, Fn, GlobalsModifier};
-use crate::transaction::{transaction, EdgeDBErrorRef, Transaction};
+use crate::transaction::{transaction, transaction_no_retry, EdgeDBErrorRef, Transaction};
 
 /// The EdgeDB Client.
 ///
@@ -539,8 +539,8 @@ impl Client {
     ///     SomethingWentWrong,
     /// }
     ///
-    /// impl EdgeDBErrorRef for MyError {
-    ///     fn as_edge_db_error(&self) -> Option<&edgedb_tokio::Error> {
+    /// impl edgedb_tokio::EdgeDBErrorRef for MyError {
+    ///     fn as_edgedb_error_ref(&self) -> Option<&edgedb_tokio::Error> {
     ///         match self {
     ///             MyError::EdgeDBError(e) => Some(e),
     ///             _ => None,
@@ -549,12 +549,13 @@ impl Client {
     /// }
     ///
     /// let conn = edgedb_tokio::create_client().await?;
-    /// let val = conn.transaction_with_err::<_, _, _, MyError>(|mut tx| async move {
-    ///     tx.query_required_single::<i64, _>("
+    /// let val = conn.transaction_with_err::<i64, _, _, MyError>(|mut tx| async move {
+    ///     let result = tx.query_required_single::<i64, _>("
     ///         WITH C := UPDATE Counter SET { value := .value + 1}
     ///         SELECT C.value LIMIT 1
     ///     ", &()
-    ///     ).await
+    ///     ).await?;
+    ///     Ok(result)
     /// }).await?;
     /// # Ok(())
     /// # }
@@ -566,6 +567,61 @@ impl Client {
         E: From<Error> + EdgeDBErrorRef,
     {
         transaction(&self.pool, &self.options, body).await
+    }
+
+    /// Execute a transaction with a specific error type `E` in mind for the closure body
+    /// as long as this error `E` implements `EdgeDBErrorRef` and `From<edgedb_tokio::Error>`.
+    ///
+    /// Transaction body must be encompassed in the closure. The closure **is only executed once**.
+    /// This allows for closures to consume captured values.
+    ///
+    /// # Panics
+    ///
+    /// Function panics when transaction object passed to the closure is not
+    /// dropped after closure exists. General rule: do not store transaction
+    /// anywhere and do not send to another coroutine. Pass to all further
+    /// function calls by reference.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// # async fn transaction() -> anyhow::Result<()> {
+    /// #[derive(thiserror::Error, Debug)]
+    /// enum MyError {
+    ///     #[error(transparent)]
+    ///     EdgeDBError(#[from] edgedb_tokio::Error),
+    ///     #[error("Something went wrong and it wasn't EdgeDB")]
+    ///     SomethingWentWrong,
+    /// }
+    ///
+    /// impl edgedb_tokio::EdgeDBErrorRef for MyError {
+    ///     fn as_edgedb_error_ref(&self) -> Option<&edgedb_tokio::Error> {
+    ///         match self {
+    ///             MyError::EdgeDBError(e) => Some(e),
+    ///             _ => None,
+    ///         }
+    ///     }
+    /// }
+    ///
+    /// let conn = edgedb_tokio::create_client().await?;
+    /// let val = conn.transaction_no_retry::<i64, _, _, MyError>(|mut tx| async move {
+    ///     let result = tx.query_required_single::<i64, _>("
+    ///         WITH C := UPDATE Counter SET { value := .value + 1}
+    ///         SELECT C.value LIMIT 1
+    ///     ", &()
+    ///     ).await?;
+    ///     Ok(result)
+    /// }).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn transaction_no_retry<T, B, F, E>(&self, body: B) -> Result<T, E>
+    where
+        B: FnOnce(Transaction) -> F,
+        F: Future<Output = Result<T, E>>,
+        E: From<Error> + EdgeDBErrorRef,
+    {
+        transaction_no_retry(&self.pool, &self.options, body).await
     }
 
     /// Returns client with adjusted options for future transactions.

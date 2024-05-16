@@ -70,6 +70,50 @@ impl EdgeDBErrorRef for anyhow::Error {
     }
 }
 
+pub(crate) async fn transaction_no_retry<T, B, F, E>(
+    pool: &Pool,
+    options: &Options,
+    body: B,
+) -> Result<T, E>
+where
+    B: FnOnce(Transaction) -> F,
+    E: From<Error> + EdgeDBErrorRef,
+    F: Future<Output = Result<T, E>>,
+{
+    let conn = pool.acquire().await?;
+    let (tx, mut rx) = oneshot::channel();
+    let tran = Transaction {
+        iteration: 0,
+        state: options.state.clone(),
+        inner: Some(Inner {
+            started: false,
+            conn,
+            return_conn: tx,
+        }),
+    };
+    let result = body(tran).await;
+    let TransactionResult { mut conn, started } = rx.try_recv().expect(
+        "Transaction object must \
+            be dropped by the time transaction body finishes.",
+    );
+    match result {
+        Ok(val) => {
+            log::debug!("Comitting transaction");
+            if started {
+                conn.statement("COMMIT", &options.state).await?;
+            }
+            Ok(val)
+        }
+        Err(outer) => {
+            log::debug!("Rolling back transaction on error");
+            if started {
+                conn.statement("ROLLBACK", &options.state).await?;
+            }
+            Err(outer)
+        }
+    }
+}
+
 pub(crate) async fn transaction<T, B, F, E>(
     pool: &Pool,
     options: &Options,
