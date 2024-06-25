@@ -338,18 +338,19 @@ async fn connect3(cfg: &Config, tls: &TlsConnectorBox) -> Result<TlsStream, Erro
                 .map_err(ClientConnectionError::with_source)?;
 
             // Set keep-alive on the socket, but don't fail if this isn't successful
-            let sock = socket2::SockRef::from(&conn);
-            #[cfg(target_os = "openbsd")]
-            if let Err(e) = sock.set_keepalive(true) {
-                log::warn!("Failed to set keepalive: {e:?}");
-            }
-            #[cfg(not(target_os = "openbsd"))]
-            if let Err(e) = sock.set_tcp_keepalive(
-                &TcpKeepalive::new()
-                    .with_interval(Duration::from_secs(60))
-                    .with_time(Duration::from_secs(60)),
-            ) {
-                log::warn!("Failed to set keepalive: {e:?}");
+            if let Some(keepalive) = cfg.0.tcp_keepalive {
+                let sock = socket2::SockRef::from(&conn);
+                #[cfg(target_os = "openbsd")]
+                let res = sock.set_keepalive(true);
+                #[cfg(not(target_os = "openbsd"))]
+                let res = sock.set_tcp_keepalive(
+                    &TcpKeepalive::new()
+                        .with_interval(keepalive)
+                        .with_time(keepalive),
+                );
+                if let Err(e) = res {
+                    log::warn!("Failed to set TCP keepalive: {e:?}");
+                }
             }
 
             let host = match &cfg.0.tls_server_name {

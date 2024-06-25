@@ -26,6 +26,7 @@ use crate::tls;
 
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub const DEFAULT_WAIT: Duration = Duration::from_secs(30);
+pub const DEFAULT_TCP_KEEPALIVE: Duration = Duration::from_secs(60);
 pub const DEFAULT_POOL_SIZE: usize = 10;
 pub const DEFAULT_HOST: &str = "localhost";
 pub const DEFAULT_PORT: u16 = 5656;
@@ -44,13 +45,14 @@ static PORT_WARN: std::sync::Once = std::sync::Once::new();
 type Verifier = Arc<dyn ServerCertVerifier>;
 
 /// Client security mode.
-#[derive(Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy)]
 pub enum ClientSecurity {
     /// Disable security checks
     InsecureDevMode,
     /// Always verify domain an certificate
     Strict,
     /// Verify domain only if no specific certificate is configured
+    #[default]
     Default,
 }
 
@@ -59,6 +61,24 @@ pub enum ClientSecurity {
 pub enum CloudCerts {
     Staging,
     Local,
+}
+
+#[derive(Default, Debug, Clone, Copy)]
+pub enum TcpKeepalive {
+    Disabled,
+    Explicit(Duration),
+    #[default]
+    Default,
+}
+
+impl TcpKeepalive {
+    fn as_keepalive(&self) -> Option<Duration> {
+        match self {
+            TcpKeepalive::Disabled => None,
+            TcpKeepalive::Default => Some(DEFAULT_TCP_KEEPALIVE),
+            TcpKeepalive::Explicit(duration) => Some(*duration),
+        }
+    }
 }
 
 /// A builder used to create connections.
@@ -83,6 +103,7 @@ pub struct Builder {
     wait_until_available: Option<Duration>,
     admin: bool,
     connect_timeout: Option<Duration>,
+    tcp_keepalive: Option<TcpKeepalive>,
     secret_key: Option<String>,
     cloud_profile: Option<String>,
 
@@ -120,6 +141,9 @@ pub(crate) struct ConfigInner {
     pub extra_dsn_query_args: HashMap<String, String>,
     #[allow(dead_code)] // used only on unstable feature
     pub creds_file_outdated: bool,
+
+    // Whether to set TCP keepalive or not
+    pub tcp_keepalive: Option<Duration>,
 
     // Pool configuration
     pub max_concurrency: Option<usize>,
@@ -869,7 +893,7 @@ impl Builder {
                 .pem_certificates
                 .clone()
                 .or_else(|| creds.and_then(|c| c.tls_ca.clone())),
-
+            tcp_keepalive: self.tcp_keepalive.unwrap_or_default().as_keepalive(),
             // Pool configuration
             max_concurrency: self.max_concurrency,
 
@@ -1506,7 +1530,7 @@ impl Builder {
             pem_certificates: self.pem_certificates.clone(),
             client_security: self.client_security.unwrap_or(ClientSecurity::Default),
             tls_security: self.tls_security.unwrap_or(TlsSecurity::Default),
-
+            tcp_keepalive: self.tcp_keepalive.unwrap_or_default().as_keepalive(),
             // Pool configuration
             max_concurrency: self.max_concurrency,
 
