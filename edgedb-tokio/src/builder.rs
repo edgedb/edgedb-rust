@@ -63,10 +63,14 @@ pub enum CloudCerts {
     Local,
 }
 
+/// TCP keepalive configuration.
 #[derive(Default, Debug, Clone, Copy)]
 pub enum TcpKeepalive {
+    /// Disable TCP keepalive probes.
     Disabled,
+    /// Explicit duration between TCP keepalive probes.
     Explicit(Duration),
+    /// Default: 60 seconds.
     #[default]
     Default,
 }
@@ -809,10 +813,11 @@ impl Builder {
         self
     }
 
-    /// Sets the TCP keepalive interval for the database connection to ensure
-    /// that the remote end of the connection is still alive, and to inform any
-    /// network intermediaries that this connection is not idle. By default, a
-    /// keepalive probe will be sent once every 60 seconds.
+    /// Sets the TCP keepalive interval and time for the database connection to
+    /// ensure that the remote end of the connection is still alive, and to
+    /// inform any network intermediaries that this connection is not idle. By
+    /// default, a keepalive probe will be sent once every 60 seconds once the
+    /// connection has been idle for 60 seconds.
     ///
     /// Note: If the connection is not made over a TCP socket, this value will
     /// be unused. If the current platform does not support explicit TCP
