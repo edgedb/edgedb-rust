@@ -1,13 +1,13 @@
 //! Credentials file handling routines
-use std::fmt;
 use std::str::FromStr;
+use std::{default, fmt};
 
 use serde::{ser, Deserialize, Serialize};
 
 use crate::errors::{Error, ErrorKind};
 
 /// TLS Client Security Mode
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TlsSecurity {
     /// Allow any certificate for TLS connection
@@ -23,6 +23,7 @@ pub enum TlsSecurity {
     Strict,
     /// If there is a specific certificate in credentials, do not check
     /// the host name, otherwise use `Strict` mode
+    #[default]
     Default,
 }
 

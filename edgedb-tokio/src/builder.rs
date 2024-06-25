@@ -809,6 +809,20 @@ impl Builder {
         self
     }
 
+    /// Sets the TCP keepalive interval for the database connection to ensure
+    /// that the remote end of the connection is still alive, and to inform any
+    /// network intermediaries that this connection is not idle. By default, a
+    /// keepalive probe will be sent once every 60 seconds.
+    ///
+    /// Note: If the connection is not made over a TCP socket, this value will
+    /// be unused. If the current platform does not support explicit TCP
+    /// keep-alive intervals on the socket, keepalives will be enabled and the
+    /// operating-system default for the intervals will be used.
+    pub fn tcp_keepalive(&mut self, tcp_keepalive: TcpKeepalive) -> &mut Self {
+        self.tcp_keepalive = Some(tcp_keepalive);
+        self
+    }
+
     /// Set the maximum number of underlying database connections.
     pub fn max_concurrency(&mut self, value: usize) -> &mut Self {
         self.max_concurrency = Some(value);
@@ -899,11 +913,11 @@ impl Builder {
 
             // Temporary placeholders
             verifier: Arc::new(tls::NullVerifier),
-            client_security: self.client_security.unwrap_or(ClientSecurity::Default),
+            client_security: self.client_security.unwrap_or_default(),
             tls_security: self
                 .tls_security
                 .or_else(|| creds.map(|c| c.tls_security))
-                .unwrap_or(TlsSecurity::Default),
+                .unwrap_or_default(),
         };
 
         cfg.verifier = cfg.make_verifier(cfg.compute_tls_security()?);
@@ -1528,8 +1542,8 @@ impl Builder {
             extra_dsn_query_args: HashMap::new(),
             creds_file_outdated: false,
             pem_certificates: self.pem_certificates.clone(),
-            client_security: self.client_security.unwrap_or(ClientSecurity::Default),
-            tls_security: self.tls_security.unwrap_or(TlsSecurity::Default),
+            client_security: self.client_security.unwrap_or_default(),
+            tls_security: self.tls_security.unwrap_or_default(),
             tcp_keepalive: self.tcp_keepalive.unwrap_or_default().as_keepalive(),
             // Pool configuration
             max_concurrency: self.max_concurrency,
