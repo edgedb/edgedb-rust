@@ -1,6 +1,6 @@
 //! Credentials file handling routines
+use std::fmt;
 use std::str::FromStr;
-use std::{default, fmt};
 
 use serde::{ser, Deserialize, Serialize};
 
