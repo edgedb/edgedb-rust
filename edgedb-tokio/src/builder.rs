@@ -26,6 +26,7 @@ use crate::tls;
 
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub const DEFAULT_WAIT: Duration = Duration::from_secs(30);
+pub const DEFAULT_TCP_KEEPALIVE: Duration = Duration::from_secs(60);
 pub const DEFAULT_POOL_SIZE: usize = 10;
 pub const DEFAULT_HOST: &str = "localhost";
 pub const DEFAULT_PORT: u16 = 5656;
@@ -44,13 +45,14 @@ static PORT_WARN: std::sync::Once = std::sync::Once::new();
 type Verifier = Arc<dyn ServerCertVerifier>;
 
 /// Client security mode.
-#[derive(Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy)]
 pub enum ClientSecurity {
     /// Disable security checks
     InsecureDevMode,
     /// Always verify domain an certificate
     Strict,
     /// Verify domain only if no specific certificate is configured
+    #[default]
     Default,
 }
 
@@ -59,6 +61,28 @@ pub enum ClientSecurity {
 pub enum CloudCerts {
     Staging,
     Local,
+}
+
+/// TCP keepalive configuration.
+#[derive(Default, Debug, Clone, Copy)]
+pub enum TcpKeepalive {
+    /// Disable TCP keepalive probes.
+    Disabled,
+    /// Explicit duration between TCP keepalive probes.
+    Explicit(Duration),
+    /// Default: 60 seconds.
+    #[default]
+    Default,
+}
+
+impl TcpKeepalive {
+    fn as_keepalive(&self) -> Option<Duration> {
+        match self {
+            TcpKeepalive::Disabled => None,
+            TcpKeepalive::Default => Some(DEFAULT_TCP_KEEPALIVE),
+            TcpKeepalive::Explicit(duration) => Some(*duration),
+        }
+    }
 }
 
 /// A builder used to create connections.
@@ -83,6 +107,7 @@ pub struct Builder {
     wait_until_available: Option<Duration>,
     admin: bool,
     connect_timeout: Option<Duration>,
+    tcp_keepalive: Option<TcpKeepalive>,
     secret_key: Option<String>,
     cloud_profile: Option<String>,
 
@@ -120,6 +145,9 @@ pub(crate) struct ConfigInner {
     pub extra_dsn_query_args: HashMap<String, String>,
     #[allow(dead_code)] // used only on unstable feature
     pub creds_file_outdated: bool,
+
+    // Whether to set TCP keepalive or not
+    pub tcp_keepalive: Option<Duration>,
 
     // Pool configuration
     pub max_concurrency: Option<usize>,
@@ -785,6 +813,21 @@ impl Builder {
         self
     }
 
+    /// Sets the TCP keepalive interval and time for the database connection to
+    /// ensure that the remote end of the connection is still alive, and to
+    /// inform any network intermediaries that this connection is not idle. By
+    /// default, a keepalive probe will be sent once every 60 seconds once the
+    /// connection has been idle for 60 seconds.
+    ///
+    /// Note: If the connection is not made over a TCP socket, this value will
+    /// be unused. If the current platform does not support explicit TCP
+    /// keep-alive intervals on the socket, keepalives will be enabled and the
+    /// operating-system default for the intervals will be used.
+    pub fn tcp_keepalive(&mut self, tcp_keepalive: TcpKeepalive) -> &mut Self {
+        self.tcp_keepalive = Some(tcp_keepalive);
+        self
+    }
+
     /// Set the maximum number of underlying database connections.
     pub fn max_concurrency(&mut self, value: usize) -> &mut Self {
         self.max_concurrency = Some(value);
@@ -869,17 +912,17 @@ impl Builder {
                 .pem_certificates
                 .clone()
                 .or_else(|| creds.and_then(|c| c.tls_ca.clone())),
-
+            tcp_keepalive: self.tcp_keepalive.unwrap_or_default().as_keepalive(),
             // Pool configuration
             max_concurrency: self.max_concurrency,
 
             // Temporary placeholders
             verifier: Arc::new(tls::NullVerifier),
-            client_security: self.client_security.unwrap_or(ClientSecurity::Default),
+            client_security: self.client_security.unwrap_or_default(),
             tls_security: self
                 .tls_security
                 .or_else(|| creds.map(|c| c.tls_security))
-                .unwrap_or(TlsSecurity::Default),
+                .unwrap_or_default(),
         };
 
         cfg.verifier = cfg.make_verifier(cfg.compute_tls_security()?);
@@ -1504,9 +1547,9 @@ impl Builder {
             extra_dsn_query_args: HashMap::new(),
             creds_file_outdated: false,
             pem_certificates: self.pem_certificates.clone(),
-            client_security: self.client_security.unwrap_or(ClientSecurity::Default),
-            tls_security: self.tls_security.unwrap_or(TlsSecurity::Default),
-
+            client_security: self.client_security.unwrap_or_default(),
+            tls_security: self.tls_security.unwrap_or_default(),
+            tcp_keepalive: self.tcp_keepalive.unwrap_or_default().as_keepalive(),
             // Pool configuration
             max_concurrency: self.max_concurrency,
 

@@ -140,7 +140,7 @@ pub mod tutorial;
 
 pub use edgedb_derive::{ConfigDelta, GlobalsDelta, Queryable};
 
-pub use builder::{Builder, ClientSecurity, Config, InstanceName};
+pub use builder::{Builder, ClientSecurity, Config, InstanceName, TcpKeepalive};
 pub use client::Client;
 pub use credentials::TlsSecurity;
 pub use errors::Error;

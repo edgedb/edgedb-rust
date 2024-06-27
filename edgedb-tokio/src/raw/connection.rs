@@ -11,6 +11,7 @@ use bytes::{Bytes, BytesMut};
 use rand::{thread_rng, Rng};
 use rustls::pki_types::DnsName;
 use scram::ScramClient;
+use socket2::TcpKeepalive;
 use tls_api::TlsConnectorBuilder;
 use tls_api::{TlsConnector, TlsConnectorBox, TlsStream, TlsStreamDyn};
 use tls_api_not_tls::TlsConnector as PlainConnector;
@@ -335,6 +336,23 @@ async fn connect3(cfg: &Config, tls: &TlsConnectorBox) -> Result<TlsStream, Erro
             let conn = TcpStream::connect(addr)
                 .await
                 .map_err(ClientConnectionError::with_source)?;
+
+            // Set keep-alive on the socket, but don't fail if this isn't successful
+            if let Some(keepalive) = cfg.0.tcp_keepalive {
+                let sock = socket2::SockRef::from(&conn);
+                #[cfg(target_os = "openbsd")]
+                let res = sock.set_keepalive(true);
+                #[cfg(not(target_os = "openbsd"))]
+                let res = sock.set_tcp_keepalive(
+                    &TcpKeepalive::new()
+                        .with_interval(keepalive)
+                        .with_time(keepalive),
+                );
+                if let Err(e) = res {
+                    log::warn!("Failed to set TCP keepalive: {e:?}");
+                }
+            }
+
             let host = match &cfg.0.tls_server_name {
                 Some(server_name) => Cow::from(server_name),
                 None => {
