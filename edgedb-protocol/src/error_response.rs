@@ -2,11 +2,10 @@ use edgedb_errors::Error;
 
 use crate::server_message::ErrorResponse;
 
-
-impl Into<Error> for ErrorResponse {
-    fn into(self) -> Error {
-        Error::from_code(self.code)
-        .context(self.message)
-        .with_headers(self.attributes)
+impl From<ErrorResponse> for Error {
+    fn from(val: ErrorResponse) -> Self {
+        Error::from_code(val.code)
+            .context(val.message)
+            .with_headers(val.attributes)
     }
 }

@@ -1,4 +1,5 @@
 [workspace]
+resolver = "2"
 members = [
     "edgedb-errors",
     "edgedb-derive",
@@ -11,3 +12,19 @@ members = [
 [profile.release]
 debug = true
 lto = true
+
+[workspace.package]
+rust-version = "1.72" # keep in sync with flake.nix
+
+[workspace.lints.clippy]
+useless_format = 'allow'
+collapsible_if = 'allow'
+derive_partial_eq_without_eq = 'allow'
+zero_ptr = 'allow'
+manual_strip = 'allow'
+new_ret_no_self = 'allow'
+type_complexity = 'allow'
+vec_init_then_push = 'allow'
+while_let_on_iterator = 'allow'
+too_many_arguments = 'allow'
+clone_on_copy = 'allow'

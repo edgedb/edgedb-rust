@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use crate::options::{TransactionOptions, RetryOptions};
+use crate::options::{RetryOptions, TransactionOptions};
 use crate::raw::state::PoolState;
-
 
 #[derive(Debug, Clone, Default)]
 pub struct Options {

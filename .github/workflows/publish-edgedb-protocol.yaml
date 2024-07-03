@@ -9,17 +9,23 @@ jobs:
   test_and_publish:
     name: Test and publish
     runs-on: ubuntu-latest
+    permissions:
+      id-token: "write"
+      contents: "read"
     steps:
-      - uses: actions/checkout@master
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: 1.65
-          default: true
-      - uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --all-features --package=edgedb-protocol
+            # checkout and env setup
+      - uses: actions/checkout@v3
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: Build the nix shell
+        run: nix develop --command just --version
+      - uses: Swatinem/rust-cache@v2
+
+      # test
+      - name: Test
+        run: nix develop --command cargo test --all-features --package=edgedb-protocol
+
+      # verify that git tag matches cargo version
       - run: |
           set -x
           cargo_version="$(cargo metadata --format-version 1 \
@@ -29,4 +35,4 @@ jobs:
 
       - working-directory: ./edgedb-protocol
         run: |
-          cargo publish --token=${{ secrets.CARGO_REGISTRY_TOKEN }}
+          nix develop --command cargo publish --token=${{ secrets.CARGO_REGISTRY_TOKEN }}

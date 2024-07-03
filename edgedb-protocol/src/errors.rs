@@ -1,11 +1,9 @@
-use std::str;
 use std::error::Error;
+use std::str;
 
-use snafu::{Snafu, Backtrace, IntoError};
-use uuid;
+use snafu::{Backtrace, IntoError, Snafu};
 
 use crate::value::Value;
-
 
 #[derive(Snafu, Debug)]
 #[snafu(visibility(pub), context(suffix(false)))]
@@ -16,25 +14,49 @@ pub enum DecodeError {
     #[snafu(display("frame contains extra data after decoding"))]
     ExtraData { backtrace: Backtrace },
     #[snafu(display("invalid utf8 when decoding string: {}", source))]
-    InvalidUtf8 { backtrace: Backtrace, source: str::Utf8Error },
+    InvalidUtf8 {
+        backtrace: Backtrace,
+        source: str::Utf8Error,
+    },
     #[snafu(display("invalid auth status: {:x}", auth_status))]
-    AuthStatusInvalid { backtrace: Backtrace, auth_status: u32 },
+    AuthStatusInvalid {
+        backtrace: Backtrace,
+        auth_status: u32,
+    },
     #[snafu(display("unsupported transaction state: {:x}", transaction_state))]
-    InvalidTransactionState { backtrace: Backtrace, transaction_state: u8 },
+    InvalidTransactionState {
+        backtrace: Backtrace,
+        transaction_state: u8,
+    },
     #[snafu(display("unsupported io format: {:x}", io_format))]
     InvalidIoFormat { backtrace: Backtrace, io_format: u8 },
     #[snafu(display("unsupported cardinality: {:x}", cardinality))]
-    InvalidCardinality { backtrace: Backtrace, cardinality: u8 },
+    InvalidCardinality {
+        backtrace: Backtrace,
+        cardinality: u8,
+    },
     #[snafu(display("unsupported capability: {:b}", capabilities))]
-    InvalidCapabilities { backtrace: Backtrace, capabilities: u64 },
+    InvalidCapabilities {
+        backtrace: Backtrace,
+        capabilities: u64,
+    },
     #[snafu(display("unsupported compilation flags: {:b}", compilation_flags))]
-    InvalidCompilationFlags { backtrace: Backtrace, compilation_flags: u64 },
+    InvalidCompilationFlags {
+        backtrace: Backtrace,
+        compilation_flags: u64,
+    },
     #[snafu(display("unsupported describe aspect: {:x}", aspect))]
     InvalidAspect { backtrace: Backtrace, aspect: u8 },
     #[snafu(display("unsupported type descriptor: {:x}", descriptor))]
-    InvalidTypeDescriptor { backtrace: Backtrace, descriptor: u8 },
+    InvalidTypeDescriptor {
+        backtrace: Backtrace,
+        descriptor: u8,
+    },
     #[snafu(display("invalid uuid: {}", source))]
-    InvalidUuid { backtrace: Backtrace, source: uuid::Error },
+    InvalidUuid {
+        backtrace: Backtrace,
+        source: uuid::Error,
+    },
     #[snafu(display("non-zero reserved bytes received in data"))]
     NonZeroReservedBytes { backtrace: Backtrace },
     #[snafu(display("object data size does not match its shape"))]
@@ -64,9 +86,15 @@ pub enum DecodeError {
     #[snafu(display("invalid index in input shape ({})", index))]
     InvalidIndex { backtrace: Backtrace, index: usize },
     #[snafu(display("uuid {} not found", uuid))]
-    UuidNotFound { backtrace: Backtrace, uuid: uuid::Uuid },
+    UuidNotFound {
+        backtrace: Backtrace,
+        uuid: uuid::Uuid,
+    },
     #[snafu(display("error decoding value"))]
-    DecodeValue { backtrace: Backtrace, source: Box<dyn Error + Send + Sync> },
+    DecodeValue {
+        backtrace: Backtrace,
+        source: Box<dyn Error + Send + Sync>,
+    },
     #[snafu(display("missing required link or property"))]
     MissingRequiredElement { backtrace: Backtrace },
 }
@@ -101,10 +129,16 @@ pub enum EncodeError {
     DecimalTooLong { backtrace: Backtrace },
     #[snafu(display("unknown message types cannot be encoded"))]
     UnknownMessageCantBeEncoded { backtrace: Backtrace },
-    #[snafu(display("trying to encode invalid value type {} with codec {}",
-                    value_type, codec))]
-    InvalidValue { backtrace: Backtrace,
-                   value_type: &'static str, codec: &'static str },
+    #[snafu(display(
+        "trying to encode invalid value type {} with codec {}",
+        value_type,
+        codec
+    ))]
+    InvalidValue {
+        backtrace: Backtrace,
+        value_type: &'static str,
+        codec: &'static str,
+    },
     #[snafu(display("shape of data does not match shape of encoder"))]
     ObjectShapeMismatch { backtrace: Backtrace },
     #[snafu(display("datetime value is out of range"))]
@@ -122,12 +156,18 @@ pub enum CodecError {
     #[snafu(display("type position {} is absent", position))]
     UnexpectedTypePos { backtrace: Backtrace, position: u16 },
     #[snafu(display("base scalar with uuid {} not found", uuid))]
-    UndefinedBaseScalar { backtrace: Backtrace, uuid: uuid::Uuid },
+    UndefinedBaseScalar {
+        backtrace: Backtrace,
+        uuid: uuid::Uuid,
+    },
 }
 
-pub fn invalid_value(codec: &'static str, value: &Value) -> EncodeError
-{
-    InvalidValue { codec, value_type: value.kind() }.build()
+pub fn invalid_value(codec: &'static str, value: &Value) -> EncodeError {
+    InvalidValue {
+        codec,
+        value_type: value.kind(),
+    }
+    .build()
 }
 
 pub fn decode_error<E: Error + Send + Sync + 'static>(e: E) -> DecodeError {

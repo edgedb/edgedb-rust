@@ -78,7 +78,7 @@ let query_res: Vec<JsonData> = client.query(query, &()).await?;
 extern crate proc_macro;
 
 use proc_macro::TokenStream;
-use syn::{self, parse_macro_input};
+use syn::parse_macro_input;
 
 mod attrib;
 mod enums;
@@ -100,24 +100,24 @@ fn derive(item: &syn::Item) -> syn::Result<proc_macro2::TokenStream> {
         syn::Item::Struct(s) => &s.attrs,
         syn::Item::Enum(e) => &e.attrs,
         _ => {
-            return Err(syn::Error::new_spanned(item,
-                "can only derive Queryable for structs and enums"
+            return Err(syn::Error::new_spanned(
+                item,
+                "can only derive Queryable for structs and enums",
             ));
         }
     };
-    let attrs = attrib::ContainerAttrs::from_syn(&attrs)?;
+    let attrs = attrib::ContainerAttrs::from_syn(attrs)?;
     if attrs.json {
         json::derive(item)
     } else {
         match item {
             syn::Item::Struct(s) => shape::derive_struct(s),
             syn::Item::Enum(s) => enums::derive_enum(s),
-            _ => {
-                return Err(syn::Error::new_spanned(item,
-                    "can only derive Queryable for a struct and enum \
-                     in non-JSON mode"
-                ));
-            }
+            _ => Err(syn::Error::new_spanned(
+                item,
+                "can only derive Queryable for a struct and enum \
+                     in non-JSON mode",
+            )),
         }
     }
 }

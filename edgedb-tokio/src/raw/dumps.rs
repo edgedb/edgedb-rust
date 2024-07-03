@@ -1,20 +1,20 @@
 use std::collections::HashMap;
-use std::time::{Instant, Duration};
 use std::mem;
+use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use tokio::time::sleep;
 use tokio_stream::{Stream, StreamExt};
 
-use edgedb_errors::{Error, ErrorKind};
 use edgedb_errors::ProtocolOutOfOrderError;
-use edgedb_protocol::server_message::{ServerMessage, RawPacket};
-use edgedb_protocol::client_message::{ClientMessage, Restore, RestoreBlock};
+use edgedb_errors::{Error, ErrorKind};
 use edgedb_protocol::client_message::Dump;
+use edgedb_protocol::client_message::{ClientMessage, Restore, RestoreBlock};
+use edgedb_protocol::server_message::{RawPacket, ServerMessage};
 
-use crate::raw::{Connection, Response};
 use crate::raw::connection::{send_messages, wait_message};
 use crate::raw::queries::Guard;
+use crate::raw::{Connection, Response};
 
 enum DumpState {
     Header(RawPacket),
@@ -30,43 +30,38 @@ pub struct DumpStream<'a> {
     guard: Option<Guard>,
 }
 
-
 impl Connection {
-    pub async fn restore(&mut self, header: Bytes,
-        mut stream: impl Stream<Item=Result<Bytes, Error>> + Unpin)
-        -> Result<Response<()>, Error>
-    {
+    pub async fn restore(
+        &mut self,
+        header: Bytes,
+        mut stream: impl Stream<Item = Result<Bytes, Error>> + Unpin,
+    ) -> Result<Response<()>, Error> {
         let guard = self.begin_request()?;
         let start_headers = Instant::now();
-        self.send_messages(&[
-            ClientMessage::Restore(Restore {
-                headers: HashMap::new(),
-                jobs: 1,
-                data: header,
-            }),
-        ]).await?;
-        loop {
-            let msg = self.message().await?;
-            match msg {
-                ServerMessage::RestoreReady(_) => {
-                    log::info!("Schema applied in {:?}",
-                               start_headers.elapsed());
-                    break;
-                }
-                ServerMessage::ErrorResponse(err) => {
-                    self.send_messages(&[ClientMessage::Sync]).await?;
-                    self.expect_ready_or_eos(guard).await
-                        .map_err(|e| log::warn!(
-                            "Error waiting for Ready after error: {e:#}"))
-                        .ok();
-                    return Err(Into::<Error>::into(err)
-                        .context("error initiating restore protocol")
-                        .into());
-                }
-                _ => {
-                    return Err(ProtocolOutOfOrderError::with_message(format!(
-                        "unsolicited message {:?}", msg)))?;
-                }
+        self.send_messages(&[ClientMessage::Restore(Restore {
+            headers: HashMap::new(),
+            jobs: 1,
+            data: header,
+        })])
+        .await?;
+
+        match self.message().await? {
+            ServerMessage::RestoreReady(_) => {
+                log::info!("Schema applied in {:?}", start_headers.elapsed());
+            }
+            ServerMessage::ErrorResponse(err) => {
+                self.send_messages(&[ClientMessage::Sync]).await?;
+                self.expect_ready_or_eos(guard)
+                    .await
+                    .map_err(|e| log::warn!("Error waiting for Ready after error: {e:#}"))
+                    .ok();
+                return Err(Into::<Error>::into(err).context("error initiating restore protocol"));
+            }
+            msg => {
+                return Err(ProtocolOutOfOrderError::with_message(format!(
+                    "unsolicited message {:?}",
+                    msg
+                )))?;
             }
         }
 
@@ -136,16 +131,22 @@ impl Connection {
                 }
                 ServerMessage::ErrorResponse(err) => {
                     self.send_messages(&[ClientMessage::Sync]).await?;
-                    self.expect_ready_or_eos(guard).await
-                        .map_err(|e| log::warn!(
-                            "Error waiting for Ready \
-                             after error: {e:#}"))
+                    self.expect_ready_or_eos(guard)
+                        .await
+                        .map_err(|e| {
+                            log::warn!(
+                                "Error waiting for Ready \
+                             after error: {e:#}"
+                            )
+                        })
                         .ok();
                     return Err(Into::<Error>::into(err))?;
                 }
                 _ => {
                     return Err(ProtocolOutOfOrderError::with_message(format!(
-                        "unsolicited message {:?}", msg)))?;
+                        "unsolicited message {:?}",
+                        msg
+                    )))?;
                 }
             }
         }
@@ -153,36 +154,31 @@ impl Connection {
     pub async fn dump(&mut self) -> Result<DumpStream<'_>, Error> {
         self.dump_with_secrets(false).await
     }
-    pub async fn dump_with_secrets(&mut self, with_secrets: bool)
-                       -> Result<DumpStream<'_>, Error> {
+    pub async fn dump_with_secrets(&mut self, with_secrets: bool) -> Result<DumpStream<'_>, Error> {
         let guard = self.begin_request()?;
 
         let mut headers = HashMap::new();
         if with_secrets {
-            headers.insert(0xFF10, Bytes::from(vec!(with_secrets as u8)));
+            headers.insert(0xFF10, Bytes::from(vec![with_secrets as u8]));
         }
 
-        self.send_messages(&[
-            ClientMessage::Dump(Dump {
-                headers: headers,
-            }),
-            ClientMessage::Sync,
-        ]).await?;
+        self.send_messages(&[ClientMessage::Dump(Dump { headers }), ClientMessage::Sync])
+            .await?;
         let msg = self.message().await?;
         let header = match msg {
             ServerMessage::DumpHeader(packet) => packet,
             ServerMessage::ErrorResponse(err) => {
-                self.expect_ready_or_eos(guard).await
-                    .map_err(|e| log::warn!(
-                        "Error waiting for Ready after error: {e:#}"))
+                self.expect_ready_or_eos(guard)
+                    .await
+                    .map_err(|e| log::warn!("Error waiting for Ready after error: {e:#}"))
                     .ok();
-                return Err(Into::<Error>::into(err)
-                    .context("error receiving dump header")
-                    .into());
+                return Err(Into::<Error>::into(err).context("error receiving dump header"));
             }
             _ => {
                 return Err(ProtocolOutOfOrderError::with_message(format!(
-                    "unsolicited message {:?}", msg)))?;
+                    "unsolicited message {:?}",
+                    msg
+                )))?;
             }
         };
         Ok(DumpStream {
@@ -211,62 +207,60 @@ impl DumpStream<'_> {
     }
     pub async fn next_block(&mut self) -> Option<RawPacket> {
         match &self.state {
-            DumpState::Header(_) |
-            DumpState::Blocks => {
-                match self.conn.message().await {
-                    Ok(ServerMessage::DumpBlock(packet)) => {
-                        Some(packet)
+            DumpState::Header(_) | DumpState::Blocks => match self.conn.message().await {
+                Ok(ServerMessage::DumpBlock(packet)) => Some(packet),
+                Ok(ServerMessage::CommandComplete0(complete))
+                    if self.guard.is_some() && !self.conn.proto.is_1() =>
+                {
+                    let guard = self.guard.take().unwrap();
+                    if let Err(e) = self.conn.expect_ready(guard).await {
+                        self.state = DumpState::Error(e)
+                    } else {
+                        self.state = DumpState::Complete(Response {
+                            status_data: complete.status_data,
+                            new_state: None,
+                            data: (),
+                        });
                     }
-                    Ok(ServerMessage::CommandComplete0(complete))
-                    if self.guard.is_some() && !self.conn.proto.is_1() => {
-                        let guard = self.guard.take().unwrap();
-                        if let Err(e) = self.conn.expect_ready(guard).await {
-                            self.state = DumpState::Error(e)
-                        } else {
-                            self.state = DumpState::Complete(Response {
-                                status_data: complete.status_data,
-                                new_state: None,
-                                data: (),
-                            });
-                        }
-                        None
-                    }
-                    Ok(ServerMessage::CommandComplete1(complete))
-                    if self.guard.is_some() && self.conn.proto.is_1() => {
-                        let guard = self.guard.take().unwrap();
-                        if let Err(e) = self.conn.expect_ready(guard).await {
-                            self.state = DumpState::Error(e)
-                        } else {
-                            self.state = DumpState::Complete(Response {
-                                status_data: complete.status_data,
-                                new_state: complete.state,
-                                data: (),
-                            });
-                        }
-                        None
-                    }
-                    Ok(ServerMessage::ErrorResponse(err)) => {
-                        let guard = self.guard.take().unwrap();
-                        self.conn.expect_ready_or_eos(guard).await
-                            .map_err(|e| log::warn!(
-                                "Error waiting for Ready after error: {e:#}"))
-                            .ok();
-                        self.state = DumpState::Error(err.into());
-                        None
-                    }
-                    Ok(msg) => {
-                        self.state = DumpState::Error(
-                            ProtocolOutOfOrderError::with_message(format!(
-                            "unsolicited message {:?}", msg))
-                        );
-                        None
-                    }
-                    Err(e) => {
-                        self.state = DumpState::Error(e);
-                        None
-                    }
+                    None
                 }
-            }
+                Ok(ServerMessage::CommandComplete1(complete))
+                    if self.guard.is_some() && self.conn.proto.is_1() =>
+                {
+                    let guard = self.guard.take().unwrap();
+                    if let Err(e) = self.conn.expect_ready(guard).await {
+                        self.state = DumpState::Error(e)
+                    } else {
+                        self.state = DumpState::Complete(Response {
+                            status_data: complete.status_data,
+                            new_state: complete.state,
+                            data: (),
+                        });
+                    }
+                    None
+                }
+                Ok(ServerMessage::ErrorResponse(err)) => {
+                    let guard = self.guard.take().unwrap();
+                    self.conn
+                        .expect_ready_or_eos(guard)
+                        .await
+                        .map_err(|e| log::warn!("Error waiting for Ready after error: {e:#}"))
+                        .ok();
+                    self.state = DumpState::Error(err.into());
+                    None
+                }
+                Ok(msg) => {
+                    self.state = DumpState::Error(ProtocolOutOfOrderError::with_message(format!(
+                        "unsolicited message {:?}",
+                        msg
+                    )));
+                    None
+                }
+                Err(e) => {
+                    self.state = DumpState::Error(e);
+                    None
+                }
+            },
             _ => None,
         }
     }
@@ -274,8 +268,7 @@ impl DumpStream<'_> {
         use DumpState::*;
 
         match mem::replace(&mut self.state, Reset) {
-            Header(..) | Blocks
-                => panic!("process_complete() called too early"),
+            Header(..) | Blocks => panic!("process_complete() called too early"),
             Complete(c) => Ok(c),
             Error(e) => Err(e),
 

@@ -1,16 +1,14 @@
 /*!
 Contains the [Value](crate::value::Value) enum.
 */
-use std::iter::IntoIterator;
-
 use bytes::Bytes;
 
+pub use crate::codec::EnumValue;
 use crate::codec::{NamedTupleShape, ObjectShape, ShapeElement};
 use crate::common::Cardinality;
-use crate::model::{BigInt, Decimal, Uuid, ConfigMemory, Range};
-use crate::model::{LocalDatetime, LocalDate, LocalTime, Duration, Datetime};
-use crate::model::{RelativeDuration, DateDuration, Json};
-pub use crate::codec::EnumValue;
+use crate::model::{BigInt, ConfigMemory, Decimal, Range, Uuid};
+use crate::model::{DateDuration, Json, RelativeDuration};
+use crate::model::{Datetime, Duration, LocalDate, LocalDatetime, LocalTime};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
@@ -36,10 +34,16 @@ pub enum Value {
     DateDuration(DateDuration),
     Json(Json),
     Set(Vec<Value>),
-    Object { shape: ObjectShape, fields: Vec<Option<Value>> },
+    Object {
+        shape: ObjectShape,
+        fields: Vec<Option<Value>>,
+    },
     SparseObject(SparseObject),
     Tuple(Vec<Value>),
-    NamedTuple { shape: NamedTupleShape, fields: Vec<Value> },
+    NamedTuple {
+        shape: NamedTupleShape,
+        fields: Vec<Value>,
+    },
     Array(Vec<Value>),
     Vector(Vec<f32>),
     Enum(EnumValue),
@@ -78,7 +82,7 @@ impl Value {
             NamedTuple { .. } => "named_tuple",
             Nothing => "nothing",
             Object { .. } => "object",
-            Range{..} => "range",
+            Range { .. } => "range",
             RelativeDuration(..) => "cal::relative_duration",
             Set(..) => "set",
             SparseObject { .. } => "sparse_object",
@@ -92,7 +96,7 @@ impl Value {
         Value::Tuple(Vec::new())
     }
 
-    pub fn try_from_uuid(input: &str) -> Result<Self, uuid::Error>  {
+    pub fn try_from_uuid(input: &str) -> Result<Self, uuid::Error> {
         Ok(Self::Uuid(Uuid::parse_str(input)?))
     }
 }
@@ -105,9 +109,8 @@ impl SparseObject {
     /// 2. There are no extra shape elements
     /// Both of these are irrelevant when serializing the object.
     pub fn from_pairs<N: ToString, V: Into<Option<Value>>>(
-        iter: impl IntoIterator<Item=(N, V)>)
-        -> SparseObject
-    {
+        iter: impl IntoIterator<Item = (N, V)>,
+    ) -> SparseObject {
         let mut elements = Vec::new();
         let mut fields = Vec::new();
         for (key, val) in iter.into_iter() {
@@ -132,10 +135,13 @@ impl SparseObject {
             fields: Vec::new(),
         }
     }
-    pub fn pairs(&self) -> impl Iterator<Item=(&str, Option<&Value>)> {
-        self.shape.0.elements.iter().zip(&self.fields).filter_map(|(el, opt)| {
-            opt.as_ref().map(|opt| (&*el.name, opt.as_ref()))
-        })
+    pub fn pairs(&self) -> impl Iterator<Item = (&str, Option<&Value>)> {
+        self.shape
+            .0
+            .elements
+            .iter()
+            .zip(&self.fields)
+            .filter_map(|(el, opt)| opt.as_ref().map(|opt| (&*el.name, opt.as_ref())))
     }
 }
 
@@ -154,13 +160,19 @@ impl PartialEq for SparseObject {
             }
         }
         let other_num = other.fields.iter().filter(|e| e.is_some()).count();
-        return num == other_num;
+        num == other_num
     }
 }
 
 impl From<String> for Value {
     fn from(s: String) -> Value {
         Value::Str(s)
+    }
+}
+
+impl From<&str> for Value {
+    fn from(s: &str) -> Value {
+        Value::Str(s.to_string())
     }
 }
 
@@ -197,5 +209,53 @@ impl From<f32> for Value {
 impl From<f64> for Value {
     fn from(num: f64) -> Value {
         Value::Float64(num)
+    }
+}
+
+impl From<BigInt> for Value {
+    fn from(model: BigInt) -> Value {
+        Value::BigInt(model)
+    }
+}
+
+impl From<Decimal> for Value {
+    fn from(v: Decimal) -> Value {
+        Value::Decimal(v)
+    }
+}
+
+impl From<Uuid> for Value {
+    fn from(v: Uuid) -> Value {
+        Value::Uuid(v)
+    }
+}
+
+impl From<Json> for Value {
+    fn from(v: Json) -> Value {
+        Value::Json(v)
+    }
+}
+
+impl From<Duration> for Value {
+    fn from(v: Duration) -> Value {
+        Value::Duration(v)
+    }
+}
+
+impl From<Datetime> for Value {
+    fn from(v: Datetime) -> Value {
+        Value::Datetime(v)
+    }
+}
+
+impl From<LocalDate> for Value {
+    fn from(v: LocalDate) -> Value {
+        Value::LocalDate(v)
+    }
+}
+
+impl From<LocalDatetime> for Value {
+    fn from(v: LocalDatetime) -> Value {
+        Value::LocalDatetime(v)
     }
 }

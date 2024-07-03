@@ -1,36 +1,20 @@
 use std::collections::HashMap;
-use std::default::Default;
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
-use rand::{thread_rng, Rng};
 use once_cell::sync::Lazy;
+use rand::{thread_rng, Rng};
 
 use crate::errors::{Error, IdleSessionTimeoutError};
-
-trait Assert: Send + Sync + 'static {}
-impl Assert for RetryOptions {}
-impl Assert for TransactionOptions {}
-
 
 /// Single immediate retry on idle is fine
 ///
 /// This doesn't have to be configured.
 static IDLE_TIMEOUT_RULE: Lazy<RetryRule> = Lazy::new(|| RetryRule {
     attempts: 2,
-    backoff: Arc::new(|_| { Duration::new(0, 0) }),
+    backoff: Arc::new(|_| Duration::new(0, 0)),
 });
-
-
-/// Transaction isolation level
-///
-/// Only single isolation level is supported for now
-#[derive(Debug, Clone)]
-pub enum IsolationLevel {
-    /// Serializable isolation level
-    Serializable,
-}
 
 /// Specific condition for retrying queries
 ///
@@ -48,9 +32,8 @@ pub enum RetryCondition {
 ///
 /// Must be set on a [`Client`](crate::Client) via
 /// [`with_transaction_options`](crate::Client::with_transaction_options).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct TransactionOptions {
-    isolation: IsolationLevel,
     read_only: bool,
     deferrable: bool,
 }
@@ -74,22 +57,7 @@ pub(crate) struct RetryRule {
     pub(crate) backoff: Arc<dyn Fn(u32) -> Duration + Send + Sync>,
 }
 
-impl Default for TransactionOptions {
-    fn default() -> TransactionOptions {
-        TransactionOptions {
-            isolation: IsolationLevel::Serializable,
-            read_only: false,
-            deferrable: false,
-        }
-    }
-}
-
 impl TransactionOptions {
-    /// Set isolation level for the transaction
-    pub fn isolation(mut self, isolation: IsolationLevel) -> Self {
-        self.isolation = isolation;
-        self
-    }
     /// Set whether transaction is read-only
     pub fn read_only(mut self, read_only: bool) -> Self {
         self.read_only = read_only;
@@ -107,9 +75,7 @@ impl Default for RetryRule {
         RetryRule {
             attempts: 3,
             backoff: Arc::new(|n| {
-                Duration::from_millis(
-                    2u64.pow(n)*100 + thread_rng().gen_range(0..100)
-                )
+                Duration::from_millis(2u64.pow(n) * 100 + thread_rng().gen_range(0..100))
             }),
         }
     }
@@ -126,10 +92,11 @@ impl Default for RetryOptions {
 
 impl RetryOptions {
     /// Create a new [`RetryOptions`] object with the default rule
-    pub fn new(self, attempts: u32,
-               backoff: impl Fn(u32) -> Duration + Send + Sync + 'static)
-        -> Self
-    {
+    pub fn new(
+        self,
+        attempts: u32,
+        backoff: impl Fn(u32) -> Duration + Send + Sync + 'static,
+    ) -> Self {
         RetryOptions(Arc::new(RetryOptionsInner {
             default: RetryRule {
                 attempts,
@@ -139,40 +106,49 @@ impl RetryOptions {
         }))
     }
     /// Add a retrying rule for a specific condition
-    pub fn with_rule<F>(mut self,
+    pub fn with_rule<F>(
+        mut self,
         condition: RetryCondition,
         attempts: u32,
-        backoff: impl Fn(u32) -> Duration + Send + Sync + 'static)
-        -> Self
-    {
-        let inner =  Arc::make_mut(&mut self.0);
-        inner.overrides.insert(condition, RetryRule {
-            attempts,
-            backoff: Arc::new(backoff),
-        });
+        backoff: impl Fn(u32) -> Duration + Send + Sync + 'static,
+    ) -> Self {
+        let inner = Arc::make_mut(&mut self.0);
+        inner.overrides.insert(
+            condition,
+            RetryRule {
+                attempts,
+                backoff: Arc::new(backoff),
+            },
+        );
         self
     }
     pub(crate) fn get_rule(&self, err: &Error) -> &RetryRule {
-        use edgedb_errors::{TransactionConflictError, ClientError};
+        use edgedb_errors::{ClientError, TransactionConflictError};
         use RetryCondition::*;
 
         if err.is::<IdleSessionTimeoutError>() {
-            return &*IDLE_TIMEOUT_RULE;
+            &IDLE_TIMEOUT_RULE
         } else if err.is::<TransactionConflictError>() {
-            self.0.overrides.get(&TransactionConflict)
+            self.0
+                .overrides
+                .get(&TransactionConflict)
                 .unwrap_or(&self.0.default)
         } else if err.is::<ClientError>() {
-            self.0.overrides.get(&NetworkError).unwrap_or(&self.0.default)
+            self.0
+                .overrides
+                .get(&NetworkError)
+                .unwrap_or(&self.0.default)
         } else {
             &self.0.default
-       }
+        }
     }
 }
 
 struct DebugBackoff<F>(F, u32);
 
 impl<F> fmt::Debug for DebugBackoff<F>
-    where F: Fn(u32) -> Duration,
+where
+    F: Fn(u32) -> Duration,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.1 > 3 {
@@ -193,17 +169,26 @@ impl<F> fmt::Debug for DebugBackoff<F>
 #[test]
 fn debug_backoff() {
     assert_eq!(
-        format!("{:?}",
-            DebugBackoff(|i| Duration::from_secs(10+(i as u64)*10), 3)),
-        "10s, 20s, 30s");
+        format!(
+            "{:?}",
+            DebugBackoff(|i| Duration::from_secs(10 + (i as u64) * 10), 3)
+        ),
+        "10s, 20s, 30s"
+    );
     assert_eq!(
-        format!("{:?}",
-            DebugBackoff(|i| Duration::from_secs(10+(i as u64)*10), 10)),
-        "10s, 20s, 30s, ...");
+        format!(
+            "{:?}",
+            DebugBackoff(|i| Duration::from_secs(10 + (i as u64) * 10), 10)
+        ),
+        "10s, 20s, 30s, ..."
+    );
     assert_eq!(
-        format!("{:?}",
-            DebugBackoff(|i| Duration::from_secs(10+(i as u64)*10), 2)),
-        "10s, 20s");
+        format!(
+            "{:?}",
+            DebugBackoff(|i| Duration::from_secs(10 + (i as u64) * 10), 2)
+        ),
+        "10s, 20s"
+    );
 }
 
 impl fmt::Debug for RetryRule {
@@ -214,4 +199,3 @@ impl fmt::Debug for RetryRule {
             .finish()
     }
 }
-

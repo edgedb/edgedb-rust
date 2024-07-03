@@ -1,13 +1,13 @@
-#[cfg(feature="chrono")]
+#[cfg(feature = "chrono")]
 mod chrono {
 
+    use std::convert::TryInto;
     use std::str::FromStr;
-    use std::convert::{TryInto, TryFrom};
 
-    use bytes::{BytesMut, Buf};
+    use bytes::{Buf, BytesMut};
     use edgedb_protocol::codec::{self, Codec};
-    use edgedb_protocol::value::Value;
     use edgedb_protocol::model::{Datetime, LocalDatetime, LocalTime};
+    use edgedb_protocol::value::Value;
     use test_case::test_case;
 
     // ========
@@ -29,7 +29,6 @@ mod chrono {
         /*formatted*/ "0001-01-01T00:00:00Z"
         ; "minimum"
     )]
-
     // Rounding in Various Ranges
     // --------------------------
     #[test_case(
@@ -164,7 +163,7 @@ mod chrono {
 
         assert_eq!(serialized_micros, micros);
 
-        let rev = chrono::DateTime::<chrono::Utc>::try_from(edgedb).unwrap();
+        let rev = chrono::DateTime::<chrono::Utc>::from(edgedb);
         assert_eq!(format!("{:?}", rev), formatted);
     }
 
@@ -187,7 +186,6 @@ mod chrono {
         /*formatted*/ "0001-01-01T00:00:00"
         ; "minimum"
     )]
-
     // Rounding in Various Ranges
     // --------------------------
     #[test_case(
@@ -322,7 +320,7 @@ mod chrono {
 
         assert_eq!(serialized_micros, micros);
 
-        let rev = chrono::NaiveDateTime::try_from(edgedb).unwrap();
+        let rev = chrono::NaiveDateTime::from(edgedb);
         assert_eq!(format!("{:?}", rev), formatted);
     }
 
@@ -386,7 +384,7 @@ mod chrono {
     )]
     fn local_time(input: &str, micros: i64, formatted: &str) {
         let chrono = chrono::NaiveTime::from_str(input).unwrap();
-        let edgedb: LocalTime = chrono.try_into().unwrap();
+        let edgedb: LocalTime = chrono.into();
         assert_eq!(format!("{:?}", edgedb), formatted);
 
         let mut buf = BytesMut::new();
@@ -396,7 +394,7 @@ mod chrono {
 
         assert_eq!(serialized_micros, micros);
 
-        let rev = chrono::NaiveTime::try_from(edgedb).unwrap();
+        let rev = chrono::NaiveTime::from(edgedb);
         assert_eq!(format!("{:?}", rev), formatted);
     }
 }

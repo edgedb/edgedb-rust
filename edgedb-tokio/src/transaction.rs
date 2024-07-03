@@ -2,19 +2,18 @@ use std::future::Future;
 use std::sync::Arc;
 
 use bytes::BytesMut;
-use edgedb_protocol::QueryResult;
 use edgedb_protocol::common::CompilationOptions;
-use edgedb_protocol::common::{IoFormat, Capabilities, Cardinality};
+use edgedb_protocol::common::{Capabilities, Cardinality, IoFormat};
 use edgedb_protocol::model::Json;
-use edgedb_protocol::query_arg::{QueryArgs, Encoder};
+use edgedb_protocol::query_arg::{Encoder, QueryArgs};
+use edgedb_protocol::QueryResult;
 use tokio::sync::oneshot;
 use tokio::time::sleep;
 
-use crate::errors::{ClientError};
+use crate::errors::ClientError;
 use crate::errors::{Error, ErrorKind, SHOULD_RETRY};
-use crate::errors::{ProtocolEncodingError, NoResultExpected, NoDataError};
-use crate::raw::{Pool, PoolConnection, Options, PoolState};
-
+use crate::errors::{NoDataError, NoResultExpected, ProtocolEncodingError};
+use crate::raw::{Options, Pool, PoolConnection, PoolState};
 
 /// Transaction object passed to the closure via
 /// [`Client::transaction()`](crate::Client::transaction) method
@@ -43,17 +42,15 @@ pub struct Inner {
     return_conn: oneshot::Sender<TransactionResult>,
 }
 
-trait Assert: Send {}
-impl Assert for Transaction {}
-
 impl Drop for Transaction {
     fn drop(&mut self) {
-        self.inner.take().map(|Inner { started, conn, return_conn }| {
-            return_conn.send(TransactionResult {
-                started,
-                conn,
-            }).ok()
-        });
+        self.inner.take().map(
+            |Inner {
+                 started,
+                 conn,
+                 return_conn,
+             }| { return_conn.send(TransactionResult { started, conn }).ok() },
+        );
     }
 }
 
@@ -65,7 +62,7 @@ pub(crate) async fn transaction<T, B, F>(
 where
     B: FnMut(Transaction) -> F,
     F: Future<Output = Result<T, Error>>,
-    {
+{
     let mut iteration = 0;
     'transaction: loop {
         let conn = pool.acquire().await?;
@@ -138,7 +135,10 @@ impl Transaction {
     async fn ensure_started(&mut self) -> anyhow::Result<(), Error> {
         if let Some(inner) = &mut self.inner {
             if !inner.started {
-                inner.conn.statement("START TRANSACTION", &self.state).await?;
+                inner
+                    .conn
+                    .statement("START TRANSACTION", &self.state)
+                    .await?;
                 inner.started = true;
             }
             return Ok(());
@@ -146,7 +146,9 @@ impl Transaction {
         Err(ClientError::with_message("using transaction after drop"))
     }
     fn inner(&mut self) -> &mut Inner {
-        self.inner.as_mut().expect("transaction object is not dropped")
+        self.inner
+            .as_mut()
+            .expect("transaction object is not dropped")
     }
 
     /// Execute a query and return a collection of results.
@@ -162,10 +164,10 @@ impl Transaction {
     /// This method can be used with both static arguments, like a tuple of
     /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
-    pub async fn query<R, A>(&mut self, query: &str, arguments: &A)
-        -> Result<Vec<R>, Error>
-        where A: QueryArgs,
-              R: QueryResult,
+    pub async fn query<R, A>(&mut self, query: &str, arguments: &A) -> Result<Vec<R>, Error>
+    where
+        A: QueryArgs,
+        R: QueryResult,
     {
         self.ensure_started().await?;
         let flags = CompilationOptions {
@@ -178,10 +180,9 @@ impl Transaction {
             expected_cardinality: Cardinality::Many,
         };
         let state = self.state.clone(); // TODO: optimize, by careful borrow
-        let ref mut conn = self.inner().conn;
+        let conn = &mut self.inner().conn;
         let desc = conn.parse(&flags, query, &state).await?;
-        let inp_desc = desc.input()
-            .map_err(ProtocolEncodingError::with_source)?;
+        let inp_desc = desc.input().map_err(ProtocolEncodingError::with_source)?;
 
         let mut arg_buf = BytesMut::with_capacity(8);
         arguments.encode(&mut Encoder::new(
@@ -189,17 +190,17 @@ impl Transaction {
             &mut arg_buf,
         ))?;
 
-        let data = conn.execute(
-                &flags, query, &state, &desc, &arg_buf.freeze(),
-            ).await?;
+        let data = conn
+            .execute(&flags, query, &state, &desc, &arg_buf.freeze())
+            .await?;
 
-        let out_desc = desc.output()
-            .map_err(ProtocolEncodingError::with_source)?;
+        let out_desc = desc.output().map_err(ProtocolEncodingError::with_source)?;
         match out_desc.root_pos() {
             Some(root_pos) => {
                 let ctx = out_desc.as_queryable_context();
                 let mut state = R::prepare(&ctx, root_pos)?;
-                let rows = data.into_iter()
+                let rows = data
+                    .into_iter()
                     .flat_map(|chunk| chunk.data)
                     .map(|chunk| R::decode(&mut state, &chunk))
                     .collect::<Result<_, _>>()?;
@@ -225,10 +226,14 @@ impl Transaction {
     /// This method can be used with both static arguments, like a tuple of
     /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
-    pub async fn query_single<R, A>(&mut self, query: &str, arguments: &A)
-        -> Result<Option<R>, Error>
-        where A: QueryArgs,
-              R: QueryResult,
+    pub async fn query_single<R, A>(
+        &mut self,
+        query: &str,
+        arguments: &A,
+    ) -> Result<Option<R>, Error>
+    where
+        A: QueryArgs,
+        R: QueryResult,
     {
         self.ensure_started().await?;
         let flags = CompilationOptions {
@@ -241,10 +246,9 @@ impl Transaction {
             expected_cardinality: Cardinality::AtMostOne,
         };
         let state = self.state.clone(); // TODO optimize using careful borrow
-        let ref mut conn = self.inner().conn;
+        let conn = &mut self.inner().conn;
         let desc = conn.parse(&flags, query, &state).await?;
-        let inp_desc = desc.input()
-            .map_err(ProtocolEncodingError::with_source)?;
+        let inp_desc = desc.input().map_err(ProtocolEncodingError::with_source)?;
 
         let mut arg_buf = BytesMut::with_capacity(8);
         arguments.encode(&mut Encoder::new(
@@ -252,17 +256,18 @@ impl Transaction {
             &mut arg_buf,
         ))?;
 
-        let data = conn.execute(
-                &flags, query, &state, &desc, &arg_buf.freeze(),
-            ).await?;
+        let data = conn
+            .execute(&flags, query, &state, &desc, &arg_buf.freeze())
+            .await?;
 
-        let out_desc = desc.output()
-            .map_err(ProtocolEncodingError::with_source)?;
+        let out_desc = desc.output().map_err(ProtocolEncodingError::with_source)?;
         match out_desc.root_pos() {
             Some(root_pos) => {
                 let ctx = out_desc.as_queryable_context();
                 let mut state = R::prepare(&ctx, root_pos)?;
-                let bytes = data.into_iter().next()
+                let bytes = data
+                    .into_iter()
+                    .next()
                     .and_then(|chunk| chunk.data.into_iter().next());
                 if let Some(bytes) = bytes {
                     Ok(Some(R::decode(&mut state, &bytes)?))
@@ -299,20 +304,26 @@ impl Transaction {
     /// This method can be used with both static arguments, like a tuple of
     /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
-    pub async fn query_required_single<R, A>(&mut self, query: &str, arguments: &A)
-        -> Result<R, Error>
-        where A: QueryArgs,
-              R: QueryResult,
+    pub async fn query_required_single<R, A>(
+        &mut self,
+        query: &str,
+        arguments: &A,
+    ) -> Result<R, Error>
+    where
+        A: QueryArgs,
+        R: QueryResult,
     {
-        self.query_single(query, arguments).await?
-            .ok_or_else(|| NoDataError::with_message(
-                        "query row returned zero results"))
+        self.query_single(query, arguments)
+            .await?
+            .ok_or_else(|| NoDataError::with_message("query row returned zero results"))
     }
 
     /// Execute a query and return the result as JSON.
-    pub async fn query_json(&mut self, query: &str, arguments: &impl QueryArgs)
-        -> Result<Json, Error>
-    {
+    pub async fn query_json(
+        &mut self,
+        query: &str,
+        arguments: &impl QueryArgs,
+    ) -> Result<Json, Error> {
         self.ensure_started().await?;
         let flags = CompilationOptions {
             implicit_limit: None,
@@ -324,10 +335,9 @@ impl Transaction {
             expected_cardinality: Cardinality::Many,
         };
         let state = self.state.clone(); // TODO optimize using careful borrow
-        let ref mut conn = self.inner().conn;
+        let conn = &mut self.inner().conn;
         let desc = conn.parse(&flags, query, &state).await?;
-        let inp_desc = desc.input()
-            .map_err(ProtocolEncodingError::with_source)?;
+        let inp_desc = desc.input().map_err(ProtocolEncodingError::with_source)?;
 
         let mut arg_buf = BytesMut::with_capacity(8);
         arguments.encode(&mut Encoder::new(
@@ -335,26 +345,26 @@ impl Transaction {
             &mut arg_buf,
         ))?;
 
-        let data = conn.execute(
-                &flags, query, &state, &desc, &arg_buf.freeze(),
-            ).await?;
+        let data = conn
+            .execute(&flags, query, &state, &desc, &arg_buf.freeze())
+            .await?;
 
-        let out_desc = desc.output()
-            .map_err(ProtocolEncodingError::with_source)?;
+        let out_desc = desc.output().map_err(ProtocolEncodingError::with_source)?;
         match out_desc.root_pos() {
             Some(root_pos) => {
                 let ctx = out_desc.as_queryable_context();
                 // JSON objects are returned as strings :(
                 let mut state = String::prepare(&ctx, root_pos)?;
-                let bytes = data.into_iter().next()
+                let bytes = data
+                    .into_iter()
+                    .next()
                     .and_then(|chunk| chunk.data.into_iter().next());
                 if let Some(bytes) = bytes {
                     // we trust database to produce valid json
                     let s = String::decode(&mut state, &bytes)?;
                     Ok(Json::new_unchecked(s))
                 } else {
-                    Err(NoDataError::with_message(
-                        "query row returned zero results"))
+                    Err(NoDataError::with_message("query row returned zero results"))
                 }
             }
             None => Err(NoResultExpected::build()),
@@ -367,10 +377,11 @@ impl Transaction {
     /// than one element, a
     /// [`ResultCardinalityMismatchError`][crate::errors::ResultCardinalityMismatchError]
     /// is raised.
-    pub async fn query_single_json(&mut self,
-                                   query: &str, arguments: &impl QueryArgs)
-        -> Result<Option<Json>, Error>
-    {
+    pub async fn query_single_json(
+        &mut self,
+        query: &str,
+        arguments: &impl QueryArgs,
+    ) -> Result<Option<Json>, Error> {
         self.ensure_started().await?;
         let flags = CompilationOptions {
             implicit_limit: None,
@@ -382,10 +393,9 @@ impl Transaction {
             expected_cardinality: Cardinality::AtMostOne,
         };
         let state = self.state.clone(); // TODO optimize using careful borrow
-        let ref mut conn = self.inner().conn;
+        let conn = &mut self.inner().conn;
         let desc = conn.parse(&flags, query, &state).await?;
-        let inp_desc = desc.input()
-            .map_err(ProtocolEncodingError::with_source)?;
+        let inp_desc = desc.input().map_err(ProtocolEncodingError::with_source)?;
 
         let mut arg_buf = BytesMut::with_capacity(8);
         arguments.encode(&mut Encoder::new(
@@ -393,18 +403,19 @@ impl Transaction {
             &mut arg_buf,
         ))?;
 
-        let data = conn.execute(
-            &flags, query, &state, &desc, &arg_buf.freeze(),
-        ).await?;
+        let data = conn
+            .execute(&flags, query, &state, &desc, &arg_buf.freeze())
+            .await?;
 
-        let out_desc = desc.output()
-            .map_err(ProtocolEncodingError::with_source)?;
+        let out_desc = desc.output().map_err(ProtocolEncodingError::with_source)?;
         match out_desc.root_pos() {
             Some(root_pos) => {
                 let ctx = out_desc.as_queryable_context();
                 // JSON objects are returned as strings :(
                 let mut state = String::prepare(&ctx, root_pos)?;
-                let bytes = data.into_iter().next()
+                let bytes = data
+                    .into_iter()
+                    .next()
                     .and_then(|chunk| chunk.data.into_iter().next());
                 if let Some(bytes) = bytes {
                     // we trust database to produce valid json
@@ -425,13 +436,14 @@ impl Transaction {
     /// [`ResultCardinalityMismatchError`][crate::errors::ResultCardinalityMismatchError]
     /// is raised. If the query returns an empty set, a
     /// [`NoDataError`][crate::errors::NoDataError] is raised.
-    pub async fn query_required_single_json(&mut self,
-                                   query: &str, arguments: &impl QueryArgs)
-        -> Result<Json, Error>
-    {
-        self.query_single_json(query, arguments).await?
-            .ok_or_else(|| NoDataError::with_message(
-                        "query row returned zero results"))
+    pub async fn query_required_single_json(
+        &mut self,
+        query: &str,
+        arguments: &impl QueryArgs,
+    ) -> Result<Json, Error> {
+        self.query_single_json(query, arguments)
+            .await?
+            .ok_or_else(|| NoDataError::with_message("query row returned zero results"))
     }
 
     /// Execute a query and don't expect result
@@ -439,9 +451,9 @@ impl Transaction {
     /// This method can be used with both static arguments, like a tuple of
     /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
-    pub async fn execute<A>(&mut self, query: &str, arguments: &A)
-        -> Result<(), Error>
-        where A: QueryArgs,
+    pub async fn execute<A>(&mut self, query: &str, arguments: &A) -> Result<(), Error>
+    where
+        A: QueryArgs,
     {
         self.ensure_started().await?;
         let flags = CompilationOptions {
@@ -454,10 +466,9 @@ impl Transaction {
             expected_cardinality: Cardinality::Many,
         };
         let state = self.state.clone(); // TODO: optimize, by careful borrow
-        let ref mut conn = self.inner().conn;
+        let conn = &mut self.inner().conn;
         let desc = conn.parse(&flags, query, &state).await?;
-        let inp_desc = desc.input()
-            .map_err(ProtocolEncodingError::with_source)?;
+        let inp_desc = desc.input().map_err(ProtocolEncodingError::with_source)?;
 
         let mut arg_buf = BytesMut::with_capacity(8);
         arguments.encode(&mut Encoder::new(
@@ -465,17 +476,8 @@ impl Transaction {
             &mut arg_buf,
         ))?;
 
-        conn.execute(&flags, query, &state, &desc, &arg_buf.freeze()).await?;
+        conn.execute(&flags, query, &state, &desc, &arg_buf.freeze())
+            .await?;
         Ok(())
     }
 }
-
-#[allow(dead_code, unreachable_code)]
-fn _transaction_assertions() {
-    let _cli: crate::Client = unimplemented!();
-    assert_send(
-        _cli.transaction(|mut tx| async move { tx.query_json("SELECT 'hello'", &()).await }),
-    );
-}
-
-fn assert_send<T: Send>(_: T) {}

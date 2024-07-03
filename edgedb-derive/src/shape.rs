@@ -1,4 +1,4 @@
-use proc_macro2::{TokenStream, Span};
+use proc_macro2::{Span, TokenStream};
 use quote::quote;
 
 use crate::attrib::FieldAttrs;
@@ -34,11 +34,12 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
         }
         _ => {
             return Err(syn::Error::new_spanned(
-                &s.fields, "only named fields are supported"));
+                &s.fields,
+                "only named fields are supported",
+            ));
         }
     };
-    let fieldname = fields.iter()
-        .map(|f| f.name.clone()).collect::<Vec<_>>();
+    let fieldname = fields.iter().map(|f| f.name.clone()).collect::<Vec<_>>();
     let base_fields = fields.len();
     let type_id_block = Some(quote! {
         if #decoder.has_implicit_tid {
@@ -58,7 +59,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
     let type_id_check = Some(quote! {
         if ctx.has_implicit_tid {
             if(!shape.elements[idx].flag_implicit) {
-                return Err(ctx.expected("implicit __tid__"));
+                return ::std::result::Result::Err(ctx.expected("implicit __tid__"));
             }
             idx += 1;
         }
@@ -66,7 +67,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
     let type_name_check = Some(quote! {
         if ctx.has_implicit_tname {
             if(!shape.elements[idx].flag_implicit) {
-                return Err(ctx.expected("implicit __tname__"));
+                return ::std::result::Result::Err(ctx.expected("implicit __tname__"));
             }
             idx += 1;
         }
@@ -74,60 +75,66 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
     let id_check = Some(quote! {
         if ctx.has_implicit_id {
             if(!shape.elements[idx].flag_implicit) {
-                return Err(ctx.expected("implicit id"));
+                return ::std::result::Result::Err(ctx.expected("implicit id"));
             }
             idx += 1;
         }
     });
-    let field_decoders = fields.iter().map(|field| {
-        let ref fieldname = field.name;
-        if field.attrs.json {
-            quote!{
-                let #fieldname: ::edgedb_protocol::model::Json =
+    let field_decoders = fields
+        .iter()
+        .map(|field| {
+            let fieldname = &field.name;
+            if field.attrs.json {
+                quote! {
+                    let #fieldname: ::edgedb_protocol::model::Json =
+                        <::edgedb_protocol::model::Json as
+                            ::edgedb_protocol::queryable::Queryable>
+                        ::decode_optional(#decoder, #elements.read()?)?;
+                    let #fieldname = ::serde_json::from_str(#fieldname.as_ref())
+                        .map_err(::edgedb_protocol::errors::decode_error)?;
+                }
+            } else {
+                quote! {
+                    let #fieldname =
+                        ::edgedb_protocol::queryable::Queryable
+                        ::decode_optional(#decoder, #elements.read()?)?;
+                }
+            }
+        })
+        .collect::<TokenStream>();
+    let field_checks = fields
+        .iter()
+        .map(|field| {
+            let name_str = &field.str_name;
+            let mut result = quote! {
+                let el = &shape.elements[idx];
+                if(el.name != #name_str) {
+                    return ::std::result::Result::Err(ctx.wrong_field(#name_str, &el.name));
+                }
+                idx += 1;
+            };
+            let fieldtype = &field.ty;
+            if field.attrs.json {
+                result.extend(quote! {
                     <::edgedb_protocol::model::Json as
                         ::edgedb_protocol::queryable::Queryable>
-                    ::decode_optional(#decoder, #elements.read()?)?;
-                let #fieldname = ::serde_json::from_str(#fieldname.as_ref())
-                    .map_err(::edgedb_protocol::errors::decode_error)?;
+                        ::check_descriptor(ctx, el.type_pos)?;
+                });
+            } else {
+                result.extend(quote! {
+                    <#fieldtype as ::edgedb_protocol::queryable::Queryable>
+                        ::check_descriptor(ctx, el.type_pos)?;
+                });
             }
-        } else {
-            quote!{
-                let #fieldname =
-                    ::edgedb_protocol::queryable::Queryable
-                    ::decode_optional(#decoder, #elements.read()?)?;
-            }
-        }
-    }).collect::<TokenStream>();
-    let field_checks = fields.iter().map(|field| {
-        let ref name_str = field.str_name;
-        let mut result = quote!{
-            let el = &shape.elements[idx];
-            if(el.name != #name_str) {
-                return Err(ctx.wrong_field(#name_str, &el.name));
-            }
-            idx += 1;
-        };
-        let ref fieldtype = field.ty;
-        if field.attrs.json {
-            result.extend(quote!{
-                <::edgedb_protocol::model::Json as
-                    ::edgedb_protocol::queryable::Queryable>
-                    ::check_descriptor(ctx, el.type_pos)?;
-            });
-        } else {
-            result.extend(quote!{
-                <#fieldtype as ::edgedb_protocol::queryable::Queryable>
-                    ::check_descriptor(ctx, el.type_pos)?;
-            });
-        }
-        result
-    }).collect::<TokenStream>();
+            result
+        })
+        .collect::<TokenStream>();
 
     let expanded = quote! {
         impl #impl_generics ::edgedb_protocol::queryable::Queryable
             for #name #ty_generics {
             fn decode(#decoder: &::edgedb_protocol::queryable::Decoder, #buf: &[u8])
-                -> Result<Self, ::edgedb_protocol::errors::DecodeError>
+                -> ::std::result::Result<Self, ::edgedb_protocol::errors::DecodeError>
             {
                 let #nfields = #base_fields
                     + if #decoder.has_implicit_id { 1 } else { 0 }
@@ -141,7 +148,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
                 #type_name_block
                 #id_block
                 #field_decoders
-                Ok(#name {
+                ::std::result::Result::Ok(#name {
                     #(
                         #fieldname,
                     )*
@@ -150,14 +157,14 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
             fn check_descriptor(
                 ctx: &::edgedb_protocol::queryable::DescriptorContext,
                 type_pos: ::edgedb_protocol::descriptors::TypePos)
-                -> Result<(), ::edgedb_protocol::queryable::DescriptorMismatch>
+                -> ::std::result::Result<(), ::edgedb_protocol::queryable::DescriptorMismatch>
             {
                 use ::edgedb_protocol::descriptors::Descriptor::ObjectShape;
                 let desc = ctx.get(type_pos)?;
                 let shape = match desc {
                     ObjectShape(shape) => shape,
                     _ => {
-                        return Err(ctx.wrong_type(desc, "str"))
+                        return ::std::result::Result::Err(ctx.wrong_type(desc, "str"))
                     }
                 };
 
@@ -170,10 +177,10 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
                 #field_checks
 
                 if(shape.elements.len() != idx) {
-                    return Err(ctx.field_number(
+                    return ::std::result::Result::Err(ctx.field_number(
                         shape.elements.len(), idx));
                 }
-                Ok(())
+                ::std::result::Result::Ok(())
             }
         }
     };

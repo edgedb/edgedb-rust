@@ -31,29 +31,28 @@ From the website:
 >A _decoder_ is used to decode data from EdgeDB native format to data types native to the driver.
 */
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::convert::{TryFrom, TryInto};
 use std::fmt::{Debug, Formatter};
 use std::ops::Deref;
 use std::sync::Arc;
-use std::collections::{BTreeMap, BTreeSet};
 
 use bytes::{Buf, BufMut, BytesMut};
-use edgedb_errors::{Error, ErrorKind, DescriptorMismatch, ClientEncodingError};
+use edgedb_errors::{ClientEncodingError, DescriptorMismatch, Error, ErrorKind};
 use snafu::{ensure, OptionExt};
 use uuid::Uuid;
 
-use crate::codec::{Codec, build_codec, uuid_to_known_name};
+use crate::codec::{build_codec, uuid_to_known_name, Codec};
 use crate::common::{Cardinality, State};
 use crate::encoding::{Decode, Input};
+use crate::errors::{self, CodecError, DecodeError};
 use crate::errors::{InvalidTypeDescriptor, UnexpectedTypePos};
-use crate::errors::{self, DecodeError, CodecError};
 use crate::features::ProtocolVersion;
-use crate::query_arg::{self, QueryArg, Encoder};
+use crate::query_arg::{self, Encoder, QueryArg};
 use crate::queryable;
 use crate::value::Value;
 
 pub use crate::common::RawTypedesc;
-
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct TypePos(pub u16);
@@ -81,7 +80,7 @@ impl Debug for DescriptorUuid {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         match uuid_to_known_name(&self.0) {
             Some(known_name) => write!(f, "{known_name}"),
-            None => write!(f, "{}", &self.0)
+            None => write!(f, "{}", &self.0),
         }
     }
 }
@@ -224,8 +223,11 @@ impl Typedesc {
         build_codec(self.root_pos(), self.descriptors())
     }
     pub fn get(&self, type_pos: TypePos) -> Result<&Descriptor, CodecError> {
-        self.array.get(type_pos.0 as usize)
-            .context(UnexpectedTypePos { position: type_pos.0 })
+        self.array
+            .get(type_pos.0 as usize)
+            .context(UnexpectedTypePos {
+                position: type_pos.0,
+            })
     }
     pub fn nothing(protocol: &ProtocolVersion) -> Typedesc {
         Typedesc {
@@ -237,17 +239,16 @@ impl Typedesc {
     }
     pub fn is_empty_tuple(&self) -> bool {
         match self.root() {
-            Some(Descriptor::Tuple(t))
-              => *t.id == Uuid::from_u128(0xFF) && t.element_types.is_empty(),
+            Some(Descriptor::Tuple(t)) => {
+                *t.id == Uuid::from_u128(0xFF) && t.element_types.is_empty()
+            }
             _ => false,
         }
     }
     pub fn root(&self) -> Option<&Descriptor> {
         self.root_pos.and_then(|pos| self.array.get(pos.0 as usize))
     }
-    pub(crate) fn decode_with_id(root_id: Uuid, buf: &mut Input)
-        -> Result<Self, DecodeError>
-    {
+    pub(crate) fn decode_with_id(root_id: Uuid, buf: &mut Input) -> Result<Self, DecodeError> {
         let mut descriptors = Vec::new();
         while buf.remaining() > 0 {
             match Descriptor::decode(buf)? {
@@ -258,9 +259,13 @@ impl Typedesc {
         let root_pos = if root_id == Uuid::from_u128(0) {
             None
         } else {
-            let idx = descriptors.iter().position(|x| *x.id() == root_id)
+            let idx = descriptors
+                .iter()
+                .position(|x| *x.id() == root_id)
                 .context(errors::UuidNotFound { uuid: root_id })?;
-            let pos = idx.try_into().ok()
+            let pos = idx
+                .try_into()
+                .ok()
                 .context(errors::TooManyDescriptors { index: idx })?;
             Some(TypePos(pos))
         };
@@ -284,9 +289,7 @@ impl Typedesc {
         ctx.has_implicit_tid = self.proto.has_implicit_tid();
         ctx
     }
-    pub fn serialize_state(&self, state: &StateBorrow)
-        -> Result<State, Error>
-    {
+    pub fn serialize_state(&self, state: &StateBorrow) -> Result<State, Error> {
         #[derive(Debug)]
         struct Indices {
             module: (u32, TypePos),
@@ -298,9 +301,10 @@ impl Typedesc {
         let ctx = self.as_query_arg_context();
         let mut enc = Encoder::new(&ctx, &mut buf);
 
-        let root = enc.ctx.root_pos
-            .ok_or_else(|| DescriptorMismatch::with_message(
-                "invalid state descriptor"))
+        let root = enc
+            .ctx
+            .root_pos
+            .ok_or_else(|| DescriptorMismatch::with_message("invalid state descriptor"))
             .and_then(|p| enc.ctx.get(p))?;
         let indices = match root {
             Descriptor::InputShape(desc) => {
@@ -320,28 +324,23 @@ impl Typedesc {
                 }
                 Indices {
                     module: module.ok_or_else(|| {
-                        DescriptorMismatch::with_message(
-                            "no `module` field in state")
+                        DescriptorMismatch::with_message("no `module` field in state")
                     })?,
                     aliases: aliases.ok_or_else(|| {
-                        DescriptorMismatch::with_message(
-                            "no `aliases` field in state")
+                        DescriptorMismatch::with_message("no `aliases` field in state")
                     })?,
                     config: config.ok_or_else(|| {
-                        DescriptorMismatch::with_message(
-                            "no `config` field in state")
+                        DescriptorMismatch::with_message("no `config` field in state")
                     })?,
                     globals: globals.ok_or_else(|| {
-                        DescriptorMismatch::with_message(
-                            "no `globals` field in state")
+                        DescriptorMismatch::with_message("no `globals` field in state")
                     })?,
                 }
             }
-            _ => return Err(DescriptorMismatch::with_message(
-                    "invalid state descriptor")),
+            _ => return Err(DescriptorMismatch::with_message("invalid state descriptor")),
         };
 
-        enc.buf.reserve(4 + 8*4);
+        enc.buf.reserve(4 + 8 * 4);
         enc.buf.put_u32(4);
 
         let module = state.module.as_deref().unwrap_or("default");
@@ -356,31 +355,39 @@ impl Typedesc {
                 Descriptor::Tuple(tup) => {
                     if tup.element_types.len() != 2 {
                         return Err(DescriptorMismatch::with_message(
-                            "invalid type descriptor for aliases"));
+                            "invalid type descriptor for aliases",
+                        ));
                     }
                     "".check_descriptor(enc.ctx, tup.element_types[0])?;
                     "".check_descriptor(enc.ctx, tup.element_types[1])?;
                 }
                 _ => {
                     return Err(DescriptorMismatch::with_message(
-                        "invalid type descriptor for aliases"));
+                        "invalid type descriptor for aliases",
+                    ));
                 }
             },
             _ => {
                 return Err(DescriptorMismatch::with_message(
-                    "invalid type descriptor for aliases"));
+                    "invalid type descriptor for aliases",
+                ));
             }
         }
 
-        enc.buf.reserve(4 + 16 + state.aliases.len()*(4+(8+4)*2));
+        enc.buf
+            .reserve(4 + 16 + state.aliases.len() * (4 + (8 + 4) * 2));
         enc.buf.put_u32(indices.aliases.0);
         enc.length_prefixed(|enc| {
-            enc.buf.put_u32(state.aliases.len().try_into()
-                .map_err(|_| ClientEncodingError::with_message(
-                        "too many aliases"))?);
+            enc.buf.put_u32(
+                state
+                    .aliases
+                    .len()
+                    .try_into()
+                    .map_err(|_| ClientEncodingError::with_message("too many aliases"))?,
+            );
             for (key, value) in state.aliases {
                 enc.length_prefixed(|enc| {
-                    enc.buf.reserve(4 + (8+4)*2);
+                    enc.buf.reserve(4 + (8 + 4) * 2);
                     enc.buf.put_u32(2);
                     enc.buf.put_u32(0); // reserved
 
@@ -400,8 +407,7 @@ impl Typedesc {
         enc.buf.reserve(4);
         enc.buf.put_u32(indices.globals.0);
         enc.length_prefixed(|enc| {
-            serialize_variables(enc,
-                                state.globals, indices.globals.1, "globals")
+            serialize_variables(enc, state.globals, indices.globals.1, "globals")
         })?;
         let data = buf.freeze();
         Ok(State {
@@ -414,29 +420,35 @@ impl Typedesc {
     }
 }
 
-fn serialize_variables(enc: &mut Encoder, variables: &BTreeMap<String, Value>,
+fn serialize_variables(
+    enc: &mut Encoder,
+    variables: &BTreeMap<String, Value>,
 
-                       type_pos: TypePos, tag: &str)
-    -> Result<(), Error>
-{
-    enc.buf.reserve(4 + variables.len()*(4 + 4));
-    enc.buf.put_u32(variables.len().try_into()
-                    .map_err(|_| ClientEncodingError::with_message(
-                            format!("too many items in {}", tag)))?);
-
+    type_pos: TypePos,
+    tag: &str,
+) -> Result<(), Error> {
+    enc.buf.reserve(4 + variables.len() * (4 + 4));
+    enc.buf.put_u32(
+        variables
+            .len()
+            .try_into()
+            .map_err(|_| ClientEncodingError::with_message(format!("too many items in {}", tag)))?,
+    );
 
     let desc = match enc.ctx.get(type_pos)? {
         Descriptor::InputShape(desc) => desc,
         _ => {
-            return Err(DescriptorMismatch::with_message(
-                format!("invalid type descriptor for {}", tag)));
+            return Err(DescriptorMismatch::with_message(format!(
+                "invalid type descriptor for {}",
+                tag
+            )));
         }
     };
 
     let mut serialized = 0;
     for (idx, el) in desc.elements.iter().enumerate() {
         if let Some(value) = variables.get(&el.name) {
-            value.check_descriptor(&enc.ctx, el.type_pos)?;
+            value.check_descriptor(enc.ctx, el.type_pos)?;
             serialized += 1;
             enc.buf.reserve(8);
             enc.buf.put_u32(idx as u32);
@@ -451,8 +463,13 @@ fn serialize_variables(enc: &mut Encoder, variables: &BTreeMap<String, Value>,
         }
         return Err(ClientEncodingError::with_message(format!(
             "non-existing entries {} of {}",
-            extra_vars.into_iter().map(|x| &x[..]).collect::<Vec<_>>().join(", "),
-            tag)));
+            extra_vars
+                .into_iter()
+                .map(|x| &x[..])
+                .collect::<Vec<_>>()
+                .join(", "),
+            tag
+        )));
     }
 
     Ok(())
@@ -497,10 +514,8 @@ impl Decode for Descriptor {
             8 => InputShapeTypeDescriptor::decode(buf).map(D::InputShape),
             9 => RangeTypeDescriptor::decode(buf).map(D::Range),
             0x0C => MultiRangeTypeDescriptor::decode(buf).map(D::MultiRange),
-            0x7F..=0xFF => {
-                TypeAnnotationDescriptor::decode(buf).map(D::TypeAnnotation)
-            }
-            descriptor => InvalidTypeDescriptor { descriptor }.fail()?
+            0x7F..=0xFF => TypeAnnotationDescriptor::decode(buf).map(D::TypeAnnotation),
+            descriptor => InvalidTypeDescriptor { descriptor }.fail()?,
         }
     }
 }
@@ -575,7 +590,6 @@ impl Decode for BaseScalarTypeDescriptor {
     }
 }
 
-
 impl Decode for ScalarTypeDescriptor {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 19, errors::Underflow);
@@ -592,7 +606,7 @@ impl Decode for TupleTypeDescriptor {
         assert!(buf.get_u8() == 4);
         let id = Uuid::decode(buf)?.into();
         let el_count = buf.get_u16();
-        ensure!(buf.remaining() >= 2*el_count as usize, errors::Underflow);
+        ensure!(buf.remaining() >= 2 * el_count as usize, errors::Underflow);
         let mut element_types = Vec::with_capacity(el_count as usize);
         for _ in 0..el_count {
             element_types.push(TypePos(buf.get_u16()));
@@ -620,10 +634,7 @@ impl Decode for TupleElement {
         let name = String::decode(buf)?;
         ensure!(buf.remaining() >= 2, errors::Underflow);
         let type_pos = TypePos(buf.get_u16());
-        Ok(TupleElement {
-            name,
-            type_pos,
-        })
+        Ok(TupleElement { name, type_pos })
     }
 }
 
@@ -634,7 +645,7 @@ impl Decode for ArrayTypeDescriptor {
         let id = Uuid::decode(buf)?.into();
         let type_pos = TypePos(buf.get_u16());
         let dim_count = buf.get_u16();
-        ensure!(buf.remaining() >= 4*dim_count as usize, errors::Underflow);
+        ensure!(buf.remaining() >= 4 * dim_count as usize, errors::Underflow);
         let mut dimensions = Vec::with_capacity(dim_count as usize);
         for _ in 0..dim_count {
             dimensions.push(match buf.get_i32() {
@@ -643,7 +654,11 @@ impl Decode for ArrayTypeDescriptor {
                 _ => errors::InvalidArrayShape.fail()?,
             });
         }
-        Ok(ArrayTypeDescriptor { id, type_pos, dimensions })
+        Ok(ArrayTypeDescriptor {
+            id,
+            type_pos,
+            dimensions,
+        })
     }
 }
 
@@ -688,15 +703,20 @@ impl Decode for TypeAnnotationDescriptor {
         assert!(annotated_type >= 0x7F);
         let id = Uuid::decode(buf)?.into();
         let annotation = String::decode(buf)?;
-        Ok(TypeAnnotationDescriptor { annotated_type, id, annotation })
+        Ok(TypeAnnotationDescriptor {
+            annotated_type,
+            id,
+            annotation,
+        })
     }
 }
 
-
 #[cfg(test)]
 mod tests {
+    use crate::descriptors::{
+        BaseScalarTypeDescriptor, Descriptor, DescriptorUuid, SetDescriptor, TypePos,
+    };
     use uuid::Uuid;
-    use crate::descriptors::{DescriptorUuid, Descriptor, BaseScalarTypeDescriptor, SetDescriptor, TypePos};
 
     #[test]
     fn descriptor_uuid_debug_outputs() {
@@ -706,16 +726,32 @@ mod tests {
 
         let random_uuid: Uuid = "7cc7e050-ef76-4ae9-b8a6-053ca9baa3d5".parse().unwrap();
         let descriptor_id = DescriptorUuid::from(random_uuid);
-        assert_eq!(format!("{descriptor_id:?}"), "7cc7e050-ef76-4ae9-b8a6-053ca9baa3d5");
-
-        let base_scalar = Descriptor::BaseScalar(BaseScalarTypeDescriptor { id: "00000000-0000-0000-0000-000000000106".parse::<Uuid>().unwrap().into() }
+        assert_eq!(
+            format!("{descriptor_id:?}"),
+            "7cc7e050-ef76-4ae9-b8a6-053ca9baa3d5"
         );
-        assert_eq!(format!("{base_scalar:?}"), "BaseScalar(BaseScalarTypeDescriptor { id: BaseScalar(float32) })");
+
+        let base_scalar = Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+            id: "00000000-0000-0000-0000-000000000106"
+                .parse::<Uuid>()
+                .unwrap()
+                .into(),
+        });
+        assert_eq!(
+            format!("{base_scalar:?}"),
+            "BaseScalar(BaseScalarTypeDescriptor { id: BaseScalar(float32) })"
+        );
 
         let set_descriptor_with_float32 = Descriptor::Set(SetDescriptor {
-            id: "00000000-0000-0000-0000-000000000106".parse::<Uuid>().unwrap().into(),
-            type_pos: TypePos(0)
+            id: "00000000-0000-0000-0000-000000000106"
+                .parse::<Uuid>()
+                .unwrap()
+                .into(),
+            type_pos: TypePos(0),
         });
-        assert_eq!(format!("{set_descriptor_with_float32:?}"), "Set(SetDescriptor { id: BaseScalar(float32), type_pos: TypePos(0) })");
+        assert_eq!(
+            format!("{set_descriptor_with_float32:?}"),
+            "Set(SetDescriptor { id: BaseScalar(float32), type_pos: TypePos(0) })"
+        );
     }
 }
