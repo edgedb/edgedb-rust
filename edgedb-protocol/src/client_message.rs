@@ -1,5 +1,5 @@
 /*!
-([Website reference](https://www.edgedb.com/docs/reference/protocol/messages)) The [ClientMessage](crate::client_message::ClientMessage) enum and related types.
+([Website reference](https://www.edgedb.com/docs/reference/protocol/messages)) The [ClientMessage] enum and related types.
 
 ```rust,ignore
 pub enum ClientMessage {

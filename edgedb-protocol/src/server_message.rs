@@ -1,5 +1,5 @@
 /*!
-The [ServerMessage](crate::server_message::ServerMessage) enum and related types. EdgeDB website documentation on messages [here](https://www.edgedb.com/docs/reference/protocol/messages).
+The [ServerMessage] enum and related types. EdgeDB website documentation on messages [here](https://www.edgedb.com/docs/reference/protocol/messages).
 
 ```rust,ignore
 pub enum ServerMessage {

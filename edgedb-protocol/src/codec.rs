@@ -1,5 +1,5 @@
 /*!
-Implementations of the [Codec](crate::codec::Codec) trait into types found in the [Value](crate::value::Value) enum.
+Implementations of the [Codec] trait into types found in the [Value] enum.
 */
 
 use std::any::type_name;
