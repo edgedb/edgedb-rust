@@ -10,7 +10,8 @@ use crate::value::Value;
 /// An optional [Value] that can be constructed from `impl Into<Value>`,
 /// `Option<impl Into<Value>>`, `Vec<impl Into<Value>>` or
 /// `Option<Vec<impl Into<Value>>>`.
-/// Used by [eargs!] macro.
+/// Used by [named_args!](`crate::named_args!`) macro.
+#[derive(Clone, Debug, PartialEq)]
 pub struct ValueOpt(Option<Value>);
 
 impl<V: Into<Value>> From<V> for ValueOpt {

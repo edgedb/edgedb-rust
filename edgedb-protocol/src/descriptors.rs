@@ -1,5 +1,5 @@
 /*!
-([Website reference](https://www.edgedb.com/docs/reference/protocol/typedesc)) Types for the [Descriptor](crate::descriptors::Descriptor) enum.
+([Website reference](https://www.edgedb.com/docs/reference/protocol/typedesc)) Types for the [Descriptor] enum.
 
 ```rust,ignore
 pub enum Descriptor {

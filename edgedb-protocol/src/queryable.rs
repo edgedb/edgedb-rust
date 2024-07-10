@@ -1,5 +1,5 @@
 /*!
-Contains the [Queryable](crate::queryable::Queryable) trait.
+Contains the [Queryable] trait.
 */
 use snafu::{ensure, Snafu};
 use std::default::Default;

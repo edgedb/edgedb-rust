@@ -1,5 +1,5 @@
 /*!
-Contains the [Value](crate::value::Value) enum.
+Contains the [Value] enum.
 */
 use bytes::Bytes;
 

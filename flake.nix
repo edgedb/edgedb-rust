@@ -65,7 +65,7 @@
             buildInputs = [
               (fenix_pkgs.toolchainOf {
                 channel = "beta";
-                sha256 = "sha256-WtTNSmxfoiHJEwCUnuDNfRNBZjNrzdBV02Hikw+YE+s=";
+                sha256 = "sha256-q7N1YC9mppPme25wjb81cuOgDXFCkA10Lb1D1GCDv04=";
               }).defaultToolchain
             ] ++ common;
           };
