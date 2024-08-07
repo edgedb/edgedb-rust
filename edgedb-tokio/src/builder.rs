@@ -846,7 +846,7 @@ impl Builder {
     /// 1. [`Builder::credentials_file()`] is not supported
     /// 2. [`Builder::dsn()`] is not supported yet (although, will be
     ///    implemented later restricing `*_file` and `*_env` query args
-    #[cfg(any(feature = "unstable", feature = "test"))]
+    #[cfg(any(feature = "unstable", test))]
     pub fn constrained_build(&self) -> Result<Config, Error> {
         let address = if let Some(unix_path) = &self.unix_path {
             let port = self.port.unwrap_or(DEFAULT_PORT);
@@ -1522,7 +1522,7 @@ impl Builder {
     ///
     /// First boolean item in the tuple is `true` if configuration is complete
     /// and can be used for connections.
-    #[cfg(any(feature = "unstable", feature = "test"))]
+    #[cfg(any(feature = "unstable", test))]
     pub async fn build_no_fail(&self) -> (bool, Config, Vec<Error>) {
         self._build_no_fail().await
     }
@@ -1998,14 +1998,14 @@ impl Config {
     }
 
     /// Return the same config with changed wait until available timeout
-    #[cfg(any(feature = "unstable", feature = "test"))]
+    #[cfg(any(feature = "unstable", test))]
     pub fn with_wait_until_available(mut self, wait: Duration) -> Config {
         Arc::make_mut(&mut self.0).wait = wait;
         self
     }
 
     /// Return the same config with changed certificates
-    #[cfg(any(feature = "unstable", feature = "test"))]
+    #[cfg(any(feature = "unstable", test))]
     pub fn with_pem_certificates(mut self, pem: &str) -> Result<Config, Error> {
         validate_certs(pem).context("invalid PEM certificate")?;
         let cfg = Arc::make_mut(&mut self.0);
@@ -2021,13 +2021,13 @@ impl Config {
     }
 
     /// Returns true if credentials file is in outdated format
-    #[cfg(any(feature = "unstable", feature = "test"))]
+    #[cfg(any(feature = "unstable", test))]
     pub fn is_creds_file_outdated(&self) -> bool {
         self.0.creds_file_outdated
     }
 
     /// Return the certificate store of the config
-    #[cfg(any(feature = "unstable", feature = "test"))]
+    #[cfg(any(feature = "unstable", test))]
     pub fn root_cert_store(&self) -> Result<rustls::RootCertStore, Error> {
         Ok(self.0.root_cert_store())
     }
@@ -2035,7 +2035,7 @@ impl Config {
     /// Return the same config with changed certificate verifier
     ///
     /// Command-line tool uses this for interactive verifier
-    #[cfg(any(feature = "unstable", feature = "test"))]
+    #[cfg(any(feature = "unstable", test))]
     pub fn with_cert_verifier(mut self, verifier: Verifier) -> Config {
         Arc::make_mut(&mut self.0).verifier = verifier;
         self
