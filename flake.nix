@@ -45,7 +45,7 @@
             buildInputs = [
               (fenix_pkgs.fromToolchainFile {
                 file = ./rust-toolchain.toml;
-                sha256 = "sha256-opUgs6ckUQCyDxcB9Wy51pqhd0MPGHUVbwRKKPGiwZU=";
+                sha256 = "sha256-6eN/GKzjVSjEhGO9FhWObkRFaE1Jf+uqMSdQnb8lcB4=";
               })
             ] ++ common;
           };
@@ -63,10 +63,7 @@
           # rust beta version
           devShells.beta = pkgs.mkShell {
             buildInputs = [
-              (fenix_pkgs.toolchainOf {
-                channel = "beta";
-                sha256 = "sha256-q7N1YC9mppPme25wjb81cuOgDXFCkA10Lb1D1GCDv04=";
-              }).defaultToolchain
+              fenix_pkgs.beta.defaultToolchain
             ] ++ common;
           };
         };
