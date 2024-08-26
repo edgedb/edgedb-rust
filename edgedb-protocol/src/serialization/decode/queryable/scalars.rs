@@ -1,3 +1,5 @@
+use bytes::Bytes;
+
 use crate::queryable::DescriptorMismatch;
 use crate::queryable::{Decoder, DescriptorContext, Queryable};
 
@@ -53,6 +55,15 @@ impl DecodeScalar for String {
     }
     fn typename() -> &'static str {
         "std::str"
+    }
+}
+
+impl DecodeScalar for Bytes {
+    fn uuid() -> Uuid {
+        codec::STD_BYTES
+    }
+    fn typename() -> &'static str {
+        "std::bytes"
     }
 }
 
