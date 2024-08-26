@@ -217,3 +217,22 @@ async fn big_num() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn bytes() -> anyhow::Result<()> {
+    let client = Client::new(&SERVER.config);
+    client.ensure_connected().await?;
+
+    #[derive(Queryable)]
+    struct MyResult {
+        data: bytes::Bytes,
+    }
+
+    let res = client
+        .query_required_single::<MyResult, _>("select { data := b'101' } limit 1", &())
+        .await
+        .unwrap();
+
+    assert_eq!(res.data, b"101"[..]);
+    Ok(())
+}
