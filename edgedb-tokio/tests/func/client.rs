@@ -229,10 +229,7 @@ async fn bytes() -> anyhow::Result<()> {
     }
 
     let res = client
-        .query_required_single::<MyResult, _>(
-            "select { data := b'101' } limit 1",
-            &(),
-        )
+        .query_required_single::<MyResult, _>("select { data := b'101' } limit 1", &())
         .await
         .unwrap();
 
