@@ -230,7 +230,7 @@ async fn bytes() -> anyhow::Result<()> {
 
     let res = client
         .query_required_single::<MyResult, _>(
-            "select std::Object { data := b'101' } limit 1",
+            "select { data := b'101' } limit 1",
             &(),
         )
         .await
