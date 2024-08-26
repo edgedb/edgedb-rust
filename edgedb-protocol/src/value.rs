@@ -1,8 +1,6 @@
 /*!
 Contains the [Value] enum.
 */
-use bytes::Bytes;
-
 pub use crate::codec::EnumValue;
 use crate::codec::{NamedTupleShape, ObjectShape, ShapeElement};
 use crate::common::Cardinality;
@@ -15,7 +13,7 @@ pub enum Value {
     Nothing,
     Uuid(Uuid),
     Str(String),
-    Bytes(Bytes),
+    Bytes(bytes::Bytes),
     Int16(i16),
     Int32(i32),
     Int64(i64),
