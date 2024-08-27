@@ -328,12 +328,12 @@ fn is_valid_local_instance_name(name: &str) -> bool {
 
 fn is_valid_cloud_name(name: &str) -> bool {
     // For cloud instance name parts (organization slugs and instance names):
-    //  1. Allow only letters, numbers and single dashes
-    //  2. Must not start or end with a dash
-    // regex: ^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$
+    //  1. Allow only letters, numbers, underscores and single dashes
+    //  2. Must not end with a dash
+    // regex: ^-?[a-zA-Z0-9_]+(-[a-zA-Z0-9]+)*$
     let mut chars = name.chars();
     match chars.next() {
-        Some(c) if c.is_ascii_alphanumeric() => {}
+        Some(c) if c.is_ascii_alphanumeric() || c == '-' || c == '_' => {}
         _ => return false,
     }
     let mut was_dash = false;
@@ -345,7 +345,7 @@ fn is_valid_cloud_name(name: &str) -> bool {
                 was_dash = true;
             }
         } else {
-            if !c.is_ascii_alphanumeric() {
+            if !(c.is_ascii_alphanumeric() || c == '_') {
                 return false;
             }
             was_dash = false;
@@ -377,7 +377,7 @@ impl FromStr for InstanceName {
             if !is_valid_cloud_name(org_slug) {
                 return Err(ClientError::with_message(format!(
                     "invalid cloud org name \"{}\", must follow \
-                     regex: ^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$",
+                     regex: ^-?[a-zA-Z0-9_]+(-[a-zA-Z0-9]+)*$",
                     org_slug,
                 )));
             }
