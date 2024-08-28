@@ -27,8 +27,6 @@ pub enum ServerMessage {
 
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
-use std::u16;
-use std::u32;
 
 use bytes::{Buf, BufMut, Bytes};
 use snafu::{ensure, OptionExt};

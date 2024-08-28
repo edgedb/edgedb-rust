@@ -3,7 +3,6 @@ extern crate pretty_assertions;
 
 use std::error::Error;
 use std::sync::Arc;
-use std::{i16, i32, i64};
 
 use bytes::Bytes;
 

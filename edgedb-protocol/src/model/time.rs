@@ -986,7 +986,7 @@ mod test {
         assert_eq!(Src { micros: -1000000 }.abs_duration(), Trg::new(1, 0));
         assert_eq!(
             Src {
-                micros: i64::min_value()
+                micros: i64::MIN
             }
             .abs_duration(),
             Trg::new(9223372036854, 775808000)
