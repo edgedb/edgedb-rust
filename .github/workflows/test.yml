@@ -9,6 +9,7 @@ jobs:
     strategy:
       matrix:
         rust_version: [default, minimum, beta]
+      fail-fast: false
     timeout-minutes: 30
     permissions:
       id-token: "write"

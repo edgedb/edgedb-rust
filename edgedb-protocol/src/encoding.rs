@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::ops::{Deref, DerefMut, RangeBounds};
-use std::u32;
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use snafu::{ensure, OptionExt, ResultExt};

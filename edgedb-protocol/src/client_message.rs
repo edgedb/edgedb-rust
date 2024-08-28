@@ -27,7 +27,6 @@ pub enum ClientMessage {
 
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::u16;
 
 use bytes::{Buf, BufMut, Bytes};
 use snafu::{ensure, OptionExt};
