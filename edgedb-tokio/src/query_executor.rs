@@ -9,44 +9,44 @@ use crate::{Client, Error, Transaction};
 /// In particular &Client and &mut Transaction
 pub trait QueryExecutor {
     /// see [Client::query]
-    fn query<R, A>(self, query: &str, arguments: &A) -> impl Future<Output = Result<Vec<R>, Error>>
+    fn query<R, A>(self, query: &str, arguments: &A) -> impl Future<Output = Result<Vec<R>, Error>> + Send
     where
         A: QueryArgs,
-        R: QueryResult;
+        R: QueryResult + Send;
 
     /// see [Client::query_single]
     fn query_single<R, A>(
         self,
         query: &str,
         arguments: &A,
-    ) -> impl Future<Output = Result<Option<R>, Error>>
+    ) -> impl Future<Output = Result<Option<R>, Error>> + Send
     where
         A: QueryArgs,
-        R: QueryResult;
+        R: QueryResult + Send;
 
     /// see [Client::query_required_single]
     fn query_required_single<R, A>(
         self,
         query: &str,
         arguments: &A,
-    ) -> impl Future<Output = Result<R, Error>>
+    ) -> impl Future<Output = Result<R, Error>> + Send
     where
         A: QueryArgs,
-        R: QueryResult;
+        R: QueryResult + Send;
 
     /// see [Client::query_json]
     fn query_json(
         self,
         query: &str,
         arguments: &impl QueryArgs,
-    ) -> impl Future<Output = Result<Json, Error>>;
+    ) -> impl Future<Output = Result<Json, Error>> + Send;
 
     /// see [Client::query_single_json]
     fn query_single_json(
         &mut self,
         query: &str,
         arguments: &impl QueryArgs,
-    ) -> impl Future<Output = Result<Option<Json>, Error>>;
+    ) -> impl Future<Output = Result<Option<Json>, Error>> + Send;
 
     /// see [Client::query_required_single_json]
     fn query_required_single_json(
@@ -56,7 +56,7 @@ pub trait QueryExecutor {
     ) -> impl Future<Output = Result<Json, Error>>;
 
     /// see [Client::execute]
-    fn execute<A>(&mut self, query: &str, arguments: &A) -> impl Future<Output = Result<(), Error>>
+    fn execute<A>(&mut self, query: &str, arguments: &A) -> impl Future<Output = Result<(), Error>> + Send
     where
         A: QueryArgs;
 }
@@ -77,7 +77,7 @@ impl QueryExecutor for &Client {
     ) -> impl Future<Output = Result<Option<R>, Error>>
     where
         A: QueryArgs,
-        R: QueryResult,
+        R: QueryResult + Send,
     {
         Client::query_single(self, query, arguments)
     }
@@ -86,10 +86,10 @@ impl QueryExecutor for &Client {
         self,
         query: &str,
         arguments: &A,
-    ) -> impl Future<Output = Result<R, Error>>
+    ) -> impl Future<Output = Result<R, Error>> + Send
     where
         A: QueryArgs,
-        R: QueryResult,
+        R: QueryResult + Send,
     {
         Client::query_required_single(self, query, arguments)
     }
