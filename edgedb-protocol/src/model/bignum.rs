@@ -7,6 +7,8 @@ mod num_bigint_interop;
 mod bigdecimal_interop;
 
 /// Virtually unlimited precision integer.
+///
+/// See EdgeDB [protocol documentation](https://docs.edgedb.com/database/reference/protocol/dataformats#std-bigint).
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BigInt {
@@ -16,6 +18,8 @@ pub struct BigInt {
 }
 
 /// High-precision decimal number.
+///
+/// See EdgeDB [protocol documentation](https://docs.edgedb.com/database/reference/protocol/dataformats#std-decimal).
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Decimal {
@@ -26,6 +30,18 @@ pub struct Decimal {
 }
 
 impl BigInt {
+    pub fn negative(&self) -> bool {
+        self.negative
+    }
+
+    pub fn weight(&self) -> i16 {
+        self.weight
+    }
+
+    pub fn digits(&self) -> &[u16] {
+        &self.digits
+    }
+
     fn normalize(mut self) -> BigInt {
         while let Some(0) = self.digits.last() {
             self.digits.pop();
@@ -139,6 +155,22 @@ impl From<i32> for BigInt {
 }
 
 impl Decimal {
+    pub fn negative(&self) -> bool {
+        self.negative
+    }
+
+    pub fn weight(&self) -> i16 {
+        self.weight
+    }
+
+    pub fn decimal_digits(&self) -> u16 {
+        self.decimal_digits
+    }
+
+    pub fn digits(&self) -> &[u16] {
+        &self.digits
+    }
+
     #[allow(dead_code)] // isn't used when BigDecimal is disabled
     fn normalize(mut self) -> Decimal {
         while let Some(0) = self.digits.last() {
