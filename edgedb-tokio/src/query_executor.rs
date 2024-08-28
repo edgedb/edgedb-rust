@@ -9,7 +9,11 @@ use crate::{Client, Error, Transaction};
 /// In particular &Client and &mut Transaction
 pub trait QueryExecutor {
     /// see [Client::query]
-    fn query<R, A>(self, query: &str, arguments: &A) -> impl Future<Output = Result<Vec<R>, Error>> + Send
+    fn query<R, A>(
+        self,
+        query: &str,
+        arguments: &A,
+    ) -> impl Future<Output = Result<Vec<R>, Error>> + Send
     where
         A: QueryArgs,
         R: QueryResult + Send;
@@ -56,7 +60,11 @@ pub trait QueryExecutor {
     ) -> impl Future<Output = Result<Json, Error>>;
 
     /// see [Client::execute]
-    fn execute<A>(&mut self, query: &str, arguments: &A) -> impl Future<Output = Result<(), Error>> + Send
+    fn execute<A>(
+        &mut self,
+        query: &str,
+        arguments: &A,
+    ) -> impl Future<Output = Result<(), Error>> + Send
     where
         A: QueryArgs;
 }

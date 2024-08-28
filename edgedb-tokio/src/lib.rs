@@ -133,11 +133,11 @@ mod builder;
 mod client;
 mod errors;
 mod options;
+mod query_executor;
 mod sealed;
 pub mod state;
 mod transaction;
 pub mod tutorial;
-mod query_executor;
 
 pub use edgedb_derive::{ConfigDelta, GlobalsDelta, Queryable};
 
@@ -146,9 +146,9 @@ pub use client::Client;
 pub use credentials::TlsSecurity;
 pub use errors::Error;
 pub use options::{RetryCondition, RetryOptions, TransactionOptions};
+pub use query_executor::QueryExecutor;
 pub use state::{ConfigDelta, GlobalsDelta};
 pub use transaction::Transaction;
-pub use query_executor::QueryExecutor;
 
 #[cfg(feature = "unstable")]
 pub use builder::get_project_dir;
