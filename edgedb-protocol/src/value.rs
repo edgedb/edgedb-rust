@@ -105,7 +105,7 @@ impl SparseObject {
     /// Note: this method has two limitations:
     /// 1. Shape created uses `AtMostOne` cardinality for all the elements.
     /// 2. There are no extra shape elements
-    /// 
+    ///
     /// Both of these are irrelevant when serializing the object.
     pub fn from_pairs<N: ToString, V: Into<Option<Value>>>(
         iter: impl IntoIterator<Item = (N, V)>,
