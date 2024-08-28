@@ -133,6 +133,7 @@ mod builder;
 mod client;
 mod errors;
 mod options;
+mod query_executor;
 mod sealed;
 pub mod state;
 mod transaction;
@@ -145,6 +146,7 @@ pub use client::Client;
 pub use credentials::TlsSecurity;
 pub use errors::Error;
 pub use options::{RetryCondition, RetryOptions, TransactionOptions};
+pub use query_executor::QueryExecutor;
 pub use state::{ConfigDelta, GlobalsDelta};
 pub use transaction::Transaction;
 
