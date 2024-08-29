@@ -236,3 +236,43 @@ async fn bytes() -> anyhow::Result<()> {
     assert_eq!(res.data, b"101"[..]);
     Ok(())
 }
+
+#[tokio::test]
+async fn wrong_field_number() -> anyhow::Result<()> {
+    let client = Client::new(&SERVER.config);
+    client.ensure_connected().await?;
+
+    #[derive(Queryable, PartialEq, Debug)]
+    struct Thing {
+        a: String,
+        b: String,
+    }
+    let err = client
+        .query_required_single::<Thing, _>("select { a := 'hello' }", &())
+        .await
+        .unwrap_err();
+    assert_eq!(
+        format!("{err:#}"),
+        "DescriptorMismatch: expected 2 fields, got 1"
+    );
+
+    let err = client
+        .query_required_single::<Thing, _>("select { a := 'hello', b := 'world', c := 42 }", &())
+        .await
+        .unwrap_err();
+    assert_eq!(
+        format!("{err:#}"),
+        "DescriptorMismatch: expected 2 fields, got 3"
+    );
+
+    let err = client
+        .query_required_single::<Thing, _>("select { a := 'hello', c := 'world' }", &())
+        .await
+        .unwrap_err();
+    assert_eq!(
+        format!("{err:#}"),
+        "DescriptorMismatch: unexpected field c, expected b"
+    );
+
+    Ok(())
+}
