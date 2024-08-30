@@ -30,16 +30,20 @@ pub struct Decimal {
 }
 
 impl BigInt {
-    pub fn negative(&self) -> bool {
+    pub fn is_negative(&self) -> bool {
         self.negative
     }
 
-    pub fn weight(&self) -> i16 {
+    pub fn wire_weight(&self) -> i16 {
         self.weight
     }
 
-    pub fn digits(&self) -> &[u16] {
-        &self.digits
+    pub fn wire_digit(&self, index: usize) -> u16 {
+        self.digits[index]
+    }
+
+    pub fn wire_digit_count(&self) -> usize {
+        self.digits.len()
     }
 
     fn normalize(mut self) -> BigInt {
@@ -155,20 +159,24 @@ impl From<i32> for BigInt {
 }
 
 impl Decimal {
-    pub fn negative(&self) -> bool {
+    pub fn is_negative(&self) -> bool {
         self.negative
     }
 
-    pub fn weight(&self) -> i16 {
+    pub fn wire_weight(&self) -> i16 {
         self.weight
     }
 
-    pub fn decimal_digits(&self) -> u16 {
+    pub fn wire_decimal_digit_count(&self) -> u16 {
         self.decimal_digits
     }
 
-    pub fn digits(&self) -> &[u16] {
-        &self.digits
+    pub fn wire_digit(&self, index: usize) -> u16 {
+        self.digits[index]
+    }
+
+    pub fn wire_digit_count(&self) -> usize {
+        self.digits.len()
     }
 
     #[allow(dead_code)] // isn't used when BigDecimal is disabled
