@@ -326,8 +326,8 @@ fn is_valid_local_instance_name(name: &str) -> bool {
     !was_dash
 }
 
-fn is_valid_cloud_name(name: &str) -> bool {
-    // For cloud instance name parts (organization slugs and instance names):
+fn is_valid_cloud_instance_name(name: &str) -> bool {
+    // For cloud instance name part:
     //  1. Allow only letters, numbers and single dashes
     //  2. Must not start or end with a dash
     // regex: ^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$
@@ -354,6 +354,34 @@ fn is_valid_cloud_name(name: &str) -> bool {
     !was_dash
 }
 
+fn is_valid_cloud_org_name(name: &str) -> bool {
+    // For cloud organization slug part:
+    //  1. Allow only letters, numbers, underscores and single dashes
+    //  2. Must not end with a dash
+    // regex: ^-?[a-zA-Z0-9_]+(-[a-zA-Z0-9]+)*$
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphanumeric() || c == '-' || c == '_' => {}
+        _ => return false,
+    }
+    let mut was_dash = false;
+    for c in chars {
+        if c == '-' {
+            if was_dash {
+                return false;
+            } else {
+                was_dash = true;
+            }
+        } else {
+            if !(c.is_ascii_alphanumeric() || c == '_') {
+                return false;
+            }
+            was_dash = false;
+        }
+    }
+    !was_dash
+}
+
 impl fmt::Display for InstanceName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -367,17 +395,17 @@ impl FromStr for InstanceName {
     type Err = Error;
     fn from_str(name: &str) -> Result<InstanceName, Error> {
         if let Some((org_slug, name)) = name.split_once('/') {
-            if !is_valid_cloud_name(name) {
+            if !is_valid_cloud_instance_name(name) {
                 return Err(ClientError::with_message(format!(
                     "invalid cloud instance name \"{}\", must follow \
                      regex: ^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$",
                     name,
                 )));
             }
-            if !is_valid_cloud_name(org_slug) {
+            if !is_valid_cloud_org_name(org_slug) {
                 return Err(ClientError::with_message(format!(
                     "invalid cloud org name \"{}\", must follow \
-                     regex: ^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$",
+                     regex: ^-?[a-zA-Z0-9_]+(-[a-zA-Z0-9]+)*$",
                     org_slug,
                 )));
             }
@@ -2313,6 +2341,10 @@ fn test_instance_name() {
         "abc-123/def-456",
         "123-abc/456-def",
         "a-b-c/1-2-3",
+        "-leading-dash/abc",
+        "_leading-underscore/abc",
+        "under_score/abc",
+        "-vicfg-hceTeOuz6iXr3vkXPf0Wsudd/test123",
     ] {
         match InstanceName::from_str(inst_name) {
             Ok(InstanceName::Local(name)) => assert_eq!(name, inst_name),
@@ -2331,14 +2363,12 @@ fn test_instance_name() {
         "-leading-dash",
         "trailing-dash-",
         "double--dash",
-        "-leading-dash/abc",
         "trailing-dash-/abc",
         "double--dash/abc",
         "abc/-leading-dash",
         "abc/trailing-dash-",
         "abc/double--dash",
         "abc/_localdev",
-        "under_score/abc",
         "123/45678901234567890123456789012345678901234567890123456789012345678901234567890",
     ] {
         assert!(
