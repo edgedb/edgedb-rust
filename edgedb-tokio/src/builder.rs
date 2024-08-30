@@ -2341,6 +2341,10 @@ fn test_instance_name() {
         "abc-123/def-456",
         "123-abc/456-def",
         "a-b-c/1-2-3",
+        "-leading-dash/abc",
+        "_leading-underscore/abc",
+        "under_score/abc",
+        "-vicfg-hceTeOuz6iXr3vkXPf0Wsudd/test123",
     ] {
         match InstanceName::from_str(inst_name) {
             Ok(InstanceName::Local(name)) => assert_eq!(name, inst_name),
@@ -2359,14 +2363,12 @@ fn test_instance_name() {
         "-leading-dash",
         "trailing-dash-",
         "double--dash",
-        "-leading-dash/abc",
         "trailing-dash-/abc",
         "double--dash/abc",
         "abc/-leading-dash",
         "abc/trailing-dash-",
         "abc/double--dash",
         "abc/_localdev",
-        "under_score/abc",
         "123/45678901234567890123456789012345678901234567890123456789012345678901234567890",
     ] {
         assert!(
