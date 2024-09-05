@@ -1793,6 +1793,7 @@ fn set_credentials(cfg: &mut ConfigInner, creds: &Credentials) -> Result<(), Err
     }
     cfg.database = db_branch.cloned().unwrap_or_else(|| "edgedb".into());
     cfg.branch = db_branch.cloned().unwrap_or_else(|| "__default__".into());
+    cfg.tls_server_name = creds.tls_server_name.clone();
     cfg.tls_security = creds.tls_security;
     cfg.creds_file_outdated = creds.file_outdated;
     Ok(())
@@ -1917,6 +1918,7 @@ impl Config {
             }),
             tls_ca: self.0.pem_certificates.clone(),
             tls_security: self.0.tls_security,
+            tls_server_name: self.0.tls_server_name.clone(),
             file_outdated: false,
         })
     }
