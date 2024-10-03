@@ -502,6 +502,20 @@ async fn connect4(cfg: &Config, mut stream: TlsStream) -> Result<Connection, Err
                     };
                     server_params.set::<PostgresAddress>(pgaddr);
                 }
+                #[cfg(feature = "unstable")]
+                b"pgdsn" => {
+                    use crate::server_params::PostgresDsn;
+
+                    let pgdsn = match str::from_utf8(&par.value) {
+                        Ok(a) => a.to_owned(),
+                        Err(e) => {
+                            log::warn!("Can't decode param {:?}: {}", par.name, e);
+                            continue;
+                        }
+                    };
+
+                    server_params.set::<PostgresDsn>(PostgresDsn(pgdsn));
+                }
                 b"system_config" => {
                     handle_system_config(par, &mut server_params)?;
                 }
