@@ -151,11 +151,11 @@ impl Transaction {
             .expect("transaction object is not dropped")
     }
 
-    /// Query with retry.
-    async fn _query<R, A>(
+    async fn query_and_decode<R, A>(
         &mut self,
         query: impl AsRef<str> + Send,
         arguments: &A,
+        io_format: IoFormat,
         expected_cardinality: Cardinality,
     ) -> Result<Vec<R>, Error>
     where
@@ -169,7 +169,7 @@ impl Transaction {
             implicit_typeids: false,
             explicit_objectids: true,
             allow_capabilities: Capabilities::MODIFICATIONS,
-            io_format: IoFormat::Binary,
+            io_format,
             expected_cardinality,
         };
         let state = self.state.clone(); // TODO: optimize, by careful borrow
@@ -225,7 +225,8 @@ impl Transaction {
         A: QueryArgs,
         R: QueryResult,
     {
-        Transaction::_query(self, query, arguments, Cardinality::Many).await
+        self.query_and_decode(query, arguments, IoFormat::Binary, Cardinality::Many)
+            .await
     }
 
     /// Execute a query and return a single result
@@ -262,7 +263,7 @@ impl Transaction {
         A: QueryArgs,
         R: QueryResult + Send,
     {
-        Transaction::_query(self, query, arguments, Cardinality::AtMostOne)
+        self.query_and_decode(query, arguments, IoFormat::Binary, Cardinality::AtMostOne)
             .await
             .map(|x| x.into_iter().next())
     }
@@ -301,7 +302,7 @@ impl Transaction {
         A: QueryArgs,
         R: QueryResult + Send,
     {
-        Transaction::_query(self, query, arguments, Cardinality::AtMostOne)
+        self.query_and_decode(query, arguments, IoFormat::Binary, Cardinality::AtMostOne)
             .await
             .and_then(|x| {
                 x.into_iter()
@@ -316,51 +317,17 @@ impl Transaction {
         query: &str,
         arguments: &impl QueryArgs,
     ) -> Result<Json, Error> {
-        self.ensure_started().await?;
-        let flags = CompilationOptions {
-            implicit_limit: None,
-            implicit_typenames: false,
-            implicit_typeids: false,
-            explicit_objectids: true,
-            allow_capabilities: Capabilities::MODIFICATIONS,
-            io_format: IoFormat::Json,
-            expected_cardinality: Cardinality::Many,
-        };
-        let state = self.state.clone(); // TODO optimize using careful borrow
-        let conn = &mut self.inner().conn;
-        let desc = conn.parse(&flags, query, &state).await?;
-        let inp_desc = desc.input().map_err(ProtocolEncodingError::with_source)?;
-
-        let mut arg_buf = BytesMut::with_capacity(8);
-        arguments.encode(&mut Encoder::new(
-            &inp_desc.as_query_arg_context(),
-            &mut arg_buf,
-        ))?;
-
-        let data = conn
-            .execute(&flags, query, &state, &desc, &arg_buf.freeze())
+        let res = self
+            .query_and_decode::<String, _>(query, arguments, IoFormat::Json, Cardinality::Many)
             .await?;
 
-        let out_desc = desc.output().map_err(ProtocolEncodingError::with_source)?;
-        match out_desc.root_pos() {
-            Some(root_pos) => {
-                let ctx = out_desc.as_queryable_context();
-                // JSON objects are returned as strings :(
-                let mut state = String::prepare(&ctx, root_pos)?;
-                let bytes = data
-                    .into_iter()
-                    .next()
-                    .and_then(|chunk| chunk.data.into_iter().next());
-                if let Some(bytes) = bytes {
-                    // we trust database to produce valid json
-                    let s = String::decode(&mut state, &bytes)?;
-                    Ok(Json::new_unchecked(s))
-                } else {
-                    Err(NoDataError::with_message("query row returned zero results"))
-                }
-            }
-            None => Err(NoResultExpected::build()),
-        }
+        let json = res
+            .into_iter()
+            .next()
+            .ok_or_else(|| NoDataError::with_message("query row returned zero results"))?;
+
+        // we trust database to produce valid json
+        Ok(Json::new_unchecked(json))
     }
 
     /// Execute a query and return a single result as JSON.
@@ -374,51 +341,12 @@ impl Transaction {
         query: &str,
         arguments: &impl QueryArgs,
     ) -> Result<Option<Json>, Error> {
-        self.ensure_started().await?;
-        let flags = CompilationOptions {
-            implicit_limit: None,
-            implicit_typenames: false,
-            implicit_typeids: false,
-            explicit_objectids: true,
-            allow_capabilities: Capabilities::MODIFICATIONS,
-            io_format: IoFormat::Json,
-            expected_cardinality: Cardinality::AtMostOne,
-        };
-        let state = self.state.clone(); // TODO optimize using careful borrow
-        let conn = &mut self.inner().conn;
-        let desc = conn.parse(&flags, query, &state).await?;
-        let inp_desc = desc.input().map_err(ProtocolEncodingError::with_source)?;
-
-        let mut arg_buf = BytesMut::with_capacity(8);
-        arguments.encode(&mut Encoder::new(
-            &inp_desc.as_query_arg_context(),
-            &mut arg_buf,
-        ))?;
-
-        let data = conn
-            .execute(&flags, query, &state, &desc, &arg_buf.freeze())
+        let res = self
+            .query_and_decode::<String, _>(query, arguments, IoFormat::Json, Cardinality::AtMostOne)
             .await?;
 
-        let out_desc = desc.output().map_err(ProtocolEncodingError::with_source)?;
-        match out_desc.root_pos() {
-            Some(root_pos) => {
-                let ctx = out_desc.as_queryable_context();
-                // JSON objects are returned as strings :(
-                let mut state = String::prepare(&ctx, root_pos)?;
-                let bytes = data
-                    .into_iter()
-                    .next()
-                    .and_then(|chunk| chunk.data.into_iter().next());
-                if let Some(bytes) = bytes {
-                    // we trust database to produce valid json
-                    let s = String::decode(&mut state, &bytes)?;
-                    Ok(Some(Json::new_unchecked(s)))
-                } else {
-                    Ok(None)
-                }
-            }
-            None => Err(NoResultExpected::build()),
-        }
+        // we trust database to produce valid json
+        Ok(res.into_iter().next().map(Json::new_unchecked))
     }
 
     /// Execute a query and return a single result as JSON.

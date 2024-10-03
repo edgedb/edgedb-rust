@@ -553,6 +553,7 @@ impl Connection {
         arguments: &A,
         state: &dyn State,
         allow_capabilities: Capabilities,
+        io_format: IoFormat,
         expected_cardinality: Cardinality,
     ) -> Result<Response<Vec<R>>, Error>
     where
@@ -567,7 +568,7 @@ impl Connection {
                 implicit_typeids: false,
                 explicit_objectids: true,
                 allow_capabilities,
-                io_format: IoFormat::Binary,
+                io_format,
                 expected_cardinality,
             };
             let desc = self.parse(&flags, query, state).await?;

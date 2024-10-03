@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use edgedb_errors::NoDataError;
-use edgedb_protocol::model::Uuid;
+use edgedb_protocol::model::{Json, Uuid};
 use edgedb_protocol::named_args;
 use edgedb_protocol::value::{EnumValue, Value};
 use edgedb_tokio::{Client, Queryable};
@@ -45,6 +45,9 @@ async fn simple() -> anyhow::Result<()> {
 
     let value = client.query_single_json("SELECT <str>{}", &()).await?;
     assert_eq!(value.as_deref(), None);
+
+    let value = client.query_json("SELECT <str>{}", &()).await?;
+    assert_eq!(value, Json::new_unchecked("[]".to_string()));
 
     let err = client
         .query_required_single_json("SELECT <int64>{}", &())
