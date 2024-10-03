@@ -161,6 +161,8 @@ impl Transaction {
         A: QueryArgs,
         R: QueryResult,
     {
+        self.ensure_started().await?;
+
         let conn = assert_transaction(&mut self.inner);
 
         conn.inner()
