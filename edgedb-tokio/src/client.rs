@@ -58,80 +58,13 @@ impl Client {
         Ok(())
     }
 
-    /// Execute a query and return a collection of results.
-    ///
-    /// You will usually have to specify the return type for the query:
-    ///
-    /// ```rust,ignore
-    /// let greeting = pool.query::<String, _>("SELECT 'hello'", &());
-    /// // or
-    /// let greeting: Vec<String> = pool.query("SELECT 'hello'", &());
-    ///
-    /// let two_numbers: Vec<i32> = conn.query("select {<int32>$0, <int32>$1}", &(10, 20)).await?;
-    /// ```
-    ///
-    /// This method can be used with both static arguments, like a tuple of
-    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
-    /// Similarly, dynamically typed results are also supported.
-    pub async fn query<R, A>(&self, query: impl AsRef<str>, arguments: &A) -> Result<Vec<R>, Error>
-    where
-        A: QueryArgs,
-        R: QueryResult,
-    {
-        let mut iteration = 0;
-        loop {
-            let mut conn = self.pool.acquire().await?;
-
-            let conn = conn.inner();
-            let state = &self.options.state;
-            let caps = Capabilities::MODIFICATIONS | Capabilities::DDL;
-            match conn.query(query.as_ref(), arguments, state, caps).await {
-                Ok(resp) => return Ok(resp.data),
-                Err(e) => {
-                    let allow_retry = match e.get::<QueryCapabilities>() {
-                        // Error from a weird source, or just a bug
-                        // Let's keep on the safe side
-                        None => false,
-                        Some(QueryCapabilities::Unparsed) => true,
-                        Some(QueryCapabilities::Parsed(c)) => c.is_empty(),
-                    };
-                    if allow_retry && e.has_tag(SHOULD_RETRY) {
-                        let rule = self.options.retry.get_rule(&e);
-                        iteration += 1;
-                        if iteration < rule.attempts {
-                            let duration = (rule.backoff)(iteration);
-                            log::info!("Error: {:#}. Retrying in {:?}...", e, duration);
-                            sleep(duration).await;
-                            continue;
-                        }
-                    }
-                    return Err(e);
-                }
-            }
-        }
-    }
-
-    /// Execute a query and return a single result
-    ///
-    /// You will usually have to specify the return type for the query:
-    ///
-    /// ```rust,ignore
-    /// let greeting = pool.query_single::<String, _>("SELECT 'hello'", &());
-    /// // or
-    /// let greeting: Option<String> = pool.query_single(
-    ///     "SELECT 'hello'",
-    ///     &()
-    /// );
-    /// ```
-    ///
-    /// This method can be used with both static arguments, like a tuple of
-    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
-    /// Similarly, dynamically typed results are also supported.
-    pub async fn query_single<R, A>(
+    /// Query with retry.
+    async fn _query<R, A>(
         &self,
         query: impl AsRef<str>,
         arguments: &A,
-    ) -> Result<Option<R>, Error>
+        expected_cardinality: Cardinality,
+    ) -> Result<Vec<R>, Error>
     where
         A: QueryArgs,
         R: QueryResult,
@@ -139,11 +72,12 @@ impl Client {
         let mut iteration = 0;
         loop {
             let mut conn = self.pool.acquire().await?;
+
             let conn = conn.inner();
             let state = &self.options.state;
             let caps = Capabilities::MODIFICATIONS | Capabilities::DDL;
             match conn
-                .query_single(query.as_ref(), arguments, state, caps)
+                .query(query.as_ref(), arguments, state, caps, expected_cardinality)
                 .await
             {
                 Ok(resp) => return Ok(resp.data),
@@ -169,6 +103,63 @@ impl Client {
                 }
             }
         }
+    }
+
+    /// Execute a query and return a collection of results.
+    ///
+    /// You will usually have to specify the return type for the query:
+    ///
+    /// ```rust,ignore
+    /// let greeting = pool.query::<String, _>("SELECT 'hello'", &());
+    /// // or
+    /// let greeting: Vec<String> = pool.query("SELECT 'hello'", &());
+    ///
+    /// let two_numbers: Vec<i32> = conn.query("select {<int32>$0, <int32>$1}", &(10, 20)).await?;
+    /// ```
+    ///
+    /// This method can be used with both static arguments, like a tuple of
+    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// Similarly, dynamically typed results are also supported.
+    pub async fn query<R, A>(
+        &self,
+        query: impl AsRef<str> + Send,
+        arguments: &A,
+    ) -> Result<Vec<R>, Error>
+    where
+        A: QueryArgs,
+        R: QueryResult,
+    {
+        Client::_query(self, query, arguments, Cardinality::Many).await
+    }
+
+    /// Execute a query and return a single result
+    ///
+    /// You will usually have to specify the return type for the query:
+    ///
+    /// ```rust,ignore
+    /// let greeting = pool.query_single::<String, _>("SELECT 'hello'", &());
+    /// // or
+    /// let greeting: Option<String> = pool.query_single(
+    ///     "SELECT 'hello'",
+    ///     &()
+    /// );
+    /// ```
+    ///
+    /// This method can be used with both static arguments, like a tuple of
+    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// Similarly, dynamically typed results are also supported.
+    pub async fn query_single<R, A>(
+        &self,
+        query: impl AsRef<str> + Send,
+        arguments: &A,
+    ) -> Result<Option<R>, Error>
+    where
+        A: QueryArgs,
+        R: QueryResult + Send,
+    {
+        Client::_query(self, query, arguments, Cardinality::AtMostOne)
+            .await
+            .map(|x| x.into_iter().next())
     }
 
     /// Execute a query and return a single result
@@ -198,16 +189,20 @@ impl Client {
     /// Similarly, dynamically typed results are also supported.
     pub async fn query_required_single<R, A>(
         &self,
-        query: impl AsRef<str>,
+        query: impl AsRef<str> + Send,
         arguments: &A,
     ) -> Result<R, Error>
     where
         A: QueryArgs,
-        R: QueryResult,
+        R: QueryResult + Send,
     {
-        self.query_single(query, arguments)
-            .await?
-            .ok_or_else(|| NoDataError::with_message("query row returned zero results"))
+        Client::_query(self, query, arguments, Cardinality::AtMostOne)
+            .await
+            .and_then(|x| {
+                x.into_iter()
+                    .next()
+                    .ok_or_else(|| NoDataError::with_message("query row returned zero results"))
+            })
     }
 
     /// Execute a query and return the result as JSON.
