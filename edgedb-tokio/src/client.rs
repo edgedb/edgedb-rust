@@ -61,7 +61,7 @@ impl Client {
         query: impl AsRef<str>,
         arguments: &A,
         io_format: IoFormat,
-        expected_cardinality: Cardinality,
+        cardinality: Cardinality,
     ) -> Result<Vec<R>, Error>
     where
         A: QueryArgs,
@@ -81,7 +81,7 @@ impl Client {
                     state,
                     caps,
                     io_format,
-                    expected_cardinality,
+                    cardinality,
                 )
                 .await
             {

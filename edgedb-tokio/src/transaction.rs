@@ -155,7 +155,7 @@ impl Transaction {
         query: impl AsRef<str> + Send,
         arguments: &A,
         io_format: IoFormat,
-        expected_cardinality: Cardinality,
+        cardinality: Cardinality,
     ) -> Result<Vec<R>, Error>
     where
         A: QueryArgs,
@@ -170,7 +170,7 @@ impl Transaction {
                 &self.state,
                 Capabilities::MODIFICATIONS,
                 io_format,
-                expected_cardinality,
+                cardinality,
             )
             .await
             .map(|x| x.data)

@@ -554,7 +554,7 @@ impl Connection {
         state: &dyn State,
         allow_capabilities: Capabilities,
         io_format: IoFormat,
-        expected_cardinality: Cardinality,
+        cardinality: Cardinality,
     ) -> Result<Response<Vec<R>>, Error>
     where
         A: QueryArgs,
@@ -569,7 +569,7 @@ impl Connection {
                 explicit_objectids: true,
                 allow_capabilities,
                 io_format,
-                expected_cardinality,
+                expected_cardinality: cardinality,
             };
             let desc = self.parse(&flags, query, state).await?;
             caps = QueryCapabilities::Parsed(desc.capabilities);
