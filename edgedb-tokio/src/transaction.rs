@@ -12,7 +12,7 @@ use tokio::time::sleep;
 
 use crate::errors::ClientError;
 use crate::errors::{Error, ErrorKind, SHOULD_RETRY};
-use crate::errors::{NoDataError, NoResultExpected, ProtocolEncodingError};
+use crate::errors::{NoDataError, ProtocolEncodingError};
 use crate::raw::{Options, Pool, PoolConnection, PoolState};
 
 /// Transaction object passed to the closure via
@@ -124,6 +124,10 @@ where
     }
 }
 
+fn assert_transaction(x: &mut Option<Inner>) -> &mut PoolConnection {
+    &mut x.as_mut().expect("transaction object is dropped").conn
+}
+
 impl Transaction {
     /// Zero-based iteration (attempt) number for the current transaction
     ///
@@ -145,13 +149,8 @@ impl Transaction {
         }
         Err(ClientError::with_message("using transaction after drop"))
     }
-    fn inner(&mut self) -> &mut Inner {
-        self.inner
-            .as_mut()
-            .expect("transaction object is not dropped")
-    }
 
-    async fn query_and_decode<R, A>(
+    async fn query_helper<R, A>(
         &mut self,
         query: impl AsRef<str> + Send,
         arguments: &A,
@@ -162,45 +161,19 @@ impl Transaction {
         A: QueryArgs,
         R: QueryResult,
     {
-        self.ensure_started().await?;
-        let flags = CompilationOptions {
-            implicit_limit: None,
-            implicit_typenames: false,
-            implicit_typeids: false,
-            explicit_objectids: true,
-            allow_capabilities: Capabilities::MODIFICATIONS,
-            io_format,
-            expected_cardinality,
-        };
-        let state = self.state.clone(); // TODO: optimize, by careful borrow
-        let conn = &mut self.inner().conn;
-        let desc = conn.parse(&flags, query.as_ref(), &state).await?;
-        let inp_desc = desc.input().map_err(ProtocolEncodingError::with_source)?;
+        let conn = assert_transaction(&mut self.inner);
 
-        let mut arg_buf = BytesMut::with_capacity(8);
-        arguments.encode(&mut Encoder::new(
-            &inp_desc.as_query_arg_context(),
-            &mut arg_buf,
-        ))?;
-
-        let data = conn
-            .execute(&flags, query.as_ref(), &state, &desc, &arg_buf.freeze())
-            .await?;
-
-        let out_desc = desc.output().map_err(ProtocolEncodingError::with_source)?;
-        match out_desc.root_pos() {
-            Some(root_pos) => {
-                let ctx = out_desc.as_queryable_context();
-                let mut state = R::prepare(&ctx, root_pos)?;
-                let rows = data
-                    .into_iter()
-                    .flat_map(|chunk| chunk.data)
-                    .map(|chunk| R::decode(&mut state, &chunk))
-                    .collect::<Result<_, _>>()?;
-                Ok(rows)
-            }
-            None => Err(NoResultExpected::build()),
-        }
+        conn.inner()
+            .query(
+                query.as_ref(),
+                arguments,
+                &self.state,
+                Capabilities::MODIFICATIONS,
+                io_format,
+                expected_cardinality,
+            )
+            .await
+            .map(|x| x.data)
     }
 
     /// Execute a query and return a collection of results.
@@ -225,7 +198,7 @@ impl Transaction {
         A: QueryArgs,
         R: QueryResult,
     {
-        self.query_and_decode(query, arguments, IoFormat::Binary, Cardinality::Many)
+        self.query_helper(query, arguments, IoFormat::Binary, Cardinality::Many)
             .await
     }
 
@@ -263,7 +236,7 @@ impl Transaction {
         A: QueryArgs,
         R: QueryResult + Send,
     {
-        self.query_and_decode(query, arguments, IoFormat::Binary, Cardinality::AtMostOne)
+        self.query_helper(query, arguments, IoFormat::Binary, Cardinality::AtMostOne)
             .await
             .map(|x| x.into_iter().next())
     }
@@ -302,7 +275,7 @@ impl Transaction {
         A: QueryArgs,
         R: QueryResult + Send,
     {
-        self.query_and_decode(query, arguments, IoFormat::Binary, Cardinality::AtMostOne)
+        self.query_helper(query, arguments, IoFormat::Binary, Cardinality::AtMostOne)
             .await
             .and_then(|x| {
                 x.into_iter()
@@ -318,7 +291,7 @@ impl Transaction {
         arguments: &impl QueryArgs,
     ) -> Result<Json, Error> {
         let res = self
-            .query_and_decode::<String, _>(query, arguments, IoFormat::Json, Cardinality::Many)
+            .query_helper::<String, _>(query, arguments, IoFormat::Json, Cardinality::Many)
             .await?;
 
         let json = res
@@ -342,7 +315,7 @@ impl Transaction {
         arguments: &impl QueryArgs,
     ) -> Result<Option<Json>, Error> {
         let res = self
-            .query_and_decode::<String, _>(query, arguments, IoFormat::Json, Cardinality::AtMostOne)
+            .query_helper::<String, _>(query, arguments, IoFormat::Json, Cardinality::AtMostOne)
             .await?;
 
         // we trust database to produce valid json
@@ -386,7 +359,7 @@ impl Transaction {
             expected_cardinality: Cardinality::Many,
         };
         let state = self.state.clone(); // TODO: optimize, by careful borrow
-        let conn = &mut self.inner().conn;
+        let conn = assert_transaction(&mut self.inner);
         let desc = conn.parse(&flags, query, &state).await?;
         let inp_desc = desc.input().map_err(ProtocolEncodingError::with_source)?;
 
