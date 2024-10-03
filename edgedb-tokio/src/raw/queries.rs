@@ -248,11 +248,18 @@ impl Connection {
 
         let mut data = Vec::new();
         let mut description = None;
+        let mut warnings: Vec<edgedb_protocol::annotations::Warning> = Vec::new();
         loop {
             let msg = self.message().await?;
             match msg {
                 ServerMessage::StateDataDescription(d) => {
                     self.state_desc = d.typedesc;
+                }
+                ServerMessage::CommandDataDescription1(desc) => {
+                    warnings.extend(edgedb_protocol::annotations::decode_warnings(
+                        &desc.annotations,
+                    )?);
+                    description = Some(desc);
                 }
                 ServerMessage::Data(datum) => {
                     data.push(datum);
@@ -263,10 +270,8 @@ impl Connection {
                         status_data: complete.status_data,
                         new_state: complete.state,
                         data,
+                        warnings,
                     });
-                }
-                ServerMessage::CommandDataDescription1(desc) => {
-                    description = Some(desc);
                 }
                 ServerMessage::ErrorResponse(err) => {
                     self.expect_ready_or_eos(guard)
@@ -314,6 +319,7 @@ impl Connection {
                         status_data: complete.status_data,
                         new_state: None,
                         data,
+                        warnings: vec![],
                     });
                 }
                 ServerMessage::ErrorResponse(err) => {

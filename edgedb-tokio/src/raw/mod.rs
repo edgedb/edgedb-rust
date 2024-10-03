@@ -75,6 +75,7 @@ pub struct Response<T> {
     pub status_data: Bytes,
     pub new_state: Option<edgedb_protocol::common::State>,
     pub data: T,
+    pub warnings: Vec<edgedb_protocol::annotations::Warning>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -178,6 +179,7 @@ impl<T> Response<T> {
             status_data: self.status_data,
             new_state: self.new_state,
             data: f(self.data)?,
+            warnings: self.warnings,
         })
     }
 }

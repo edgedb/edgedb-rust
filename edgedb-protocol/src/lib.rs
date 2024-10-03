@@ -75,5 +75,6 @@ pub mod value;
 pub mod value_opt;
 pub mod model;
 pub mod query_arg;
+pub mod annotations;
 
 pub use query_result::QueryResult;

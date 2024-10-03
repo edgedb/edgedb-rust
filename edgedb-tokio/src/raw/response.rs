@@ -9,7 +9,7 @@ use edgedb_protocol::common::State;
 use edgedb_protocol::descriptors::Typedesc;
 use edgedb_protocol::server_message::CommandDataDescription1;
 use edgedb_protocol::server_message::{ErrorResponse, ServerMessage};
-use edgedb_protocol::QueryResult;
+use edgedb_protocol::{annotations, QueryResult};
 
 use crate::raw::queries::Guard;
 use crate::raw::{Connection, Description, Response};
@@ -282,11 +282,20 @@ where
             Complete {
                 status_data,
                 new_state,
-            } => Ok(Response {
-                status_data,
-                new_state,
-                data: (),
-            }),
+            } => {
+                let warnings = if let Some(d) = &self.description {
+                    annotations::decode_warnings(&d.annotations)?
+                } else {
+                    vec![]
+                };
+
+                Ok(Response {
+                    status_data,
+                    new_state,
+                    data: (),
+                    warnings,
+                })
+            }
             Error(e) => Err(e),
             ErrorResponse(e) => {
                 let mut err: edgedb_errors::Error = e.into();
