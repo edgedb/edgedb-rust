@@ -33,6 +33,15 @@ impl ServerParam for PostgresAddress {
 
 impl SealedParam for PostgresAddress {}
 
+#[derive(Debug)]
+pub struct PostgresDsn(pub String);
+
+impl ServerParam for PostgresDsn {
+    type Value = PostgresDsn;
+}
+
+impl SealedParam for PostgresDsn {}
+
 /// ParameterStatus_SystemConfig
 #[derive(Debug)]
 pub struct SystemConfig {
