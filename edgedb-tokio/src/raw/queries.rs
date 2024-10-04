@@ -18,10 +18,10 @@ use edgedb_protocol::server_message::{CommandDataDescription1, PrepareComplete};
 use edgedb_protocol::server_message::{Data, ServerMessage};
 use edgedb_protocol::QueryResult;
 
+use crate::errors::NoResultExpected;
 use crate::errors::{ClientConnectionEosError, ProtocolEncodingError};
 use crate::errors::{ClientInconsistentError, ProtocolOutOfOrderError};
 use crate::errors::{Error, ErrorKind};
-use crate::errors::{NoDataError, NoResultExpected};
 use crate::raw::connection::Mode;
 use crate::raw::{Connection, PoolConnection, QueryCapabilities};
 use crate::raw::{Description, Response, ResponseStream, State};
@@ -553,6 +553,8 @@ impl Connection {
         arguments: &A,
         state: &dyn State,
         allow_capabilities: Capabilities,
+        io_format: IoFormat,
+        cardinality: Cardinality,
     ) -> Result<Response<Vec<R>>, Error>
     where
         A: QueryArgs,
@@ -566,66 +568,8 @@ impl Connection {
                 implicit_typeids: false,
                 explicit_objectids: true,
                 allow_capabilities,
-                io_format: IoFormat::Binary,
-                expected_cardinality: Cardinality::Many,
-            };
-            let desc = self.parse(&flags, query, state).await?;
-            caps = QueryCapabilities::Parsed(desc.capabilities);
-            let inp_desc = desc.input().map_err(ProtocolEncodingError::with_source)?;
-
-            let mut arg_buf = BytesMut::with_capacity(8);
-            if let Err(e) = arguments.encode(&mut Encoder::new(
-                &inp_desc.as_query_arg_context(),
-                &mut arg_buf,
-            )) {
-                return Err(e.set::<Description>(desc));
-            }
-
-            let response = self
-                ._execute(&flags, query, state, &desc, &arg_buf.freeze())
-                .await?;
-
-            let out_desc = desc.output().map_err(ProtocolEncodingError::with_source)?;
-            match out_desc.root_pos() {
-                Some(root_pos) => {
-                    let ctx = out_desc.as_queryable_context();
-                    let mut state = R::prepare(&ctx, root_pos)?;
-                    let rows = response.map(|data| {
-                        data.into_iter()
-                            .flat_map(|chunk| chunk.data)
-                            .map(|chunk| R::decode(&mut state, &chunk))
-                            .collect::<Result<_, _>>()
-                    })?;
-                    Ok(rows)
-                }
-                None => Err(NoResultExpected::build()),
-            }
-        }
-        .await;
-        result.map_err(|e| e.set::<QueryCapabilities>(caps))
-    }
-
-    pub async fn query_single<R, A>(
-        &mut self,
-        query: &str,
-        arguments: &A,
-        state: &dyn State,
-        allow_capabilities: Capabilities,
-    ) -> Result<Response<Option<R>>, Error>
-    where
-        A: QueryArgs,
-        R: QueryResult,
-    {
-        let mut caps = QueryCapabilities::Unparsed;
-        let result = async {
-            let flags = CompilationOptions {
-                implicit_limit: None,
-                implicit_typenames: false,
-                implicit_typeids: false,
-                explicit_objectids: true,
-                allow_capabilities,
-                io_format: IoFormat::Binary,
-                expected_cardinality: Cardinality::AtMostOne,
+                io_format,
+                expected_cardinality: cardinality,
             };
             let desc = self.parse(&flags, query, state).await?;
             caps = QueryCapabilities::Parsed(desc.capabilities);
@@ -649,15 +593,10 @@ impl Connection {
                     let ctx = out_desc.as_queryable_context();
                     let mut state = R::prepare(&ctx, root_pos)?;
                     response.map(|data| {
-                        let bytes = data
-                            .into_iter()
-                            .next()
-                            .and_then(|chunk| chunk.data.into_iter().next());
-                        if let Some(bytes) = bytes {
-                            Ok(Some(R::decode(&mut state, &bytes)?))
-                        } else {
-                            Ok(None)
-                        }
+                        data.into_iter()
+                            .flat_map(|chunk| chunk.data)
+                            .map(|chunk| R::decode(&mut state, &chunk))
+                            .collect::<Result<Vec<_>, _>>()
                     })
                 }
                 None => Err(NoResultExpected::build()),
@@ -665,24 +604,6 @@ impl Connection {
         }
         .await;
         result.map_err(|e| e.set::<QueryCapabilities>(caps))
-    }
-
-    pub async fn query_required_single<R, A>(
-        &mut self,
-        query: &str,
-        arguments: &A,
-        state: &dyn State,
-        allow_capabilities: Capabilities,
-    ) -> Result<Response<R>, Error>
-    where
-        A: QueryArgs,
-        R: QueryResult,
-    {
-        self.query_single(query, arguments, state, allow_capabilities)
-            .await?
-            .map(|val| {
-                val.ok_or_else(|| NoDataError::with_message("query row returned zero results"))
-            })
     }
 
     pub async fn execute<A>(

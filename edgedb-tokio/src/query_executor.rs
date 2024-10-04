@@ -7,11 +7,11 @@ use crate::{Client, Error, Transaction};
 
 /// Abstracts over different query executors
 /// In particular &Client and &mut Transaction
-pub trait QueryExecutor {
+pub trait QueryExecutor: Sized {
     /// see [Client::query]
     fn query<R, A>(
         self,
-        query: &str,
+        query: impl AsRef<str> + Send,
         arguments: &A,
     ) -> impl Future<Output = Result<Vec<R>, Error>> + Send
     where
@@ -21,7 +21,7 @@ pub trait QueryExecutor {
     /// see [Client::query_single]
     fn query_single<R, A>(
         self,
-        query: &str,
+        query: impl AsRef<str> + Send,
         arguments: &A,
     ) -> impl Future<Output = Result<Option<R>, Error>> + Send
     where
@@ -31,9 +31,9 @@ pub trait QueryExecutor {
     /// see [Client::query_required_single]
     fn query_required_single<R, A>(
         self,
-        query: &str,
+        query: impl AsRef<str> + Send,
         arguments: &A,
-    ) -> impl Future<Output = Result<R, Error>> + Send
+    ) -> impl std::future::Future<Output = Result<R, Error>> + Send
     where
         A: QueryArgs,
         R: QueryResult + Send;
@@ -47,21 +47,21 @@ pub trait QueryExecutor {
 
     /// see [Client::query_single_json]
     fn query_single_json(
-        &mut self,
+        self,
         query: &str,
         arguments: &impl QueryArgs,
     ) -> impl Future<Output = Result<Option<Json>, Error>> + Send;
 
     /// see [Client::query_required_single_json]
     fn query_required_single_json(
-        &mut self,
+        self,
         query: &str,
         arguments: &impl QueryArgs,
     ) -> impl Future<Output = Result<Json, Error>>;
 
     /// see [Client::execute]
     fn execute<A>(
-        &mut self,
+        self,
         query: &str,
         arguments: &A,
     ) -> impl Future<Output = Result<(), Error>> + Send
@@ -70,7 +70,11 @@ pub trait QueryExecutor {
 }
 
 impl QueryExecutor for &Client {
-    fn query<R, A>(self, query: &str, arguments: &A) -> impl Future<Output = Result<Vec<R>, Error>>
+    fn query<R, A>(
+        self,
+        query: impl AsRef<str> + Send,
+        arguments: &A,
+    ) -> impl Future<Output = Result<Vec<R>, Error>>
     where
         A: QueryArgs,
         R: QueryResult,
@@ -80,7 +84,7 @@ impl QueryExecutor for &Client {
 
     fn query_single<R, A>(
         self,
-        query: &str,
+        query: impl AsRef<str> + Send,
         arguments: &A,
     ) -> impl Future<Output = Result<Option<R>, Error>>
     where
@@ -92,9 +96,9 @@ impl QueryExecutor for &Client {
 
     fn query_required_single<R, A>(
         self,
-        query: &str,
+        query: impl AsRef<str> + Send,
         arguments: &A,
-    ) -> impl Future<Output = Result<R, Error>> + Send
+    ) -> impl Future<Output = Result<R, Error>>
     where
         A: QueryArgs,
         R: QueryResult + Send,
@@ -111,7 +115,7 @@ impl QueryExecutor for &Client {
     }
 
     fn query_single_json(
-        &mut self,
+        self,
         query: &str,
         arguments: &impl QueryArgs,
     ) -> impl Future<Output = Result<Option<Json>, Error>> {
@@ -119,14 +123,14 @@ impl QueryExecutor for &Client {
     }
 
     fn query_required_single_json(
-        &mut self,
+        self,
         query: &str,
         arguments: &impl QueryArgs,
     ) -> impl Future<Output = Result<Json, Error>> {
         Client::query_required_single_json(self, query, arguments)
     }
 
-    fn execute<A>(&mut self, query: &str, arguments: &A) -> impl Future<Output = Result<(), Error>>
+    fn execute<A>(self, query: &str, arguments: &A) -> impl Future<Output = Result<(), Error>>
     where
         A: QueryArgs,
     {
@@ -135,7 +139,11 @@ impl QueryExecutor for &Client {
 }
 
 impl QueryExecutor for &mut Transaction {
-    fn query<R, A>(self, query: &str, arguments: &A) -> impl Future<Output = Result<Vec<R>, Error>>
+    fn query<R, A>(
+        self,
+        query: impl AsRef<str> + Send,
+        arguments: &A,
+    ) -> impl Future<Output = Result<Vec<R>, Error>>
     where
         A: QueryArgs,
         R: QueryResult,
@@ -145,24 +153,24 @@ impl QueryExecutor for &mut Transaction {
 
     fn query_single<R, A>(
         self,
-        query: &str,
+        query: impl AsRef<str> + Send,
         arguments: &A,
     ) -> impl Future<Output = Result<Option<R>, Error>>
     where
         A: QueryArgs,
-        R: QueryResult,
+        R: QueryResult + Send,
     {
         Transaction::query_single(self, query, arguments)
     }
 
     fn query_required_single<R, A>(
         self,
-        query: &str,
+        query: impl AsRef<str> + Send,
         arguments: &A,
     ) -> impl Future<Output = Result<R, Error>>
     where
         A: QueryArgs,
-        R: QueryResult,
+        R: QueryResult + Send,
     {
         Transaction::query_required_single(self, query, arguments)
     }
@@ -176,7 +184,7 @@ impl QueryExecutor for &mut Transaction {
     }
 
     fn query_single_json(
-        &mut self,
+        self,
         query: &str,
         arguments: &impl QueryArgs,
     ) -> impl Future<Output = Result<Option<Json>, Error>> {
@@ -184,14 +192,14 @@ impl QueryExecutor for &mut Transaction {
     }
 
     fn query_required_single_json(
-        &mut self,
+        self,
         query: &str,
         arguments: &impl QueryArgs,
     ) -> impl Future<Output = Result<Json, Error>> {
         Transaction::query_required_single_json(self, query, arguments)
     }
 
-    fn execute<A>(&mut self, query: &str, arguments: &A) -> impl Future<Output = Result<(), Error>>
+    fn execute<A>(self, query: &str, arguments: &A) -> impl Future<Output = Result<(), Error>>
     where
         A: QueryArgs,
     {
