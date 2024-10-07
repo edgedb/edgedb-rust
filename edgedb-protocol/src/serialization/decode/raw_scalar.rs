@@ -1,5 +1,6 @@
 use std::convert::TryInto;
 use std::mem::size_of;
+use std::ops::Bound;
 use std::str;
 use std::time::SystemTime;
 
@@ -10,7 +11,7 @@ use snafu::{ensure, ResultExt};
 use crate::codec;
 use crate::descriptors::{Descriptor, TypePos};
 use crate::errors::{self, DecodeError};
-use crate::model::range;
+use crate::model::range::{self, RangeScalar};
 use crate::model::{BigInt, Decimal};
 use crate::model::{ConfigMemory, Range};
 use crate::model::{DateDuration, RelativeDuration};
@@ -675,19 +676,19 @@ impl ScalarArg for EnumValue {
     }
 }
 
-impl<T: ScalarArg + Clone> ScalarArg for Range<T> {
+impl<T: ScalarArg + Clone + RangeScalar> ScalarArg for Range<T> {
     fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
-        let flags = if self.empty {
+        let flags = if self.is_empty() {
             range::EMPTY
         } else {
-            (if self.inc_lower { range::LB_INC } else { 0 })
-                | (if self.inc_upper { range::UB_INC } else { 0 })
-                | (if self.lower.is_none() {
+            (if self.inc_lower() { range::LB_INC } else { 0 })
+                | (if self.inc_upper() { range::UB_INC } else { 0 })
+                | (if self.lower().is_none() {
                     range::LB_INF
                 } else {
                     0
                 })
-                | (if self.upper.is_none() {
+                | (if self.upper().is_none() {
                     range::UB_INF
                 } else {
                     0
@@ -696,11 +697,11 @@ impl<T: ScalarArg + Clone> ScalarArg for Range<T> {
         encoder.buf.reserve(1);
         encoder.buf.put_u8(flags as u8);
 
-        if let Some(lower) = &self.lower {
+        if let Some(lower) = &self.lower() {
             encoder.length_prefixed(|encoder| lower.encode(encoder))?
         }
 
-        if let Some(upper) = &self.upper {
+        if let Some(upper) = &self.upper() {
             encoder.length_prefixed(|encoder| upper.encode(encoder))?;
         }
         Ok(())
@@ -714,20 +715,22 @@ impl<T: ScalarArg + Clone> ScalarArg for Range<T> {
         }
     }
     fn to_value(&self) -> Result<Value, Error> {
-        Ok(Value::Range(Range {
-            lower: self
-                .lower
-                .as_ref()
-                .map(|v| v.to_value().map(Box::new))
-                .transpose()?,
-            upper: self
-                .upper
-                .as_ref()
-                .map(|v| v.to_value().map(Box::new))
-                .transpose()?,
-            inc_lower: self.inc_lower,
-            inc_upper: self.inc_upper,
-            empty: self.empty,
+        Ok(Value::Range(match self {
+            Range::Empty => Range::Empty,
+            Range::NonEmpty(non_empty) => {
+                let start = match non_empty.start_bound() {
+                    Bound::Included(v) => Bound::Included(Box::new(v.to_value()?)),
+                    Bound::Excluded(v) => Bound::Excluded(Box::new(v.to_value()?)),
+                    Bound::Unbounded => Bound::Unbounded,
+                };
+                let end = match non_empty.end_bound() {
+                    Bound::Included(v) => Bound::Included(Box::new(v.to_value()?)),
+                    Bound::Excluded(v) => Bound::Excluded(Box::new(v.to_value()?)),
+                    Bound::Unbounded => Bound::Unbounded,
+                };
+                Range::from_bounds(start, end)
+                    .expect("Converting into `Value` should not affect the validity of the bounds. T::Into<Value> appears to be broken.")
+            }
         }))
     }
 }
