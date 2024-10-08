@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex as BlockingMutex};
 use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
+use edgedb_protocol::annotations::Warning;
 use tls_api::TlsStream;
 use tokio::sync::{self, Semaphore};
 
@@ -185,8 +186,25 @@ impl<T> Response<T> {
 
     fn log_warnings(&self) {
         for w in &self.warnings {
-            // TODO: pretty print
-            log::warn!(target: "", "Server warning: {}", w.message)
+            let Warning {
+                filename,
+                line,
+                col,
+                r#type,
+                message,
+                ..
+            } = w;
+            let filename = filename
+                .as_ref()
+                .map(|f| format!("{f}:"))
+                .unwrap_or_default();
+            let line = line.clone().unwrap_or(1);
+            let col = col.clone().unwrap_or(1);
+
+            log::warn!(
+                target: "edgedb_tokio::warning",
+                "{type} at {filename}{line}:{col} {message}"
+            )
         }
     }
 }
