@@ -73,8 +73,8 @@ pub mod server_message;
 pub mod value;
 #[macro_use]
 pub mod value_opt;
+pub mod annotations;
 pub mod model;
 pub mod query_arg;
-pub mod annotations;
 
 pub use query_result::QueryResult;

@@ -592,6 +592,7 @@ impl Connection {
             let response = self
                 ._execute(&flags, query, state, &desc, &arg_buf.freeze())
                 .await?;
+            response.log_warnings();
 
             let out_desc = desc.output().map_err(ProtocolEncodingError::with_source)?;
             match out_desc.root_pos() {
@@ -645,10 +646,11 @@ impl Connection {
                 return Err(e.set::<Description>(desc));
             }
 
-            let res = self
+            let response = self
                 ._execute(&flags, query, state, &desc, &arg_buf.freeze())
                 .await?;
-            res.map(|_| Ok::<_, Error>(()))
+            response.log_warnings();
+            response.map(|_| Ok::<_, Error>(()))
         }
         .await;
         result.map_err(|e| e.set::<QueryCapabilities>(caps))

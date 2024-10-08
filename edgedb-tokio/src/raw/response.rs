@@ -289,12 +289,14 @@ where
                     vec![]
                 };
 
-                Ok(Response {
+                let response = Response {
                     status_data,
                     new_state,
                     data: (),
                     warnings,
-                })
+                };
+                response.log_warnings();
+                Ok(response)
             }
             Error(e) => Err(e),
             ErrorResponse(e) => {

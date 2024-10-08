@@ -182,4 +182,11 @@ impl<T> Response<T> {
             warnings: self.warnings,
         })
     }
+
+    fn log_warnings(&self) {
+        for w in &self.warnings {
+            // TODO: pretty print
+            log::warn!(target: "", "Server warning: {}", w.message)
+        }
+    }
 }

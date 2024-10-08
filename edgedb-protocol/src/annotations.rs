@@ -7,34 +7,34 @@ use crate::encoding::Annotations;
 #[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Warning {
     /// User-friendly explanation of the problem
-    message: String,
+    pub message: String,
 
     /// Name of the Python exception class
-    r#type: String,
+    pub r#type: String,
 
     /// Machine-friendly exception id
-    code: u64,
+    pub code: u64,
 
     /// Name of the source file that caused the warning.
-    filename: Option<String>,
+    pub filename: Option<String>,
 
     /// Additional user-friendly info
-    hint: Option<String>,
+    pub hint: Option<String>,
 
     /// Developer-friendly explanation of why this problem occured
-    details: Option<String>,
+    pub details: Option<String>,
 
     /// Inclusive 0-based position within the source
-    start: Option<i64>,
+    pub start: Option<i64>,
 
     /// Exclusive 0-based position within the source
-    end: Option<i64>,
+    pub end: Option<i64>,
 
     /// 1-based index of the line of the start
-    line: Option<i64>,
+    pub line: Option<i64>,
 
     /// 1-based index of the column of the start
-    col: Option<i64>,
+    pub col: Option<i64>,
 }
 
 #[cfg(feature = "with-serde")]
