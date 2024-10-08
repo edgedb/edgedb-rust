@@ -25,15 +25,31 @@ pub struct Warning {
     pub details: Option<String>,
 
     /// Inclusive 0-based position within the source
+    #[cfg_attr(
+        feature = "with-serde",
+        serde(deserialize_with = "deserialize_i64_from_str")
+    )]
     pub start: Option<i64>,
 
     /// Exclusive 0-based position within the source
+    #[cfg_attr(
+        feature = "with-serde",
+        serde(deserialize_with = "deserialize_i64_from_str")
+    )]
     pub end: Option<i64>,
 
     /// 1-based index of the line of the start
+    #[cfg_attr(
+        feature = "with-serde",
+        serde(deserialize_with = "deserialize_i64_from_str")
+    )]
     pub line: Option<i64>,
 
     /// 1-based index of the column of the start
+    #[cfg_attr(
+        feature = "with-serde",
+        serde(deserialize_with = "deserialize_i64_from_str")
+    )]
     pub col: Option<i64>,
 }
 
@@ -51,5 +67,26 @@ pub fn decode_warnings(annotations: &Annotations) -> Result<Vec<Warning>, edgedb
         })
     } else {
         Ok(vec![])
+    }
+}
+
+#[cfg(feature = "with-serde")]
+fn deserialize_i64_from_str<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<i64>, D::Error> {
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrInt {
+        String(String),
+        Number(i64),
+        None,
+    }
+
+    match StringOrInt::deserialize(deserializer)? {
+        StringOrInt::String(s) => s.parse::<i64>().map_err(serde::de::Error::custom).map(Some),
+        StringOrInt::Number(i) => Ok(Some(i)),
+        StringOrInt::None => Ok(None),
     }
 }
