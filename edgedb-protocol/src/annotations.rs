@@ -53,6 +53,27 @@ pub struct Warning {
     pub col: Option<i64>,
 }
 
+impl std::fmt::Display for Warning {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Warning {
+            filename,
+            line,
+            col,
+            r#type,
+            message,
+            ..
+        } = self;
+        let filename = filename
+            .as_ref()
+            .map(|f| format!("{f}:"))
+            .unwrap_or_default();
+        let line = line.clone().unwrap_or(1);
+        let col = col.clone().unwrap_or(1);
+
+        write!(f, "{type} at {filename}{line}:{col} {message}")
+    }
+}
+
 #[cfg(feature = "with-serde")]
 pub fn decode_warnings(annotations: &Annotations) -> Result<Vec<Warning>, edgedb_errors::Error> {
     use edgedb_errors::{ErrorKind, ProtocolEncodingError};
