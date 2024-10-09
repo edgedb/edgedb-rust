@@ -35,11 +35,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1720422321,
-        "narHash": "sha256-6AOBQSP17xz0JjE5pI/ao/cFhMw6CiWJIE0NfxmAm34=",
+        "lastModified": 1728464304,
+        "narHash": "sha256-Pr5eF+oN7/2WyDlBzcLObCDhA/9qNOW0wVvAtG8Zf+Y=",
         "owner": "edgedb",
         "repo": "packages-nix",
-        "rev": "ec9d4c9bbde1e95e5b087163e96ceb707b485530",
+        "rev": "ec0a3377e1a15633b7bf5d91c2a8515d55f6b292",
         "type": "github"
       },
       "original": {
