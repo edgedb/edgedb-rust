@@ -5,6 +5,7 @@ use bytes::Bytes;
 use edgedb_errors::ProtocolEncodingError;
 use edgedb_errors::{Error, ErrorKind};
 use edgedb_errors::{ParameterTypeMismatchError, ProtocolOutOfOrderError};
+use edgedb_protocol::annotations::Warning;
 use edgedb_protocol::common::State;
 use edgedb_protocol::descriptors::Typedesc;
 use edgedb_protocol::server_message::CommandDataDescription1;
@@ -34,6 +35,7 @@ where
     state: Option<T::State>,
     guard: Option<Guard>,
     description: Option<CommandDataDescription1>,
+    warnings: Vec<Warning>,
 }
 
 impl<'a, T: QueryResult> ResponseStream<'a, T>
@@ -108,6 +110,11 @@ where
                 }
             }
         }
+        let warnings = description
+            .as_ref()
+            .map(|d| annotations::decode_warnings(&d.annotations))
+            .transpose()?
+            .unwrap_or_default();
         let computed_desc = description
             .as_ref()
             .map(|d| d.output())
@@ -123,6 +130,7 @@ where
                 state: Some(state),
                 guard,
                 description,
+                warnings,
             })
         } else {
             Ok(ResponseStream {
@@ -131,6 +139,7 @@ where
                 state: None,
                 guard,
                 description,
+                warnings,
             })
         }
     }
@@ -268,6 +277,9 @@ where
             }
         }
     }
+    pub fn warnings(&self) -> &[Warning] {
+        &self.warnings
+    }
     pub async fn complete(mut self) -> Result<Response<()>, Error> {
         self.process_complete().await
     }
@@ -283,12 +295,7 @@ where
                 status_data,
                 new_state,
             } => {
-                let warnings = if let Some(d) = &self.description {
-                    annotations::decode_warnings(&d.annotations)?
-                } else {
-                    vec![]
-                };
-
+                let warnings = std::mem::take(&mut self.warnings);
                 let response = Response {
                     status_data,
                     new_state,
