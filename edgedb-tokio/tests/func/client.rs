@@ -279,3 +279,19 @@ async fn wrong_field_number() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn warnings() -> anyhow::Result<()> {
+    let client = Client::new(&SERVER.config);
+    client.ensure_connected().await?;
+
+    let (_ints, warnings) = client
+        .query_with_warnings::<i64, _>("select std::_warn_on_call()", &())
+        .await
+        .unwrap();
+    assert_eq!(warnings.len(), 1);
+
+    // TODO: test that the warning is logged
+
+    Ok(())
+}

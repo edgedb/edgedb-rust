@@ -30,7 +30,7 @@
             pkgs.just
 
             # needed for tests
-            edgedb.packages.${system}.edgedb-server
+            edgedb.packages.${system}.edgedb-server-nightly
             edgedb.packages.${system}.edgedb-cli
           ]
           ++ pkgs.lib.optional pkgs.stdenv.isDarwin [

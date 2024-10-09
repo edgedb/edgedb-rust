@@ -97,6 +97,11 @@ pub enum DecodeError {
     },
     #[snafu(display("missing required link or property"))]
     MissingRequiredElement { backtrace: Backtrace },
+    #[snafu(display("invalid format of {annotation} annotation"))]
+    InvalidAnnotationFormat {
+        backtrace: Backtrace,
+        annotation: &'static str,
+    },
 }
 
 #[derive(Snafu, Debug)]
