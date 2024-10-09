@@ -78,13 +78,12 @@ impl std::fmt::Display for Warning {
 pub fn decode_warnings(annotations: &Annotations) -> Result<Vec<Warning>, edgedb_errors::Error> {
     use edgedb_errors::{ErrorKind, ProtocolEncodingError};
 
-    const ANN_NAME: &'static str = "warnings";
+    const ANN_NAME: &str = "warnings";
 
     if let Some(warnings) = annotations.get(ANN_NAME) {
-        serde_json::from_str::<Vec<_>>(&warnings).map_err(|e| {
+        serde_json::from_str::<Vec<_>>(warnings).map_err(|e| {
             ProtocolEncodingError::with_source(e)
                 .context("Invalid JSON while decoding 'warnings' annotation")
-                .into()
         })
     } else {
         Ok(vec![])
