@@ -11,11 +11,12 @@ use crate::builder::Config;
 use crate::errors::NoDataError;
 use crate::errors::{Error, ErrorKind, SHOULD_RETRY};
 use crate::options::{RetryOptions, TransactionOptions};
-use crate::raw::{Options, PoolState};
+use crate::raw::{Options, PoolState, Response};
 use crate::raw::{Pool, QueryCapabilities};
 use crate::state::{AliasesDelta, ConfigDelta, GlobalsDelta};
 use crate::state::{AliasesModifier, ConfigModifier, Fn, GlobalsModifier};
 use crate::transaction::{transaction, Transaction};
+use crate::ResultVerbose;
 
 /// The EdgeDB Client.
 ///
@@ -56,13 +57,14 @@ impl Client {
         Ok(())
     }
 
-    async fn query_and_retry<R, A>(
+    /// Query with retry.
+    async fn query_helper<R, A>(
         &self,
         query: impl AsRef<str>,
         arguments: &A,
         io_format: IoFormat,
         cardinality: Cardinality,
-    ) -> Result<Vec<R>, Error>
+    ) -> Result<Response<Vec<R>>, Error>
     where
         A: QueryArgs,
         R: QueryResult,
@@ -85,7 +87,7 @@ impl Client {
                 )
                 .await
             {
-                Ok(resp) => return Ok(resp.data),
+                Ok(resp) => return Ok(resp),
                 Err(e) => {
                     let allow_retry = match e.get::<QueryCapabilities>() {
                         // Error from a weird source, or just a bug
@@ -108,6 +110,31 @@ impl Client {
                 }
             }
         }
+    }
+
+    /// Execute a query and return a collection of results and warnings produced by the server.
+    ///
+    /// You will usually have to specify the return type for the query:
+    ///
+    /// ```rust,ignore
+    /// let greeting: (Vec<String>, _) = conn.query_with_warnings("select 'hello'", &()).await?;
+    /// ```
+    ///
+    /// This method can be used with both static arguments, like a tuple of
+    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// Similarly, dynamically typed results are also supported.
+    pub async fn query_verbose<R, A>(
+        &self,
+        query: impl AsRef<str> + Send,
+        arguments: &A,
+    ) -> Result<ResultVerbose<Vec<R>>, Error>
+    where
+        A: QueryArgs,
+        R: QueryResult,
+    {
+        Client::query_helper(self, query, arguments, IoFormat::Binary, Cardinality::Many)
+            .await
+            .map(|Response { data, warnings, .. }| ResultVerbose { data, warnings })
     }
 
     /// Execute a query and return a collection of results.
@@ -134,7 +161,9 @@ impl Client {
         A: QueryArgs,
         R: QueryResult,
     {
-        Client::query_and_retry(self, query, arguments, IoFormat::Binary, Cardinality::Many).await
+        Client::query_helper(self, query, arguments, IoFormat::Binary, Cardinality::Many)
+            .await
+            .map(|r| r.data)
     }
 
     /// Execute a query and return a single result
@@ -162,7 +191,7 @@ impl Client {
         A: QueryArgs,
         R: QueryResult + Send,
     {
-        Client::query_and_retry(
+        Client::query_helper(
             self,
             query,
             arguments,
@@ -170,7 +199,7 @@ impl Client {
             Cardinality::AtMostOne,
         )
         .await
-        .map(|x| x.into_iter().next())
+        .map(|x| x.data.into_iter().next())
     }
 
     /// Execute a query and return a single result
@@ -207,7 +236,7 @@ impl Client {
         A: QueryArgs,
         R: QueryResult + Send,
     {
-        Client::query_and_retry(
+        Client::query_helper(
             self,
             query,
             arguments,
@@ -216,7 +245,8 @@ impl Client {
         )
         .await
         .and_then(|x| {
-            x.into_iter()
+            x.data
+                .into_iter()
                 .next()
                 .ok_or_else(|| NoDataError::with_message("query row returned zero results"))
         })
@@ -229,10 +259,11 @@ impl Client {
         arguments: &impl QueryArgs,
     ) -> Result<Json, Error> {
         let res = self
-            .query_and_retry::<String, _>(query, arguments, IoFormat::Json, Cardinality::Many)
+            .query_helper::<String, _>(query, arguments, IoFormat::Json, Cardinality::Many)
             .await?;
 
         let json = res
+            .data
             .into_iter()
             .next()
             .ok_or_else(|| NoDataError::with_message("query row returned zero results"))?;
@@ -266,11 +297,11 @@ impl Client {
         arguments: &impl QueryArgs,
     ) -> Result<Option<Json>, Error> {
         let res = self
-            .query_and_retry::<String, _>(query, arguments, IoFormat::Json, Cardinality::AtMostOne)
+            .query_helper::<String, _>(query, arguments, IoFormat::Json, Cardinality::AtMostOne)
             .await?;
 
         // we trust database to produce valid json
-        Ok(res.into_iter().next().map(Json::new_unchecked))
+        Ok(res.data.into_iter().next().map(Json::new_unchecked))
     }
 
     /// Execute a query and return a single result as JSON.

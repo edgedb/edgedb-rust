@@ -118,6 +118,7 @@ impl Connection {
                         status_data: complete.status_data,
                         new_state: None,
                         data: (),
+                        warnings: vec![],
                     });
                 }
                 ServerMessage::CommandComplete1(complete) => {
@@ -127,6 +128,7 @@ impl Connection {
                         status_data: complete.status_data,
                         new_state: complete.state,
                         data: (),
+                        warnings: vec![],
                     });
                 }
                 ServerMessage::ErrorResponse(err) => {
@@ -220,6 +222,7 @@ impl DumpStream<'_> {
                             status_data: complete.status_data,
                             new_state: None,
                             data: (),
+                            warnings: vec![],
                         });
                     }
                     None
@@ -235,6 +238,7 @@ impl DumpStream<'_> {
                             status_data: complete.status_data,
                             new_state: complete.state,
                             data: (),
+                            warnings: vec![],
                         });
                     }
                     None

@@ -11,7 +11,7 @@ readme = "README.md"
 rust-version.workspace = true
 
 [dependencies]
-edgedb-protocol = { path = "../edgedb-protocol", version = "0.6.0" }
+edgedb-protocol = { path = "../edgedb-protocol", version = "0.6.0", features = ["with-serde"] }
 edgedb-errors = { path = "../edgedb-errors", version = "0.4.1" }
 edgedb-derive = { path = "../edgedb-derive", version = "0.5.1", optional = true }
 tokio = { version = "1.15", features = ["net", "time", "sync", "macros"] }

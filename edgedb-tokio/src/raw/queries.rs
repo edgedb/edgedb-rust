@@ -248,11 +248,18 @@ impl Connection {
 
         let mut data = Vec::new();
         let mut description = None;
+        let mut warnings: Vec<edgedb_protocol::annotations::Warning> = Vec::new();
         loop {
             let msg = self.message().await?;
             match msg {
                 ServerMessage::StateDataDescription(d) => {
                     self.state_desc = d.typedesc;
+                }
+                ServerMessage::CommandDataDescription1(desc) => {
+                    warnings.extend(edgedb_protocol::annotations::decode_warnings(
+                        &desc.annotations,
+                    )?);
+                    description = Some(desc);
                 }
                 ServerMessage::Data(datum) => {
                     data.push(datum);
@@ -263,10 +270,8 @@ impl Connection {
                         status_data: complete.status_data,
                         new_state: complete.state,
                         data,
+                        warnings,
                     });
-                }
-                ServerMessage::CommandDataDescription1(desc) => {
-                    description = Some(desc);
                 }
                 ServerMessage::ErrorResponse(err) => {
                     self.expect_ready_or_eos(guard)
@@ -314,6 +319,7 @@ impl Connection {
                         status_data: complete.status_data,
                         new_state: None,
                         data,
+                        warnings: vec![],
                     });
                 }
                 ServerMessage::ErrorResponse(err) => {
@@ -586,6 +592,7 @@ impl Connection {
             let response = self
                 ._execute(&flags, query, state, &desc, &arg_buf.freeze())
                 .await?;
+            response.log_warnings();
 
             let out_desc = desc.output().map_err(ProtocolEncodingError::with_source)?;
             match out_desc.root_pos() {
@@ -639,10 +646,11 @@ impl Connection {
                 return Err(e.set::<Description>(desc));
             }
 
-            let res = self
+            let response = self
                 ._execute(&flags, query, state, &desc, &arg_buf.freeze())
                 .await?;
-            res.map(|_| Ok::<_, Error>(()))
+            response.log_warnings();
+            response.map(|_| Ok::<_, Error>(()))
         }
         .await;
         result.map_err(|e| e.set::<QueryCapabilities>(caps))

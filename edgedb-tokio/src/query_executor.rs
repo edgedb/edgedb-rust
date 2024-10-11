@@ -1,9 +1,15 @@
-use edgedb_protocol::model::Json;
 use edgedb_protocol::query_arg::QueryArgs;
 use edgedb_protocol::QueryResult;
+use edgedb_protocol::{annotations::Warning, model::Json};
 use std::future::Future;
 
 use crate::{Client, Error, Transaction};
+
+#[non_exhaustive]
+pub struct ResultVerbose<R> {
+    pub data: R,
+    pub warnings: Vec<Warning>,
+}
 
 /// Abstracts over different query executors
 /// In particular &Client and &mut Transaction
@@ -14,6 +20,16 @@ pub trait QueryExecutor: Sized {
         query: impl AsRef<str> + Send,
         arguments: &A,
     ) -> impl Future<Output = Result<Vec<R>, Error>> + Send
+    where
+        A: QueryArgs,
+        R: QueryResult + Send;
+
+    /// see [Client::query_with_warnings]
+    fn query_verbose<R, A>(
+        self,
+        query: impl AsRef<str> + Send,
+        arguments: &A,
+    ) -> impl Future<Output = Result<ResultVerbose<Vec<R>>, Error>> + Send
     where
         A: QueryArgs,
         R: QueryResult + Send;
@@ -80,6 +96,18 @@ impl QueryExecutor for &Client {
         R: QueryResult,
     {
         Client::query(self, query, arguments)
+    }
+
+    fn query_verbose<R, A>(
+        self,
+        query: impl AsRef<str> + Send,
+        arguments: &A,
+    ) -> impl Future<Output = Result<ResultVerbose<Vec<R>>, Error>> + Send
+    where
+        A: QueryArgs,
+        R: QueryResult + Send,
+    {
+        Client::query_verbose(self, query, arguments)
     }
 
     fn query_single<R, A>(
@@ -149,6 +177,18 @@ impl QueryExecutor for &mut Transaction {
         R: QueryResult,
     {
         Transaction::query(self, query, arguments)
+    }
+
+    fn query_verbose<R, A>(
+        self,
+        query: impl AsRef<str> + Send,
+        arguments: &A,
+    ) -> impl Future<Output = Result<ResultVerbose<Vec<R>>, Error>> + Send
+    where
+        A: QueryArgs,
+        R: QueryResult + Send,
+    {
+        Transaction::query_verbose(self, query, arguments)
     }
 
     fn query_single<R, A>(

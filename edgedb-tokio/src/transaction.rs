@@ -13,7 +13,8 @@ use tokio::time::sleep;
 use crate::errors::ClientError;
 use crate::errors::{Error, ErrorKind, SHOULD_RETRY};
 use crate::errors::{NoDataError, ProtocolEncodingError};
-use crate::raw::{Options, Pool, PoolConnection, PoolState};
+use crate::raw::{Options, Pool, PoolConnection, PoolState, Response};
+use crate::ResultVerbose;
 
 /// Transaction object passed to the closure via
 /// [`Client::transaction()`](crate::Client::transaction) method
@@ -156,7 +157,7 @@ impl Transaction {
         arguments: &A,
         io_format: IoFormat,
         cardinality: Cardinality,
-    ) -> Result<Vec<R>, Error>
+    ) -> Result<Response<Vec<R>>, Error>
     where
         A: QueryArgs,
         R: QueryResult,
@@ -175,7 +176,6 @@ impl Transaction {
                 cardinality,
             )
             .await
-            .map(|x| x.data)
     }
 
     /// Execute a query and return a collection of results.
@@ -183,9 +183,9 @@ impl Transaction {
     /// You will usually have to specify the return type for the query:
     ///
     /// ```rust,ignore
-    /// let greeting = pool.query::<String, _>("SELECT 'hello'", &());
+    /// let greeting = tran.query::<String, _>("SELECT 'hello'", &());
     /// // or
-    /// let greeting: Vec<String> = pool.query("SELECT 'hello'", &());
+    /// let greeting: Vec<String> = tran.query("SELECT 'hello'", &());
     /// ```
     ///
     /// This method can be used with both static arguments, like a tuple of
@@ -202,6 +202,32 @@ impl Transaction {
     {
         self.query_helper(query, arguments, IoFormat::Binary, Cardinality::Many)
             .await
+            .map(|x| x.data)
+    }
+
+    /// Execute a query and return a collection of results and warnings produced by the server.
+    ///
+    /// You will usually have to specify the return type for the query:
+    ///
+    /// ```rust,ignore
+    /// let greeting: (Vec<String>, _) = tran.query_with_warnings("select 'hello'", &()).await?;
+    /// ```
+    ///
+    /// This method can be used with both static arguments, like a tuple of
+    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// Similarly, dynamically typed results are also supported.
+    pub async fn query_verbose<R, A>(
+        &mut self,
+        query: impl AsRef<str> + Send,
+        arguments: &A,
+    ) -> Result<ResultVerbose<Vec<R>>, Error>
+    where
+        A: QueryArgs,
+        R: QueryResult,
+    {
+        self.query_helper(query, arguments, IoFormat::Binary, Cardinality::Many)
+            .await
+            .map(|Response { data, warnings, .. }| ResultVerbose { data, warnings })
     }
 
     /// Execute a query and return a single result
@@ -215,12 +241,12 @@ impl Transaction {
     /// You will usually have to specify the return type for the query:
     ///
     /// ```rust,ignore
-    /// let greeting = pool.query_required_single::<String, _>(
+    /// let greeting = tran.query_required_single::<String, _>(
     ///     "SELECT 'hello'",
     ///     &(),
     /// );
     /// // or
-    /// let greeting: String = pool.query_required_single(
+    /// let greeting: String = tran.query_required_single(
     ///     "SELECT 'hello'",
     ///     &(),
     /// );
@@ -240,7 +266,7 @@ impl Transaction {
     {
         self.query_helper(query, arguments, IoFormat::Binary, Cardinality::AtMostOne)
             .await
-            .map(|x| x.into_iter().next())
+            .map(|x| x.data.into_iter().next())
     }
 
     /// Execute a query and return a single result
@@ -254,12 +280,12 @@ impl Transaction {
     /// You will usually have to specify the return type for the query:
     ///
     /// ```rust,ignore
-    /// let greeting = pool.query_required_single::<String, _>(
+    /// let greeting = tran.query_required_single::<String, _>(
     ///     "SELECT 'hello'",
     ///     &(),
     /// );
     /// // or
-    /// let greeting: String = pool.query_required_single(
+    /// let greeting: String = tran.query_required_single(
     ///     "SELECT 'hello'",
     ///     &(),
     /// );
@@ -280,7 +306,8 @@ impl Transaction {
         self.query_helper(query, arguments, IoFormat::Binary, Cardinality::AtMostOne)
             .await
             .and_then(|x| {
-                x.into_iter()
+                x.data
+                    .into_iter()
                     .next()
                     .ok_or_else(|| NoDataError::with_message("query row returned zero results"))
             })
@@ -297,6 +324,7 @@ impl Transaction {
             .await?;
 
         let json = res
+            .data
             .into_iter()
             .next()
             .ok_or_else(|| NoDataError::with_message("query row returned zero results"))?;
@@ -321,7 +349,7 @@ impl Transaction {
             .await?;
 
         // we trust database to produce valid json
-        Ok(res.into_iter().next().map(Json::new_unchecked))
+        Ok(res.data.into_iter().next().map(Json::new_unchecked))
     }
 
     /// Execute a query and return a single result as JSON.
