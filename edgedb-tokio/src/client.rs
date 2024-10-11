@@ -1,7 +1,6 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use edgedb_protocol::annotations::Warning;
 use edgedb_protocol::common::{Capabilities, Cardinality, IoFormat};
 use edgedb_protocol::model::Json;
 use edgedb_protocol::query_arg::QueryArgs;
@@ -17,6 +16,7 @@ use crate::raw::{Pool, QueryCapabilities};
 use crate::state::{AliasesDelta, ConfigDelta, GlobalsDelta};
 use crate::state::{AliasesModifier, ConfigModifier, Fn, GlobalsModifier};
 use crate::transaction::{transaction, Transaction};
+use crate::ResultVerbose;
 
 /// The EdgeDB Client.
 ///
@@ -123,18 +123,18 @@ impl Client {
     /// This method can be used with both static arguments, like a tuple of
     /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
-    pub async fn query_with_warnings<R, A>(
+    pub async fn query_verbose<R, A>(
         &self,
         query: impl AsRef<str> + Send,
         arguments: &A,
-    ) -> Result<(Vec<R>, Vec<Warning>), Error>
+    ) -> Result<ResultVerbose<Vec<R>>, Error>
     where
         A: QueryArgs,
         R: QueryResult,
     {
         Client::query_helper(self, query, arguments, IoFormat::Binary, Cardinality::Many)
             .await
-            .map(|x| (x.data, x.warnings))
+            .map(|Response { data, warnings, .. }| ResultVerbose { data, warnings })
     }
 
     /// Execute a query and return a collection of results.

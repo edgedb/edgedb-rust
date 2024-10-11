@@ -285,11 +285,11 @@ async fn warnings() -> anyhow::Result<()> {
     let client = Client::new(&SERVER.config);
     client.ensure_connected().await?;
 
-    let (_ints, warnings) = client
-        .query_with_warnings::<i64, _>("select std::_warn_on_call()", &())
+    let res = client
+        .query_verbose::<i64, _>("select std::_warn_on_call()", &())
         .await
         .unwrap();
-    assert_eq!(warnings.len(), 1);
+    assert_eq!(res.warnings.len(), 1);
 
     // TODO: test that the warning is logged
 

@@ -5,6 +5,12 @@ use std::future::Future;
 
 use crate::{Client, Error, Transaction};
 
+#[non_exhaustive]
+pub struct ResultVerbose<R> {
+    pub data: R,
+    pub warnings: Vec<Warning>,
+}
+
 /// Abstracts over different query executors
 /// In particular &Client and &mut Transaction
 pub trait QueryExecutor: Sized {
@@ -19,11 +25,11 @@ pub trait QueryExecutor: Sized {
         R: QueryResult + Send;
 
     /// see [Client::query_with_warnings]
-    fn query_with_warnings<R, A>(
+    fn query_verbose<R, A>(
         self,
         query: impl AsRef<str> + Send,
         arguments: &A,
-    ) -> impl Future<Output = Result<(Vec<R>, Vec<Warning>), Error>> + Send
+    ) -> impl Future<Output = Result<ResultVerbose<Vec<R>>, Error>> + Send
     where
         A: QueryArgs,
         R: QueryResult + Send;
@@ -92,16 +98,16 @@ impl QueryExecutor for &Client {
         Client::query(self, query, arguments)
     }
 
-    fn query_with_warnings<R, A>(
+    fn query_verbose<R, A>(
         self,
         query: impl AsRef<str> + Send,
         arguments: &A,
-    ) -> impl Future<Output = Result<(Vec<R>, Vec<Warning>), Error>> + Send
+    ) -> impl Future<Output = Result<ResultVerbose<Vec<R>>, Error>> + Send
     where
         A: QueryArgs,
         R: QueryResult + Send,
     {
-        Client::query_with_warnings(self, query, arguments)
+        Client::query_verbose(self, query, arguments)
     }
 
     fn query_single<R, A>(
@@ -173,16 +179,16 @@ impl QueryExecutor for &mut Transaction {
         Transaction::query(self, query, arguments)
     }
 
-    fn query_with_warnings<R, A>(
+    fn query_verbose<R, A>(
         self,
         query: impl AsRef<str> + Send,
         arguments: &A,
-    ) -> impl Future<Output = Result<(Vec<R>, Vec<Warning>), Error>> + Send
+    ) -> impl Future<Output = Result<ResultVerbose<Vec<R>>, Error>> + Send
     where
         A: QueryArgs,
         R: QueryResult + Send,
     {
-        Transaction::query_with_warnings(self, query, arguments)
+        Transaction::query_verbose(self, query, arguments)
     }
 
     fn query_single<R, A>(

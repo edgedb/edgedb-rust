@@ -2,7 +2,6 @@ use std::future::Future;
 use std::sync::Arc;
 
 use bytes::BytesMut;
-use edgedb_protocol::annotations::Warning;
 use edgedb_protocol::common::CompilationOptions;
 use edgedb_protocol::common::{Capabilities, Cardinality, IoFormat};
 use edgedb_protocol::model::Json;
@@ -15,6 +14,7 @@ use crate::errors::ClientError;
 use crate::errors::{Error, ErrorKind, SHOULD_RETRY};
 use crate::errors::{NoDataError, ProtocolEncodingError};
 use crate::raw::{Options, Pool, PoolConnection, PoolState, Response};
+use crate::ResultVerbose;
 
 /// Transaction object passed to the closure via
 /// [`Client::transaction()`](crate::Client::transaction) method
@@ -216,18 +216,18 @@ impl Transaction {
     /// This method can be used with both static arguments, like a tuple of
     /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
-    pub async fn query_with_warnings<R, A>(
+    pub async fn query_verbose<R, A>(
         &mut self,
         query: impl AsRef<str> + Send,
         arguments: &A,
-    ) -> Result<(Vec<R>, Vec<Warning>), Error>
+    ) -> Result<ResultVerbose<Vec<R>>, Error>
     where
         A: QueryArgs,
         R: QueryResult,
     {
         self.query_helper(query, arguments, IoFormat::Binary, Cardinality::Many)
             .await
-            .map(|x| (x.data, x.warnings))
+            .map(|Response { data, warnings, .. }| ResultVerbose { data, warnings })
     }
 
     /// Execute a query and return a single result
