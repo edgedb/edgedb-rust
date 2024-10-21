@@ -34,6 +34,7 @@ impl ServerParam for PostgresAddress {
 impl SealedParam for PostgresAddress {}
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct PostgresDsn(pub String);
 
 impl ServerParam for PostgresDsn {

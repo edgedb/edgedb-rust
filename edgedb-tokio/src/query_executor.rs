@@ -5,9 +5,14 @@ use std::future::Future;
 
 use crate::{Client, Error, Transaction};
 
+/// Query result with additional metadata.
 #[non_exhaustive]
+#[derive(Debug)]
 pub struct ResultVerbose<R> {
+    /// Query results
     pub data: R,
+
+    /// Query warnings
     pub warnings: Vec<Warning>,
 }
 
