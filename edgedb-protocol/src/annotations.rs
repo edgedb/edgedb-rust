@@ -16,39 +16,42 @@ pub struct Warning {
     pub code: u64,
 
     /// Name of the source file that caused the warning.
+    #[cfg_attr(feature = "with-serde", serde(default))]
     pub filename: Option<String>,
 
     /// Additional user-friendly info
+    #[cfg_attr(feature = "with-serde", serde(default))]
     pub hint: Option<String>,
 
     /// Developer-friendly explanation of why this problem occured
+    #[cfg_attr(feature = "with-serde", serde(default))]
     pub details: Option<String>,
 
     /// Inclusive 0-based position within the source
     #[cfg_attr(
         feature = "with-serde",
-        serde(deserialize_with = "deserialize_usize_from_str")
+        serde(deserialize_with = "deserialize_usize_from_str", default)
     )]
     pub start: Option<usize>,
 
     /// Exclusive 0-based position within the source
     #[cfg_attr(
         feature = "with-serde",
-        serde(deserialize_with = "deserialize_usize_from_str")
+        serde(deserialize_with = "deserialize_usize_from_str", default)
     )]
     pub end: Option<usize>,
 
     /// 1-based index of the line of the start
     #[cfg_attr(
         feature = "with-serde",
-        serde(deserialize_with = "deserialize_usize_from_str")
+        serde(deserialize_with = "deserialize_usize_from_str", default)
     )]
     pub line: Option<usize>,
 
     /// 1-based index of the column of the start
     #[cfg_attr(
         feature = "with-serde",
-        serde(deserialize_with = "deserialize_usize_from_str")
+        serde(deserialize_with = "deserialize_usize_from_str", default)
     )]
     pub col: Option<usize>,
 }
@@ -101,15 +104,94 @@ fn deserialize_usize_from_str<'de, D: serde::Deserializer<'de>>(
     enum StringOrInt {
         String(String),
         Number(usize),
-        None,
     }
 
-    match StringOrInt::deserialize(deserializer)? {
-        StringOrInt::String(s) => s
-            .parse::<usize>()
-            .map_err(serde::de::Error::custom)
-            .map(Some),
-        StringOrInt::Number(i) => Ok(Some(i)),
-        StringOrInt::None => Ok(None),
-    }
+    Option::<StringOrInt>::deserialize(deserializer)?
+        .map(|x| match x {
+            StringOrInt::String(s) => s.parse::<usize>().map_err(serde::de::Error::custom),
+            StringOrInt::Number(i) => Ok(i),
+        })
+        .transpose()
+}
+
+#[test]
+#[cfg(feature = "with-serde")]
+fn deserialize_warning() {
+    let a: Warning =
+        serde_json::from_str(r#"{"message": "a", "type": "WarningException", "code": 1}"#).unwrap();
+    assert_eq!(
+        a,
+        Warning {
+            message: "a".to_string(),
+            r#type: "WarningException".to_string(),
+            code: 1,
+            filename: None,
+            hint: None,
+            details: None,
+            start: None,
+            end: None,
+            line: None,
+            col: None
+        }
+    );
+
+    let a: Warning = serde_json::from_str(
+        r#"{"message": "a", "type": "WarningException", "code": 1, "start": null}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        a,
+        Warning {
+            message: "a".to_string(),
+            r#type: "WarningException".to_string(),
+            code: 1,
+            filename: None,
+            hint: None,
+            details: None,
+            start: None,
+            end: None,
+            line: None,
+            col: None
+        }
+    );
+
+    let a: Warning = serde_json::from_str(
+        r#"{"message": "a", "type": "WarningException", "code": 1, "start": 23}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        a,
+        Warning {
+            message: "a".to_string(),
+            r#type: "WarningException".to_string(),
+            code: 1,
+            filename: None,
+            hint: None,
+            details: None,
+            start: Some(23),
+            end: None,
+            line: None,
+            col: None
+        }
+    );
+
+    let a: Warning = serde_json::from_str(
+        r#"{"message": "a", "type": "WarningException", "code": 1, "start": "23"}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        a,
+        Warning {
+            message: "a".to_string(),
+            r#type: "WarningException".to_string(),
+            code: 1,
+            filename: None,
+            hint: None,
+            details: None,
+            start: Some(23),
+            end: None,
+            line: None,
+            col: None
+        }
+    );
 }
