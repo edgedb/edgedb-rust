@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 
 use edgedb_protocol::common::Capabilities;
-use edgedb_protocol::common::{Cardinality, CompilationOptions, IoFormat};
+use edgedb_protocol::common::{Cardinality, CompilationOptions, IoFormat, InputLanguage};
 use edgedb_tokio::raw::{Pool, PoolState};
 
 use crate::server::SERVER;
@@ -21,6 +21,7 @@ async fn poll_connect() -> anyhow::Result<()> {
         implicit_typeids: false,
         allow_capabilities: Capabilities::empty(),
         explicit_objectids: true,
+        input_language: InputLanguage::EdgeQL,
         io_format: IoFormat::Binary,
         expected_cardinality: Cardinality::Many,
     };

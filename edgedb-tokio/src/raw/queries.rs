@@ -9,7 +9,7 @@ use edgedb_protocol::client_message::{ClientMessage, Parse, Prepare};
 use edgedb_protocol::client_message::{DescribeAspect, DescribeStatement};
 use edgedb_protocol::client_message::{Execute0, Execute1};
 use edgedb_protocol::common::CompilationOptions;
-use edgedb_protocol::common::{Capabilities, Cardinality, IoFormat};
+use edgedb_protocol::common::{Capabilities, Cardinality, InputLanguage, IoFormat};
 use edgedb_protocol::descriptors::Typedesc;
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::model::Uuid;
@@ -234,6 +234,7 @@ impl Connection {
                 allowed_capabilities: opts.allow_capabilities,
                 compilation_flags: opts.flags(),
                 implicit_limit: opts.implicit_limit,
+                input_language: opts.input_language,
                 output_format: opts.io_format,
                 expected_cardinality: opts.expected_cardinality,
                 command_text: query.into(),
@@ -367,6 +368,7 @@ impl Connection {
                     allowed_capabilities: opts.allow_capabilities,
                     compilation_flags: opts.flags(),
                     implicit_limit: opts.implicit_limit,
+                    input_language: opts.input_language,
                     output_format: opts.io_format,
                     expected_cardinality: opts.expected_cardinality,
                     command_text: query.into(),
@@ -422,6 +424,7 @@ impl Connection {
                     allowed_capabilities: opts.allow_capabilities,
                     compilation_flags: opts.flags(),
                     implicit_limit: opts.implicit_limit,
+                    input_language: opts.input_language,
                     output_format: opts.io_format,
                     expected_cardinality: opts.expected_cardinality,
                     command_text: query.into(),
@@ -475,6 +478,7 @@ impl Connection {
                 allowed_capabilities: opts.allow_capabilities,
                 compilation_flags: opts.flags(),
                 implicit_limit: opts.implicit_limit,
+                input_language: opts.input_language,
                 output_format: opts.io_format,
                 expected_cardinality: opts.expected_cardinality,
                 command_text: query.into(),
@@ -575,6 +579,7 @@ impl Connection {
                 explicit_objectids: true,
                 allow_capabilities,
                 io_format,
+                input_language: InputLanguage::EdgeQL,
                 expected_cardinality: cardinality,
             };
             let desc = self.parse(&flags, query, state).await?;
@@ -631,6 +636,7 @@ impl Connection {
                 implicit_typeids: false,
                 explicit_objectids: true,
                 allow_capabilities,
+                input_language: InputLanguage::EdgeQL,
                 io_format: IoFormat::Binary,
                 expected_cardinality: Cardinality::Many,
             };
@@ -686,6 +692,7 @@ impl PoolConnection {
             implicit_typeids: false,
             explicit_objectids: false,
             allow_capabilities: Capabilities::ALL,
+            input_language: InputLanguage::EdgeQL,
             io_format: IoFormat::Binary,
             expected_cardinality: Cardinality::Many, // no result is unsupported
         };
