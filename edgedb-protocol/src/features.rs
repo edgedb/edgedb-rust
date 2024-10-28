@@ -7,7 +7,7 @@ pub struct ProtocolVersion {
 impl ProtocolVersion {
     pub fn current() -> ProtocolVersion {
         ProtocolVersion {
-            major_ver: 1,
+            major_ver: 2,
             minor_ver: 0,
         }
     }

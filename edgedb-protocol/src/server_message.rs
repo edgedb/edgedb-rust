@@ -270,8 +270,19 @@ impl ParameterStatus {
 
         let typedesc_buf = &mut Input::new(self.proto, typedesc_data);
         let typedesc_id = Uuid::decode(typedesc_buf)?;
-        let typedesc = Typedesc::decode_with_id(typedesc_id, typedesc_buf)?;
-        Ok((typedesc, data))
+        let res = Typedesc::decode_with_id(typedesc_id, typedesc_buf);
+        match res {
+            Ok(typedesc) => {
+                return Ok((typedesc, data));
+            }
+            Err(err) => {
+                eprintln!("Could not parse system config type descriptor: {:#}", err);
+                if let Some(bt) = snafu::ErrorCompat::backtrace(&err) {
+                    eprintln!("{bt}");
+                }
+                return Err(err);
+            }
+        }
     }
 }
 

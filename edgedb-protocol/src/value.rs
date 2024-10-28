@@ -2,7 +2,7 @@
 Contains the [Value] enum.
 */
 pub use crate::codec::EnumValue;
-use crate::codec::{NamedTupleShape, ObjectShape, ShapeElement};
+use crate::codec::{InputObjectShape, InputShapeElement, NamedTupleShape, ObjectShape};
 use crate::common::Cardinality;
 use crate::model::{BigInt, ConfigMemory, Decimal, Range, Uuid};
 use crate::model::{DateDuration, Json, RelativeDuration};
@@ -50,7 +50,7 @@ pub enum Value {
 
 #[derive(Clone, Debug)]
 pub struct SparseObject {
-    pub(crate) shape: ObjectShape,
+    pub(crate) shape: InputObjectShape,
     pub(crate) fields: Vec<Option<Option<Value>>>,
 }
 
@@ -113,24 +113,21 @@ impl SparseObject {
         let mut elements = Vec::new();
         let mut fields = Vec::new();
         for (key, val) in iter.into_iter() {
-            elements.push(ShapeElement {
-                flag_implicit: false,
-                flag_link_property: false,
-                flag_link: false,
+            elements.push(InputShapeElement {
                 cardinality: Some(Cardinality::AtMostOne),
                 name: key.to_string(),
             });
             fields.push(Some(val.into()));
         }
         SparseObject {
-            shape: ObjectShape::new(elements),
+            shape: InputObjectShape::new(elements),
             fields,
         }
     }
     /// Create an empty sparse object
     pub fn empty() -> SparseObject {
         SparseObject {
-            shape: ObjectShape::new(Vec::new()),
+            shape: InputObjectShape::new(Vec::new()),
             fields: Vec::new(),
         }
     }

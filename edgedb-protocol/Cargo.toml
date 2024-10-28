@@ -13,7 +13,7 @@ rust-version.workspace = true
 
 [dependencies]
 bytes = "1.5.0"
-snafu = {version="0.8.0"}
+snafu = {version="0.8.0", features=["backtrace"]}
 uuid = "1.1.2"
 num-bigint = {version="0.4.3", optional=true}
 num-traits = {version="0.2.10", optional=true}
