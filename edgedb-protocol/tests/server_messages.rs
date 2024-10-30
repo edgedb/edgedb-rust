@@ -244,12 +244,12 @@ fn command_data_description1() -> Result<(), Box<dyn Error>> {
             capabilities: Capabilities::MODIFICATIONS,
             result_cardinality: Cardinality::AtMostOne,
             input: RawTypedesc {
-                proto: ProtocolVersion::current(),
+                proto: ProtocolVersion::new(1, 0),
                 id: Uuid::from_u128(0xFF),
                 data: Bytes::from_static(b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0"),
             },
             output: RawTypedesc {
-                proto: ProtocolVersion::current(),
+                proto: ProtocolVersion::new(1, 0),
                 id: Uuid::from_u128(0x105),
                 data: Bytes::from_static(b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\x05"),
             },
@@ -270,12 +270,12 @@ fn command_data_description1() -> Result<(), Box<dyn Error>> {
             capabilities: Capabilities::MODIFICATIONS,
             result_cardinality: Cardinality::NoResult,
             input: RawTypedesc {
-                proto: ProtocolVersion::current(),
+                proto: ProtocolVersion::new(1, 0),
                 id: Uuid::from_u128(0xFF),
                 data: Bytes::from_static(b"\x04\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\xff\0\0"),
             },
             output: RawTypedesc {
-                proto: ProtocolVersion::current(),
+                proto: ProtocolVersion::new(1, 0),
                 id: Uuid::from_u128(0),
                 data: Bytes::from_static(b""),
             },

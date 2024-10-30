@@ -50,8 +50,11 @@ fn check_scalar(
     use crate::descriptors::Descriptor::{BaseScalar, Scalar};
     let desc = ctx.get(type_pos)?;
     match desc {
-        Scalar(scalar) => {
-            return check_scalar(ctx, scalar.base_type_pos, type_id, name);
+        Scalar(scalar) if scalar.base_type_pos.is_some() => {
+            return check_scalar(ctx, scalar.base_type_pos.unwrap(), type_id, name);
+        }
+        Scalar(scalar) if ctx.proto.is_2() && *scalar.id == type_id => {
+            return Ok(());
         }
         BaseScalar(base) if *base.id == type_id => {
             return Ok(());
@@ -152,7 +155,7 @@ impl<'t> RawCodec<'t> for bool {
         let res = match buf[0] {
             0x00 => false,
             0x01 => true,
-            _ => errors::InvalidBool.fail()?,
+            v => errors::InvalidBool { val: v }.fail()?,
         };
         Ok(res)
     }

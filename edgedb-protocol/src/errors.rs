@@ -73,8 +73,10 @@ pub enum DecodeError {
     InvalidArrayOrSetShape { backtrace: Backtrace },
     #[snafu(display("decimal or bigint sign bytes have invalid value"))]
     BadSign { backtrace: Backtrace },
-    #[snafu(display("invalid boolean value"))]
-    InvalidBool { backtrace: Backtrace },
+    #[snafu(display("invalid boolean value: {val:?}"))]
+    InvalidBool { backtrace: Backtrace, val: u8 },
+    #[snafu(display("invalid optional u32 value"))]
+    InvalidOptionU32 { backtrace: Backtrace },
     #[snafu(display("datetime is out of range"))]
     InvalidDate { backtrace: Backtrace },
     #[snafu(display("json format is invalid"))]
@@ -102,6 +104,8 @@ pub enum DecodeError {
         backtrace: Backtrace,
         annotation: &'static str,
     },
+    #[snafu(display("invalid type operation value"))]
+    InvalidTypeOperation { backtrace: Backtrace },
 }
 
 #[derive(Snafu, Debug)]

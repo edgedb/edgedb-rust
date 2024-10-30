@@ -194,3 +194,25 @@ impl Encode for Uuid {
         Ok(())
     }
 }
+
+impl Decode for bool {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
+        ensure!(buf.remaining() >= 1, errors::Underflow);
+        let res = match buf.get_u8() {
+            0x00 => false,
+            0x01 => true,
+            v => errors::InvalidBool { val: v }.fail()?,
+        };
+        Ok(res)
+    }
+}
+
+impl Encode for bool {
+    fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
+        buf.extend(match self {
+            true => &[0x01],
+            false => &[0x00],
+        });
+        Ok(())
+    }
+}

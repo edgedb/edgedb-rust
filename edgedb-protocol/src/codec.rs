@@ -98,6 +98,20 @@ pub struct ShapeElement {
     pub name: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InputObjectShape(pub(crate) Arc<InputObjectShapeInfo>);
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct InputObjectShapeInfo {
+    pub elements: Vec<InputShapeElement>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct InputShapeElement {
+    pub cardinality: Option<Cardinality>,
+    pub name: String,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct NamedTupleShapeInfo {
     pub elements: Vec<TupleElement>,
@@ -179,7 +193,7 @@ pub struct Object {
 
 #[derive(Debug)]
 pub struct Input {
-    shape: ObjectShape,
+    shape: InputObjectShape,
     codecs: Vec<Arc<dyn Codec>>,
 }
 
@@ -247,6 +261,19 @@ impl Deref for ObjectShape {
     }
 }
 
+impl InputObjectShape {
+    pub fn new(elements: Vec<InputShapeElement>) -> Self {
+        InputObjectShape(Arc::new(InputObjectShapeInfo { elements }))
+    }
+}
+
+impl Deref for InputObjectShape {
+    type Target = InputObjectShapeInfo;
+    fn deref(&self) -> &InputObjectShapeInfo {
+        &self.0
+    }
+}
+
 impl Deref for NamedTupleShape {
     type Target = NamedTupleShapeInfo;
     fn deref(&self) -> &NamedTupleShapeInfo {
@@ -263,7 +290,10 @@ impl<'a> CodecBuilder<'a> {
                 D::Set(d) => Ok(Arc::new(Set::build(d, self)?)),
                 D::ObjectShape(d) => Ok(Arc::new(Object::build(d, self)?)),
                 D::Scalar(d) => Ok(Arc::new(Scalar {
-                    inner: self.build(d.base_type_pos)?,
+                    inner: match d.base_type_pos {
+                        Some(type_pos) => self.build(type_pos)?,
+                        None => scalar_codec(&d.id)?,
+                    },
                 })),
                 D::Tuple(d) => Ok(Arc::new(Tuple::build(d, self)?)),
                 D::NamedTuple(d) => Ok(Arc::new(NamedTuple::build(d, self)?)),
@@ -281,6 +311,8 @@ impl<'a> CodecBuilder<'a> {
                 D::Enumeration(d) => Ok(Arc::new(Enum {
                     members: d.members.iter().map(|x| x[..].into()).collect(),
                 })),
+                D::Object(_) => Ok(Arc::new(Nothing {})),
+                D::Compound(_) => Ok(Arc::new(Nothing {})),
                 D::InputShape(d) => Ok(Arc::new(Input::build(d, self)?)),
                 // type annotations are stripped from codecs array before
                 // building a codec
@@ -815,11 +847,34 @@ impl<'a> From<&'a descriptors::ShapeElement> for ShapeElement {
             cardinality,
             name,
             type_pos: _,
+            source_type_pos: _,
         } = e;
         ShapeElement {
             flag_implicit: *flag_implicit,
             flag_link_property: *flag_link_property,
             flag_link: *flag_link,
+            cardinality: *cardinality,
+            name: name.clone(),
+        }
+    }
+}
+
+impl<'a> From<&'a [descriptors::InputShapeElement]> for InputObjectShape {
+    fn from(shape: &'a [descriptors::InputShapeElement]) -> InputObjectShape {
+        InputObjectShape(Arc::new(InputObjectShapeInfo {
+            elements: shape.iter().map(InputShapeElement::from).collect(),
+        }))
+    }
+}
+
+impl<'a> From<&'a descriptors::InputShapeElement> for InputShapeElement {
+    fn from(e: &'a descriptors::InputShapeElement) -> InputShapeElement {
+        let descriptors::InputShapeElement {
+            cardinality,
+            name,
+            type_pos: _,
+        } = e;
+        InputShapeElement {
             cardinality: *cardinality,
             name: name.clone(),
         }
