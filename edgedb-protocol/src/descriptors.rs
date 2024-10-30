@@ -568,7 +568,7 @@ impl Descriptor {
                 }
             }
             Descriptor::Scalar(d) => {
-                if ctx.proto.is_at_least(2, 0) {
+                if ctx.proto.is_2() {
                     &Descriptor::BaseScalar(BaseScalarTypeDescriptor { id: d.id.clone() })
                 } else {
                     unreachable!("scalar dereference to a non-base type")
@@ -617,7 +617,7 @@ impl Decode for TypePos {
 impl Decode for Descriptor {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         use Descriptor as D;
-        if buf.proto().is_at_least(2, 0) {
+        if buf.proto().is_2() {
             ensure!(buf.remaining() >= 4, errors::Underflow);
             let desc_len = buf.get_u32() as u64;
             ensure!((buf.remaining() as u64) >= desc_len, errors::Underflow);
@@ -658,7 +658,7 @@ impl Decode for ObjectShapeDescriptor {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 1);
         let id = Uuid::decode(buf)?.into();
-        let type_desc = if buf.proto().is_at_least(2, 0) {
+        let type_desc = if buf.proto().is_2() {
             let ephemeral_free_shape = bool::decode(buf)?;
             let type_pos = Some(TypePos::decode(buf)?);
             let elements = Vec::<ShapeElement>::decode(buf)?;
@@ -693,7 +693,7 @@ impl Decode for ShapeElement {
         };
         let name = String::decode(buf)?;
         let type_pos = TypePos::decode(buf)?;
-        let source_type_pos = if buf.proto().is_at_least(2, 0) {
+        let source_type_pos = if buf.proto().is_2() {
             Some(TypePos::decode(buf)?)
         } else {
             None
@@ -740,7 +740,7 @@ impl Decode for BaseScalarTypeDescriptor {
         let desc_byte = buf.get_u8();
         assert!(desc_byte == 2);
         ensure!(
-            !buf.proto().is_at_least(2, 0),
+            !buf.proto().is_2(),
             InvalidTypeDescriptor {
                 descriptor: desc_byte
             }
@@ -804,7 +804,7 @@ impl Decode for ScalarTypeDescriptor {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 3);
         let id = Uuid::decode(buf)?.into();
-        let type_desc = if buf.proto().is_at_least(2, 0) {
+        let type_desc = if buf.proto().is_2() {
             let name = Some(String::decode(buf)?);
             let schema_defined = Some(bool::decode(buf)?);
             let ancestors = Vec::<TypePos>::decode(buf)?;
@@ -836,7 +836,7 @@ impl Decode for TupleTypeDescriptor {
         assert!(buf.get_u8() == 4);
         let id = Uuid::decode(buf)?.into();
 
-        let type_desc = if buf.proto().is_at_least(2, 0) {
+        let type_desc = if buf.proto().is_2() {
             let name = Some(String::decode(buf)?);
             let schema_defined = Some(bool::decode(buf)?);
             let ancestors = Vec::<TypePos>::decode(buf)?;
@@ -868,7 +868,7 @@ impl Decode for NamedTupleTypeDescriptor {
         assert!(buf.get_u8() == 5);
         let id = Uuid::decode(buf)?.into();
 
-        let type_desc = if buf.proto().is_at_least(2, 0) {
+        let type_desc = if buf.proto().is_2() {
             let name = Some(String::decode(buf)?);
             let schema_defined = Some(bool::decode(buf)?);
             let ancestors = Vec::<TypePos>::decode(buf)?;
@@ -908,7 +908,7 @@ impl Decode for ArrayTypeDescriptor {
         ensure!(buf.remaining() >= 21, errors::Underflow);
         assert!(buf.get_u8() == 6);
         let id = Uuid::decode(buf)?.into();
-        let type_desc = if buf.proto().is_at_least(2, 0) {
+        let type_desc = if buf.proto().is_2() {
             let name = Some(String::decode(buf)?);
             let schema_defined = Some(bool::decode(buf)?);
             let ancestors = Vec::<TypePos>::decode(buf)?;
@@ -944,7 +944,7 @@ impl Decode for RangeTypeDescriptor {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 9);
         let id = Uuid::decode(buf)?.into();
-        let type_desc = if buf.proto().is_at_least(2, 0) {
+        let type_desc = if buf.proto().is_2() {
             let name = Some(String::decode(buf)?);
             let schema_defined = Some(bool::decode(buf)?);
             let ancestors = Vec::<TypePos>::decode(buf)?;
@@ -976,7 +976,7 @@ impl Decode for MultiRangeTypeDescriptor {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 0x0C);
         let id = Uuid::decode(buf)?.into();
-        let type_desc = if buf.proto().is_at_least(2, 0) {
+        let type_desc = if buf.proto().is_2() {
             let name = Some(String::decode(buf)?);
             let schema_defined = Some(bool::decode(buf)?);
             let ancestors = Vec::<TypePos>::decode(buf)?;
@@ -1008,7 +1008,7 @@ impl Decode for EnumerationTypeDescriptor {
         ensure!(buf.remaining() >= 19, errors::Underflow);
         assert!(buf.get_u8() == 7);
         let id = Uuid::decode(buf)?.into();
-        let type_desc = if buf.proto().is_at_least(2, 0) {
+        let type_desc = if buf.proto().is_2() {
             let name = Some(String::decode(buf)?);
             let schema_defined = Some(bool::decode(buf)?);
             let ancestors = Vec::<TypePos>::decode(buf)?;

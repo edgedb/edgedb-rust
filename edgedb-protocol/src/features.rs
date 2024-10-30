@@ -23,6 +23,9 @@ impl ProtocolVersion {
     pub fn is_1(&self) -> bool {
         self.major_ver >= 1
     }
+    pub fn is_2(&self) -> bool {
+        self.major_ver >= 2
+    }
     pub fn supports_inline_typenames(&self) -> bool {
         self.version_tuple() >= (0, 9)
     }

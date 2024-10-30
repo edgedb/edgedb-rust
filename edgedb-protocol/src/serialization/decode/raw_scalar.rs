@@ -53,7 +53,7 @@ fn check_scalar(
         Scalar(scalar) if scalar.base_type_pos.is_some() => {
             return check_scalar(ctx, scalar.base_type_pos.unwrap(), type_id, name);
         }
-        Scalar(scalar) if ctx.proto.is_at_least(2, 0) && *scalar.id == type_id => {
+        Scalar(scalar) if ctx.proto.is_2() && *scalar.id == type_id => {
             return Ok(());
         }
         BaseScalar(base) if *base.id == type_id => {
