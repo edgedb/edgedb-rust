@@ -562,22 +562,22 @@ impl Descriptor {
             Descriptor::Scalar(d) if d.base_type_pos.is_some() => {
                 match ctx.get(d.base_type_pos.unwrap())? {
                     Descriptor::Scalar(d) => {
-                        &Descriptor::BaseScalar(BaseScalarTypeDescriptor { id: d.id.clone() })
+                        Descriptor::BaseScalar(BaseScalarTypeDescriptor { id: d.id.clone() })
                     }
-                    desc => desc,
+                    desc => desc.clone(),
                 }
             }
             Descriptor::Scalar(d) => {
                 if ctx.proto.is_2() {
-                    &Descriptor::BaseScalar(BaseScalarTypeDescriptor { id: d.id.clone() })
+                    Descriptor::BaseScalar(BaseScalarTypeDescriptor { id: d.id.clone() })
                 } else {
                     unreachable!("scalar dereference to a non-base type")
                 }
             }
-            desc => desc,
+            desc => desc.clone(),
         };
 
-        Ok(norm.clone())
+        Ok(norm)
     }
 }
 
