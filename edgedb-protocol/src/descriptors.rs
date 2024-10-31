@@ -781,7 +781,7 @@ impl Decode for TypeOperation {
 impl Decode for CompoundTypeDescriptor {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 19, errors::Underflow);
-        assert!(buf.get_u8() == 0x0A);
+        assert!(buf.get_u8() == 0x0B);
         let id = Uuid::decode(buf)?.into();
         let name = Some(String::decode(buf)?);
         let schema_defined = Some(bool::decode(buf)?);
