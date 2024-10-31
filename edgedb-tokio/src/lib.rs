@@ -159,8 +159,8 @@ pub use builder::get_project_dir;
 /// Create a connection to the database with default parameters
 ///
 /// It's expected that connection parameters are set up using environment
-/// (either environment variables or project configuration in
-/// `gel.toml`/`edgedb.toml`) so no configuration is specified here.
+/// (either environment variables or project configuration in a file named by
+/// [`PROJECT_FILES`]) so no configuration is specified here.
 ///
 /// This method tries to esablish single connection immediately to ensure that
 /// configuration is valid and will error out otherwise.
