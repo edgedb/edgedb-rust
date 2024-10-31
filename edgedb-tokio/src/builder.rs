@@ -22,7 +22,7 @@ use crate::credentials::{Credentials, TlsSecurity};
 use crate::errors::{ClientError, Error, ErrorKind, ResultExt};
 use crate::errors::{ClientNoCredentialsError, NoCloudConfigFound};
 use crate::errors::{InterfaceError, InvalidArgumentError};
-use crate::tls;
+use crate::{tls, PROJECT_FILES};
 
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub const DEFAULT_WAIT: Duration = Duration::from_secs(30);
@@ -218,20 +218,6 @@ fn has_port_env() -> bool {
     } else {
         false
     }
-}
-
-pub async fn search_dir(base: &Path) -> Result<Option<&Path>, Error> {
-    let mut path = base;
-    if fs::metadata(path.join("edgedb.toml")).await.is_ok() {
-        return Ok(Some(path));
-    }
-    while let Some(parent) = path.parent() {
-        if fs::metadata(parent.join("edgedb.toml")).await.is_ok() {
-            return Ok(Some(parent));
-        }
-        path = parent;
-    }
-    Ok(None)
 }
 
 #[cfg(unix)]
@@ -2381,7 +2367,8 @@ fn test_instance_name() {
     }
 }
 
-/// Searches for project dir either from current dir or from specified
+/// Searches for a project directory either from the current director or from a
+/// specified directory, optionally searching parent directories.
 pub async fn get_project_dir(
     override_dir: Option<&Path>,
     search_parents: bool,
@@ -2394,16 +2381,54 @@ pub async fn get_project_dir(
             })?),
         };
 
-    if search_parents {
-        if let Some(ancestor) = search_dir(&dir).await? {
-            Ok(Some(ancestor.to_path_buf()))
+    search_dir(&dir, search_parents).await
+}
+
+async fn search_dir(base: &Path, search_parents: bool) -> Result<Option<PathBuf>, Error> {
+    let mut path = base;
+    loop {
+        let mut found = vec![];
+        for name in PROJECT_FILES {
+            let file = path.join(name);
+            match fs::metadata(file).await {
+                Ok(_) => found.push(path.to_path_buf()),
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                Err(e) => return Err(ClientError::with_source(e)),
+            }
+        }
+
+        // Future note: we allow multiple configuration files to be found in one
+        // folder but you must ensure that they contain the same contents
+        // (either via copy or symlink).
+        if found.len() > 1 {
+            let (a, b) = found.split_at(1);
+            let a = &a[0];
+            let s = fs::read_to_string(a)
+                .await
+                .map_err(|e| ClientError::with_source(e).context("failed to read file"))?;
+            for file in b {
+                if fs::read_to_string(file)
+                    .await
+                    .map_err(|e| ClientError::with_source(e).context("failed to read file"))?
+                    != s
+                {
+                    return Err(ClientError::with_message(format!(
+                        "{:?} and {:?} found in {base:?} but the contents are different",
+                        a.file_name(),
+                        file.file_name()
+                    )));
+                }
+            }
+        }
+
+        if !search_parents {
+            break;
+        }
+        if let Some(parent) = path.parent() {
+            path = parent;
         } else {
-            Ok(None)
+            break;
         }
-    } else {
-        if fs::metadata(dir.join("edgedb.toml")).await.is_err() {
-            return Ok(None);
-        }
-        Ok(Some(dir.to_path_buf()))
     }
+    Ok(None)
 }
