@@ -8,21 +8,25 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        rust_version: [default, minimum, beta]
+        rust_version: [default, 1.75, beta]
       fail-fast: false
     timeout-minutes: 30
     permissions:
       id-token: "write"
       contents: "read"
     steps:
-      # checkout and env setup
-      - uses: actions/checkout@v3
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
-      - name: Build the nix shell
-        run: nix develop .#${{ matrix.rust_version }} --command just --version
-      - uses: Swatinem/rust-cache@v2
+      # Test all features
+      - cargo test --workspace --all-features
+      # Check no default features
+      - cargo check --no-default-features --workspace
+      # Check `fs` feature (edgedb-tokio)
+      - cargo check --features=fs --package edgedb-tokio
+      # Check with env feature, edgedb-tokio
+      - cargo check --features=env --package edgedb-tokio
+      # Test edgedb-protocol without default features
+      - cargo test --package=edgedb-protocol --no-default-features
+      # Test edgedb-protocol with "all-types" feature
+      - cargo test --package=edgedb-protocol --features=all-types
+      - cargo clippy --workspace --all-features --all-targets
+      - cargo fmt --check
 
-      # run tests
-      - name: Run tests
-        run: nix develop .#${{ matrix.rust_version }} --command just test
