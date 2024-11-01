@@ -25,7 +25,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: Install EdgeDB
-        run: curl --proto '=https' --tlsv1.2 -sSf https://sh.edgedb.com | sh
+        run: bash <(curl --proto '=https' --tlsv1.2 -sSf https://sh.edgedb.com) --nightly 
 
       - name: setup rust cache
         uses: Swatinem/rust-cache@v2
