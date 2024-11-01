@@ -18,17 +18,20 @@ jobs:
       - name: checkout and env setup
         uses: actions/checkout@v3
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ matrix.rust_version == 'default' && 'stable' || matrix.rust_version }}
-          components: rustfmt, clippy
-
       - name: Install EdgeDB CLI
         run: bash <(curl --proto '=https' --tlsv1.2 -sSf https://sh.edgedb.com) --nightly -y
 
       - name: Install EdgeDB
         run: edgedb server install --nightly
+
+      - name: Show binaries
+        run: ls -l ~/.local/bin
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust_version == 'default' && 'stable' || matrix.rust_version }}
+          components: rustfmt, clippy
 
       - name: setup rust cache
         uses: Swatinem/rust-cache@v2
