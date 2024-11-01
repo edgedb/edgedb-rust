@@ -24,8 +24,11 @@ jobs:
           toolchain: ${{ matrix.rust_version == 'default' && 'stable' || matrix.rust_version }}
           components: rustfmt, clippy
 
-      - name: Install EdgeDB
+      - name: Install EdgeDB CLI
         run: bash <(curl --proto '=https' --tlsv1.2 -sSf https://sh.edgedb.com) --nightly -y
+
+      - name: Install EdgeDB
+        run: edgedb server install --nightly
 
       - name: setup rust cache
         uses: Swatinem/rust-cache@v2
