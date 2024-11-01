@@ -2173,200 +2173,6 @@ impl FromStr for CloudCerts {
     }
 }
 
-#[tokio::test]
-async fn test_read_credentials() {
-    let cfg = Builder::new()
-        .credentials_file("tests/credentials1.json")
-        .build_env()
-        .await
-        .unwrap();
-    assert!(matches!(&cfg.0.address, Address::Tcp((_, 10702))));
-    assert_eq!(&cfg.0.user, "test3n");
-    assert_eq!(&cfg.0.database, "test3n");
-    assert_eq!(cfg.0.password, Some("lZTBy1RVCfOpBAOwSCwIyBIR".into()));
-}
-
-#[tokio::test]
-async fn display() {
-    let cfg = Builder::new()
-        .dsn("edgedb://localhost:1756")
-        .unwrap()
-        .build_env()
-        .await
-        .unwrap();
-    assert!(matches!(
-        &cfg.0.address,
-        Address::Tcp((host, 1756)) if host == "localhost"
-    ));
-    /* TODO(tailhook)
-    bld.unix_path("/test/my.sock");
-    assert_eq!(bld.build().unwrap()._get_unix_path().unwrap(),
-               Some("/test/my.sock/.s.EDGEDB.5656".into()));
-    */
-    #[cfg(feature = "admin_socket")]
-    {
-        let cfg = Builder::new()
-            .unix_path("/test/.s.EDGEDB.8888")
-            .build_env()
-            .await
-            .unwrap();
-        assert_eq!(
-            cfg._get_unix_path().unwrap(),
-            Some("/test/.s.EDGEDB.8888".into())
-        );
-        let cfg = Builder::new()
-            .port(8888)
-            .unwrap()
-            .unix_path("/test")
-            .build_env()
-            .await
-            .unwrap();
-        assert_eq!(
-            cfg._get_unix_path().unwrap(),
-            Some("/test/.s.EDGEDB.8888".into())
-        );
-    }
-}
-
-#[tokio::test]
-async fn from_dsn() {
-    let cfg = Builder::new()
-        .dsn("edgedb://user1:EiPhohl7@edb-0134.elb.us-east-2.amazonaws.com/db2")
-        .unwrap()
-        .build_env()
-        .await
-        .unwrap();
-    assert!(matches!(
-        &cfg.0.address,
-        Address::Tcp((host, 5656))
-        if host == "edb-0134.elb.us-east-2.amazonaws.com",
-    ));
-    assert_eq!(&cfg.0.user, "user1");
-    assert_eq!(&cfg.0.database, "db2");
-    assert_eq!(&cfg.0.branch, "db2");
-    assert_eq!(cfg.0.password, Some("EiPhohl7".into()));
-
-    let cfg = Builder::new()
-        .dsn("edgedb://user2@edb-0134.elb.us-east-2.amazonaws.com:1756/db2")
-        .unwrap()
-        .build_env()
-        .await
-        .unwrap();
-    assert!(matches!(
-        &cfg.0.address,
-        Address::Tcp((host, 1756))
-        if host == "edb-0134.elb.us-east-2.amazonaws.com",
-    ));
-    assert_eq!(&cfg.0.user, "user2");
-    assert_eq!(&cfg.0.database, "db2");
-    assert_eq!(&cfg.0.branch, "db2");
-    assert_eq!(cfg.0.password, None);
-
-    // Tests overriding
-    let cfg = Builder::new()
-        .dsn("edgedb://edb-0134.elb.us-east-2.amazonaws.com:1756")
-        .unwrap()
-        .build_env()
-        .await
-        .unwrap();
-    assert!(matches!(
-        &cfg.0.address,
-        Address::Tcp((host, 1756))
-        if host == "edb-0134.elb.us-east-2.amazonaws.com",
-    ));
-    assert_eq!(&cfg.0.user, "edgedb");
-    assert_eq!(&cfg.0.database, "edgedb");
-    assert_eq!(&cfg.0.branch, "__default__");
-    assert_eq!(cfg.0.password, None);
-
-    let cfg = Builder::new()
-        .dsn("edgedb://user3:123123@[::1]:5555/abcdef")
-        .unwrap()
-        .build_env()
-        .await
-        .unwrap();
-    assert!(matches!(
-        &cfg.0.address,
-        Address::Tcp((host, 5555)) if host == "::1",
-    ));
-    assert_eq!(&cfg.0.user, "user3");
-    assert_eq!(&cfg.0.database, "abcdef");
-    assert_eq!(&cfg.0.branch, "abcdef");
-    assert_eq!(cfg.0.password, Some("123123".into()));
-}
-
-#[tokio::test]
-#[should_panic] // servo/rust-url#424
-async fn from_dsn_ipv6_scoped_address() {
-    let cfg = Builder::new()
-        .dsn("edgedb://user3@[fe80::1ff:fe23:4567:890a%25eth0]:3000/ab")
-        .unwrap()
-        .build_env()
-        .await
-        .unwrap();
-    assert!(matches!(
-        &cfg.0.address,
-        Address::Tcp((host, 3000)) if host == "fe80::1ff:fe23:4567:890a%eth0",
-    ));
-    assert_eq!(&cfg.0.user, "user3");
-    assert_eq!(&cfg.0.database, "ab");
-    assert_eq!(cfg.0.password, None);
-}
-
-#[test]
-fn test_instance_name() {
-    for inst_name in [
-        "abc",
-        "_localdev",
-        "123",
-        "___",
-        "12345678901234567890123456789012345678901234567890123456789012345678901234567890",
-        "abc-123",
-        "a-b-c_d-e-f",
-        "_-_-_-_",
-        "abc/def",
-        "123/456",
-        "abc-123/def-456",
-        "123-abc/456-def",
-        "a-b-c/1-2-3",
-        "-leading-dash/abc",
-        "_leading-underscore/abc",
-        "under_score/abc",
-        "-vicfg-hceTeOuz6iXr3vkXPf0Wsudd/test123",
-    ] {
-        match InstanceName::from_str(inst_name) {
-            Ok(InstanceName::Local(name)) => assert_eq!(name, inst_name),
-            Ok(InstanceName::Cloud { org_slug, name }) => {
-                let (o, i) = inst_name
-                    .split_once('/')
-                    .expect("test case must have one slash");
-                assert_eq!(org_slug, o);
-                assert_eq!(name, i);
-            }
-            Err(e) => panic!("{:#}", e),
-        }
-    }
-    for name in [
-        "",
-        "-leading-dash",
-        "trailing-dash-",
-        "double--dash",
-        "trailing-dash-/abc",
-        "double--dash/abc",
-        "abc/-leading-dash",
-        "abc/trailing-dash-",
-        "abc/double--dash",
-        "abc/_localdev",
-        "123/45678901234567890123456789012345678901234567890123456789012345678901234567890",
-    ] {
-        assert!(
-            InstanceName::from_str(name).is_err(),
-            "unexpected success: {}",
-            name
-        );
-    }
-}
-
 /// Searches for a project directory either from the current director or from a
 /// specified directory, optionally searching parent directories.
 pub async fn get_project_dir(
@@ -2419,6 +2225,8 @@ async fn search_dir(base: &Path, search_parents: bool) -> Result<Option<PathBuf>
                     )));
                 }
             }
+        } else if let Some(path) = found.pop() {
+            return Ok(Some(path));
         }
 
         if !search_parents {
@@ -2431,4 +2239,203 @@ async fn search_dir(base: &Path, search_parents: bool) -> Result<Option<PathBuf>
         }
     }
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_read_credentials() {
+        let cfg = Builder::new()
+            .credentials_file("tests/credentials1.json")
+            .build_env()
+            .await
+            .unwrap();
+        assert!(matches!(&cfg.0.address, Address::Tcp((_, 10702))));
+        assert_eq!(&cfg.0.user, "test3n");
+        assert_eq!(&cfg.0.database, "test3n");
+        assert_eq!(cfg.0.password, Some("lZTBy1RVCfOpBAOwSCwIyBIR".into()));
+    }
+
+    #[tokio::test]
+    async fn display() {
+        let cfg = Builder::new()
+            .dsn("edgedb://localhost:1756")
+            .unwrap()
+            .build_env()
+            .await
+            .unwrap();
+        assert!(matches!(
+            &cfg.0.address,
+            Address::Tcp((host, 1756)) if host == "localhost"
+        ));
+        /* TODO(tailhook)
+        bld.unix_path("/test/my.sock");
+        assert_eq!(bld.build().unwrap()._get_unix_path().unwrap(),
+                Some("/test/my.sock/.s.EDGEDB.5656".into()));
+        */
+        #[cfg(feature = "admin_socket")]
+        {
+            let cfg = Builder::new()
+                .unix_path("/test/.s.EDGEDB.8888")
+                .build_env()
+                .await
+                .unwrap();
+            assert_eq!(
+                cfg._get_unix_path().unwrap(),
+                Some("/test/.s.EDGEDB.8888".into())
+            );
+            let cfg = Builder::new()
+                .port(8888)
+                .unwrap()
+                .unix_path("/test")
+                .build_env()
+                .await
+                .unwrap();
+            assert_eq!(
+                cfg._get_unix_path().unwrap(),
+                Some("/test/.s.EDGEDB.8888".into())
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn from_dsn() {
+        let cfg = Builder::new()
+            .dsn("edgedb://user1:EiPhohl7@edb-0134.elb.us-east-2.amazonaws.com/db2")
+            .unwrap()
+            .build_env()
+            .await
+            .unwrap();
+        assert!(matches!(
+            &cfg.0.address,
+            Address::Tcp((host, 5656))
+            if host == "edb-0134.elb.us-east-2.amazonaws.com",
+        ));
+        assert_eq!(&cfg.0.user, "user1");
+        assert_eq!(&cfg.0.database, "db2");
+        assert_eq!(&cfg.0.branch, "db2");
+        assert_eq!(cfg.0.password, Some("EiPhohl7".into()));
+
+        let cfg = Builder::new()
+            .dsn("edgedb://user2@edb-0134.elb.us-east-2.amazonaws.com:1756/db2")
+            .unwrap()
+            .build_env()
+            .await
+            .unwrap();
+        assert!(matches!(
+            &cfg.0.address,
+            Address::Tcp((host, 1756))
+            if host == "edb-0134.elb.us-east-2.amazonaws.com",
+        ));
+        assert_eq!(&cfg.0.user, "user2");
+        assert_eq!(&cfg.0.database, "db2");
+        assert_eq!(&cfg.0.branch, "db2");
+        assert_eq!(cfg.0.password, None);
+
+        // Tests overriding
+        let cfg = Builder::new()
+            .dsn("edgedb://edb-0134.elb.us-east-2.amazonaws.com:1756")
+            .unwrap()
+            .build_env()
+            .await
+            .unwrap();
+        assert!(matches!(
+            &cfg.0.address,
+            Address::Tcp((host, 1756))
+            if host == "edb-0134.elb.us-east-2.amazonaws.com",
+        ));
+        assert_eq!(&cfg.0.user, "edgedb");
+        assert_eq!(&cfg.0.database, "edgedb");
+        assert_eq!(&cfg.0.branch, "__default__");
+        assert_eq!(cfg.0.password, None);
+
+        let cfg = Builder::new()
+            .dsn("edgedb://user3:123123@[::1]:5555/abcdef")
+            .unwrap()
+            .build_env()
+            .await
+            .unwrap();
+        assert!(matches!(
+            &cfg.0.address,
+            Address::Tcp((host, 5555)) if host == "::1",
+        ));
+        assert_eq!(&cfg.0.user, "user3");
+        assert_eq!(&cfg.0.database, "abcdef");
+        assert_eq!(&cfg.0.branch, "abcdef");
+        assert_eq!(cfg.0.password, Some("123123".into()));
+    }
+
+    #[tokio::test]
+    #[should_panic] // servo/rust-url#424
+    async fn from_dsn_ipv6_scoped_address() {
+        let cfg = Builder::new()
+            .dsn("edgedb://user3@[fe80::1ff:fe23:4567:890a%25eth0]:3000/ab")
+            .unwrap()
+            .build_env()
+            .await
+            .unwrap();
+        assert!(matches!(
+            &cfg.0.address,
+            Address::Tcp((host, 3000)) if host == "fe80::1ff:fe23:4567:890a%eth0",
+        ));
+        assert_eq!(&cfg.0.user, "user3");
+        assert_eq!(&cfg.0.database, "ab");
+        assert_eq!(cfg.0.password, None);
+    }
+
+    #[test]
+    fn test_instance_name() {
+        for inst_name in [
+            "abc",
+            "_localdev",
+            "123",
+            "___",
+            "12345678901234567890123456789012345678901234567890123456789012345678901234567890",
+            "abc-123",
+            "a-b-c_d-e-f",
+            "_-_-_-_",
+            "abc/def",
+            "123/456",
+            "abc-123/def-456",
+            "123-abc/456-def",
+            "a-b-c/1-2-3",
+            "-leading-dash/abc",
+            "_leading-underscore/abc",
+            "under_score/abc",
+            "-vicfg-hceTeOuz6iXr3vkXPf0Wsudd/test123",
+        ] {
+            match InstanceName::from_str(inst_name) {
+                Ok(InstanceName::Local(name)) => assert_eq!(name, inst_name),
+                Ok(InstanceName::Cloud { org_slug, name }) => {
+                    let (o, i) = inst_name
+                        .split_once('/')
+                        .expect("test case must have one slash");
+                    assert_eq!(org_slug, o);
+                    assert_eq!(name, i);
+                }
+                Err(e) => panic!("{:#}", e),
+            }
+        }
+        for name in [
+            "",
+            "-leading-dash",
+            "trailing-dash-",
+            "double--dash",
+            "trailing-dash-/abc",
+            "double--dash/abc",
+            "abc/-leading-dash",
+            "abc/trailing-dash-",
+            "abc/double--dash",
+            "abc/_localdev",
+            "123/45678901234567890123456789012345678901234567890123456789012345678901234567890",
+        ] {
+            assert!(
+                InstanceName::from_str(name).is_err(),
+                "unexpected success: {}",
+                name
+            );
+        }
+    }
 }
