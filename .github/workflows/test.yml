@@ -15,18 +15,38 @@ jobs:
       id-token: "write"
       contents: "read"
     steps:
-      # Test all features
-      - cargo test --workspace --all-features
-      # Check no default features
-      - cargo check --no-default-features --workspace
-      # Check `fs` feature (edgedb-tokio)
-      - cargo check --features=fs --package edgedb-tokio
-      # Check with env feature, edgedb-tokio
-      - cargo check --features=env --package edgedb-tokio
-      # Test edgedb-protocol without default features
-      - cargo test --package=edgedb-protocol --no-default-features
-      # Test edgedb-protocol with "all-types" feature
-      - cargo test --package=edgedb-protocol --features=all-types
-      - cargo clippy --workspace --all-features --all-targets
-      - cargo fmt --check
+      - name: checkout and env setup
+        uses: actions/checkout@v3
 
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust_version == 'default' && 'stable' || matrix.rust_version }}
+          components: rustfmt, clippy
+
+      - name: setup rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Test all features
+        run: cargo test --workspace --all-features
+
+      - name: Check no default features
+        run: cargo check --no-default-features --workspace
+
+      - name: Check `fs` feature (edgedb-tokio)
+        run: cargo check --features=fs --package edgedb-tokio
+
+      - name: Check with env feature, edgedb-tokio
+        run: cargo check --features=env --package edgedb-tokio
+
+      - name: Test edgedb-protocol without default features
+        run: cargo test --package=edgedb-protocol --no-default-features
+
+      - name: Test edgedb-protocol with "all-types" feature
+        run: cargo test --package=edgedb-protocol --features=all-types
+
+      - name: Run clippy
+        run: cargo clippy --workspace --all-features --all-targets
+
+      - name: Check formatting
+        run: cargo fmt --check
