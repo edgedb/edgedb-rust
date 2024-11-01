@@ -24,6 +24,9 @@ jobs:
       - name: Install EdgeDB
         run: edgedb server install --nightly
 
+      - name: Link nightly
+        run: ln -s `edgedb server info --channel=nightly --get bin-path` ~/.local/bin/edgedb-server
+
       - name: Show binaries
         run: ls -l ~/.local/bin
 
