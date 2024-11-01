@@ -2226,6 +2226,7 @@ async fn search_dir(base: &Path, search_parents: bool) -> Result<Option<PathBuf>
                 }
             }
         } else if let Some(path) = found.pop() {
+            // Found just one
             return Ok(Some(path));
         }
 
