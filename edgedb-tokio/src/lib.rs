@@ -154,7 +154,7 @@ pub use transaction::Transaction;
 pub const PROJECT_FILES: &[&str] = &["gel.toml", "edgedb.toml"];
 
 #[cfg(feature = "unstable")]
-pub use builder::get_project_dir;
+pub use builder::get_project_path;
 
 /// Create a connection to the database with default parameters
 ///

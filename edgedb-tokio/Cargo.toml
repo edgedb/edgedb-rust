@@ -64,6 +64,7 @@ futures-util = "0.3.21"
 miette = { version = "7.2.0", features = ["fancy"] }
 edgedb-errors = { path = "../edgedb-errors", features = ["miette"] }
 test-utils = { git = "https://github.com/edgedb/test-utils.git" }
+tempfile = "3.13.0"
 
 [features]
 default = ["derive", "env"]

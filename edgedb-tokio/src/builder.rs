@@ -1455,16 +1455,18 @@ impl Builder {
     }
 
     async fn _get_stash_path(&self) -> Result<Option<(PathBuf, PathBuf)>, Error> {
-        let dir = match get_project_dir(None, true).await? {
-            Some(dir) => dir,
-            None => return Ok(None),
+        let Some(dir) = get_project_path(None, true).await? else {
+            return Ok(None);
         };
+        let dir = dir
+            .parent()
+            .ok_or_else(|| ClientError::with_message("Project directory has no parent"))?;
         let canon = fs::canonicalize(&dir).await.map_err(|e| {
             ClientError::with_source(e).context(format!("failed to canonicalize dir {:?}", dir))
         })?;
         let stash_path = stash_path(canon.as_ref())?;
         if fs::metadata(&stash_path).await.is_ok() {
-            return Ok(Some((dir, stash_path)));
+            return Ok(Some((canon, stash_path)));
         }
         Ok(None)
     }
@@ -2173,9 +2175,9 @@ impl FromStr for CloudCerts {
     }
 }
 
-/// Searches for a project directory either from the current director or from a
+/// Searches for a project file either from the current directory or from a
 /// specified directory, optionally searching parent directories.
-pub async fn get_project_dir(
+pub async fn get_project_path(
     override_dir: Option<&Path>,
     search_parents: bool,
 ) -> Result<Option<PathBuf>, Error> {
@@ -2196,8 +2198,8 @@ async fn search_dir(base: &Path, search_parents: bool) -> Result<Option<PathBuf>
         let mut found = vec![];
         for name in PROJECT_FILES {
             let file = path.join(name);
-            match fs::metadata(file).await {
-                Ok(_) => found.push(path.to_path_buf()),
+            match fs::metadata(&file).await {
+                Ok(_) => found.push(file),
                 Err(e) if e.kind() == io::ErrorKind::NotFound => {}
                 Err(e) => return Err(ClientError::with_source(e)),
             }
@@ -2225,6 +2227,7 @@ async fn search_dir(base: &Path, search_parents: bool) -> Result<Option<PathBuf>
                     )));
                 }
             }
+            return Ok(Some(found.into_iter().next().unwrap()));
         } else if let Some(path) = found.pop() {
             // Found just one
             return Ok(Some(path));
@@ -2245,6 +2248,38 @@ async fn search_dir(base: &Path, search_parents: bool) -> Result<Option<PathBuf>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn test_project_file_priority() {
+        let temp = tempfile::tempdir().unwrap();
+        let base = temp.path();
+
+        let gel_path = base.join("gel.toml");
+        let edgedb_path = base.join("edgedb.toml");
+
+        // Test gel.toml only
+        fs::write(&gel_path, "test1").await.unwrap();
+        let found = get_project_path(Some(base), false).await.unwrap().unwrap();
+        assert_eq!(found, gel_path);
+
+        // Test edgedb.toml only
+        fs::remove_file(&gel_path).await.unwrap();
+        fs::write(&edgedb_path, "test2").await.unwrap();
+        let found = get_project_path(Some(base), false).await.unwrap().unwrap();
+        assert_eq!(found, edgedb_path);
+
+        // Test both files with same content
+        fs::write(&gel_path, "test3").await.unwrap();
+        fs::write(&edgedb_path, "test3").await.unwrap();
+        let found = get_project_path(Some(base), false).await.unwrap().unwrap();
+        assert_eq!(found, gel_path);
+
+        // Test both files with different content
+        fs::write(&gel_path, "test4").await.unwrap();
+        fs::write(&edgedb_path, "test5").await.unwrap();
+        let err = get_project_path(Some(base), false).await.unwrap_err();
+        assert!(err.to_string().contains("but the contents are different"));
+    }
 
     #[tokio::test]
     async fn test_read_credentials() {
