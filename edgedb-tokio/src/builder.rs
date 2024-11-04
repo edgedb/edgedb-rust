@@ -280,8 +280,12 @@ fn default_runtime_base() -> Result<PathBuf, Error> {
     ))
 }
 
-fn stash_path(project_dir: &Path) -> Result<PathBuf, Error> {
-    Ok(config_dir()?.join("projects").join(stash_name(project_dir)))
+/// Compute the path to the project's stash file based on the canonical path.
+pub fn get_stash_path(project_dir: &Path) -> Result<PathBuf, Error> {
+    let canonical = project_dir.canonicalize().map_err(|e| {
+        ClientError::with_source(e).context("project directory could not be canonicalized")
+    })?;
+    Ok(config_dir()?.join("projects").join(stash_name(&canonical)))
 }
 
 fn is_valid_local_instance_name(name: &str) -> bool {
@@ -1460,13 +1464,10 @@ impl Builder {
         };
         let dir = dir
             .parent()
-            .ok_or_else(|| ClientError::with_message("Project directory has no parent"))?;
-        let canon = fs::canonicalize(&dir).await.map_err(|e| {
-            ClientError::with_source(e).context(format!("failed to canonicalize dir {:?}", dir))
-        })?;
-        let stash_path = stash_path(canon.as_ref())?;
+            .ok_or_else(|| ClientError::with_message("Project file has no parent"))?;
+        let stash_path = get_stash_path(dir)?;
         if fs::metadata(&stash_path).await.is_ok() {
-            return Ok(Some((canon, stash_path)));
+            return Ok(Some((dir.to_owned(), stash_path)));
         }
         Ok(None)
     }
