@@ -153,8 +153,11 @@ pub use transaction::Transaction;
 /// The ordered list of project filenames supported.
 pub const PROJECT_FILES: &[&str] = &["gel.toml", "edgedb.toml"];
 
+/// The default project filename.
+pub const DEFAULT_PROJECT_FILE: &str = PROJECT_FILES[0];
+
 #[cfg(feature = "unstable")]
-pub use builder::get_project_path;
+pub use builder::{get_project_path, get_stash_path};
 
 /// Create a connection to the database with default parameters
 ///
