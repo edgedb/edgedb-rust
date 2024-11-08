@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::io;
 use std::num::NonZeroU16;
 use std::time::Duration;
@@ -144,48 +145,6 @@ define_env!(
     #[env(GEL_WAIT_UNTIL_AVAILABLE, EDGEDB_WAIT_UNTIL_AVAILABLE)]
     #[parse=parse_duration]
     wait_until_available: Duration,
-    // // Print the analyze debug JSON.
-    // _ANALYZE_DEBUG_JSON: bool,
-
-    // // Print the debug plan.
-    // _ANALYZE_DEBUG_PLAN: bool,
-
-    // EDITOR: String,
-
-    // _FROM_WINDOWS: String,
-
-    // PAGER: String,
-    // PKG_ROOT: String,
-    // RUN_VERSION_CHECK: String,
-
-    // // Path to the server dev directory.
-    // SERVER_DEV_DIR: PathBuf,
-
-    // /// The path to the lock file for the server. Passed to the server.
-    // SERVER_EXTERNAL_LOCK_FD: String,
-
-    // /// The security mode for the HTTP endpoint. Passed to the server.
-    // SERVER_HTTP_ENDPOINT_SECURITY: String,
-
-    // /// The name of the instance.
-    // SERVER_INSTANCE_NAME: String,
-
-    // /// The log level for the server. Passed to the server.
-    // SERVER_LOG_LEVEL: String,
-
-    // TEST_BIN_EXE: String,
-
-    // _WSL_DISTRO: String,
-    // _WSL_LINUX_BINARY: String,
-
-    // INSTALL_IN_DOCKER: String,
-
-    // CLOUD_API_ENDPOINT: String,
-    // CLOUD_API_TIMEOUT: String,
-    // CLOUD_API_VERSION: String,
-    // CLOUD_DEFAULT_DNS_ZONE: String,
-    // CLOUD_SECRET_KEY: String,
-
 );
 
 fn ignore_docker_tcp_port(s: String) -> Option<String> {
@@ -212,11 +171,14 @@ fn non_empty_string(var: &str, s: &str) -> Result<(), Error> {
     }
 }
 
-fn parse<T: FromStr>(var: &str, s: &str) -> Result<T, Error> {
+fn parse<T: FromStr>(var: &str, s: &str) -> Result<T, Error>
+where
+    <T as FromStr>::Err: Debug,
+{
     Ok(s.parse().map_err(|e| {
         ClientError::with_source(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("invalid {var} value: {s}"),
+            format!("invalid {var} value: {s}: {e:?}"),
         ))
     })?)
 }
@@ -235,14 +197,14 @@ fn parse_duration(var: &str, s: &str) -> Result<Duration, Error> {
     let duration = model::Duration::from_str(s).map_err(|e| {
         ClientError::with_source(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("invalid {var} value: {s}"),
+            format!("invalid {var} value: {s}: {e:?}"),
         ))
     })?;
 
     duration.try_into().map_err(|e| {
         ClientError::with_source(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("invalid {var} value: {s}"),
+            format!("invalid {var} value: {s}: {e:?}"),
         ))
     })
 }
