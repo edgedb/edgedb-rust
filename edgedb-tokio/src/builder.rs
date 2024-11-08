@@ -43,6 +43,29 @@ const CLOUD_INSTANCE_NAME_MAX_LENGTH: usize = DOMAIN_LABEL_MAX_LENGTH - 2 + 1; /
 
 type Verifier = Arc<dyn ServerCertVerifier>;
 
+mod sealed {
+    use super::*;
+
+    /// Helper trait to extract errors and redirect them to the Vec<Error>.
+    pub(super) trait ErrorBuilder {
+        fn maybe<T>(&mut self, res: Result<Option<T>, Error>) -> Option<T>;
+    }
+
+    impl ErrorBuilder for Vec<Error> {
+        fn maybe<T>(&mut self, res: Result<Option<T>, Error>) -> Option<T> {
+            match res {
+                Ok(v) => v,
+                Err(e) => {
+                    self.push(e);
+                    None
+                }
+            }
+        }
+    }
+}
+
+use sealed::ErrorBuilder;
+
 /// Client security mode.
 #[derive(Default, Debug, Clone, Copy)]
 pub enum ClientSecurity {
@@ -947,10 +970,7 @@ impl Builder {
         let mut conflict = None;
         if let Some(instance) = &self.instance {
             conflict = Some("instance");
-            read_instance(cfg, instance)
-                .await
-                .map_err(|e| errors.push(e))
-                .ok();
+            errors.maybe(read_instance(cfg, instance).await);
         }
         if let Some(dsn) = &self.dsn {
             if let Some(conflict) = conflict {
@@ -970,10 +990,7 @@ impl Builder {
                 )));
             }
             conflict = Some("credentials_file");
-            read_credentials(cfg, credentials_file)
-                .await
-                .map_err(|e| errors.push(e))
-                .ok();
+            errors.maybe(read_credentials(cfg, credentials_file).await);
         }
         if let Some(credentials) = &self.credentials {
             if let Some(conflict) = conflict {
@@ -983,9 +1000,7 @@ impl Builder {
                 )));
             }
             conflict = Some("credentials");
-            set_credentials(cfg, credentials)
-                .map_err(|e| errors.push(e))
-                .ok();
+            errors.maybe(set_credentials(cfg, credentials));
         }
         if let Some(host) = &self.host {
             if let Some(conflict) = conflict {
@@ -1076,28 +1091,21 @@ impl Builder {
     }
 
     async fn compound_env(&self, cfg: &mut ConfigInner, errors: &mut Vec<Error>) {
-        if let Some(instance) = Env::instance().map_err(|e| errors.push(e)).ok().flatten() {
+        if let Some(instance) = errors.maybe(Env::instance()) {
             _ = read_instance(cfg, &instance)
                 .await
                 .map_err(|e| errors.push(e));
         }
-        if let Some(dsn) = Env::dsn().map_err(|e| errors.push(e)).ok().flatten() {
+        if let Some(dsn) = errors.maybe(Env::dsn()) {
             self.read_dsn(cfg, &dsn, errors).await
         }
-        if let Some(fpath) = Env::credentials_file()
-            .map_err(|e| errors.push(e))
-            .ok()
-            .flatten()
-        {
-            read_credentials(cfg, fpath)
-                .await
-                .map_err(|e| errors.push(e))
-                .ok();
+        if let Some(fpath) = errors.maybe(Env::credentials_file()) {
+            errors.maybe(read_credentials(cfg, fpath).await);
         }
-        if let Some(host) = Env::host().map_err(|e| errors.push(e)).ok().flatten() {
+        if let Some(host) = errors.maybe(Env::host()) {
             cfg.address = Address::Tcp((host, DEFAULT_PORT));
         }
-        if let Some(port) = Env::port().map_err(|e| errors.push(e)).ok().flatten() {
+        if let Some(port) = errors.maybe(Env::port()) {
             if let Address::Tcp((_, ref mut portref)) = &mut cfg.address {
                 *portref = port.into()
             }
@@ -1108,17 +1116,15 @@ impl Builder {
         cfg.secret_key = self
             .secret_key
             .clone()
-            .or_else(|| Env::secret_key().map_err(|e| errors.push(e)).ok().flatten());
+            .or_else(|| errors.maybe(Env::secret_key()));
     }
 
     async fn granular_env(&self, cfg: &mut ConfigInner, errors: &mut Vec<Error>) {
         let database_branch = self.database.as_ref().or(self.branch.as_ref())
             .cloned()
             .or_else(|| {
-                let database = Env::database()
-                    .map_err(|e| errors.push(e)).ok()?;
-                let branch = Env::branch()
-                    .map_err(|e| errors.push(e)).ok()?;
+                let database = errors.maybe(Env::database());
+                let branch = errors.maybe(Env::branch());
 
                 if database.is_some() && branch.is_some() {
                     errors.push(InvalidArgumentError::with_message(
@@ -1134,20 +1140,15 @@ impl Builder {
             cfg.branch = name;
         }
 
-        let user = self
-            .user
-            .clone()
-            .or_else(|| Env::user().map_err(|e| errors.push(e)).ok().flatten());
+        let user = self.user.clone().or_else(|| errors.maybe(Env::user()));
         if let Some(user) = user {
             cfg.user = user;
         }
 
-        let tls_server_name = self.tls_server_name.clone().or_else(|| {
-            Env::tls_server_name()
-                .map_err(|e| errors.push(e))
-                .ok()
-                .flatten()
-        });
+        let tls_server_name = self
+            .tls_server_name
+            .clone()
+            .or_else(|| errors.maybe(Env::tls_server_name()));
         if let Some(tls_server_name) = tls_server_name {
             cfg.tls_server_name = Some(tls_server_name);
         }
@@ -1155,17 +1156,15 @@ impl Builder {
         let password = self
             .password
             .clone()
-            .or_else(|| Env::password().map_err(|e| errors.push(e)).ok().flatten());
+            .or_else(|| errors.maybe(Env::password()));
         if let Some(password) = password {
             cfg.password = Some(password);
         }
 
-        let tls_ca_file = self.tls_ca_file.clone().or_else(|| {
-            Env::tls_ca_file()
-                .map_err(|e| errors.push(e))
-                .ok()
-                .flatten()
-        });
+        let tls_ca_file = self
+            .tls_ca_file
+            .clone()
+            .or_else(|| errors.maybe(Env::tls_ca_file()));
         if let Some(tls_ca_file) = tls_ca_file {
             match read_certificates(tls_ca_file).await {
                 Ok(pem) => cfg.pem_certificates = Some(pem),
@@ -1173,7 +1172,7 @@ impl Builder {
             }
         }
 
-        let tls_ca = Env::tls_ca().map_err(|e| errors.push(e)).ok().flatten();
+        let tls_ca = errors.maybe(Env::tls_ca());
         if let Some(pem) = tls_ca {
             match validate_certs(&pem) {
                 Ok(()) => cfg.pem_certificates = Some(pem),
@@ -1181,20 +1180,14 @@ impl Builder {
             }
         }
 
-        let security = Env::client_tls_security()
-            .map_err(|e| errors.push(e))
-            .ok()
-            .flatten();
+        let security = errors.maybe(Env::client_tls_security());
         if let Some(security) = security {
             cfg.tls_security = security;
         }
 
-        let wait = self.wait_until_available.or_else(|| {
-            Env::wait_until_available()
-                .map_err(|e| errors.push(e))
-                .ok()
-                .flatten()
-        });
+        let wait = self
+            .wait_until_available
+            .or_else(|| errors.maybe(Env::wait_until_available()));
         if let Some(wait) = wait {
             cfg.wait = wait;
         }
@@ -1208,37 +1201,23 @@ impl Builder {
                 return;
             }
         };
-        let host = dsn
-            .retrieve_host()
-            .await
-            .map_err(|e| errors.push(e))
-            .ok()
-            .flatten()
+        let host = errors
+            .maybe(dsn.retrieve_host().await)
             .unwrap_or_else(|| DEFAULT_HOST.into());
-        let port = dsn
-            .retrieve_port()
-            .await
-            .map_err(|e| errors.push(e))
-            .ok()
-            .flatten()
+        let port = errors
+            .maybe(dsn.retrieve_port().await)
             .unwrap_or(DEFAULT_PORT);
-        match dsn.retrieve_tls_server_name().await {
-            Ok(Some(value)) => cfg.tls_server_name = Some(value),
-            Ok(None) => {}
-            Err(e) => errors.push(e),
+        if let Some(value) = errors.maybe(dsn.retrieve_tls_server_name().await) {
+            cfg.tls_server_name = Some(value)
         }
         cfg.address = Address::Tcp((host, port));
         cfg.admin = dsn.admin;
-        match dsn.retrieve_user().await {
-            Ok(Some(value)) => cfg.user = value,
-            Ok(None) => {}
-            Err(e) => errors.push(e),
+        if let Some(value) = errors.maybe(dsn.retrieve_user().await) {
+            cfg.user = value
         }
         if self.password.is_none() {
-            match dsn.retrieve_password().await {
-                Ok(Some(value)) => cfg.password = Some(value),
-                Ok(None) => {}
-                Err(e) => errors.push(e),
+            if let Some(value) = errors.maybe(dsn.retrieve_password().await) {
+                cfg.password = Some(value)
             }
         } else {
             dsn.ignore_value("password");
@@ -1262,62 +1241,44 @@ impl Builder {
                 dsn.retrieve_branch().await
             };
 
-            match database_or_branch {
-                Ok(Some(name)) => {
+            if let Some(name) = errors.maybe(database_or_branch) {
+                {
                     cfg.branch.clone_from(&name);
                     cfg.database = name;
                 }
-                Ok(None) => {}
-                Err(e) => errors.push(e),
             }
         } else {
             dsn.ignore_value("branch");
             dsn.ignore_value("database");
         }
 
-        match dsn.retrieve_secret_key().await {
-            Ok(Some(value)) => cfg.secret_key = Some(value),
-            Ok(None) => {}
-            Err(e) => errors.push(e),
+        if let Some(value) = errors.maybe(dsn.retrieve_secret_key().await) {
+            cfg.secret_key = Some(value)
         }
         if self.tls_ca_file.is_none() {
-            match dsn.retrieve_tls_ca_file().await {
-                Ok(Some(path)) => match read_certificates(&path).await {
+            if let Some(path) = errors.maybe(dsn.retrieve_tls_ca_file().await) {
+                match read_certificates(&path).await {
                     Ok(pem) => cfg.pem_certificates = Some(pem),
                     Err(e) => errors.push(e),
-                },
-                Ok(None) => {}
-                Err(e) => errors.push(e),
+                }
             }
         } else {
             dsn.ignore_value("tls_ca_file");
         }
-        match dsn.retrieve_tls_security().await {
-            Ok(Some(value)) => cfg.tls_security = value,
-            Ok(None) => {}
-            Err(e) => errors.push(e),
+        if let Some(value) = errors.maybe(dsn.retrieve_tls_security().await) {
+            cfg.tls_security = value
         }
-        match dsn.retrieve_wait_until_available().await {
-            Ok(Some(value)) => cfg.wait = value,
-            Ok(None) => {}
-            Err(e) => errors.push(e),
+        if let Some(value) = errors.maybe(dsn.retrieve_wait_until_available().await) {
+            cfg.wait = value
         }
 
         cfg.extra_dsn_query_args = dsn.remaining_queries();
     }
 
     async fn read_project(&self, cfg: &mut ConfigInner, errors: &mut Vec<Error>) -> bool {
-        let pair = self
-            ._get_stash_path()
-            .await
-            .map_err(|e| errors.push(e))
-            .ok()
-            .flatten();
+        let pair = errors.maybe(self._get_stash_path().await);
         if let Some((project, stash)) = pair {
-            self._read_project(cfg, &project, &stash)
-                .await
-                .map_err(|e| errors.push(e))
-                .ok();
+            errors.maybe(self._read_project(cfg, &project, &stash).await);
             true
         } else {
             false
@@ -1440,12 +1401,10 @@ impl Builder {
             verifier: Arc::new(tls::NullVerifier),
         };
 
-        cfg.cloud_profile = self.cloud_profile.clone().or_else(|| {
-            Env::cloud_profile()
-                .map_err(|e| errors.push(e))
-                .ok()
-                .flatten()
-        });
+        cfg.cloud_profile = self
+            .cloud_profile
+            .clone()
+            .or_else(|| errors.maybe(Env::cloud_profile()));
 
         let complete = if self.host.is_some()
             || self.port.is_some()
@@ -1471,19 +1430,13 @@ impl Builder {
             complete
         };
 
-        let security = Env::client_security()
-            .map_err(|e| errors.push(e))
-            .ok()
-            .flatten();
+        let security = errors.maybe(Env::client_security());
 
         if let Some(security) = security {
             cfg.client_security = security;
         }
 
-        let cloud_certs = Env::_cloud_certs()
-            .map_err(|e| errors.push(e))
-            .ok()
-            .flatten();
+        let cloud_certs = errors.maybe(Env::_cloud_certs());
         if let Some(cloud_certs) = cloud_certs {
             cfg.cloud_certs = Some(cloud_certs);
         }
