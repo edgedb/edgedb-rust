@@ -131,6 +131,7 @@ mod tls;
 
 mod builder;
 mod client;
+mod env;
 mod errors;
 mod options;
 mod query_executor;

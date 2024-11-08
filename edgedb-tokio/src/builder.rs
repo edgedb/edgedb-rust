@@ -19,6 +19,7 @@ use tokio::fs;
 use edgedb_protocol::model;
 
 use crate::credentials::{Credentials, TlsSecurity};
+use crate::env::{get_env, Env};
 use crate::errors::{ClientError, Error, ErrorKind, ResultExt};
 use crate::errors::{ClientNoCredentialsError, NoCloudConfigFound};
 use crate::errors::{InterfaceError, InvalidArgumentError};
@@ -32,15 +33,13 @@ pub const DEFAULT_HOST: &str = "localhost";
 pub const DEFAULT_PORT: u16 = 5656;
 pub const COMPOUND_ENV_VARS: &[&str] = &[
     "EDGEDB_HOST",
-    // "EDGEDB_PORT", // port check is special because of Docker
+    "EDGEDB_PORT",
     "EDGEDB_CREDENTIALS_FILE",
     "EDGEDB_INSTANCE",
     "EDGEDB_DSN",
 ];
 const DOMAIN_LABEL_MAX_LENGTH: usize = 63;
 const CLOUD_INSTANCE_NAME_MAX_LENGTH: usize = DOMAIN_LABEL_MAX_LENGTH - 2 + 1; // "--" -> "/"
-
-static PORT_WARN: std::sync::Once = std::sync::Once::new();
 
 type Verifier = Arc<dyn ServerCertVerifier>;
 
@@ -198,26 +197,6 @@ pub struct CloudConfig {
 struct Claims {
     #[serde(rename = "iss", skip_serializing_if = "Option::is_none")]
     issuer: Option<String>,
-}
-
-fn get_env(name: &str) -> Result<Option<String>, Error> {
-    match env::var(name) {
-        Ok(v) if v.is_empty() => Ok(None),
-        Ok(v) => Ok(Some(v)),
-        Err(env::VarError::NotPresent) => Ok(None),
-        Err(e) => Err(ClientError::with_source(e)
-            .context(format!("Cannot decode environment variable {:?}", name))),
-    }
-}
-
-fn has_port_env() -> bool {
-    if let Some(port) = env::var_os("EDGEDB_PORT") {
-        port.to_str()
-            .map(|s| !s.starts_with("tcp://"))
-            .unwrap_or(true)
-    } else {
-        false
-    }
 }
 
 #[cfg(unix)]
@@ -1097,125 +1076,48 @@ impl Builder {
     }
 
     async fn compound_env(&self, cfg: &mut ConfigInner, errors: &mut Vec<Error>) {
-        // Due to how shared-test-cases are implemented we have to check for
-        // conflicts first and then do the actual parsing
-        let mut conflict = None;
-        let mut check_conflict = |var_name: &'static str| {
-            if env::var_os(var_name).is_some() {
-                if let Some(cvar) = conflict {
-                    errors.push(ClientError::with_message(format!(
-                        "{} conflicts with {}",
-                        var_name, cvar
-                    )));
-                }
-                conflict = Some(var_name);
-            }
-        };
-        check_conflict("EDGEDB_INSTANCE");
-        check_conflict("EDGEDB_DSN");
-        check_conflict("EDGEDB_CREDENTIALS_FILE");
-        check_conflict("EDGEDB_HOST");
-        if let Some(port) = env::var_os("EDGEDB_PORT") {
-            if !port
-                .to_str()
-                .map(|s| s.starts_with("tcp://"))
-                .unwrap_or(false)
-            {
-                if let Some(cvar) = conflict {
-                    if cvar != "EDGEDB_HOST" {
-                        errors.push(ClientError::with_message(format!(
-                            "{} conflicts with {}",
-                            "EDGEDB_PORT", cvar
-                        )));
-                    }
-                }
-            }
-            // note: not setting conflict to work with HOST
+        if let Some(instance) = Env::instance().map_err(|e| errors.push(e)).ok().flatten() {
+            _ = read_instance(cfg, &instance)
+                .await
+                .map_err(|e| errors.push(e));
         }
-
-        let str_env = |var_name: &'static str, errors: &mut Vec<Error>| {
-            get_env(var_name).map_err(|e| errors.push(e)).ok().flatten()
-        };
-        if let Some(instance) = str_env("EDGEDB_INSTANCE", errors) {
-            match instance.parse() {
-                Ok(instance) => {
-                    read_instance(cfg, &instance)
-                        .await
-                        .map_err(|e| errors.push(e))
-                        .ok();
-                }
-                Err(e) => {
-                    errors.push(ClientError::with_source(e).context("EDGEDB_INSTANCE is invalid"));
-                }
-            }
+        if let Some(dsn) = Env::dsn().map_err(|e| errors.push(e)).ok().flatten() {
+            self.read_dsn(cfg, &dsn, errors).await
         }
-        if let Some(dsn) = str_env("EDGEDB_DSN", errors) {
-            match dsn.parse() {
-                Ok(url) => self.read_dsn(cfg, &url, errors).await,
-                Err(e) => {
-                    errors.push(ClientError::with_source(e).context("EDGEDB_DSN is invalid"));
-                }
-            }
-        }
-        if let Some(fpath) = str_env("EDGEDB_CREDENTIALS_FILE", errors) {
+        if let Some(fpath) = Env::credentials_file()
+            .map_err(|e| errors.push(e))
+            .ok()
+            .flatten()
+        {
             read_credentials(cfg, fpath)
                 .await
                 .map_err(|e| errors.push(e))
                 .ok();
         }
-        if let Some(host) = str_env("EDGEDB_HOST", errors) {
-            match validate_host(&host) {
-                Ok(_) => {
-                    cfg.address = Address::Tcp((host, DEFAULT_PORT));
-                }
-                Err(e) => errors.push(e.context("EDGEDB_HOST is invalid")),
-            }
+        if let Some(host) = Env::host().map_err(|e| errors.push(e)).ok().flatten() {
+            cfg.address = Address::Tcp((host, DEFAULT_PORT));
         }
-        if let Some(port_str) = str_env("EDGEDB_PORT", errors) {
-            let port = port_str
-                .parse()
-                .map_err(ClientError::with_source)
-                .and_then(validate_port)
-                .context("EDGEDB_PORT is invalid");
-            match port {
-                Ok(port) => {
-                    if let Address::Tcp((_, ref mut portref)) = &mut cfg.address {
-                        *portref = port
-                    }
-                }
-                Err(e) => {
-                    if port_str.starts_with("tcp://") {
-                        PORT_WARN.call_once(|| {
-                            log::warn!(
-                                "Environment variable `EDGEDB_PORT` \
-                                contains docker-link-like definition. \
-                                Ignoring..."
-                            );
-                        });
-                    } else {
-                        errors.push(e);
-                    }
-                }
+        if let Some(port) = Env::port().map_err(|e| errors.push(e)).ok().flatten() {
+            if let Address::Tcp((_, ref mut portref)) = &mut cfg.address {
+                *portref = port.into()
             }
         }
     }
 
     async fn secret_key_env(&self, cfg: &mut ConfigInner, errors: &mut Vec<Error>) {
-        cfg.secret_key = self.secret_key.clone().or_else(|| {
-            get_env("EDGEDB_SECRET_KEY")
-                .map_err(|e| errors.push(e))
-                .ok()
-                .flatten()
-        });
+        cfg.secret_key = self
+            .secret_key
+            .clone()
+            .or_else(|| Env::secret_key().map_err(|e| errors.push(e)).ok().flatten());
     }
 
     async fn granular_env(&self, cfg: &mut ConfigInner, errors: &mut Vec<Error>) {
         let database_branch = self.database.as_ref().or(self.branch.as_ref())
             .cloned()
             .or_else(|| {
-                let database = get_env("EDGEDB_DATABASE")
+                let database = Env::database()
                     .map_err(|e| errors.push(e)).ok()?;
-                let branch = get_env("EDGEDB_BRANCH")
+                let branch = Env::branch()
                     .map_err(|e| errors.push(e)).ok()?;
 
                 if database.is_some() && branch.is_some() {
@@ -1232,19 +1134,16 @@ impl Builder {
             cfg.branch = name;
         }
 
-        let user = self.user.clone().or_else(|| {
-            get_env("EDGEDB_USER")
-                .and_then(|v| v.map(validate_user).transpose())
-                .map_err(|e| errors.push(e))
-                .ok()
-                .flatten()
-        });
+        let user = self
+            .user
+            .clone()
+            .or_else(|| Env::user().map_err(|e| errors.push(e)).ok().flatten());
         if let Some(user) = user {
             cfg.user = user;
         }
 
         let tls_server_name = self.tls_server_name.clone().or_else(|| {
-            get_env("EDGEDB_TLS_SERVER_NAME")
+            Env::tls_server_name()
                 .map_err(|e| errors.push(e))
                 .ok()
                 .flatten()
@@ -1253,22 +1152,19 @@ impl Builder {
             cfg.tls_server_name = Some(tls_server_name);
         }
 
-        let password = self.password.clone().or_else(|| {
-            get_env("EDGEDB_PASSWORD")
-                .map_err(|e| errors.push(e))
-                .ok()
-                .flatten()
-        });
+        let password = self
+            .password
+            .clone()
+            .or_else(|| Env::password().map_err(|e| errors.push(e)).ok().flatten());
         if let Some(password) = password {
             cfg.password = Some(password);
         }
 
         let tls_ca_file = self.tls_ca_file.clone().or_else(|| {
-            get_env("EDGEDB_TLS_CA_FILE")
+            Env::tls_ca_file()
                 .map_err(|e| errors.push(e))
                 .ok()
                 .flatten()
-                .map(|p| p.into())
         });
         if let Some(tls_ca_file) = tls_ca_file {
             match read_certificates(tls_ca_file).await {
@@ -1277,10 +1173,7 @@ impl Builder {
             }
         }
 
-        let tls_ca = get_env("EDGEDB_TLS_CA")
-            .map_err(|e| errors.push(e))
-            .ok()
-            .flatten();
+        let tls_ca = Env::tls_ca().map_err(|e| errors.push(e)).ok().flatten();
         if let Some(pem) = tls_ca {
             match validate_certs(&pem) {
                 Ok(()) => cfg.pem_certificates = Some(pem),
@@ -1288,46 +1181,19 @@ impl Builder {
             }
         }
 
-        let security = get_env("EDGEDB_CLIENT_TLS_SECURITY")
+        let security = Env::client_tls_security()
             .map_err(|e| errors.push(e))
             .ok()
-            .flatten()
-            .and_then(|x| {
-                x.parse::<TlsSecurity>()
-                    .map_err(|e| {
-                        errors.push(e.context("EDGEDB_CLIENT_TLS_SECURITY error"));
-                    })
-                    .ok()
-            });
+            .flatten();
         if let Some(security) = security {
             cfg.tls_security = security;
         }
 
         let wait = self.wait_until_available.or_else(|| {
-            get_env("EDGEDB_WAIT_UNTIL_AVAILABLE")
+            Env::wait_until_available()
                 .map_err(|e| errors.push(e))
                 .ok()
                 .flatten()
-                .and_then(|x| {
-                    x.parse::<model::Duration>()
-                        .map_err(|e| {
-                            errors.push(
-                                ClientError::with_source(e)
-                                    .context("EDGEDB_WAIT_UNTIL_AVAILABLE error"),
-                            );
-                        })
-                        .ok()
-                })
-                .and_then(|x| {
-                    x.try_into()
-                        .map_err(|e| {
-                            errors.push(
-                                ClientError::with_source(e)
-                                    .context("EDGEDB_WAIT_UNTIL_AVAILABLE error"),
-                            );
-                        })
-                        .ok()
-                })
         });
         if let Some(wait) = wait {
             cfg.wait = wait;
@@ -1575,7 +1441,7 @@ impl Builder {
         };
 
         cfg.cloud_profile = self.cloud_profile.clone().or_else(|| {
-            get_env("EDGEDB_CLOUD_PROFILE")
+            Env::cloud_profile()
                 .map_err(|e| errors.push(e))
                 .ok()
                 .flatten()
@@ -1593,7 +1459,7 @@ impl Builder {
             self.compound_owned(&mut cfg, &mut errors).await;
             self.granular_owned(&mut cfg, &mut errors).await;
             true
-        } else if COMPOUND_ENV_VARS.iter().any(|x| env::var_os(x).is_some()) || has_port_env() {
+        } else if COMPOUND_ENV_VARS.iter().any(|x| env::var_os(x).is_some()) {
             self.secret_key_env(&mut cfg, &mut errors).await;
             self.compound_env(&mut cfg, &mut errors).await;
             self.granular_env(&mut cfg, &mut errors).await;
@@ -1605,32 +1471,19 @@ impl Builder {
             complete
         };
 
-        let security = get_env("EDGEDB_CLIENT_SECURITY")
+        let security = Env::client_security()
             .map_err(|e| errors.push(e))
             .ok()
-            .flatten()
-            .and_then(|x| {
-                x.parse::<ClientSecurity>()
-                    .map_err(|e| {
-                        errors.push(e.context("EDGEDB_CLIENT_SECURITY error"));
-                    })
-                    .ok()
-            });
+            .flatten();
+
         if let Some(security) = security {
             cfg.client_security = security;
         }
 
-        let cloud_certs = get_env("_EDGEDB_CLOUD_CERTS")
+        let cloud_certs = Env::_cloud_certs()
             .map_err(|e| errors.push(e))
             .ok()
-            .flatten()
-            .and_then(|x| {
-                x.parse::<CloudCerts>()
-                    .map_err(|e| {
-                        errors.push(e.context("_EDGEDB_CLOUD_CERTS error"));
-                    })
-                    .ok()
-            });
+            .flatten();
         if let Some(cloud_certs) = cloud_certs {
             cfg.cloud_certs = Some(cloud_certs);
         }
