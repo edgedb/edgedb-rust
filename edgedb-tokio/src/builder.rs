@@ -48,13 +48,29 @@ mod sealed {
 
     /// Helper trait to extract errors and redirect them to the Vec<Error>.
     pub(super) trait ErrorBuilder {
+        /// Convert a Result<Option<T>, Error> to an Option<T>.
+        /// If the result is an error, it is pushed to the Vec<Error>.
         fn maybe<T>(&mut self, res: Result<Option<T>, Error>) -> Option<T>;
+
+        /// Convert a Result<T, Error> to an Option<T>.
+        /// If the result is an error, it is pushed to the Vec<Error>.
+        fn check<T>(&mut self, res: Result<T, Error>) -> Option<T>;
     }
 
     impl ErrorBuilder for Vec<Error> {
         fn maybe<T>(&mut self, res: Result<Option<T>, Error>) -> Option<T> {
             match res {
                 Ok(v) => v,
+                Err(e) => {
+                    self.push(e);
+                    None
+                }
+            }
+        }
+
+        fn check<T>(&mut self, res: Result<T, Error>) -> Option<T> {
+            match res {
+                Ok(v) => Some(v),
                 Err(e) => {
                     self.push(e);
                     None
@@ -970,7 +986,7 @@ impl Builder {
         let mut conflict = None;
         if let Some(instance) = &self.instance {
             conflict = Some("instance");
-            errors.maybe(read_instance(cfg, instance).await);
+            errors.check(read_instance(cfg, instance).await);
         }
         if let Some(dsn) = &self.dsn {
             if let Some(conflict) = conflict {
@@ -990,7 +1006,7 @@ impl Builder {
                 )));
             }
             conflict = Some("credentials_file");
-            errors.maybe(read_credentials(cfg, credentials_file).await);
+            errors.check(read_credentials(cfg, credentials_file).await);
         }
         if let Some(credentials) = &self.credentials {
             if let Some(conflict) = conflict {
@@ -1000,7 +1016,7 @@ impl Builder {
                 )));
             }
             conflict = Some("credentials");
-            errors.maybe(set_credentials(cfg, credentials));
+            errors.check(set_credentials(cfg, credentials));
         }
         if let Some(host) = &self.host {
             if let Some(conflict) = conflict {
@@ -1071,9 +1087,8 @@ impl Builder {
         }
 
         if let Some(tls_ca_file) = &self.tls_ca_file {
-            match read_certificates(tls_ca_file).await {
-                Ok(pem) => cfg.pem_certificates = Some(pem),
-                Err(e) => errors.push(e),
+            if let Some(pem) = errors.check(read_certificates(tls_ca_file).await) {
+                cfg.pem_certificates = Some(pem)
             }
         }
 
@@ -1092,15 +1107,13 @@ impl Builder {
 
     async fn compound_env(&self, cfg: &mut ConfigInner, errors: &mut Vec<Error>) {
         if let Some(instance) = errors.maybe(Env::instance()) {
-            _ = read_instance(cfg, &instance)
-                .await
-                .map_err(|e| errors.push(e));
+            errors.check(read_instance(cfg, &instance).await);
         }
         if let Some(dsn) = errors.maybe(Env::dsn()) {
             self.read_dsn(cfg, &dsn, errors).await
         }
         if let Some(fpath) = errors.maybe(Env::credentials_file()) {
-            errors.maybe(read_credentials(cfg, fpath).await);
+            errors.check(read_credentials(cfg, fpath).await);
         }
         if let Some(host) = errors.maybe(Env::host()) {
             cfg.address = Address::Tcp((host, DEFAULT_PORT));
@@ -1166,17 +1179,15 @@ impl Builder {
             .clone()
             .or_else(|| errors.maybe(Env::tls_ca_file()));
         if let Some(tls_ca_file) = tls_ca_file {
-            match read_certificates(tls_ca_file).await {
-                Ok(pem) => cfg.pem_certificates = Some(pem),
-                Err(e) => errors.push(e),
+            if let Some(pem) = errors.check(read_certificates(tls_ca_file).await) {
+                cfg.pem_certificates = Some(pem)
             }
         }
 
         let tls_ca = errors.maybe(Env::tls_ca());
         if let Some(pem) = tls_ca {
-            match validate_certs(&pem) {
-                Ok(()) => cfg.pem_certificates = Some(pem),
-                Err(e) => errors.push(e),
+            if let Some(()) = errors.check(validate_certs(&pem)) {
+                cfg.pem_certificates = Some(pem)
             }
         }
 
@@ -1257,9 +1268,8 @@ impl Builder {
         }
         if self.tls_ca_file.is_none() {
             if let Some(path) = errors.maybe(dsn.retrieve_tls_ca_file().await) {
-                match read_certificates(&path).await {
-                    Ok(pem) => cfg.pem_certificates = Some(pem),
-                    Err(e) => errors.push(e),
+                if let Some(pem) = errors.check(read_certificates(&path).await) {
+                    cfg.pem_certificates = Some(pem)
                 }
             }
         } else {
@@ -1278,7 +1288,7 @@ impl Builder {
     async fn read_project(&self, cfg: &mut ConfigInner, errors: &mut Vec<Error>) -> bool {
         let pair = errors.maybe(self._get_stash_path().await);
         if let Some((project, stash)) = pair {
-            errors.maybe(self._read_project(cfg, &project, &stash).await);
+            errors.check(self._read_project(cfg, &project, &stash).await);
             true
         } else {
             false
@@ -1443,9 +1453,8 @@ impl Builder {
 
         // we don't overwrite this param in cfg because we want
         // `with_pem_certificates` to bump security to Strict
-        let tls_security = cfg
-            .compute_tls_security()
-            .map_err(|e| errors.push(e))
+        let tls_security = errors
+            .check(cfg.compute_tls_security())
             .unwrap_or(TlsSecurity::Strict);
         cfg.verifier = cfg.make_verifier(tls_security);
 
