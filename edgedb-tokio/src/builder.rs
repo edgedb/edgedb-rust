@@ -94,6 +94,19 @@ pub enum CloudCerts {
     Local,
 }
 
+impl CloudCerts {
+    pub fn root(&self) -> &'static str {
+        match self {
+            // Staging certs retrieved from
+            // https://letsencrypt.org/docs/staging-environment/#root-certificates
+            CloudCerts::Staging => include_str!("letsencrypt_staging.pem"),
+            // Local nebula development root cert found in
+            // nebula/infra/terraform/local/ca/root.certificate.pem
+            CloudCerts::Local => include_str!("nebula_development.pem"),
+        }
+    }
+}
+
 /// TCP keepalive configuration.
 #[derive(Default, Debug, Clone, Copy)]
 pub enum TcpKeepalive {
@@ -1931,16 +1944,8 @@ impl ConfigInner {
                 roots: webpki_roots::TLS_SERVER_ROOTS.into(),
             };
             if let Some(certs) = self.cloud_certs {
-                let data = match certs {
-                    // Staging certs retrieved from
-                    // https://letsencrypt.org/docs/staging-environment/#root-certificates
-                    CloudCerts::Staging => include_str!("letsencrypt_staging.pem"),
-                    // Local nebula development root cert found in
-                    // nebula/infra/terraform/local/ca/root.certificate.pem
-                    CloudCerts::Local => include_str!("nebula_development.pem"),
-                };
                 root_store.extend(
-                    tls::read_root_cert_pem(data)
+                    tls::read_root_cert_pem(certs.root())
                         .expect("embedded certs are correct")
                         .roots,
                 );

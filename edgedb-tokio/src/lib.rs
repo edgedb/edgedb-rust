@@ -111,29 +111,28 @@ reader.
     warn(missing_docs, missing_debug_implementations)
 )]
 
-#[cfg(feature = "unstable")]
-pub mod credentials;
-#[cfg(feature = "unstable")]
-pub mod raw;
-#[cfg(feature = "unstable")]
-pub mod server_params;
-#[cfg(feature = "unstable")]
-pub mod tls;
-#[cfg(feature = "unstable")]
-pub mod env;
+macro_rules! unstable_pub_mods {
+    ($(mod $mod_name:ident;)*) => {
+        $(
+            #[cfg(feature = "unstable")]
+            pub mod $mod_name;
+            #[cfg(not(feature = "unstable"))]
+            mod $mod_name;
+        )*
+    }
+}
 
-#[cfg(not(feature = "unstable"))]
-mod credentials;
-#[cfg(not(feature = "unstable"))]
-mod raw;
-#[cfg(not(feature = "unstable"))]
-mod server_params;
-#[cfg(not(feature = "unstable"))]
-mod tls;
-#[cfg(not(feature = "unstable"))]
-mod env;
+// If the unstable feature is enabled, the modules will be public.
+// If the unstable feature is not enabled, the modules will be private.
+unstable_pub_mods! {
+    mod builder;
+    mod credentials;
+    mod raw;
+    mod server_params;
+    mod tls;
+    mod env;
+}
 
-mod builder;
 mod client;
 mod errors;
 mod options;
