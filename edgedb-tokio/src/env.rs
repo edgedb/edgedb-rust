@@ -26,29 +26,16 @@ macro_rules! define_env {
         impl Env {
             $(
                 pub fn $name() -> ::std::result::Result<::std::option::Option<$type>, $crate::errors::Error> {
-                    let mut name;
-                    let mut value = None;
-                    $(
-                        let env_name = stringify!($env_name);
-                        name = env_name;
-                        if let Some(s) = $crate::env::get_env(env_name)? {
-                            if value.is_some() {
-                                return Err($crate::errors::ClientError::with_source(
-                                    ::std::io::Error::new(
-                                        ::std::io::ErrorKind::InvalidInput,
-                                        format!("multiple environment variables with the same name: {env_name}, {name}"),
-                                    ),
-                                ));
-                            }
-                            value = Some(s);
-                        };
-                    )+
-                    let Some(s) = value else {
+                    const ENV_NAMES: &[&str] = &[$(stringify!($env_name)),+];
+                    let Some((name, s)) = $crate::env::get_envs(ENV_NAMES)? else {
                         return Ok(None);
                     };
                     $(let Some(s) = $preprocess(s) else {
                         return Ok(None);
                     };)?
+
+                    // This construct lets us choose between $parse and std::str::FromStr
+                    // without requiring all types to implement FromStr.
                     #[allow(unused_labels)]
                     let value: $type = 'block: {
                         $(
@@ -71,6 +58,7 @@ macro_rules! define_env {
 define_env!(
     /// The host to connect to.
     #[env(GEL_HOST, EDGEDB_HOST)]
+    #[validate=validate_host]
     host: String,
 
     /// The port to connect to.
@@ -162,49 +150,68 @@ fn ignore_docker_tcp_port(s: String) -> Option<String> {
 
 fn non_empty_string(var: &str, s: &str) -> Result<(), Error> {
     if s.is_empty() {
-        Err(ClientError::with_source(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("invalid {var} value: {s}"),
-        )))
+        Err(create_var_error(var, "empty string"))
     } else {
         Ok(())
     }
 }
 
+fn validate_host(var: &str, s: &str) -> Result<(), Error> {
+    if s.is_empty() {
+        return Err(create_var_error(var, "invalid host: empty string"));
+    } else if s.contains(',') {
+        return Err(create_var_error(var, "invalid host: multiple hosts"));
+    }
+    Ok(())
+}
+
+#[inline(never)]
 fn parse<T: FromStr>(var: &str, s: &str) -> Result<T, Error>
 where
     <T as FromStr>::Err: Debug,
 {
-    Ok(s.parse().map_err(|e| {
-        ClientError::with_source(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("invalid {var} value: {s}: {e:?}"),
-        ))
-    })?)
+    Ok(s.parse().map_err(|e| create_var_error(var, e))?)
 }
 
+#[inline(never)]
 pub(crate) fn get_env(name: &str) -> Result<Option<String>, Error> {
-    match env::var(name) {
+    let var = env::var(name);
+    match var {
         Ok(v) if v.is_empty() => Ok(None),
         Ok(v) => Ok(Some(v)),
         Err(env::VarError::NotPresent) => Ok(None),
-        Err(e) => Err(ClientError::with_source(e)
-            .context(format!("Cannot decode environment variable {:?}", name))),
+        Err(e) => Err(create_var_error(name, e)),
     }
 }
 
-fn parse_duration(var: &str, s: &str) -> Result<Duration, Error> {
-    let duration = model::Duration::from_str(s).map_err(|e| {
-        ClientError::with_source(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("invalid {var} value: {s}: {e:?}"),
-        ))
-    })?;
+fn get_envs(names: &'static [&'static str]) -> Result<Option<(&'static str, String)>, Error> {
+    let mut name;
+    let mut value = None;
+    for n in names {
+        name = n;
+        if let Some(s) = get_env(name)? {
+            if value.is_some() {
+                log::warn!(
+                    "multiple environment variables with the same name: {}",
+                    names.join(", ")
+                );
+            } else {
+                value = Some((*name, s));
+            }
+        }
+    }
+    Ok(value)
+}
 
-    duration.try_into().map_err(|e| {
-        ClientError::with_source(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("invalid {var} value: {s}: {e:?}"),
-        ))
-    })
+fn parse_duration(var: &str, s: &str) -> Result<Duration, Error> {
+    let duration = model::Duration::from_str(s).map_err(|e| create_var_error(var, e))?;
+
+    duration.try_into().map_err(|e| create_var_error(var, e))
+}
+
+fn create_var_error(var: &str, e: impl Debug) -> Error {
+    ClientError::with_source(io::Error::new(
+        io::ErrorKind::InvalidInput,
+        format!("{var} is invalid: {e:?}"),
+    ))
 }

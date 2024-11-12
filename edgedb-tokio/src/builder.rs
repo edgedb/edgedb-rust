@@ -31,13 +31,6 @@ pub const DEFAULT_TCP_KEEPALIVE: Duration = Duration::from_secs(60);
 pub const DEFAULT_POOL_SIZE: usize = 10;
 pub const DEFAULT_HOST: &str = "localhost";
 pub const DEFAULT_PORT: u16 = 5656;
-pub const COMPOUND_ENV_VARS: &[&str] = &[
-    "EDGEDB_HOST",
-    "EDGEDB_PORT",
-    "EDGEDB_CREDENTIALS_FILE",
-    "EDGEDB_INSTANCE",
-    "EDGEDB_DSN",
-];
 const DOMAIN_LABEL_MAX_LENGTH: usize = 63;
 const CLOUD_INSTANCE_NAME_MAX_LENGTH: usize = DOMAIN_LABEL_MAX_LENGTH - 2 + 1; // "--" -> "/"
 
@@ -1105,24 +1098,60 @@ impl Builder {
         }
     }
 
-    async fn compound_env(&self, cfg: &mut ConfigInner, errors: &mut Vec<Error>) {
-        if let Some(instance) = errors.maybe(Env::instance()) {
+    async fn compound_env(&self, cfg: &mut ConfigInner, errors: &mut Vec<Error>) -> bool {
+        let instance = Env::instance();
+        let dsn = Env::dsn();
+        let credentials_file = Env::credentials_file();
+        let host = Env::host();
+        let port = Env::port();
+
+        fn has(opt: &Result<Option<impl Sized>, Error>) -> bool {
+            opt.as_ref().map(|s| s.as_ref()).ok().flatten().is_some()
+        }
+
+        let groups = [
+            (has(&instance), "GEL_INSTANCE"),
+            (has(&dsn), "GEL_DSN"),
+            (has(&credentials_file), "GEL_CREDENTIALS_FILE"),
+            (has(&host) || has(&port), "GEL_HOST or GEL_PORT"),
+        ];
+
+        let has_envs = groups
+            .into_iter()
+            .filter_map(|(has, name)| if has { Some(name) } else { None })
+            .collect::<Vec<_>>();
+
+        if has_envs.len() > 1 {
+            errors.push(InvalidArgumentError::with_message(format!(
+                "environment variable {} conflicts with {}",
+                has_envs[0],
+                has_envs[1..].join(", "),
+            )));
+        }
+
+        if let Some(instance) = errors.maybe(instance) {
             errors.check(read_instance(cfg, &instance).await);
         }
-        if let Some(dsn) = errors.maybe(Env::dsn()) {
+        if let Some(dsn) = errors.maybe(dsn) {
             self.read_dsn(cfg, &dsn, errors).await
         }
-        if let Some(fpath) = errors.maybe(Env::credentials_file()) {
+        if let Some(fpath) = errors.maybe(credentials_file) {
             errors.check(read_credentials(cfg, fpath).await);
         }
-        if let Some(host) = errors.maybe(Env::host()) {
+        if let Some(host) = errors.maybe(host) {
             cfg.address = Address::Tcp((host, DEFAULT_PORT));
         }
-        if let Some(port) = errors.maybe(Env::port()) {
+        if let Some(port) = errors.maybe(port) {
             if let Address::Tcp((_, ref mut portref)) = &mut cfg.address {
-                *portref = port.into()
+                *portref = port.into();
             }
         }
+
+        // This code needs a total rework...
+
+        // Because an incomplete configuration trumps errors, we return "complete" if
+        // there are errors, so those errors can be reported.
+        !has_envs.is_empty() || !errors.is_empty()
     }
 
     async fn secret_key_env(&self, cfg: &mut ConfigInner, errors: &mut Vec<Error>) {
@@ -1428,14 +1457,13 @@ impl Builder {
             self.compound_owned(&mut cfg, &mut errors).await;
             self.granular_owned(&mut cfg, &mut errors).await;
             true
-        } else if COMPOUND_ENV_VARS.iter().any(|x| env::var_os(x).is_some()) {
-            self.secret_key_env(&mut cfg, &mut errors).await;
-            self.compound_env(&mut cfg, &mut errors).await;
-            self.granular_env(&mut cfg, &mut errors).await;
-            true
         } else {
             self.secret_key_env(&mut cfg, &mut errors).await;
-            let complete = self.read_project(&mut cfg, &mut errors).await;
+            let complete = if self.compound_env(&mut cfg, &mut errors).await {
+                true
+            } else {
+                self.read_project(&mut cfg, &mut errors).await
+            };
             self.granular_env(&mut cfg, &mut errors).await;
             complete
         };
