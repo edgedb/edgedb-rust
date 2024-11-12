@@ -10,6 +10,7 @@ use url::Url;
 use crate::errors::{ClientError, Error, ErrorKind};
 use crate::{builder::CloudCerts, ClientSecurity, InstanceName, TlsSecurity};
 
+#[cfg_attr(feature = "unstable", macro_export)]
 macro_rules! define_env {
     ($(
         #[doc=$doc:expr]
@@ -25,7 +26,7 @@ macro_rules! define_env {
 
         impl Env {
             $(
-                pub fn $name() -> ::std::result::Result<::std::option::Option<$type>, $crate::errors::Error> {
+                pub fn $name() -> ::std::result::Result<::std::option::Option<$type>, $crate::Error> {
                     const ENV_NAMES: &[&str] = &[$(stringify!($env_name)),+];
                     let Some((name, s)) = $crate::env::get_envs(ENV_NAMES)? else {
                         return Ok(None);
@@ -166,7 +167,8 @@ fn validate_host(var: &str, s: &str) -> Result<(), Error> {
 }
 
 #[inline(never)]
-fn parse<T: FromStr>(var: &str, s: &str) -> Result<T, Error>
+#[doc(hidden)]
+pub fn parse<T: FromStr>(var: &str, s: &str) -> Result<T, Error>
 where
     <T as FromStr>::Err: Debug,
 {
@@ -184,7 +186,9 @@ pub(crate) fn get_env(name: &str) -> Result<Option<String>, Error> {
     }
 }
 
-fn get_envs(names: &'static [&'static str]) -> Result<Option<(&'static str, String)>, Error> {
+#[inline(never)]
+#[doc(hidden)]
+pub fn get_envs(names: &'static [&'static str]) -> Result<Option<(&'static str, String)>, Error> {
     let mut name;
     let mut value = None;
     for n in names {

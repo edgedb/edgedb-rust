@@ -131,6 +131,9 @@ mod tls;
 
 mod builder;
 mod client;
+#[cfg(feature = "unstable")]
+pub mod env;
+#[cfg(not(feature = "unstable"))]
 mod env;
 mod errors;
 mod options;
