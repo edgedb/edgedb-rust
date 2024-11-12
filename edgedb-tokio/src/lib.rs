@@ -119,6 +119,8 @@ pub mod raw;
 pub mod server_params;
 #[cfg(feature = "unstable")]
 pub mod tls;
+#[cfg(feature = "unstable")]
+pub mod env;
 
 #[cfg(not(feature = "unstable"))]
 mod credentials;
@@ -128,13 +130,11 @@ mod raw;
 mod server_params;
 #[cfg(not(feature = "unstable"))]
 mod tls;
+#[cfg(not(feature = "unstable"))]
+mod env;
 
 mod builder;
 mod client;
-#[cfg(feature = "unstable")]
-pub mod env;
-#[cfg(not(feature = "unstable"))]
-mod env;
 mod errors;
 mod options;
 mod query_executor;
