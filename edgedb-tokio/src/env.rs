@@ -26,6 +26,7 @@ macro_rules! define_env {
 
         impl Env {
             $(
+                #[doc = $doc]
                 pub fn $name() -> ::std::result::Result<::std::option::Option<$type>, $crate::Error> {
                     const ENV_NAMES: &[&str] = &[$(stringify!($env_name)),+];
                     let Some((name, s)) = $crate::env::get_envs(ENV_NAMES)? else {
