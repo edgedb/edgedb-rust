@@ -189,21 +189,25 @@ pub(crate) fn get_env(name: &str) -> Result<Option<String>, Error> {
 #[inline(never)]
 #[doc(hidden)]
 pub fn get_envs(names: &'static [&'static str]) -> Result<Option<(&'static str, String)>, Error> {
-    let mut name;
     let mut value = None;
-    for n in names {
-        name = n;
-        if let Some(s) = get_env(name)? {
-            if value.is_some() {
-                log::warn!(
-                    "multiple environment variables with the same name: {}",
-                    names.join(", ")
-                );
-            } else {
-                value = Some((*name, s));
+    let mut found_vars = Vec::new();
+    
+    for name in names {
+        if let Some(val) = get_env(name)? {
+            found_vars.push(format!("{}={}", name, val));
+            if value.is_none() {
+                value = Some((*name, val));
             }
         }
     }
+
+    if found_vars.len() > 1 {
+        log::warn!(
+            "Multiple environment variables set: {}",
+            found_vars.join(", ")
+        );
+    }
+
     Ok(value)
 }
 
