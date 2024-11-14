@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 
 use edgedb_protocol::common::Capabilities;
-use edgedb_protocol::common::{Cardinality, CompilationOptions, IoFormat, InputLanguage};
+use edgedb_protocol::common::{Cardinality, CompilationOptions, InputLanguage, IoFormat};
 use edgedb_tokio::raw::{Pool, PoolState};
 
 use crate::server::SERVER;

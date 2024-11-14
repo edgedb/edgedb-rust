@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use bytes::BytesMut;
 use edgedb_protocol::common::CompilationOptions;
-use edgedb_protocol::common::{Capabilities, Cardinality, IoFormat, InputLanguage};
+use edgedb_protocol::common::{Capabilities, Cardinality, InputLanguage, IoFormat};
 use edgedb_protocol::model::Json;
 use edgedb_protocol::query_arg::{Encoder, QueryArgs};
 use edgedb_protocol::QueryResult;
