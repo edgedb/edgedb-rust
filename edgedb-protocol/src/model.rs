@@ -13,7 +13,7 @@ pub use self::json::Json;
 pub use self::time::{DateDuration, RelativeDuration};
 pub use self::time::{Datetime, Duration, LocalDate, LocalDatetime, LocalTime};
 pub use memory::ConfigMemory;
-pub use range::Range;
+pub use range::{Range, RangeScalar};
 pub use uuid::Uuid;
 pub use vector::Vector;
 
