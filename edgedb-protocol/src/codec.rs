@@ -11,7 +11,7 @@ use std::str;
 use std::sync::Arc;
 
 use bytes::{Buf, BufMut, BytesMut};
-use snafu::{ensure, OptionExt};
+use snafu::{ensure, OptionExt, ResultExt};
 use uuid::Uuid as UuidVal;
 
 use crate::common::Cardinality;
@@ -44,6 +44,11 @@ pub const STD_JSON: UuidVal = UuidVal::from_u128(0x10f);
 pub const STD_BIGINT: UuidVal = UuidVal::from_u128(0x110);
 pub const CFG_MEMORY: UuidVal = UuidVal::from_u128(0x130);
 pub const PGVECTOR_VECTOR: UuidVal = UuidVal::from_u128(0x9565dd88_04f5_11ee_a691_0b6ebe179825);
+pub const STD_PG_JSON: UuidVal = UuidVal::from_u128(0x1000001);
+pub const STD_PG_TIMESTAMPTZ: UuidVal = UuidVal::from_u128(0x1000002);
+pub const STD_PG_TIMESTAMP: UuidVal = UuidVal::from_u128(0x1000003);
+pub const STD_PG_DATE: UuidVal = UuidVal::from_u128(0x1000004);
+pub const STD_PG_INTERVAL: UuidVal = UuidVal::from_u128(0x1000005);
 
 pub(crate) fn uuid_to_known_name(uuid: &UuidVal) -> Option<&'static str> {
     match *uuid {
@@ -68,6 +73,11 @@ pub(crate) fn uuid_to_known_name(uuid: &UuidVal) -> Option<&'static str> {
         STD_BIGINT => Some("BaseScalar(bigint)"),
         CFG_MEMORY => Some("BaseScalar(cfg::memory)"),
         PGVECTOR_VECTOR => Some("BaseScalar(ext::pgvector::vector)"),
+        STD_PG_JSON => Some("BaseScalar(std::pg::json)"),
+        STD_PG_TIMESTAMPTZ => Some("BaseScalar(std::pg::timestamptz)"),
+        STD_PG_TIMESTAMP => Some("BaseScalar(std::pg::timestamp)"),
+        STD_PG_DATE => Some("BaseScalar(std::pg::date)"),
+        STD_PG_INTERVAL => Some("BaseScalar(std::pg::interval)"),
         _ => None,
     }
 }
@@ -181,6 +191,9 @@ pub struct Bool;
 
 #[derive(Debug)]
 pub struct Json;
+
+#[derive(Debug)]
+pub struct PgTextJson;
 
 #[derive(Debug)]
 pub struct Nothing;
@@ -358,6 +371,11 @@ pub fn scalar_codec(uuid: &UuidVal) -> Result<Arc<dyn Codec>, CodecError> {
         STD_BIGINT => Ok(Arc::new(BigInt {})),
         CFG_MEMORY => Ok(Arc::new(ConfigMemory {})),
         PGVECTOR_VECTOR => Ok(Arc::new(Vector {})),
+        STD_PG_JSON => Ok(Arc::new(PgTextJson {})),
+        STD_PG_TIMESTAMPTZ => Ok(Arc::new(Datetime {})),
+        STD_PG_TIMESTAMP => Ok(Arc::new(LocalDatetime {})),
+        STD_PG_DATE => Ok(Arc::new(LocalDate {})),
+        STD_PG_INTERVAL => Ok(Arc::new(RelativeDuration {})),
         _ => errors::UndefinedBaseScalar { uuid: uuid.clone() }.fail()?,
     }
 }
@@ -1140,6 +1158,23 @@ impl Codec for Json {
         };
         buf.reserve(1 + val.len());
         buf.put_u8(1);
+        buf.extend(val.as_bytes());
+        Ok(())
+    }
+}
+
+impl Codec for PgTextJson {
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        let val = str::from_utf8(buf).context(errors::InvalidUtf8)?.to_owned();
+        let json = model::Json::new_unchecked(val);
+        Ok(Value::Json(json))
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
+        let val = match val {
+            Value::Json(val) => val,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        buf.reserve(val.len());
         buf.extend(val.as_bytes());
         Ok(())
     }
