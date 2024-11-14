@@ -52,8 +52,16 @@ impl QueryResult for Value {
         ctx.build_codec(root_pos)
     }
     fn decode(codec: &mut Arc<dyn Codec>, msg: &Bytes) -> Result<Self, Error> {
-        codec
-            .decode(msg)
-            .map_err(ProtocolEncodingError::with_source)
+        let res = codec.decode(msg);
+
+        match res {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                if let Some(bt) = snafu::ErrorCompat::backtrace(&e) {
+                    eprintln!("{bt}");
+                }
+                Err(ProtocolEncodingError::with_source(e))
+            }
+        }
     }
 }

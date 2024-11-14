@@ -35,6 +35,11 @@ pub enum DecodeError {
         backtrace: Backtrace,
         cardinality: u8,
     },
+    #[snafu(display("unsupported input language: {:x}", input_language))]
+    InvalidInputLanguage {
+        backtrace: Backtrace,
+        input_language: u8,
+    },
     #[snafu(display("unsupported capability: {:b}", capabilities))]
     InvalidCapabilities {
         backtrace: Backtrace,

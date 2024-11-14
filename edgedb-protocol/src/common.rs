@@ -11,7 +11,7 @@ use crate::encoding::Input;
 use crate::errors::DecodeError;
 use crate::features::ProtocolVersion;
 
-pub use crate::client_message::IoFormat;
+pub use crate::client_message::{InputLanguage, IoFormat};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Cardinality {
@@ -52,6 +52,7 @@ pub struct CompilationOptions {
     pub explicit_objectids: bool,
     pub io_format: IoFormat,
     pub expected_cardinality: Cardinality,
+    pub input_language: InputLanguage,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -104,6 +105,17 @@ impl Cardinality {
             One => false,
             Many => true,
             AtLeastOne => false,
+        }
+    }
+}
+
+impl std::convert::TryFrom<u8> for InputLanguage {
+    type Error = errors::DecodeError;
+    fn try_from(input_language: u8) -> Result<Self, errors::DecodeError> {
+        match input_language {
+            0x45 => Ok(InputLanguage::EdgeQL),
+            0x53 => Ok(InputLanguage::SQL),
+            _ => Err(errors::InvalidInputLanguage { input_language }.build()),
         }
     }
 }
