@@ -39,6 +39,7 @@ pub struct Credentials {
     pub branch: Option<String>,
     pub tls_ca: Option<String>,
     pub tls_security: TlsSecurity,
+    pub tls_server_name: Option<String>,
     pub(crate) file_outdated: bool,
 }
 
@@ -59,6 +60,8 @@ struct CredentialsCompat {
     tls_cert_data: Option<String>, // deprecated
     #[serde(default, skip_serializing_if = "Option::is_none")]
     tls_ca: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tls_server_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     tls_verify_hostname: Option<bool>, // deprecated
     tls_security: Option<TlsSecurity>,
@@ -114,6 +117,7 @@ impl Default for Credentials {
             database: None,
             branch: None,
             tls_ca: None,
+            tls_server_name: None,
             tls_security: TlsSecurity::Default,
             file_outdated: false,
         }
@@ -133,6 +137,7 @@ impl Serialize for Credentials {
             database: self.database.clone(),
             branch: self.branch.clone(),
             tls_ca: self.tls_ca.clone(),
+            tls_server_name: self.tls_server_name.clone(),
             tls_cert_data: self.tls_ca.clone(),
             tls_security: Some(self.tls_security),
             tls_verify_hostname: match self.tls_security {
@@ -192,6 +197,7 @@ impl<'de> Deserialize<'de> for Credentials {
                 database: creds.database,
                 branch: creds.branch,
                 tls_ca: creds.tls_ca.or(creds.tls_cert_data.clone()),
+                tls_server_name: creds.tls_server_name,
                 tls_security: creds
                     .tls_security
                     .unwrap_or(match creds.tls_verify_hostname {

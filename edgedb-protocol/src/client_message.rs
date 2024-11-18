@@ -1,5 +1,5 @@
 /*!
-([Website reference](https://www.edgedb.com/docs/reference/protocol/messages)) The [ClientMessage](crate::client_message::ClientMessage) enum and related types.
+([Website reference](https://www.edgedb.com/docs/reference/protocol/messages)) The [ClientMessage] enum and related types.
 
 ```rust,ignore
 pub enum ClientMessage {
@@ -27,7 +27,6 @@ pub enum ClientMessage {
 
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::u16;
 
 use bytes::{Buf, BufMut, Bytes};
 use snafu::{ensure, OptionExt};
@@ -107,6 +106,7 @@ pub struct Parse {
     pub expected_cardinality: Cardinality,
     pub command_text: String,
     pub state: State,
+    pub input_language: InputLanguage,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -136,6 +136,7 @@ pub struct Execute1 {
     pub input_typedesc_id: Uuid,
     pub output_typedesc_id: Uuid,
     pub arguments: Bytes,
+    pub input_language: InputLanguage,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -169,6 +170,12 @@ pub struct RestoreBlock {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum DescribeAspect {
     DataDescription = 0x54,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum InputLanguage {
+    EdgeQL = 0x45,
+    SQL = 0x53,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -630,6 +637,9 @@ impl Encode for Execute1 {
         buf.put_u64(self.allowed_capabilities.bits());
         buf.put_u64(self.compilation_flags.bits());
         buf.put_u64(self.implicit_limit.unwrap_or(0));
+        if buf.proto().is_multilingual() {
+            buf.put_u8(self.input_language as u8);
+        }
         buf.put_u8(self.output_format as u8);
         buf.put_u8(self.expected_cardinality as u8);
         self.command_text.encode(buf)?;
@@ -664,6 +674,11 @@ impl Decode for Execute1 {
             0 => None,
             val => Some(val),
         };
+        let input_language = if buf.proto().is_multilingual() {
+            TryFrom::try_from(buf.get_u8())?
+        } else {
+            InputLanguage::EdgeQL
+        };
         let output_format = match buf.get_u8() {
             0x62 => IoFormat::Binary,
             0x6a => IoFormat::Json,
@@ -691,6 +706,7 @@ impl Decode for Execute1 {
             input_typedesc_id,
             output_typedesc_id,
             arguments,
+            input_language,
         })
     }
 }
@@ -791,6 +807,7 @@ impl Parse {
             expected_cardinality: opts.expected_cardinality,
             command_text: query.into(),
             state,
+            input_language: opts.input_language,
         }
     }
 }
@@ -852,6 +869,11 @@ impl Decode for Parse {
             0 => None,
             val => Some(val),
         };
+        let input_language = if buf.proto().is_multilingual() {
+            TryFrom::try_from(buf.get_u8())?
+        } else {
+            InputLanguage::EdgeQL
+        };
         let output_format = match buf.get_u8() {
             0x62 => IoFormat::Binary,
             0x6a => IoFormat::Json,
@@ -873,6 +895,7 @@ impl Decode for Parse {
             expected_cardinality,
             command_text,
             state,
+            input_language,
         })
     }
 }
@@ -895,6 +918,9 @@ impl Encode for Parse {
         buf.put_u64(self.allowed_capabilities.bits());
         buf.put_u64(self.compilation_flags.bits());
         buf.put_u64(self.implicit_limit.unwrap_or(0));
+        if buf.proto().is_multilingual() {
+            buf.put_u8(self.input_language as u8);
+        }
         buf.put_u8(self.output_format as u8);
         buf.put_u8(self.expected_cardinality as u8);
         self.command_text.encode(buf)?;

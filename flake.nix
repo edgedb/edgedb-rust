@@ -30,7 +30,7 @@
             pkgs.just
 
             # needed for tests
-            edgedb.packages.${system}.edgedb-server
+            edgedb.packages.${system}.edgedb-server-nightly
             edgedb.packages.${system}.edgedb-cli
           ]
           ++ pkgs.lib.optional pkgs.stdenv.isDarwin [
@@ -45,7 +45,7 @@
             buildInputs = [
               (fenix_pkgs.fromToolchainFile {
                 file = ./rust-toolchain.toml;
-                sha256 = "sha256-opUgs6ckUQCyDxcB9Wy51pqhd0MPGHUVbwRKKPGiwZU=";
+                sha256 = "sha256-3jVIIf5XPnUU1CRaTyAiO0XHVbJl12MSx3eucTXCjtE=";
               })
             ] ++ common;
           };
@@ -54,8 +54,8 @@
           devShells.minimum = pkgs.mkShell {
             buildInputs = [
               (fenix_pkgs.toolchainOf {
-                channel = "1.72"; # keep in sync with ./Cargo.toml rust-version
-                sha256 = "sha256-dxE7lmCFWlq0nl/wKcmYvpP9zqQbBitAQgZ1zx9Ooik=";
+                channel = "1.75"; # keep in sync with ./Cargo.toml rust-version
+                sha256 = "sha256-SXRtAuO4IqNOQq+nLbrsDFbVk+3aVA8NNpSZsKlVH/8=";
               }).defaultToolchain
             ] ++ common;
           };
@@ -63,10 +63,7 @@
           # rust beta version
           devShells.beta = pkgs.mkShell {
             buildInputs = [
-              (fenix_pkgs.toolchainOf {
-                channel = "beta";
-                sha256 = "sha256-WtTNSmxfoiHJEwCUnuDNfRNBZjNrzdBV02Hikw+YE+s=";
-              }).defaultToolchain
+              fenix_pkgs.beta.defaultToolchain
             ] ++ common;
           };
         };

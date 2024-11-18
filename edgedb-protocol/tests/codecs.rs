@@ -3,7 +3,6 @@ extern crate pretty_assertions;
 
 use std::error::Error;
 use std::sync::Arc;
-use std::{i16, i32, i64};
 
 use bytes::Bytes;
 
@@ -334,6 +333,7 @@ fn object_codec() -> Result<(), Box<dyn Error>> {
             cardinality: None,
             name: String::from("__tid__"),
             type_pos: TypePos(0),
+            source_type_pos: None,
         },
         ShapeElement {
             flag_implicit: false,
@@ -342,6 +342,7 @@ fn object_codec() -> Result<(), Box<dyn Error>> {
             cardinality: None,
             name: String::from("id"),
             type_pos: TypePos(0),
+            source_type_pos: None,
         },
     ];
     let shape = elements.as_slice().into();
@@ -357,6 +358,8 @@ fn object_codec() -> Result<(), Box<dyn Error>> {
                 id: "5d5ebe41-eac8-eab7-a24e-cc3a8cd2766c"
                     .parse::<Uuid>()?
                     .into(),
+                ephemeral_free_shape: false,
+                type_pos: None,
                 elements,
             }),
         ],
@@ -384,7 +387,7 @@ fn object_codec() -> Result<(), Box<dyn Error>> {
 fn input_codec() -> Result<(), Box<dyn Error>> {
     let sdd = StateDataDescription {
         typedesc: RawTypedesc {
-            proto: ProtocolVersion::current(),
+            proto: ProtocolVersion::new(1, 0),
             id: "fd6c3b17504a714858ec2282431ce72c".parse()?,
             data: Bytes::from_static(
                 b"\x02\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
@@ -460,6 +463,7 @@ fn set_codec() -> Result<(), Box<dyn Error>> {
             cardinality: None,
             name: "__tid__".into(),
             type_pos: TypePos(0),
+            source_type_pos: None,
         },
         ShapeElement {
             flag_implicit: true,
@@ -468,6 +472,7 @@ fn set_codec() -> Result<(), Box<dyn Error>> {
             cardinality: None,
             name: "id".into(),
             type_pos: TypePos(0),
+            source_type_pos: None,
         },
         ShapeElement {
             flag_implicit: false,
@@ -476,6 +481,7 @@ fn set_codec() -> Result<(), Box<dyn Error>> {
             cardinality: None,
             name: "first_name".into(),
             type_pos: TypePos(1),
+            source_type_pos: None,
         },
     ];
     let outer_elements = vec![
@@ -486,6 +492,7 @@ fn set_codec() -> Result<(), Box<dyn Error>> {
             cardinality: None,
             name: "__tid__".into(),
             type_pos: TypePos(0),
+            source_type_pos: None,
         },
         ShapeElement {
             flag_implicit: true,
@@ -494,6 +501,7 @@ fn set_codec() -> Result<(), Box<dyn Error>> {
             cardinality: None,
             name: "id".into(),
             type_pos: TypePos(0),
+            source_type_pos: None,
         },
         ShapeElement {
             flag_implicit: false,
@@ -502,6 +510,7 @@ fn set_codec() -> Result<(), Box<dyn Error>> {
             cardinality: None,
             name: "first_name".into(),
             type_pos: TypePos(1),
+            source_type_pos: None,
         },
         ShapeElement {
             flag_implicit: false,
@@ -510,6 +519,7 @@ fn set_codec() -> Result<(), Box<dyn Error>> {
             cardinality: None,
             name: "collegues".into(),
             type_pos: TypePos(3),
+            source_type_pos: None,
         },
     ];
     let inner_shape = ObjectShape::from(&inner_elements[..]);
@@ -532,6 +542,8 @@ fn set_codec() -> Result<(), Box<dyn Error>> {
                     .parse::<Uuid>()?
                     .into(),
                 elements: inner_elements,
+                ephemeral_free_shape: false,
+                type_pos: None,
             }),
             Descriptor::Set(SetDescriptor {
                 id: "afbb389d-aa73-2aae-9310-84a9163cb5ed"
@@ -544,6 +556,8 @@ fn set_codec() -> Result<(), Box<dyn Error>> {
                     .parse::<Uuid>()?
                     .into(),
                 elements: outer_elements,
+                ephemeral_free_shape: false,
+                type_pos: None,
             }),
         ],
     )?;
@@ -855,7 +869,10 @@ fn custom_scalar() -> Result<(), Box<dyn Error>> {
                 id: "234dc787-2646-11ea-bebd-010d530c06ca"
                     .parse::<Uuid>()?
                     .into(),
-                base_type_pos: TypePos(0),
+                base_type_pos: Some(TypePos(0)),
+                name: None,
+                schema_defined: None,
+                ancestors: vec![],
             }),
         ],
     )?;
@@ -884,6 +901,9 @@ fn tuple() -> Result<(), Box<dyn Error>> {
                     .parse::<Uuid>()?
                     .into(),
                 element_types: vec![TypePos(0), TypePos(1)],
+                name: None,
+                schema_defined: None,
+                ancestors: vec![],
             }),
         ],
     )?;
@@ -929,6 +949,9 @@ fn named_tuple() -> Result<(), Box<dyn Error>> {
                     .parse::<Uuid>()?
                     .into(),
                 elements,
+                name: None,
+                schema_defined: None,
+                ancestors: vec![],
             }),
         ],
     )?;
@@ -962,6 +985,9 @@ fn array() -> Result<(), Box<dyn Error>> {
                     .into(),
                 type_pos: TypePos(0),
                 dimensions: vec![None],
+                name: None,
+                schema_defined: None,
+                ancestors: vec![],
             }),
         ],
     )?;
@@ -992,6 +1018,9 @@ fn enums() -> Result<(), Box<dyn Error>> {
                 .parse::<Uuid>()?
                 .into(),
             members: vec!["x".into(), "y".into()],
+            name: None,
+            schema_defined: None,
+            ancestors: vec![],
         })],
     )?;
     encoding_eq!(&codec, bconcat!(b"x"), Value::Enum("x".into()));
@@ -1008,6 +1037,7 @@ fn set_of_arrays() -> Result<(), Box<dyn Error>> {
             cardinality: None,
             name: String::from("__tname__"),
             type_pos: TypePos(0),
+            source_type_pos: None,
         },
         ShapeElement {
             flag_implicit: true,
@@ -1016,6 +1046,7 @@ fn set_of_arrays() -> Result<(), Box<dyn Error>> {
             cardinality: None,
             name: String::from("id"),
             type_pos: TypePos(1),
+            source_type_pos: None,
         },
         ShapeElement {
             flag_implicit: false,
@@ -1024,6 +1055,7 @@ fn set_of_arrays() -> Result<(), Box<dyn Error>> {
             cardinality: None,
             name: String::from("sets"),
             type_pos: TypePos(4),
+            source_type_pos: None,
         },
     ];
     let shape = ObjectShape::from(&elements[..]);
@@ -1052,6 +1084,9 @@ fn set_of_arrays() -> Result<(), Box<dyn Error>> {
                     .into(),
                 type_pos: TypePos(2),
                 dimensions: vec![None],
+                name: None,
+                schema_defined: None,
+                ancestors: vec![],
             }),
             Descriptor::Set(SetDescriptor {
                 id: "499ffd5c-f21b-574d-af8a-1c094c9d6fb0"
@@ -1064,6 +1099,8 @@ fn set_of_arrays() -> Result<(), Box<dyn Error>> {
                     .parse::<Uuid>()?
                     .into(),
                 elements,
+                ephemeral_free_shape: false,
+                type_pos: None,
             }),
         ],
     )?;
@@ -1111,6 +1148,9 @@ fn range() -> Result<(), Box<dyn Error>> {
                     .unwrap()
                     .into(),
                 type_pos: TypePos(0),
+                name: None,
+                schema_defined: None,
+                ancestors: vec![],
             }),
         ],
     )?;
@@ -1143,6 +1183,9 @@ fn multi_range() -> Result<(), Box<dyn Error>> {
                     .unwrap()
                     .into(),
                 type_pos: TypePos(0),
+                name: None,
+                schema_defined: None,
+                ancestors: vec![],
             }),
         ],
     )?;

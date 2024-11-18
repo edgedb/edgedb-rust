@@ -11,7 +11,7 @@ readme = "README.md"
 rust-version.workspace = true
 
 [dependencies]
-edgedb-protocol = { path = "../edgedb-protocol", version = "0.6.0" }
+edgedb-protocol = { path = "../edgedb-protocol", version = "0.6.0", features = ["with-serde"] }
 edgedb-errors = { path = "../edgedb-errors", version = "0.4.1" }
 edgedb-derive = { path = "../edgedb-derive", version = "0.5.1", optional = true }
 tokio = { version = "1.15", features = ["net", "time", "sync", "macros"] }
@@ -56,7 +56,6 @@ socket2 = "0.5"
 command-fds = "0.3.0"
 
 [dev-dependencies]
-nix = "0.28.0"
 shutdown_hooks = "0.1.0"
 env_logger = "0.11"
 thiserror = "1.0.30"
@@ -65,6 +64,7 @@ futures-util = "0.3.21"
 miette = { version = "7.2.0", features = ["fancy"] }
 edgedb-errors = { path = "../edgedb-errors", features = ["miette"] }
 test-utils = { git = "https://github.com/edgedb/test-utils.git" }
+tempfile = "3.13.0"
 
 [features]
 default = ["derive", "env"]

@@ -1,5 +1,5 @@
 /*!
-Implementations of the [Codec](crate::codec::Codec) trait into types found in the [Value](crate::value::Value) enum.
+Implementations of the [Codec] trait into types found in the [Value] enum.
 */
 
 use std::any::type_name;
@@ -11,7 +11,7 @@ use std::str;
 use std::sync::Arc;
 
 use bytes::{Buf, BufMut, BytesMut};
-use snafu::{ensure, OptionExt};
+use snafu::{ensure, OptionExt, ResultExt};
 use uuid::Uuid as UuidVal;
 
 use crate::common::Cardinality;
@@ -44,6 +44,11 @@ pub const STD_JSON: UuidVal = UuidVal::from_u128(0x10f);
 pub const STD_BIGINT: UuidVal = UuidVal::from_u128(0x110);
 pub const CFG_MEMORY: UuidVal = UuidVal::from_u128(0x130);
 pub const PGVECTOR_VECTOR: UuidVal = UuidVal::from_u128(0x9565dd88_04f5_11ee_a691_0b6ebe179825);
+pub const STD_PG_JSON: UuidVal = UuidVal::from_u128(0x1000001);
+pub const STD_PG_TIMESTAMPTZ: UuidVal = UuidVal::from_u128(0x1000002);
+pub const STD_PG_TIMESTAMP: UuidVal = UuidVal::from_u128(0x1000003);
+pub const STD_PG_DATE: UuidVal = UuidVal::from_u128(0x1000004);
+pub const STD_PG_INTERVAL: UuidVal = UuidVal::from_u128(0x1000005);
 
 pub(crate) fn uuid_to_known_name(uuid: &UuidVal) -> Option<&'static str> {
     match *uuid {
@@ -68,6 +73,11 @@ pub(crate) fn uuid_to_known_name(uuid: &UuidVal) -> Option<&'static str> {
         STD_BIGINT => Some("BaseScalar(bigint)"),
         CFG_MEMORY => Some("BaseScalar(cfg::memory)"),
         PGVECTOR_VECTOR => Some("BaseScalar(ext::pgvector::vector)"),
+        STD_PG_JSON => Some("BaseScalar(std::pg::json)"),
+        STD_PG_TIMESTAMPTZ => Some("BaseScalar(std::pg::timestamptz)"),
+        STD_PG_TIMESTAMP => Some("BaseScalar(std::pg::timestamp)"),
+        STD_PG_DATE => Some("BaseScalar(std::pg::date)"),
+        STD_PG_INTERVAL => Some("BaseScalar(std::pg::interval)"),
         _ => None,
     }
 }
@@ -94,6 +104,20 @@ pub struct ShapeElement {
     pub flag_implicit: bool,
     pub flag_link_property: bool,
     pub flag_link: bool,
+    pub cardinality: Option<Cardinality>,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InputObjectShape(pub(crate) Arc<InputObjectShapeInfo>);
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct InputObjectShapeInfo {
+    pub elements: Vec<InputShapeElement>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct InputShapeElement {
     pub cardinality: Option<Cardinality>,
     pub name: String,
 }
@@ -169,6 +193,9 @@ pub struct Bool;
 pub struct Json;
 
 #[derive(Debug)]
+pub struct PgTextJson;
+
+#[derive(Debug)]
 pub struct Nothing;
 
 #[derive(Debug)]
@@ -179,7 +206,7 @@ pub struct Object {
 
 #[derive(Debug)]
 pub struct Input {
-    shape: ObjectShape,
+    shape: InputObjectShape,
     codecs: Vec<Arc<dyn Codec>>,
 }
 
@@ -247,6 +274,19 @@ impl Deref for ObjectShape {
     }
 }
 
+impl InputObjectShape {
+    pub fn new(elements: Vec<InputShapeElement>) -> Self {
+        InputObjectShape(Arc::new(InputObjectShapeInfo { elements }))
+    }
+}
+
+impl Deref for InputObjectShape {
+    type Target = InputObjectShapeInfo;
+    fn deref(&self) -> &InputObjectShapeInfo {
+        &self.0
+    }
+}
+
 impl Deref for NamedTupleShape {
     type Target = NamedTupleShapeInfo;
     fn deref(&self) -> &NamedTupleShapeInfo {
@@ -263,7 +303,10 @@ impl<'a> CodecBuilder<'a> {
                 D::Set(d) => Ok(Arc::new(Set::build(d, self)?)),
                 D::ObjectShape(d) => Ok(Arc::new(Object::build(d, self)?)),
                 D::Scalar(d) => Ok(Arc::new(Scalar {
-                    inner: self.build(d.base_type_pos)?,
+                    inner: match d.base_type_pos {
+                        Some(type_pos) => self.build(type_pos)?,
+                        None => scalar_codec(&d.id)?,
+                    },
                 })),
                 D::Tuple(d) => Ok(Arc::new(Tuple::build(d, self)?)),
                 D::NamedTuple(d) => Ok(Arc::new(NamedTuple::build(d, self)?)),
@@ -281,6 +324,8 @@ impl<'a> CodecBuilder<'a> {
                 D::Enumeration(d) => Ok(Arc::new(Enum {
                     members: d.members.iter().map(|x| x[..].into()).collect(),
                 })),
+                D::Object(_) => Ok(Arc::new(Nothing {})),
+                D::Compound(_) => Ok(Arc::new(Nothing {})),
                 D::InputShape(d) => Ok(Arc::new(Input::build(d, self)?)),
                 // type annotations are stripped from codecs array before
                 // building a codec
@@ -326,6 +371,11 @@ pub fn scalar_codec(uuid: &UuidVal) -> Result<Arc<dyn Codec>, CodecError> {
         STD_BIGINT => Ok(Arc::new(BigInt {})),
         CFG_MEMORY => Ok(Arc::new(ConfigMemory {})),
         PGVECTOR_VECTOR => Ok(Arc::new(Vector {})),
+        STD_PG_JSON => Ok(Arc::new(PgTextJson {})),
+        STD_PG_TIMESTAMPTZ => Ok(Arc::new(Datetime {})),
+        STD_PG_TIMESTAMP => Ok(Arc::new(LocalDatetime {})),
+        STD_PG_DATE => Ok(Arc::new(LocalDate {})),
+        STD_PG_INTERVAL => Ok(Arc::new(RelativeDuration {})),
         _ => errors::UndefinedBaseScalar { uuid: uuid.clone() }.fail()?,
     }
 }
@@ -815,11 +865,34 @@ impl<'a> From<&'a descriptors::ShapeElement> for ShapeElement {
             cardinality,
             name,
             type_pos: _,
+            source_type_pos: _,
         } = e;
         ShapeElement {
             flag_implicit: *flag_implicit,
             flag_link_property: *flag_link_property,
             flag_link: *flag_link,
+            cardinality: *cardinality,
+            name: name.clone(),
+        }
+    }
+}
+
+impl<'a> From<&'a [descriptors::InputShapeElement]> for InputObjectShape {
+    fn from(shape: &'a [descriptors::InputShapeElement]) -> InputObjectShape {
+        InputObjectShape(Arc::new(InputObjectShapeInfo {
+            elements: shape.iter().map(InputShapeElement::from).collect(),
+        }))
+    }
+}
+
+impl<'a> From<&'a descriptors::InputShapeElement> for InputShapeElement {
+    fn from(e: &'a descriptors::InputShapeElement) -> InputShapeElement {
+        let descriptors::InputShapeElement {
+            cardinality,
+            name,
+            type_pos: _,
+        } = e;
+        InputShapeElement {
             cardinality: *cardinality,
             name: name.clone(),
         }
@@ -1085,6 +1158,23 @@ impl Codec for Json {
         };
         buf.reserve(1 + val.len());
         buf.put_u8(1);
+        buf.extend(val.as_bytes());
+        Ok(())
+    }
+}
+
+impl Codec for PgTextJson {
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        let val = str::from_utf8(buf).context(errors::InvalidUtf8)?.to_owned();
+        let json = model::Json::new_unchecked(val);
+        Ok(Value::Json(json))
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
+        let val = match val {
+            Value::Json(val) => val,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        buf.reserve(val.len());
         buf.extend(val.as_bytes());
         Ok(())
     }

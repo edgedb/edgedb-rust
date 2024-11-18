@@ -35,6 +35,11 @@ pub enum DecodeError {
         backtrace: Backtrace,
         cardinality: u8,
     },
+    #[snafu(display("unsupported input language: {:x}", input_language))]
+    InvalidInputLanguage {
+        backtrace: Backtrace,
+        input_language: u8,
+    },
     #[snafu(display("unsupported capability: {:b}", capabilities))]
     InvalidCapabilities {
         backtrace: Backtrace,
@@ -73,8 +78,10 @@ pub enum DecodeError {
     InvalidArrayOrSetShape { backtrace: Backtrace },
     #[snafu(display("decimal or bigint sign bytes have invalid value"))]
     BadSign { backtrace: Backtrace },
-    #[snafu(display("invalid boolean value"))]
-    InvalidBool { backtrace: Backtrace },
+    #[snafu(display("invalid boolean value: {val:?}"))]
+    InvalidBool { backtrace: Backtrace, val: u8 },
+    #[snafu(display("invalid optional u32 value"))]
+    InvalidOptionU32 { backtrace: Backtrace },
     #[snafu(display("datetime is out of range"))]
     InvalidDate { backtrace: Backtrace },
     #[snafu(display("json format is invalid"))]
@@ -97,6 +104,13 @@ pub enum DecodeError {
     },
     #[snafu(display("missing required link or property"))]
     MissingRequiredElement { backtrace: Backtrace },
+    #[snafu(display("invalid format of {annotation} annotation"))]
+    InvalidAnnotationFormat {
+        backtrace: Backtrace,
+        annotation: &'static str,
+    },
+    #[snafu(display("invalid type operation value"))]
+    InvalidTypeOperation { backtrace: Backtrace },
 }
 
 #[derive(Snafu, Debug)]

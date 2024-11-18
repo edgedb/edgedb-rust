@@ -1,3 +1,5 @@
+use bytes::Bytes;
+
 use crate::queryable::DescriptorMismatch;
 use crate::queryable::{Decoder, DescriptorContext, Queryable};
 
@@ -19,8 +21,11 @@ pub(crate) fn check_scalar(
     use crate::descriptors::Descriptor::{BaseScalar, Scalar};
     let desc = ctx.get(type_pos)?;
     match desc {
-        Scalar(scalar) => {
-            return check_scalar(ctx, scalar.base_type_pos, type_id, name);
+        Scalar(scalar) if scalar.base_type_pos.is_some() => {
+            return check_scalar(ctx, scalar.base_type_pos.unwrap(), type_id, name);
+        }
+        Scalar(scalar) if *scalar.id == type_id => {
+            return Ok(());
         }
         BaseScalar(base) if *base.id == type_id => {
             return Ok(());
@@ -53,6 +58,15 @@ impl DecodeScalar for String {
     }
     fn typename() -> &'static str {
         "std::str"
+    }
+}
+
+impl DecodeScalar for Bytes {
+    fn uuid() -> Uuid {
+        codec::STD_BYTES
+    }
+    fn typename() -> &'static str {
+        "std::bytes"
     }
 }
 

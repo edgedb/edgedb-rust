@@ -13,7 +13,7 @@ rust-version.workspace = true
 
 [dependencies]
 bytes = "1.5.0"
-snafu = {version="0.8.0"}
+snafu = {version="0.8.0", features=["backtrace"]}
 uuid = "1.1.2"
 num-bigint = {version="0.4.3", optional=true}
 num-traits = {version="0.2.10", optional=true}
@@ -22,6 +22,7 @@ chrono = {version="0.4.23", optional=true, features=["std"], default-features=fa
 edgedb-errors = {path = "../edgedb-errors", version = "0.4.0" }
 bitflags = "2.4.0"
 serde = {version="1.0.190", features = ["derive"], optional=true}
+serde_json = {version="1", optional=true}
 
 [features]
 default = []
@@ -29,7 +30,7 @@ with-num-bigint = ["num-bigint", "num-traits"]
 with-bigdecimal = ["bigdecimal", "num-bigint", "num-traits"]
 with-chrono = ["chrono"]
 all-types = ["with-num-bigint", "with-bigdecimal", "with-chrono"]
-with-serde = ["serde"]
+with-serde = ["serde", "serde_json"]
 
 [dev-dependencies]
 rand = "0.8"

@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use edgedb_errors::NoDataError;
-use edgedb_protocol::model::Uuid;
+use edgedb_protocol::model::{Json, Uuid};
 use edgedb_protocol::named_args;
 use edgedb_protocol::value::{EnumValue, Value};
 use edgedb_tokio::{Client, Queryable};
@@ -45,6 +45,9 @@ async fn simple() -> anyhow::Result<()> {
 
     let value = client.query_single_json("SELECT <str>{}", &()).await?;
     assert_eq!(value.as_deref(), None);
+
+    let value = client.query_json("SELECT <str>{}", &()).await?;
+    assert_eq!(value, Json::new_unchecked("[]".to_string()));
 
     let err = client
         .query_required_single_json("SELECT <int64>{}", &())
@@ -214,6 +217,81 @@ async fn big_num() -> anyhow::Result<()> {
     } else {
         panic!();
     }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn bytes() -> anyhow::Result<()> {
+    let client = Client::new(&SERVER.config);
+    client.ensure_connected().await?;
+
+    #[derive(Queryable)]
+    struct MyResult {
+        data: bytes::Bytes,
+    }
+
+    let res = client
+        .query_required_single::<MyResult, _>("select { data := b'101' } limit 1", &())
+        .await
+        .unwrap();
+
+    assert_eq!(res.data, b"101"[..]);
+    Ok(())
+}
+
+#[tokio::test]
+async fn wrong_field_number() -> anyhow::Result<()> {
+    let client = Client::new(&SERVER.config);
+    client.ensure_connected().await?;
+
+    #[derive(Queryable, PartialEq, Debug)]
+    struct Thing {
+        a: String,
+        b: String,
+    }
+    let err = client
+        .query_required_single::<Thing, _>("select { a := 'hello' }", &())
+        .await
+        .unwrap_err();
+    assert_eq!(
+        format!("{err:#}"),
+        "DescriptorMismatch: expected 2 fields, got 1"
+    );
+
+    let err = client
+        .query_required_single::<Thing, _>("select { a := 'hello', b := 'world', c := 42 }", &())
+        .await
+        .unwrap_err();
+    assert_eq!(
+        format!("{err:#}"),
+        "DescriptorMismatch: expected 2 fields, got 3"
+    );
+
+    let err = client
+        .query_required_single::<Thing, _>("select { a := 'hello', c := 'world' }", &())
+        .await
+        .unwrap_err();
+    assert_eq!(
+        format!("{err:#}"),
+        "DescriptorMismatch: unexpected field c, expected b"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn warnings() -> anyhow::Result<()> {
+    let client = Client::new(&SERVER.config);
+    client.ensure_connected().await?;
+
+    let res = client
+        .query_verbose::<i64, _>("select std::_warn_on_call()", &())
+        .await
+        .unwrap();
+    assert_eq!(res.warnings.len(), 1);
+
+    // TODO: test that the warning is logged
 
     Ok(())
 }

@@ -1,5 +1,5 @@
 /*!
-Contains the [QueryArg](crate::query_arg::QueryArg) and [QueryArgs](crate::query_arg::QueryArgs) traits.
+Contains the [QueryArg] and [QueryArgs] traits.
 */
 
 use std::convert::{TryFrom, TryInto};
@@ -93,7 +93,7 @@ impl DescriptorContext<'_> {
     }
     pub fn wrong_type(&self, descriptor: &Descriptor, expected: &str) -> Error {
         DescriptorMismatch::with_message(format!(
-            "\nEdgeDB returned unexpected type {descriptor:?}\nClient expected {expected}"
+            "server returned unexpected type {descriptor:?} when client expected {expected}"
         ))
     }
     pub fn field_number(&self, expected: usize, unexpected: usize) -> Error {
@@ -210,13 +210,10 @@ impl QueryArg for Value {
     fn check_descriptor(&self, ctx: &DescriptorContext, pos: TypePos) -> Result<(), Error> {
         use Descriptor::*;
         use Value::*;
-        let mut desc = ctx.get(pos)?;
-        if let Scalar(d) = desc {
-            desc = ctx.get(d.base_type_pos)?;
-        }
+        let desc = ctx.get(pos)?.normalize_to_base(ctx)?;
+
         match (self, desc) {
             (Nothing, _) => Ok(()), // any descriptor works
-            (_, Scalar(_)) => unreachable!("scalar dereference to a non-base type"),
             (BigInt(_), BaseScalar(d)) if d.id == codec::STD_BIGINT => Ok(()),
             (Bool(_), BaseScalar(d)) if d.id == codec::STD_BOOL => Ok(()),
             (Bytes(_), BaseScalar(d)) if d.id == codec::STD_BYTES => Ok(()),
@@ -239,10 +236,10 @@ impl QueryArg for Value {
             (Uuid(_), BaseScalar(d)) if d.id == codec::STD_UUID => Ok(()),
             (Enum(val), Enumeration(EnumerationTypeDescriptor { members, .. })) => {
                 let val = val.deref();
-                check_enum(val, members)
+                check_enum(val, &members)
             }
             // TODO(tailhook) all types
-            (_, desc) => Err(ctx.wrong_type(desc, self.kind())),
+            (_, desc) => Err(ctx.wrong_type(&desc, self.kind())),
         }
     }
     fn to_value(&self) -> Result<Value, Error> {

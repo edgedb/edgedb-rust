@@ -1,7 +1,7 @@
 /*!
 ([Website reference](https://www.edgedb.com/docs/reference/protocol/index)) The EdgeDB protocol for Edgedb-Rust.
 
-EdgeDB types used for data modeling can be seen on the [model](crate::model) crate, in which the [Value](crate::value::Value)
+EdgeDB types used for data modeling can be seen on the [model] crate, in which the [Value](crate::value::Value)
 enum provides the quickest overview of all the possible types encountered using the client. Many of the variants hold Rust
 standard library types while others contain types defined in this protocol. Some types such as [Duration](crate::model::Duration)
 appear to be standard library types but are unique to the EdgeDB protocol.
@@ -12,7 +12,7 @@ for working with the client such as:
 * [QueryArg](crate::query_arg::QueryArg): a single argument for a query
 * [QueryArgs](crate::query_arg::QueryArgs): a tuple of query arguments
 * [Queryable](crate::queryable::Queryable): for the Queryable derive macro
-* [QueryResult](crate::query_result::QueryResult): single result from a query (scalars and tuples)
+* [QueryResult]: single result from a query (scalars and tuples)
 
 The Value enum:
 
@@ -73,6 +73,7 @@ pub mod server_message;
 pub mod value;
 #[macro_use]
 pub mod value_opt;
+pub mod annotations;
 pub mod model;
 pub mod query_arg;
 

@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use bytes::BytesMut;
 use edgedb_protocol::common::CompilationOptions;
-use edgedb_protocol::common::{Capabilities, Cardinality, IoFormat};
+use edgedb_protocol::common::{Capabilities, Cardinality, InputLanguage, IoFormat};
 use edgedb_protocol::model::Json;
 use edgedb_protocol::query_arg::{Encoder, QueryArgs};
 use edgedb_protocol::QueryResult;
@@ -12,8 +12,9 @@ use tokio::time::sleep;
 
 use crate::errors::ClientError;
 use crate::errors::{Error, ErrorKind, SHOULD_RETRY};
-use crate::errors::{NoDataError, NoResultExpected, ProtocolEncodingError};
-use crate::raw::{Options, Pool, PoolConnection, PoolState};
+use crate::errors::{NoDataError, ProtocolEncodingError};
+use crate::raw::{Options, Pool, PoolConnection, PoolState, Response};
+use crate::ResultVerbose;
 
 /// Transaction object passed to the closure via
 /// [`Client::transaction()`](crate::Client::transaction) method
@@ -124,6 +125,10 @@ where
     }
 }
 
+fn assert_transaction(x: &mut Option<Inner>) -> &mut PoolConnection {
+    &mut x.as_mut().expect("transaction object is dropped").conn
+}
+
 impl Transaction {
     /// Zero-based iteration (attempt) number for the current transaction
     ///
@@ -145,10 +150,32 @@ impl Transaction {
         }
         Err(ClientError::with_message("using transaction after drop"))
     }
-    fn inner(&mut self) -> &mut Inner {
-        self.inner
-            .as_mut()
-            .expect("transaction object is not dropped")
+
+    async fn query_helper<R, A>(
+        &mut self,
+        query: impl AsRef<str> + Send,
+        arguments: &A,
+        io_format: IoFormat,
+        cardinality: Cardinality,
+    ) -> Result<Response<Vec<R>>, Error>
+    where
+        A: QueryArgs,
+        R: QueryResult,
+    {
+        self.ensure_started().await?;
+
+        let conn = assert_transaction(&mut self.inner);
+
+        conn.inner()
+            .query(
+                query.as_ref(),
+                arguments,
+                &self.state,
+                Capabilities::MODIFICATIONS | Capabilities::DDL,
+                io_format,
+                cardinality,
+            )
+            .await
     }
 
     /// Execute a query and return a collection of results.
@@ -156,127 +183,51 @@ impl Transaction {
     /// You will usually have to specify the return type for the query:
     ///
     /// ```rust,ignore
-    /// let greeting = pool.query::<String, _>("SELECT 'hello'", &());
+    /// let greeting = tran.query::<String, _>("SELECT 'hello'", &());
     /// // or
-    /// let greeting: Vec<String> = pool.query("SELECT 'hello'", &());
+    /// let greeting: Vec<String> = tran.query("SELECT 'hello'", &());
     /// ```
     ///
     /// This method can be used with both static arguments, like a tuple of
     /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
-    pub async fn query<R, A>(&mut self, query: &str, arguments: &A) -> Result<Vec<R>, Error>
+    pub async fn query<R, A>(
+        &mut self,
+        query: impl AsRef<str> + Send,
+        arguments: &A,
+    ) -> Result<Vec<R>, Error>
     where
         A: QueryArgs,
         R: QueryResult,
     {
-        self.ensure_started().await?;
-        let flags = CompilationOptions {
-            implicit_limit: None,
-            implicit_typenames: false,
-            implicit_typeids: false,
-            explicit_objectids: true,
-            allow_capabilities: Capabilities::MODIFICATIONS,
-            io_format: IoFormat::Binary,
-            expected_cardinality: Cardinality::Many,
-        };
-        let state = self.state.clone(); // TODO: optimize, by careful borrow
-        let conn = &mut self.inner().conn;
-        let desc = conn.parse(&flags, query, &state).await?;
-        let inp_desc = desc.input().map_err(ProtocolEncodingError::with_source)?;
-
-        let mut arg_buf = BytesMut::with_capacity(8);
-        arguments.encode(&mut Encoder::new(
-            &inp_desc.as_query_arg_context(),
-            &mut arg_buf,
-        ))?;
-
-        let data = conn
-            .execute(&flags, query, &state, &desc, &arg_buf.freeze())
-            .await?;
-
-        let out_desc = desc.output().map_err(ProtocolEncodingError::with_source)?;
-        match out_desc.root_pos() {
-            Some(root_pos) => {
-                let ctx = out_desc.as_queryable_context();
-                let mut state = R::prepare(&ctx, root_pos)?;
-                let rows = data
-                    .into_iter()
-                    .flat_map(|chunk| chunk.data)
-                    .map(|chunk| R::decode(&mut state, &chunk))
-                    .collect::<Result<_, _>>()?;
-                Ok(rows)
-            }
-            None => Err(NoResultExpected::build()),
-        }
+        self.query_helper(query, arguments, IoFormat::Binary, Cardinality::Many)
+            .await
+            .map(|x| x.data)
     }
 
-    /// Execute a query and return a single result
+    /// Execute a query and return a collection of results and warnings produced by the server.
     ///
     /// You will usually have to specify the return type for the query:
     ///
     /// ```rust,ignore
-    /// let greeting = pool.query_single::<String, _>("SELECT 'hello'", &());
-    /// // or
-    /// let greeting: Option<String> = pool.query_single(
-    ///     "SELECT 'hello'",
-    ///     &()
-    /// );
+    /// let greeting: (Vec<String>, _) = tran.query_with_warnings("select 'hello'", &()).await?;
     /// ```
     ///
     /// This method can be used with both static arguments, like a tuple of
     /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
-    pub async fn query_single<R, A>(
+    pub async fn query_verbose<R, A>(
         &mut self,
-        query: &str,
+        query: impl AsRef<str> + Send,
         arguments: &A,
-    ) -> Result<Option<R>, Error>
+    ) -> Result<ResultVerbose<Vec<R>>, Error>
     where
         A: QueryArgs,
         R: QueryResult,
     {
-        self.ensure_started().await?;
-        let flags = CompilationOptions {
-            implicit_limit: None,
-            implicit_typenames: false,
-            implicit_typeids: false,
-            explicit_objectids: true,
-            allow_capabilities: Capabilities::MODIFICATIONS,
-            io_format: IoFormat::Binary,
-            expected_cardinality: Cardinality::AtMostOne,
-        };
-        let state = self.state.clone(); // TODO optimize using careful borrow
-        let conn = &mut self.inner().conn;
-        let desc = conn.parse(&flags, query, &state).await?;
-        let inp_desc = desc.input().map_err(ProtocolEncodingError::with_source)?;
-
-        let mut arg_buf = BytesMut::with_capacity(8);
-        arguments.encode(&mut Encoder::new(
-            &inp_desc.as_query_arg_context(),
-            &mut arg_buf,
-        ))?;
-
-        let data = conn
-            .execute(&flags, query, &state, &desc, &arg_buf.freeze())
-            .await?;
-
-        let out_desc = desc.output().map_err(ProtocolEncodingError::with_source)?;
-        match out_desc.root_pos() {
-            Some(root_pos) => {
-                let ctx = out_desc.as_queryable_context();
-                let mut state = R::prepare(&ctx, root_pos)?;
-                let bytes = data
-                    .into_iter()
-                    .next()
-                    .and_then(|chunk| chunk.data.into_iter().next());
-                if let Some(bytes) = bytes {
-                    Ok(Some(R::decode(&mut state, &bytes)?))
-                } else {
-                    Ok(None)
-                }
-            }
-            None => Err(NoResultExpected::build()),
-        }
+        self.query_helper(query, arguments, IoFormat::Binary, Cardinality::Many)
+            .await
+            .map(|Response { data, warnings, .. }| ResultVerbose { data, warnings })
     }
 
     /// Execute a query and return a single result
@@ -290,12 +241,51 @@ impl Transaction {
     /// You will usually have to specify the return type for the query:
     ///
     /// ```rust,ignore
-    /// let greeting = pool.query_required_single::<String, _>(
+    /// let greeting = tran.query_required_single::<String, _>(
     ///     "SELECT 'hello'",
     ///     &(),
     /// );
     /// // or
-    /// let greeting: String = pool.query_required_single(
+    /// let greeting: String = tran.query_required_single(
+    ///     "SELECT 'hello'",
+    ///     &(),
+    /// );
+    /// ```
+    ///
+    /// This method can be used with both static arguments, like a tuple of
+    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// Similarly, dynamically typed results are also supported.
+    pub async fn query_single<R, A>(
+        &mut self,
+        query: impl AsRef<str> + Send,
+        arguments: &A,
+    ) -> Result<Option<R>, Error>
+    where
+        A: QueryArgs,
+        R: QueryResult + Send,
+    {
+        self.query_helper(query, arguments, IoFormat::Binary, Cardinality::AtMostOne)
+            .await
+            .map(|x| x.data.into_iter().next())
+    }
+
+    /// Execute a query and return a single result
+    ///
+    /// The query must return exactly one element. If the query returns more
+    /// than one element, a
+    /// [`ResultCardinalityMismatchError`][crate::errors::ResultCardinalityMismatchError]
+    /// is raised. If the query returns an empty set, a
+    /// [`NoDataError`][crate::errors::NoDataError] is raised.
+    ///
+    /// You will usually have to specify the return type for the query:
+    ///
+    /// ```rust,ignore
+    /// let greeting = tran.query_required_single::<String, _>(
+    ///     "SELECT 'hello'",
+    ///     &(),
+    /// );
+    /// // or
+    /// let greeting: String = tran.query_required_single(
     ///     "SELECT 'hello'",
     ///     &(),
     /// );
@@ -306,16 +296,21 @@ impl Transaction {
     /// Similarly, dynamically typed results are also supported.
     pub async fn query_required_single<R, A>(
         &mut self,
-        query: &str,
+        query: impl AsRef<str> + Send,
         arguments: &A,
     ) -> Result<R, Error>
     where
         A: QueryArgs,
-        R: QueryResult,
+        R: QueryResult + Send,
     {
-        self.query_single(query, arguments)
-            .await?
-            .ok_or_else(|| NoDataError::with_message("query row returned zero results"))
+        self.query_helper(query, arguments, IoFormat::Binary, Cardinality::AtMostOne)
+            .await
+            .and_then(|x| {
+                x.data
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| NoDataError::with_message("query row returned zero results"))
+            })
     }
 
     /// Execute a query and return the result as JSON.
@@ -324,51 +319,18 @@ impl Transaction {
         query: &str,
         arguments: &impl QueryArgs,
     ) -> Result<Json, Error> {
-        self.ensure_started().await?;
-        let flags = CompilationOptions {
-            implicit_limit: None,
-            implicit_typenames: false,
-            implicit_typeids: false,
-            explicit_objectids: true,
-            allow_capabilities: Capabilities::MODIFICATIONS | Capabilities::DDL,
-            io_format: IoFormat::Json,
-            expected_cardinality: Cardinality::Many,
-        };
-        let state = self.state.clone(); // TODO optimize using careful borrow
-        let conn = &mut self.inner().conn;
-        let desc = conn.parse(&flags, query, &state).await?;
-        let inp_desc = desc.input().map_err(ProtocolEncodingError::with_source)?;
-
-        let mut arg_buf = BytesMut::with_capacity(8);
-        arguments.encode(&mut Encoder::new(
-            &inp_desc.as_query_arg_context(),
-            &mut arg_buf,
-        ))?;
-
-        let data = conn
-            .execute(&flags, query, &state, &desc, &arg_buf.freeze())
+        let res = self
+            .query_helper::<String, _>(query, arguments, IoFormat::Json, Cardinality::Many)
             .await?;
 
-        let out_desc = desc.output().map_err(ProtocolEncodingError::with_source)?;
-        match out_desc.root_pos() {
-            Some(root_pos) => {
-                let ctx = out_desc.as_queryable_context();
-                // JSON objects are returned as strings :(
-                let mut state = String::prepare(&ctx, root_pos)?;
-                let bytes = data
-                    .into_iter()
-                    .next()
-                    .and_then(|chunk| chunk.data.into_iter().next());
-                if let Some(bytes) = bytes {
-                    // we trust database to produce valid json
-                    let s = String::decode(&mut state, &bytes)?;
-                    Ok(Json::new_unchecked(s))
-                } else {
-                    Err(NoDataError::with_message("query row returned zero results"))
-                }
-            }
-            None => Err(NoResultExpected::build()),
-        }
+        let json = res
+            .data
+            .into_iter()
+            .next()
+            .ok_or_else(|| NoDataError::with_message("query row returned zero results"))?;
+
+        // we trust database to produce valid json
+        Ok(Json::new_unchecked(json))
     }
 
     /// Execute a query and return a single result as JSON.
@@ -382,51 +344,12 @@ impl Transaction {
         query: &str,
         arguments: &impl QueryArgs,
     ) -> Result<Option<Json>, Error> {
-        self.ensure_started().await?;
-        let flags = CompilationOptions {
-            implicit_limit: None,
-            implicit_typenames: false,
-            implicit_typeids: false,
-            explicit_objectids: true,
-            allow_capabilities: Capabilities::MODIFICATIONS,
-            io_format: IoFormat::Json,
-            expected_cardinality: Cardinality::AtMostOne,
-        };
-        let state = self.state.clone(); // TODO optimize using careful borrow
-        let conn = &mut self.inner().conn;
-        let desc = conn.parse(&flags, query, &state).await?;
-        let inp_desc = desc.input().map_err(ProtocolEncodingError::with_source)?;
-
-        let mut arg_buf = BytesMut::with_capacity(8);
-        arguments.encode(&mut Encoder::new(
-            &inp_desc.as_query_arg_context(),
-            &mut arg_buf,
-        ))?;
-
-        let data = conn
-            .execute(&flags, query, &state, &desc, &arg_buf.freeze())
+        let res = self
+            .query_helper::<String, _>(query, arguments, IoFormat::Json, Cardinality::AtMostOne)
             .await?;
 
-        let out_desc = desc.output().map_err(ProtocolEncodingError::with_source)?;
-        match out_desc.root_pos() {
-            Some(root_pos) => {
-                let ctx = out_desc.as_queryable_context();
-                // JSON objects are returned as strings :(
-                let mut state = String::prepare(&ctx, root_pos)?;
-                let bytes = data
-                    .into_iter()
-                    .next()
-                    .and_then(|chunk| chunk.data.into_iter().next());
-                if let Some(bytes) = bytes {
-                    // we trust database to produce valid json
-                    let s = String::decode(&mut state, &bytes)?;
-                    Ok(Some(Json::new_unchecked(s)))
-                } else {
-                    Ok(None)
-                }
-            }
-            None => Err(NoResultExpected::build()),
-        }
+        // we trust database to produce valid json
+        Ok(res.data.into_iter().next().map(Json::new_unchecked))
     }
 
     /// Execute a query and return a single result as JSON.
@@ -462,11 +385,12 @@ impl Transaction {
             implicit_typeids: false,
             explicit_objectids: true,
             allow_capabilities: Capabilities::MODIFICATIONS,
+            input_language: InputLanguage::EdgeQL,
             io_format: IoFormat::Binary,
             expected_cardinality: Cardinality::Many,
         };
         let state = self.state.clone(); // TODO: optimize, by careful borrow
-        let conn = &mut self.inner().conn;
+        let conn = assert_transaction(&mut self.inner);
         let desc = conn.parse(&flags, query, &state).await?;
         let inp_desc = desc.input().map_err(ProtocolEncodingError::with_source)?;
 

@@ -7,7 +7,7 @@ pub struct ProtocolVersion {
 impl ProtocolVersion {
     pub fn current() -> ProtocolVersion {
         ProtocolVersion {
-            major_ver: 1,
+            major_ver: 3,
             minor_ver: 0,
         }
     }
@@ -23,6 +23,12 @@ impl ProtocolVersion {
     pub fn is_1(&self) -> bool {
         self.major_ver >= 1
     }
+    pub fn is_2(&self) -> bool {
+        self.major_ver >= 2
+    }
+    pub fn is_3(&self) -> bool {
+        self.major_ver >= 3
+    }
     pub fn supports_inline_typenames(&self) -> bool {
         self.version_tuple() >= (0, 9)
     }
@@ -35,6 +41,9 @@ impl ProtocolVersion {
         // We never opt-in or opt-out so whether it's present only on pre 1.0
         // portocols.
         !self.is_1()
+    }
+    pub fn is_multilingual(&self) -> bool {
+        self.is_at_least(3, 0)
     }
     pub fn is_at_least(&self, major_ver: u16, minor_ver: u16) -> bool {
         self.major_ver > major_ver || self.major_ver == major_ver && self.minor_ver >= minor_ver

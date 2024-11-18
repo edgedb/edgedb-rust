@@ -130,6 +130,8 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
         })
         .collect::<TokenStream>();
 
+    let field_count = fields.len();
+
     let expanded = quote! {
         impl #impl_generics ::edgedb_protocol::queryable::Queryable
             for #name #ty_generics {
@@ -174,12 +176,12 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
                 #type_id_check
                 #type_name_check
                 #id_check
-                #field_checks
-
-                if(shape.elements.len() != idx) {
+                if(shape.elements.len() != #field_count) {
                     return ::std::result::Result::Err(ctx.field_number(
-                        shape.elements.len(), idx));
+                        #field_count, shape.elements.len())
+                    );
                 }
+                #field_checks
                 ::std::result::Result::Ok(())
             }
         }

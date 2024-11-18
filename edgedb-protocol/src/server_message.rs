@@ -1,5 +1,5 @@
 /*!
-The [ServerMessage](crate::server_message::ServerMessage) enum and related types. EdgeDB website documentation on messages [here](https://www.edgedb.com/docs/reference/protocol/messages).
+The [ServerMessage] enum and related types. EdgeDB website documentation on messages [here](https://www.edgedb.com/docs/reference/protocol/messages).
 
 ```rust,ignore
 pub enum ServerMessage {
@@ -27,8 +27,6 @@ pub enum ServerMessage {
 
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
-use std::u16;
-use std::u32;
 
 use bytes::{Buf, BufMut, Bytes};
 use snafu::{ensure, OptionExt};

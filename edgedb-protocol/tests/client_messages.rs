@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use bytes::{Bytes, BytesMut};
+use edgedb_protocol::common::InputLanguage;
 use uuid::Uuid;
 
 use edgedb_protocol::client_message::OptimisticExecute;
@@ -94,6 +95,7 @@ fn parse() -> Result<(), Box<dyn Error>> {
             allowed_capabilities: Capabilities::MODIFICATIONS,
             compilation_flags: CompilationFlags::INJECT_OUTPUT_TYPE_NAMES,
             implicit_limit: Some(77),
+            input_language: InputLanguage::EdgeQL,
             output_format: IoFormat::Binary,
             expected_cardinality: Cardinality::AtMostOne,
             command_text: String::from("SELECT 1;"),
@@ -103,6 +105,31 @@ fn parse() -> Result<(), Box<dyn Error>> {
             },
         }),
         b"P\0\0\0A\0\0\0\0\0\0\0\0\0\x01\0\0\0\0\0\0\0\x02\0\0\0\0\0\0\0Mbo\
+          \0\0\0\tSELECT 1;\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
+    );
+    Ok(())
+}
+
+#[test]
+fn parse3() -> Result<(), Box<dyn Error>> {
+    encoding_eq_ver!(
+        3,
+        0,
+        ClientMessage::Parse(Parse {
+            annotations: HashMap::new(),
+            allowed_capabilities: Capabilities::MODIFICATIONS,
+            compilation_flags: CompilationFlags::INJECT_OUTPUT_TYPE_NAMES,
+            implicit_limit: Some(77),
+            input_language: InputLanguage::EdgeQL,
+            output_format: IoFormat::Binary,
+            expected_cardinality: Cardinality::AtMostOne,
+            command_text: String::from("SELECT 1;"),
+            state: State {
+                typedesc_id: Uuid::from_u128(0),
+                data: Bytes::from(""),
+            },
+        }),
+        b"P\0\0\0B\0\0\0\0\0\0\0\0\0\x01\0\0\0\0\0\0\0\x02\0\0\0\0\0\0\0MEbo\
           \0\0\0\tSELECT 1;\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
     );
     Ok(())
@@ -146,6 +173,7 @@ fn execute1() -> Result<(), Box<dyn Error>> {
             allowed_capabilities: Capabilities::MODIFICATIONS,
             compilation_flags: CompilationFlags::INJECT_OUTPUT_TYPE_NAMES,
             implicit_limit: Some(77),
+            input_language: InputLanguage::EdgeQL,
             output_format: IoFormat::Binary,
             expected_cardinality: Cardinality::AtMostOne,
             command_text: String::from("SELECT 1;"),
@@ -158,6 +186,36 @@ fn execute1() -> Result<(), Box<dyn Error>> {
             arguments: Bytes::new(),
         }),
         b"O\0\0\0e\0\0\0\0\0\0\0\0\0\x01\0\0\0\0\0\0\0\x02\0\0\0\0\0\0\0Mbo\
+          \0\0\0\tSELECT 1;\
+          \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
+          \0\0\0{\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\xc8\0\0\0\0"
+    );
+    Ok(())
+}
+
+#[test]
+fn execute3() -> Result<(), Box<dyn Error>> {
+    encoding_eq_ver!(
+        3,
+        0,
+        ClientMessage::Execute1(Execute1 {
+            annotations: HashMap::new(),
+            allowed_capabilities: Capabilities::MODIFICATIONS,
+            compilation_flags: CompilationFlags::INJECT_OUTPUT_TYPE_NAMES,
+            implicit_limit: Some(77),
+            input_language: InputLanguage::EdgeQL,
+            output_format: IoFormat::Binary,
+            expected_cardinality: Cardinality::AtMostOne,
+            command_text: String::from("SELECT 1;"),
+            state: State {
+                typedesc_id: Uuid::from_u128(0),
+                data: Bytes::from(""),
+            },
+            input_typedesc_id: Uuid::from_u128(123),
+            output_typedesc_id: Uuid::from_u128(456),
+            arguments: Bytes::new(),
+        }),
+        b"O\0\0\0f\0\0\0\0\0\0\0\0\0\x01\0\0\0\0\0\0\0\x02\0\0\0\0\0\0\0MEbo\
           \0\0\0\tSELECT 1;\
           \0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
           \0\0\0{\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x01\xc8\0\0\0\0"
