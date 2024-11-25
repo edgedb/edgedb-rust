@@ -91,7 +91,7 @@ fn parse() -> Result<(), Box<dyn Error>> {
         1,
         0,
         ClientMessage::Parse(Parse {
-            annotations: HashMap::new(),
+            annotations: None,
             allowed_capabilities: Capabilities::MODIFICATIONS,
             compilation_flags: CompilationFlags::INJECT_OUTPUT_TYPE_NAMES,
             implicit_limit: Some(77),
@@ -116,7 +116,7 @@ fn parse3() -> Result<(), Box<dyn Error>> {
         3,
         0,
         ClientMessage::Parse(Parse {
-            annotations: HashMap::new(),
+            annotations: None,
             allowed_capabilities: Capabilities::MODIFICATIONS,
             compilation_flags: CompilationFlags::INJECT_OUTPUT_TYPE_NAMES,
             implicit_limit: Some(77),
@@ -169,7 +169,7 @@ fn execute1() -> Result<(), Box<dyn Error>> {
         1,
         0,
         ClientMessage::Execute1(Execute1 {
-            annotations: HashMap::new(),
+            annotations: None,
             allowed_capabilities: Capabilities::MODIFICATIONS,
             compilation_flags: CompilationFlags::INJECT_OUTPUT_TYPE_NAMES,
             implicit_limit: Some(77),
@@ -199,7 +199,7 @@ fn execute3() -> Result<(), Box<dyn Error>> {
         3,
         0,
         ClientMessage::Execute1(Execute1 {
-            annotations: HashMap::new(),
+            annotations: None,
             allowed_capabilities: Capabilities::MODIFICATIONS,
             compilation_flags: CompilationFlags::INJECT_OUTPUT_TYPE_NAMES,
             implicit_limit: Some(77),

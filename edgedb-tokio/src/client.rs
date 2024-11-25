@@ -2,12 +2,14 @@ use std::future::Future;
 use std::sync::Arc;
 
 use edgedb_protocol::common::{Capabilities, Cardinality, IoFormat};
+use edgedb_protocol::encoding::Annotations;
 use edgedb_protocol::model::Json;
 use edgedb_protocol::query_arg::QueryArgs;
 use edgedb_protocol::QueryResult;
 use tokio::time::sleep;
 
 use crate::builder::Config;
+use crate::errors::InvalidArgumentError;
 use crate::errors::NoDataError;
 use crate::errors::{Error, ErrorKind, SHOULD_RETRY};
 use crate::options::{RetryOptions, TransactionOptions};
@@ -33,6 +35,7 @@ use crate::ResultVerbose;
 pub struct Client {
     options: Arc<Options>,
     pool: Pool,
+    annotations: Arc<Annotations>,
 }
 
 impl Client {
@@ -45,6 +48,7 @@ impl Client {
         Client {
             options: Default::default(),
             pool: Pool::new(config),
+            annotations: Default::default(),
         }
     }
 
@@ -81,6 +85,7 @@ impl Client {
                     query.as_ref(),
                     arguments,
                     state,
+                    &self.annotations,
                     caps,
                     io_format,
                     cardinality,
@@ -337,7 +342,10 @@ impl Client {
             let conn = conn.inner();
             let state = &self.options.state;
             let caps = Capabilities::MODIFICATIONS | Capabilities::DDL;
-            match conn.execute(query.as_ref(), arguments, state, caps).await {
+            match conn
+                .execute(query.as_ref(), arguments, state, &self.annotations, caps)
+                .await
+            {
                 Ok(_) => return Ok(()),
                 Err(e) => {
                     let allow_retry = match e.get::<QueryCapabilities>() {
@@ -403,7 +411,7 @@ impl Client {
         B: FnMut(Transaction) -> F,
         F: Future<Output = Result<T, Error>>,
     {
-        transaction(&self.pool, &self.options, body).await
+        transaction(&self.pool, &self.options, &self.annotations, body).await
     }
 
     /// Returns client with adjusted options for future transactions.
@@ -423,6 +431,7 @@ impl Client {
                 state: self.options.state.clone(),
             }),
             pool: self.pool.clone(),
+            annotations: self.annotations.clone(),
         }
     }
     /// Returns client with adjusted options for future retrying
@@ -441,6 +450,7 @@ impl Client {
                 state: self.options.state.clone(),
             }),
             pool: self.pool.clone(),
+            annotations: self.annotations.clone(),
         }
     }
 
@@ -452,6 +462,7 @@ impl Client {
                 state: Arc::new(f(&self.options.state)),
             }),
             pool: self.pool.clone(),
+            annotations: self.annotations.clone(),
         }
     }
 
@@ -551,5 +562,45 @@ impl Client {
     /// allows type inference for lambda.
     pub fn with_config_fn(&self, f: impl FnOnce(&mut ConfigModifier)) -> Self {
         self.with_state(|s| s.with_config(Fn(f)))
+    }
+
+    /// Returns the client with the specified query tag.
+    ///
+    /// This method returns a "shallow copy" of the current client
+    /// with modified query tag.
+    ///
+    /// Both ``self`` and returned client can be used after, but when using
+    /// them query tag applied will be different.
+    pub fn with_tag(&self, tag: Option<&str>) -> Result<Self, Error> {
+        const KEY: &str = "tag";
+
+        let annotations = if self.annotations.get(KEY).map(|s| s.as_str()) != tag {
+            let mut annotations = (*self.annotations).clone();
+            if let Some(tag) = tag {
+                if tag.starts_with("edgedb/") {
+                    return Err(InvalidArgumentError::with_message("reserved tag: edgedb/*"));
+                }
+                if tag.starts_with("gel/") {
+                    return Err(InvalidArgumentError::with_message("reserved tag: gel/*"));
+                }
+                if tag.len() > 128 {
+                    return Err(InvalidArgumentError::with_message(
+                        "tag too long (> 128 bytes)",
+                    ));
+                }
+                annotations.insert(KEY.to_string(), tag.to_string());
+            } else {
+                annotations.remove(KEY);
+            }
+            Arc::new(annotations)
+        } else {
+            self.annotations.clone()
+        };
+
+        Ok(Client {
+            options: self.options.clone(),
+            pool: self.pool.clone(),
+            annotations,
+        })
     }
 }
