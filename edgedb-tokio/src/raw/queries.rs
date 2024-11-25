@@ -230,7 +230,7 @@ impl Connection {
         let guard = self.begin_request()?;
         self.send_messages(&[
             ClientMessage::Execute1(Execute1 {
-                annotations: HashMap::new(),
+                annotations: None,
                 allowed_capabilities: opts.allow_capabilities,
                 compilation_flags: opts.flags(),
                 implicit_limit: opts.implicit_limit,
@@ -364,7 +364,7 @@ impl Connection {
         if self.proto.is_1() {
             self.send_messages(&[
                 ClientMessage::Execute1(Execute1 {
-                    annotations: HashMap::new(),
+                    annotations: None,
                     allowed_capabilities: opts.allow_capabilities,
                     compilation_flags: opts.flags(),
                     implicit_limit: opts.implicit_limit,
@@ -420,7 +420,7 @@ impl Connection {
         if self.proto.is_1() {
             self.send_messages(&[
                 ClientMessage::Execute1(Execute1 {
-                    annotations: HashMap::new(),
+                    annotations: None,
                     allowed_capabilities: opts.allow_capabilities,
                     compilation_flags: opts.flags(),
                     implicit_limit: opts.implicit_limit,
@@ -474,7 +474,7 @@ impl Connection {
         let guard = self.begin_request()?;
         self.send_messages(&[
             ClientMessage::Execute1(Execute1 {
-                annotations: HashMap::new(),
+                annotations: None,
                 allowed_capabilities: opts.allow_capabilities,
                 compilation_flags: opts.flags(),
                 implicit_limit: opts.implicit_limit,

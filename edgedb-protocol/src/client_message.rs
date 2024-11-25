@@ -27,6 +27,7 @@ pub enum ClientMessage {
 
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::sync::Arc;
 
 use bytes::{Buf, BufMut, Bytes};
 use snafu::{ensure, OptionExt};
@@ -98,7 +99,7 @@ pub struct Prepare {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Parse {
-    pub annotations: Annotations,
+    pub annotations: Option<Arc<Annotations>>,
     pub allowed_capabilities: Capabilities,
     pub compilation_flags: CompilationFlags,
     pub implicit_limit: Option<u64>,
@@ -125,7 +126,7 @@ pub struct Execute0 {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Execute1 {
-    pub annotations: Annotations,
+    pub annotations: Option<Arc<Annotations>>,
     pub allowed_capabilities: Capabilities,
     pub compilation_flags: CompilationFlags,
     pub implicit_limit: Option<u64>,
@@ -623,15 +624,19 @@ impl Decode for OptimisticExecute {
 impl Encode for Execute1 {
     fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         buf.reserve(2 + 3 * 8 + 1 + 1 + 4 + 16 + 4 + 16 + 16 + 4);
-        buf.put_u16(
-            u16::try_from(self.annotations.len())
-                .ok()
-                .context(errors::TooManyHeaders)?,
-        );
-        for (name, value) in &self.annotations {
-            buf.reserve(4);
-            name.encode(buf)?;
-            value.encode(buf)?;
+        if let Some(annotations) = self.annotations.as_deref() {
+            buf.put_u16(
+                u16::try_from(annotations.len())
+                    .ok()
+                    .context(errors::TooManyHeaders)?,
+            );
+            for (name, value) in annotations {
+                buf.reserve(4);
+                name.encode(buf)?;
+                value.encode(buf)?;
+            }
+        } else {
+            buf.put_u16(0);
         }
         buf.reserve(3 * 8 + 1 + 1 + 4 + 16 + 4 + 16 + 16 + 4);
         buf.put_u64(self.allowed_capabilities.bits());
@@ -659,11 +664,16 @@ impl Decode for Execute1 {
             errors::Underflow
         );
         let num_annotations = buf.get_u16();
-        let mut annotations = HashMap::new();
-        for _ in 0..num_annotations {
-            ensure!(buf.remaining() >= 4, errors::Underflow);
-            annotations.insert(String::decode(buf)?, String::decode(buf)?);
-        }
+        let annotations = if num_annotations == 0 {
+            None
+        } else {
+            let mut annotations = HashMap::new();
+            for _ in 0..num_annotations {
+                ensure!(buf.remaining() >= 4, errors::Underflow);
+                annotations.insert(String::decode(buf)?, String::decode(buf)?);
+            }
+            Some(Arc::new(annotations))
+        };
         ensure!(
             buf.remaining() >= 3 * 8 + 2 + 4 + 16 + 4 + 16 + 16 + 4,
             errors::Underflow
@@ -799,7 +809,7 @@ impl Decode for RestoreBlock {
 impl Parse {
     pub fn new(opts: &CompilationOptions, query: &str, state: State) -> Parse {
         Parse {
-            annotations: HashMap::new(),
+            annotations: None,
             allowed_capabilities: opts.allow_capabilities,
             compilation_flags: opts.flags(),
             implicit_limit: opts.implicit_limit,
@@ -857,11 +867,16 @@ impl Decode for Parse {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 52, errors::Underflow);
         let num_headers = buf.get_u16();
-        let mut annotations = HashMap::new();
-        for _ in 0..num_headers {
-            ensure!(buf.remaining() >= 8, errors::Underflow);
-            annotations.insert(String::decode(buf)?, String::decode(buf)?);
-        }
+        let annotations = if num_headers == 0 {
+            None
+        } else {
+            let mut annotations = HashMap::new();
+            for _ in 0..num_headers {
+                ensure!(buf.remaining() >= 8, errors::Underflow);
+                annotations.insert(String::decode(buf)?, String::decode(buf)?);
+            }
+            Some(Arc::new(annotations))
+        };
         ensure!(buf.remaining() >= 50, errors::Underflow);
         let allowed_capabilities = decode_capabilities(buf.get_u64())?;
         let compilation_flags = decode_compilation_flags(buf.get_u64())?;
@@ -904,15 +919,19 @@ impl Encode for Parse {
     fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         debug_assert!(buf.proto().is_1());
         buf.reserve(52);
-        buf.put_u16(
-            u16::try_from(self.annotations.len())
-                .ok()
-                .context(errors::TooManyHeaders)?,
-        );
-        for (name, value) in &self.annotations {
-            buf.reserve(8);
-            name.encode(buf)?;
-            value.encode(buf)?;
+        if let Some(annotations) = self.annotations.as_deref() {
+            buf.put_u16(
+                u16::try_from(annotations.len())
+                    .ok()
+                    .context(errors::TooManyHeaders)?,
+            );
+            for (name, value) in annotations {
+                buf.reserve(8);
+                name.encode(buf)?;
+                value.encode(buf)?;
+            }
+        } else {
+            buf.put_u16(0);
         }
         buf.reserve(50);
         buf.put_u64(self.allowed_capabilities.bits());
