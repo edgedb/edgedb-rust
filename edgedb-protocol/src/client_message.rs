@@ -807,9 +807,14 @@ impl Decode for RestoreBlock {
 }
 
 impl Parse {
-    pub fn new(opts: &CompilationOptions, query: &str, state: State) -> Parse {
+    pub fn new(
+        opts: &CompilationOptions,
+        query: &str,
+        state: State,
+        annotations: Option<Arc<Annotations>>,
+    ) -> Parse {
         Parse {
-            annotations: None,
+            annotations,
             allowed_capabilities: opts.allow_capabilities,
             compilation_flags: opts.flags(),
             implicit_limit: opts.implicit_limit,

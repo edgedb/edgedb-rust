@@ -28,7 +28,9 @@ async fn poll_connect() -> anyhow::Result<()> {
         expected_cardinality: Cardinality::Many,
     };
 
-    let desc = conn.parse(&options, "SELECT 7*8", &state).await?;
+    let desc = conn
+        .parse(&options, "SELECT 7*8", &state, &annotations)
+        .await?;
     assert!(conn.is_consistent());
 
     let data = conn

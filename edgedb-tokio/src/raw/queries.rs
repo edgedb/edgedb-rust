@@ -77,9 +77,10 @@ impl Connection {
         flags: &CompilationOptions,
         query: &str,
         state: &dyn State,
+        annotations: &Arc<Annotations>,
     ) -> Result<CommandDataDescription1, Error> {
         if self.proto.is_1() {
-            self._parse1(flags, query, state)
+            self._parse1(flags, query, state, annotations)
                 .await
                 .map_err(|e| e.set::<QueryText>(query))
         } else {
@@ -95,10 +96,16 @@ impl Connection {
         flags: &CompilationOptions,
         query: &str,
         state: &dyn State,
+        annotations: &Arc<Annotations>,
     ) -> Result<CommandDataDescription1, Error> {
         let guard = self.begin_request()?;
         self.send_messages(&[
-            ClientMessage::Parse(Parse::new(flags, query, state.encode(&self.state_desc)?)),
+            ClientMessage::Parse(Parse::new(
+                flags,
+                query,
+                state.encode(&self.state_desc)?,
+                self.proto.is_3().then(|| annotations.clone()),
+            )),
             ClientMessage::Sync,
         ])
         .await?;
@@ -591,7 +598,7 @@ impl Connection {
                 input_language: InputLanguage::EdgeQL,
                 expected_cardinality: cardinality,
             };
-            let desc = self.parse(&flags, query, state).await?;
+            let desc = self.parse(&flags, query, state, annotations).await?;
             caps = QueryCapabilities::Parsed(desc.capabilities);
             let inp_desc = desc.input().map_err(ProtocolEncodingError::with_source)?;
 
@@ -650,7 +657,7 @@ impl Connection {
                 io_format: IoFormat::Binary,
                 expected_cardinality: Cardinality::Many,
             };
-            let desc = self.parse(&flags, query, state).await?;
+            let desc = self.parse(&flags, query, state, annotations).await?;
             caps = QueryCapabilities::Parsed(desc.capabilities);
             let inp_desc = desc.input().map_err(ProtocolEncodingError::with_source)?;
 
@@ -679,8 +686,9 @@ impl PoolConnection {
         flags: &CompilationOptions,
         query: &str,
         state: &dyn State,
+        annotations: &Arc<Annotations>,
     ) -> Result<CommandDataDescription1, Error> {
-        self.inner().parse(flags, query, state).await
+        self.inner().parse(flags, query, state, annotations).await
     }
     pub async fn execute(
         &mut self,

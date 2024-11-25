@@ -398,7 +398,7 @@ impl Transaction {
         };
         let state = self.state.clone(); // TODO: optimize, by careful borrow
         let conn = assert_transaction(&mut self.inner);
-        let desc = conn.parse(&flags, query, &state).await?;
+        let desc = conn.parse(&flags, query, &state, &self.annotations).await?;
         let inp_desc = desc.input().map_err(ProtocolEncodingError::with_source)?;
 
         let mut arg_buf = BytesMut::with_capacity(8);
