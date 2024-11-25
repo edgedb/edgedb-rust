@@ -4,6 +4,7 @@ use bytes::Bytes;
 
 use edgedb_protocol::common::Capabilities;
 use edgedb_protocol::common::{Cardinality, CompilationOptions, InputLanguage, IoFormat};
+use edgedb_protocol::encoding::Annotations;
 use edgedb_tokio::raw::{Pool, PoolState};
 
 use crate::server::SERVER;
@@ -15,6 +16,7 @@ async fn poll_connect() -> anyhow::Result<()> {
     assert!(conn.is_consistent());
 
     let state = Arc::new(PoolState::default());
+    let annotations = Arc::new(Annotations::default());
     let options = CompilationOptions {
         implicit_limit: None,
         implicit_typenames: false,
@@ -30,7 +32,14 @@ async fn poll_connect() -> anyhow::Result<()> {
     assert!(conn.is_consistent());
 
     let data = conn
-        .execute(&options, "SELECT 7*8", &state, &desc, &Bytes::new())
+        .execute(
+            &options,
+            "SELECT 7*8",
+            &state,
+            &annotations,
+            &desc,
+            &Bytes::new(),
+        )
         .await?;
     assert!(conn.is_consistent());
     assert_eq!(data.len(), 1);

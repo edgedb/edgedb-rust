@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use bytes::{Bytes, BytesMut};
 use tokio::time::Instant;
@@ -11,6 +12,7 @@ use edgedb_protocol::client_message::{Execute0, Execute1};
 use edgedb_protocol::common::CompilationOptions;
 use edgedb_protocol::common::{Capabilities, Cardinality, InputLanguage, IoFormat};
 use edgedb_protocol::descriptors::Typedesc;
+use edgedb_protocol::encoding::Annotations;
 use edgedb_protocol::features::ProtocolVersion;
 use edgedb_protocol::model::Uuid;
 use edgedb_protocol::query_arg::{Encoder, QueryArgs};
@@ -205,11 +207,12 @@ impl Connection {
         opts: &CompilationOptions,
         query: &str,
         state: &dyn State,
+        annotations: &Arc<Annotations>,
         desc: &CommandDataDescription1,
         arguments: &Bytes,
     ) -> Result<Response<Vec<Data>>, Error> {
         if self.proto.is_1() {
-            self._execute1(opts, query, state, desc, arguments)
+            self._execute1(opts, query, state, annotations, desc, arguments)
                 .await
                 .map_err(|e| e.set::<QueryText>(query))
         } else {
@@ -224,13 +227,14 @@ impl Connection {
         opts: &CompilationOptions,
         query: &str,
         state: &dyn State,
+        annotations: &Arc<Annotations>,
         desc: &CommandDataDescription1,
         arguments: &Bytes,
     ) -> Result<Response<Vec<Data>>, Error> {
         let guard = self.begin_request()?;
         self.send_messages(&[
             ClientMessage::Execute1(Execute1 {
-                annotations: None,
+                annotations: self.proto.is_3().then(|| annotations.clone()),
                 allowed_capabilities: opts.allow_capabilities,
                 compilation_flags: opts.flags(),
                 implicit_limit: opts.implicit_limit,
@@ -344,6 +348,7 @@ impl Connection {
         opts: &CompilationOptions,
         query: &str,
         state: &dyn State,
+        annotations: &Arc<Annotations>,
         desc: &CommandDataDescription1,
         arguments: &A,
     ) -> Result<ResponseStream<R>, Error>
@@ -364,7 +369,7 @@ impl Connection {
         if self.proto.is_1() {
             self.send_messages(&[
                 ClientMessage::Execute1(Execute1 {
-                    annotations: None,
+                    annotations: self.proto.is_3().then(|| annotations.clone()),
                     allowed_capabilities: opts.allow_capabilities,
                     compilation_flags: opts.flags(),
                     implicit_limit: opts.implicit_limit,
@@ -401,6 +406,7 @@ impl Connection {
         opts: &CompilationOptions,
         query: &str,
         state: &dyn State,
+        annotations: &Arc<Annotations>,
         input: &Typedesc,
         output: &Typedesc,
         arguments: &A,
@@ -420,7 +426,7 @@ impl Connection {
         if self.proto.is_1() {
             self.send_messages(&[
                 ClientMessage::Execute1(Execute1 {
-                    annotations: None,
+                    annotations: self.proto.is_3().then(|| annotations.clone()),
                     allowed_capabilities: opts.allow_capabilities,
                     compilation_flags: opts.flags(),
                     implicit_limit: opts.implicit_limit,
@@ -457,9 +463,10 @@ impl Connection {
         flags: &CompilationOptions,
         query: &str,
         state: &dyn State,
+        annotations: &Arc<Annotations>,
     ) -> Result<(), Error> {
         if self.proto.is_1() {
-            self._statement1(flags, query, state).await
+            self._statement1(flags, query, state, annotations).await
         } else {
             self._statement0(flags, query).await
         }
@@ -470,11 +477,12 @@ impl Connection {
         opts: &CompilationOptions,
         query: &str,
         state: &dyn State,
+        annotations: &Arc<Annotations>,
     ) -> Result<(), Error> {
         let guard = self.begin_request()?;
         self.send_messages(&[
             ClientMessage::Execute1(Execute1 {
-                annotations: None,
+                annotations: self.proto.is_3().then(|| annotations.clone()),
                 allowed_capabilities: opts.allow_capabilities,
                 compilation_flags: opts.flags(),
                 implicit_limit: opts.implicit_limit,
@@ -562,6 +570,7 @@ impl Connection {
         query: &str,
         arguments: &A,
         state: &dyn State,
+        annotations: &Arc<Annotations>,
         allow_capabilities: Capabilities,
         io_format: IoFormat,
         cardinality: Cardinality,
@@ -595,7 +604,7 @@ impl Connection {
             }
 
             let response = self
-                ._execute(&flags, query, state, &desc, &arg_buf.freeze())
+                ._execute(&flags, query, state, annotations, &desc, &arg_buf.freeze())
                 .await?;
             response.log_warnings();
 
@@ -623,6 +632,7 @@ impl Connection {
         query: &str,
         arguments: &A,
         state: &dyn State,
+        annotations: &Arc<Annotations>,
         allow_capabilities: Capabilities,
     ) -> Result<Response<()>, Error>
     where
@@ -653,7 +663,7 @@ impl Connection {
             }
 
             let response = self
-                ._execute(&flags, query, state, &desc, &arg_buf.freeze())
+                ._execute(&flags, query, state, annotations, &desc, &arg_buf.freeze())
                 .await?;
             response.log_warnings();
             response.map(|_| Ok::<_, Error>(()))
@@ -677,15 +687,21 @@ impl PoolConnection {
         opts: &CompilationOptions,
         query: &str,
         state: &dyn State,
+        annotations: &Arc<Annotations>,
         desc: &CommandDataDescription1,
         arguments: &Bytes,
     ) -> Result<Vec<Data>, Error> {
         self.inner()
-            ._execute(opts, query, state, desc, arguments)
+            ._execute(opts, query, state, annotations, desc, arguments)
             .await
             .map(|r| r.data)
     }
-    pub async fn statement(&mut self, query: &str, state: &dyn State) -> Result<(), Error> {
+    pub async fn statement(
+        &mut self,
+        query: &str,
+        state: &dyn State,
+        annotations: &Arc<Annotations>,
+    ) -> Result<(), Error> {
         let flags = CompilationOptions {
             implicit_limit: None,
             implicit_typenames: false,
@@ -696,7 +712,7 @@ impl PoolConnection {
             io_format: IoFormat::Binary,
             expected_cardinality: Cardinality::Many, // no result is unsupported
         };
-        self.inner().statement(&flags, query, state).await
+        self.inner().statement(&flags, query, state, annotations).await
     }
     pub fn proto(&self) -> &ProtocolVersion {
         &self

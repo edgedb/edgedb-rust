@@ -85,6 +85,7 @@ impl Client {
                     query.as_ref(),
                     arguments,
                     state,
+                    &self.annotations,
                     caps,
                     io_format,
                     cardinality,
@@ -341,7 +342,10 @@ impl Client {
             let conn = conn.inner();
             let state = &self.options.state;
             let caps = Capabilities::MODIFICATIONS | Capabilities::DDL;
-            match conn.execute(query.as_ref(), arguments, state, caps).await {
+            match conn
+                .execute(query.as_ref(), arguments, state, &self.annotations, caps)
+                .await
+            {
                 Ok(_) => return Ok(()),
                 Err(e) => {
                     let allow_retry = match e.get::<QueryCapabilities>() {
@@ -407,7 +411,7 @@ impl Client {
         B: FnMut(Transaction) -> F,
         F: Future<Output = Result<T, Error>>,
     {
-        transaction(&self.pool, &self.options, body).await
+        transaction(&self.pool, &self.options, &self.annotations, body).await
     }
 
     /// Returns client with adjusted options for future transactions.

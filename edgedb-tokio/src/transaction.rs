@@ -4,6 +4,7 @@ use std::sync::Arc;
 use bytes::BytesMut;
 use edgedb_protocol::common::CompilationOptions;
 use edgedb_protocol::common::{Capabilities, Cardinality, InputLanguage, IoFormat};
+use edgedb_protocol::encoding::Annotations;
 use edgedb_protocol::model::Json;
 use edgedb_protocol::query_arg::{Encoder, QueryArgs};
 use edgedb_protocol::QueryResult;
@@ -27,6 +28,7 @@ use crate::ResultVerbose;
 pub struct Transaction {
     iteration: u32,
     state: Arc<PoolState>,
+    annotations: Arc<Annotations>,
     inner: Option<Inner>,
 }
 
@@ -58,6 +60,7 @@ impl Drop for Transaction {
 pub(crate) async fn transaction<T, B, F>(
     pool: &Pool,
     options: &Options,
+    annotations: &Arc<Annotations>,
     mut body: B,
 ) -> Result<T, Error>
 where
@@ -71,6 +74,7 @@ where
         let tran = Transaction {
             iteration,
             state: options.state.clone(),
+            annotations: annotations.clone(),
             inner: Some(Inner {
                 started: false,
                 conn,
@@ -86,14 +90,16 @@ where
             Ok(val) => {
                 log::debug!("Comitting transaction");
                 if started {
-                    conn.statement("COMMIT", &options.state).await?;
+                    conn.statement("COMMIT", &options.state, annotations)
+                        .await?;
                 }
                 return Ok(val);
             }
             Err(outer) => {
                 log::debug!("Rolling back transaction on error");
                 if started {
-                    conn.statement("ROLLBACK", &options.state).await?;
+                    conn.statement("ROLLBACK", &options.state, annotations)
+                        .await?;
                 }
 
                 let some_retry = outer.chain().find_map(|e| {
@@ -142,7 +148,7 @@ impl Transaction {
             if !inner.started {
                 inner
                     .conn
-                    .statement("START TRANSACTION", &self.state)
+                    .statement("START TRANSACTION", &self.state, &self.annotations)
                     .await?;
                 inner.started = true;
             }
@@ -171,6 +177,7 @@ impl Transaction {
                 query.as_ref(),
                 arguments,
                 &self.state,
+                &self.annotations,
                 Capabilities::MODIFICATIONS,
                 io_format,
                 cardinality,
@@ -400,8 +407,15 @@ impl Transaction {
             &mut arg_buf,
         ))?;
 
-        conn.execute(&flags, query, &state, &desc, &arg_buf.freeze())
-            .await?;
+        conn.execute(
+            &flags,
+            query,
+            &state,
+            &self.annotations,
+            &desc,
+            &arg_buf.freeze(),
+        )
+        .await?;
         Ok(())
     }
 }
