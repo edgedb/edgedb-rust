@@ -8,7 +8,7 @@ use tokio_stream::{Stream, StreamExt};
 
 use edgedb_errors::ProtocolOutOfOrderError;
 use edgedb_errors::{Error, ErrorKind};
-use edgedb_protocol::client_message::Dump;
+use edgedb_protocol::client_message::Dump2;
 use edgedb_protocol::client_message::{ClientMessage, Restore, RestoreBlock};
 use edgedb_protocol::server_message::{RawPacket, ServerMessage};
 
@@ -164,7 +164,7 @@ impl Connection {
             headers.insert(0xFF10, Bytes::from(vec![with_secrets as u8]));
         }
 
-        self.send_messages(&[ClientMessage::Dump(Dump { headers }), ClientMessage::Sync])
+        self.send_messages(&[ClientMessage::Dump2(Dump2 { headers }), ClientMessage::Sync])
             .await?;
         let msg = self.message().await?;
         let header = match msg {

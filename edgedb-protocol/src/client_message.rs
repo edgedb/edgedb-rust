@@ -46,7 +46,7 @@ pub enum ClientMessage {
     AuthenticationSaslInitialResponse(SaslInitialResponse),
     AuthenticationSaslResponse(SaslResponse),
     ClientHandshake(ClientHandshake),
-    Dump(Dump),
+    Dump2(Dump2),
     Parse(Parse), // protocol > 1.0
     ExecuteScript(ExecuteScript),
     Execute0(Execute0),
@@ -152,7 +152,7 @@ pub struct OptimisticExecute {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Dump {
+pub struct Dump2 {
     pub headers: KeyValues,
 }
 
@@ -202,7 +202,7 @@ impl ClientMessage {
             Execute0(h) => encode(buf, 0x45, h),
             OptimisticExecute(h) => encode(buf, 0x4f, h),
             Execute1(h) => encode(buf, 0x4f, h),
-            Dump(h) => encode(buf, 0x3e, h),
+            Dump2(h) => encode(buf, 0x3e, h),
             Restore(h) => encode(buf, 0x3c, h),
             RestoreBlock(h) => encode(buf, 0x3d, h),
             RestoreEof => encode(buf, 0x2e, &Empty),
@@ -243,7 +243,7 @@ impl ClientMessage {
                     OptimisticExecute::decode(&mut data).map(M::OptimisticExecute)?
                 }
             }
-            0x3e => Dump::decode(&mut data).map(M::Dump)?,
+            0x3e => Dump2::decode(&mut data).map(M::Dump2)?,
             0x3c => Restore::decode(&mut data).map(M::Restore)?,
             0x3d => RestoreBlock::decode(&mut data).map(M::RestoreBlock)?,
             0x2e => M::RestoreEof,
@@ -721,7 +721,7 @@ impl Decode for Execute1 {
     }
 }
 
-impl Encode for Dump {
+impl Encode for Dump2 {
     fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         buf.reserve(10);
         buf.put_u16(
@@ -738,7 +738,7 @@ impl Encode for Dump {
     }
 }
 
-impl Decode for Dump {
+impl Decode for Dump2 {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 12, errors::Underflow);
         let num_headers = buf.get_u16();
@@ -747,7 +747,7 @@ impl Decode for Dump {
             ensure!(buf.remaining() >= 4, errors::Underflow);
             headers.insert(buf.get_u16(), Bytes::decode(buf)?);
         }
-        Ok(Dump { headers })
+        Ok(Dump2 { headers })
     }
 }
 
