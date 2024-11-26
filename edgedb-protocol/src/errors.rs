@@ -50,6 +50,11 @@ pub enum DecodeError {
         backtrace: Backtrace,
         compilation_flags: u64,
     },
+    #[snafu(display("unsupported dump flags: {:b}", dump_flags))]
+    InvalidDumpFlags {
+        backtrace: Backtrace,
+        dump_flags: u64,
+    },
     #[snafu(display("unsupported describe aspect: {:x}", aspect))]
     InvalidAspect { backtrace: Backtrace, aspect: u8 },
     #[snafu(display("unsupported type descriptor: {:x}", descriptor))]
