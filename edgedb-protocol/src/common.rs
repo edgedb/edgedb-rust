@@ -43,6 +43,13 @@ bitflags::bitflags! {
     }
 }
 
+bitflags::bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct DumpFlags: u64 {
+        const DUMP_SECRETS =                 0b00000001;
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CompilationOptions {
     pub implicit_limit: Option<u64>,

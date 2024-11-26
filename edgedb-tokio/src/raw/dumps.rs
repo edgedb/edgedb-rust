@@ -8,8 +8,8 @@ use tokio_stream::{Stream, StreamExt};
 
 use edgedb_errors::ProtocolOutOfOrderError;
 use edgedb_errors::{Error, ErrorKind};
-use edgedb_protocol::client_message::Dump;
 use edgedb_protocol::client_message::{ClientMessage, Restore, RestoreBlock};
+use edgedb_protocol::client_message::{Dump2, Dump3, DumpFlags};
 use edgedb_protocol::server_message::{RawPacket, ServerMessage};
 
 use crate::raw::connection::{send_messages, wait_message};
@@ -159,13 +159,29 @@ impl Connection {
     pub async fn dump_with_secrets(&mut self, with_secrets: bool) -> Result<DumpStream<'_>, Error> {
         let guard = self.begin_request()?;
 
-        let mut headers = HashMap::new();
-        if with_secrets {
-            headers.insert(0xFF10, Bytes::from(vec![with_secrets as u8]));
+        if self.proto.is_3() {
+            let mut flags = DumpFlags::empty();
+            if with_secrets {
+                flags |= DumpFlags::DUMP_SECRETS;
+            }
+            self.send_messages(&[
+                ClientMessage::Dump3(Dump3 {
+                    annotations: None,
+                    flags,
+                }),
+                ClientMessage::Sync,
+            ])
+            .await?;
+        } else {
+            let mut headers = HashMap::new();
+            if with_secrets {
+                headers.insert(0xFF10, Bytes::from(vec![with_secrets as u8]));
+            }
+
+            self.send_messages(&[ClientMessage::Dump2(Dump2 { headers }), ClientMessage::Sync])
+                .await?;
         }
 
-        self.send_messages(&[ClientMessage::Dump(Dump { headers }), ClientMessage::Sync])
-            .await?;
         let msg = self.message().await?;
         let header = match msg {
             ServerMessage::DumpHeader(packet) => packet,

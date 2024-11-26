@@ -34,6 +34,7 @@ use snafu::{ensure, OptionExt};
 use uuid::Uuid;
 
 pub use crate::common::CompilationOptions;
+pub use crate::common::DumpFlags;
 pub use crate::common::{Capabilities, Cardinality, CompilationFlags};
 pub use crate::common::{RawTypedesc, State};
 use crate::encoding::{encode, Decode, Encode, Input, Output};
@@ -46,7 +47,8 @@ pub enum ClientMessage {
     AuthenticationSaslInitialResponse(SaslInitialResponse),
     AuthenticationSaslResponse(SaslResponse),
     ClientHandshake(ClientHandshake),
-    Dump(Dump),
+    Dump2(Dump2),
+    Dump3(Dump3),
     Parse(Parse), // protocol > 1.0
     ExecuteScript(ExecuteScript),
     Execute0(Execute0),
@@ -152,8 +154,14 @@ pub struct OptimisticExecute {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Dump {
+pub struct Dump2 {
     pub headers: KeyValues,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Dump3 {
+    pub annotations: Option<Arc<Annotations>>,
+    pub flags: DumpFlags,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -202,7 +210,8 @@ impl ClientMessage {
             Execute0(h) => encode(buf, 0x45, h),
             OptimisticExecute(h) => encode(buf, 0x4f, h),
             Execute1(h) => encode(buf, 0x4f, h),
-            Dump(h) => encode(buf, 0x3e, h),
+            Dump2(h) => encode(buf, 0x3e, h),
+            Dump3(h) => encode(buf, 0x3e, h),
             Restore(h) => encode(buf, 0x3c, h),
             RestoreBlock(h) => encode(buf, 0x3d, h),
             RestoreEof => encode(buf, 0x2e, &Empty),
@@ -243,7 +252,13 @@ impl ClientMessage {
                     OptimisticExecute::decode(&mut data).map(M::OptimisticExecute)?
                 }
             }
-            0x3e => Dump::decode(&mut data).map(M::Dump)?,
+            0x3e => {
+                if buf.proto().is_3() {
+                    Dump3::decode(&mut data).map(M::Dump3)?
+                } else {
+                    Dump2::decode(&mut data).map(M::Dump2)?
+                }
+            }
             0x3c => Restore::decode(&mut data).map(M::Restore)?,
             0x3d => RestoreBlock::decode(&mut data).map(M::RestoreBlock)?,
             0x2e => M::RestoreEof,
@@ -721,7 +736,7 @@ impl Decode for Execute1 {
     }
 }
 
-impl Encode for Dump {
+impl Encode for Dump2 {
     fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
         buf.reserve(10);
         buf.put_u16(
@@ -738,7 +753,7 @@ impl Encode for Dump {
     }
 }
 
-impl Decode for Dump {
+impl Decode for Dump2 {
     fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 12, errors::Underflow);
         let num_headers = buf.get_u16();
@@ -747,7 +762,49 @@ impl Decode for Dump {
             ensure!(buf.remaining() >= 4, errors::Underflow);
             headers.insert(buf.get_u16(), Bytes::decode(buf)?);
         }
-        Ok(Dump { headers })
+        Ok(Dump2 { headers })
+    }
+}
+
+impl Encode for Dump3 {
+    fn encode(&self, buf: &mut Output) -> Result<(), EncodeError> {
+        buf.reserve(2 + 8);
+        if let Some(annotations) = self.annotations.as_deref() {
+            buf.put_u16(
+                u16::try_from(annotations.len())
+                    .ok()
+                    .context(errors::TooManyHeaders)?,
+            );
+            for (name, value) in annotations {
+                buf.reserve(4);
+                name.encode(buf)?;
+                value.encode(buf)?;
+            }
+        } else {
+            buf.put_u16(0);
+        }
+        buf.put_u64(self.flags.bits());
+        Ok(())
+    }
+}
+
+impl Decode for Dump3 {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
+        ensure!(buf.remaining() >= 2, errors::Underflow);
+        let num_headers = buf.get_u16();
+        let annotations = if num_headers == 0 {
+            None
+        } else {
+            let mut annotations = HashMap::new();
+            for _ in 0..num_headers {
+                ensure!(buf.remaining() >= 8, errors::Underflow);
+                annotations.insert(String::decode(buf)?, String::decode(buf)?);
+            }
+            Some(Arc::new(annotations))
+        };
+        ensure!(buf.remaining() >= 8, errors::Underflow);
+        let flags = decode_dump_flags(buf.get_u64())?;
+        Ok(Dump3 { annotations, flags })
     }
 }
 
@@ -866,6 +923,10 @@ fn decode_compilation_flags(val: u64) -> Result<CompilationFlags, DecodeError> {
         }
         .build()
     })
+}
+
+fn decode_dump_flags(val: u64) -> Result<DumpFlags, DecodeError> {
+    DumpFlags::from_bits(val).ok_or_else(|| errors::InvalidDumpFlags { dump_flags: val }.build())
 }
 
 impl Decode for Parse {
