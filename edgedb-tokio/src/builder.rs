@@ -687,7 +687,7 @@ impl Builder {
     /// Set connection parameters as DSN
     #[cfg(feature = "env")]
     pub fn dsn(&mut self, dsn: &str) -> Result<&mut Self, Error> {
-        if !dsn.starts_with("edgedb://") && !dsn.starts_with("edgedbadmin://") {
+        if !dsn.starts_with("edgedb://") && !dsn.starts_with("edgedbadmin://") && !dsn.starts_with("gel://") {
             return Err(InvalidArgumentError::with_message(format!(
                 "String {:?} is not a valid DSN",
                 dsn
@@ -2145,129 +2145,138 @@ mod tests {
 
     #[tokio::test]
     async fn display() {
-        let cfg = Builder::new()
-            .dsn("edgedb://localhost:1756")
-            .unwrap()
-            .build_env()
-            .await
-            .unwrap();
-        assert!(matches!(
-            &cfg.0.address,
-            Address::Tcp((host, 1756)) if host == "localhost"
-        ));
-        /* TODO(tailhook)
-        bld.unix_path("/test/my.sock");
-        assert_eq!(bld.build().unwrap()._get_unix_path().unwrap(),
-                Some("/test/my.sock/.s.EDGEDB.5656".into()));
-        */
-        #[cfg(feature = "admin_socket")]
-        {
+        let dsn_schemes = ["edgedb", "edgedbadmin", "gel"];
+        for dsn_scheme in dsn_schemes {
             let cfg = Builder::new()
-                .unix_path("/test/.s.EDGEDB.8888")
-                .build_env()
-                .await
-                .unwrap();
-            assert_eq!(
-                cfg._get_unix_path().unwrap(),
-                Some("/test/.s.EDGEDB.8888".into())
-            );
-            let cfg = Builder::new()
-                .port(8888)
+                .dsn(&format!("{dsn_scheme}://localhost:1756"))
                 .unwrap()
-                .unix_path("/test")
                 .build_env()
                 .await
                 .unwrap();
-            assert_eq!(
-                cfg._get_unix_path().unwrap(),
-                Some("/test/.s.EDGEDB.8888".into())
-            );
+            assert!(matches!(
+                &cfg.0.address,
+                Address::Tcp((host, 1756)) if host == "localhost"
+            ));
+            /* TODO(tailhook)
+            bld.unix_path("/test/my.sock");
+            assert_eq!(bld.build().unwrap()._get_unix_path().unwrap(),
+                    Some("/test/my.sock/.s.EDGEDB.5656".into()));
+            */
+            #[cfg(feature = "admin_socket")]
+            {
+                let cfg = Builder::new()
+                    .unix_path("/test/.s.EDGEDB.8888")
+                    .build_env()
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    cfg._get_unix_path().unwrap(),
+                    Some("/test/.s.EDGEDB.8888".into())
+                );
+                let cfg = Builder::new()
+                    .port(8888)
+                    .unwrap()
+                    .unix_path("/test")
+                    .build_env()
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    cfg._get_unix_path().unwrap(),
+                    Some("/test/.s.EDGEDB.8888".into())
+                );
+            }
         }
     }
 
     #[tokio::test]
     async fn from_dsn() {
-        let cfg = Builder::new()
-            .dsn("edgedb://user1:EiPhohl7@edb-0134.elb.us-east-2.amazonaws.com/db2")
-            .unwrap()
-            .build_env()
-            .await
-            .unwrap();
-        assert!(matches!(
-            &cfg.0.address,
-            Address::Tcp((host, 5656))
-            if host == "edb-0134.elb.us-east-2.amazonaws.com",
-        ));
-        assert_eq!(&cfg.0.user, "user1");
-        assert_eq!(&cfg.0.database, "db2");
-        assert_eq!(&cfg.0.branch, "db2");
-        assert_eq!(cfg.0.password, Some("EiPhohl7".into()));
+        let dsn_schemes = ["edgedb", "edgedbadmin", "gel"];
+        for dsn_scheme in dsn_schemes {
+            let cfg = Builder::new()
+                .dsn(&format!("{dsn_scheme}://user1:EiPhohl7@edb-0134.elb.us-east-2.amazonaws.com/db2"))
+                .unwrap()
+                .build_env()
+                .await
+                .unwrap();
+            assert!(matches!(
+                &cfg.0.address,
+                Address::Tcp((host, 5656))
+                if host == "edb-0134.elb.us-east-2.amazonaws.com",
+            ));
+            assert_eq!(&cfg.0.user, "user1");
+            assert_eq!(&cfg.0.database, "db2");
+            assert_eq!(&cfg.0.branch, "db2");
+            assert_eq!(cfg.0.password, Some("EiPhohl7".into()));
 
-        let cfg = Builder::new()
-            .dsn("edgedb://user2@edb-0134.elb.us-east-2.amazonaws.com:1756/db2")
-            .unwrap()
-            .build_env()
-            .await
-            .unwrap();
-        assert!(matches!(
-            &cfg.0.address,
-            Address::Tcp((host, 1756))
-            if host == "edb-0134.elb.us-east-2.amazonaws.com",
-        ));
-        assert_eq!(&cfg.0.user, "user2");
-        assert_eq!(&cfg.0.database, "db2");
-        assert_eq!(&cfg.0.branch, "db2");
-        assert_eq!(cfg.0.password, None);
+            let cfg = Builder::new()
+                .dsn(&format!("{dsn_scheme}://user2@edb-0134.elb.us-east-2.amazonaws.com:1756/db2"))
+                .unwrap()
+                .build_env()
+                .await
+                .unwrap();
+            assert!(matches!(
+                &cfg.0.address,
+                Address::Tcp((host, 1756))
+                if host == "edb-0134.elb.us-east-2.amazonaws.com",
+            ));
+            assert_eq!(&cfg.0.user, "user2");
+            assert_eq!(&cfg.0.database, "db2");
+            assert_eq!(&cfg.0.branch, "db2");
+            assert_eq!(cfg.0.password, None);
 
-        // Tests overriding
-        let cfg = Builder::new()
-            .dsn("edgedb://edb-0134.elb.us-east-2.amazonaws.com:1756")
-            .unwrap()
-            .build_env()
-            .await
-            .unwrap();
-        assert!(matches!(
-            &cfg.0.address,
-            Address::Tcp((host, 1756))
-            if host == "edb-0134.elb.us-east-2.amazonaws.com",
-        ));
-        assert_eq!(&cfg.0.user, "edgedb");
-        assert_eq!(&cfg.0.database, "edgedb");
-        assert_eq!(&cfg.0.branch, "__default__");
-        assert_eq!(cfg.0.password, None);
+            // Tests overriding
+            let cfg = Builder::new()
+                .dsn(&format!("{dsn_scheme}://edb-0134.elb.us-east-2.amazonaws.com:1756"))
+                .unwrap()
+                .build_env()
+                .await
+                .unwrap();
+            assert!(matches!(
+                &cfg.0.address,
+                Address::Tcp((host, 1756))
+                if host == "edb-0134.elb.us-east-2.amazonaws.com",
+            ));
+            assert_eq!(&cfg.0.user, "edgedb");
+            assert_eq!(&cfg.0.database, "edgedb");
+            assert_eq!(&cfg.0.branch, "__default__");
+            assert_eq!(cfg.0.password, None);
 
-        let cfg = Builder::new()
-            .dsn("edgedb://user3:123123@[::1]:5555/abcdef")
-            .unwrap()
-            .build_env()
-            .await
-            .unwrap();
-        assert!(matches!(
-            &cfg.0.address,
-            Address::Tcp((host, 5555)) if host == "::1",
-        ));
-        assert_eq!(&cfg.0.user, "user3");
-        assert_eq!(&cfg.0.database, "abcdef");
-        assert_eq!(&cfg.0.branch, "abcdef");
-        assert_eq!(cfg.0.password, Some("123123".into()));
+            let cfg = Builder::new()
+                .dsn(&format!("{dsn_scheme}://user3:123123@[::1]:5555/abcdef"))
+                .unwrap()
+                .build_env()
+                .await
+                .unwrap();
+            assert!(matches!(
+                &cfg.0.address,
+                Address::Tcp((host, 5555)) if host == "::1",
+            ));
+            assert_eq!(&cfg.0.user, "user3");
+            assert_eq!(&cfg.0.database, "abcdef");
+            assert_eq!(&cfg.0.branch, "abcdef");
+            assert_eq!(cfg.0.password, Some("123123".into()));
+        }
     }
 
     #[tokio::test]
     #[should_panic] // servo/rust-url#424
     async fn from_dsn_ipv6_scoped_address() {
-        let cfg = Builder::new()
-            .dsn("edgedb://user3@[fe80::1ff:fe23:4567:890a%25eth0]:3000/ab")
-            .unwrap()
-            .build_env()
-            .await
-            .unwrap();
-        assert!(matches!(
-            &cfg.0.address,
-            Address::Tcp((host, 3000)) if host == "fe80::1ff:fe23:4567:890a%eth0",
-        ));
-        assert_eq!(&cfg.0.user, "user3");
-        assert_eq!(&cfg.0.database, "ab");
-        assert_eq!(cfg.0.password, None);
+        let dsn_schemes = ["edgedb", "edgedbadmin", "gel"];
+        for dsn_scheme in dsn_schemes {
+            let cfg = Builder::new()
+                .dsn(&format!("{dsn_scheme}://user3@[fe80::1ff:fe23:4567:890a%25eth0]:3000/ab"))
+                .unwrap()
+                .build_env()
+                .await
+                .unwrap();
+            assert!(matches!(
+                &cfg.0.address,
+                Address::Tcp((host, 3000)) if host == "fe80::1ff:fe23:4567:890a%eth0",
+            ));
+            assert_eq!(&cfg.0.user, "user3");
+            assert_eq!(&cfg.0.database, "ab");
+            assert_eq!(cfg.0.password, None);
+        }
     }
 
     #[test]
