@@ -49,6 +49,10 @@ pub const STD_PG_TIMESTAMPTZ: UuidVal = UuidVal::from_u128(0x1000002);
 pub const STD_PG_TIMESTAMP: UuidVal = UuidVal::from_u128(0x1000003);
 pub const STD_PG_DATE: UuidVal = UuidVal::from_u128(0x1000004);
 pub const STD_PG_INTERVAL: UuidVal = UuidVal::from_u128(0x1000005);
+pub const POSTGIS_GEOMETRY: UuidVal = UuidVal::from_u128(0x44c901c0_d922_4894_83c8_061bd05e4840);
+pub const POSTGIS_GEOGRAPHY: UuidVal = UuidVal::from_u128(0x4d738878_3a5f_4821_ab76_9d8e7d6b32c4);
+pub const POSTGIS_BOX_2D: UuidVal = UuidVal::from_u128(0x7fae5536_6311_4f60_8eb9_096a5d972f48);
+pub const POSTGIS_BOX_3D: UuidVal = UuidVal::from_u128(0xc1a50ff8_fded_48b0_85c2_4905a8481433);
 
 pub(crate) fn uuid_to_known_name(uuid: &UuidVal) -> Option<&'static str> {
     match *uuid {
@@ -78,6 +82,10 @@ pub(crate) fn uuid_to_known_name(uuid: &UuidVal) -> Option<&'static str> {
         STD_PG_TIMESTAMP => Some("BaseScalar(std::pg::timestamp)"),
         STD_PG_DATE => Some("BaseScalar(std::pg::date)"),
         STD_PG_INTERVAL => Some("BaseScalar(std::pg::interval)"),
+        POSTGIS_GEOMETRY => Some("BaseScalar(ext::postgis::geometry)"),
+        POSTGIS_GEOGRAPHY => Some("BaseScalar(ext::postgis::geography)"),
+        POSTGIS_BOX_2D => Some("BaseScalar(ext::postgis::box2d)"),
+        POSTGIS_BOX_3D => Some("BaseScalar(ext::postgis::box3d)"),
         _ => None,
     }
 }
@@ -257,6 +265,18 @@ pub struct Enum {
     members: HashSet<Arc<str>>,
 }
 
+#[derive(Debug)]
+pub struct PostGisGeometry {}
+
+#[derive(Debug)]
+pub struct PostGisGeography {}
+
+#[derive(Debug)]
+pub struct PostGisBox2d {}
+
+#[derive(Debug)]
+pub struct PostGisBox3d {}
+
 struct CodecBuilder<'a> {
     descriptors: &'a [Descriptor],
 }
@@ -376,6 +396,10 @@ pub fn scalar_codec(uuid: &UuidVal) -> Result<Arc<dyn Codec>, CodecError> {
         STD_PG_TIMESTAMP => Ok(Arc::new(LocalDatetime {})),
         STD_PG_DATE => Ok(Arc::new(LocalDate {})),
         STD_PG_INTERVAL => Ok(Arc::new(RelativeDuration {})),
+        POSTGIS_GEOMETRY => Ok(Arc::new(PostGisGeometry {})),
+        POSTGIS_GEOGRAPHY => Ok(Arc::new(PostGisGeography {})),
+        POSTGIS_BOX_2D => Ok(Arc::new(PostGisBox2d {})),
+        POSTGIS_BOX_3D => Ok(Arc::new(PostGisBox3d {})),
         _ => errors::UndefinedBaseScalar { uuid: uuid.clone() }.fail()?,
     }
 }
@@ -1481,6 +1505,62 @@ impl Codec for Enum {
         };
         ensure!(self.members.contains(val), errors::MissingEnumValue);
         buf.extend(val.as_bytes());
+        Ok(())
+    }
+}
+
+impl Codec for PostGisGeometry {
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::PostGisGeometry)
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
+        let val = match val {
+            Value::PostGisGeometry(val) => val,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        buf.extend(val);
+        Ok(())
+    }
+}
+
+impl Codec for PostGisGeography {
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::PostGisGeography)
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
+        let val = match val {
+            Value::PostGisGeography(val) => val,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        buf.extend(val);
+        Ok(())
+    }
+}
+
+impl Codec for PostGisBox2d {
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::PostGisBox2d)
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
+        let val = match val {
+            Value::PostGisBox2d(val) => val,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        buf.extend(val);
+        Ok(())
+    }
+}
+
+impl Codec for PostGisBox3d {
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        RawCodec::decode(buf).map(Value::PostGisBox3d)
+    }
+    fn encode(&self, buf: &mut BytesMut, val: &Value) -> Result<(), EncodeError> {
+        let val = match val {
+            Value::PostGisBox3d(val) => val,
+            _ => Err(errors::invalid_value(type_name::<Self>(), val))?,
+        };
+        buf.extend(val);
         Ok(())
     }
 }
