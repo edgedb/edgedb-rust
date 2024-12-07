@@ -46,6 +46,10 @@ pub enum Value {
     Vector(Vec<f32>),
     Enum(EnumValue),
     Range(Range<Box<Value>>),
+    PostGisGeometry(bytes::Bytes),
+    PostGisGeography(bytes::Bytes),
+    PostGisBox2d(bytes::Bytes),
+    PostGisBox3d(bytes::Bytes),
 }
 
 #[derive(Clone, Debug)]
@@ -88,6 +92,10 @@ impl Value {
             Tuple(..) => "tuple",
             Uuid(..) => "uuid",
             Vector(..) => "ext::pgvector::vector",
+            PostGisGeometry(..) => "ext::postgis::geometry",
+            PostGisGeography(..) => "ext::postgis::geography",
+            PostGisBox2d(..) => "ext::postgis::box2d",
+            PostGisBox3d(..) => "ext::postgis::box3d",
         }
     }
     pub fn empty_tuple() -> Value {
