@@ -4,7 +4,7 @@ extern crate pretty_assertions;
 use std::error::Error;
 use std::sync::Arc;
 
-use bytes::Bytes;
+use bytes::{Buf, Bytes};
 
 use edgedb_protocol::codec::build_codec;
 use edgedb_protocol::codec::{Codec, ObjectShape};
@@ -1198,6 +1198,233 @@ fn multi_range() -> Result<(), Box<dyn Error>> {
             end: 39
         }
         .into()])
+    );
+    Ok(())
+}
+
+#[test]
+fn postgis_geometry() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(
+        Some(TypePos(0)),
+        &[Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+            id: "44c901c0-d922-4894-83c8-061bd05e4840"
+                .parse::<Uuid>()?
+                .into(),
+        })],
+    )?;
+
+    encoding_eq!(
+        &codec,
+        /*
+         * Point
+         * 01 - byteOrder, Little Endian
+         * 01000000 - wkbType, WKBPoint
+         * 0000000000000040 - x, 2.0
+         * 000000000000F03F - y, 1.0
+         */
+        b"\
+        \x01\
+        \x01\x00\x00\x00\
+        \x00\x00\x00\x00\x00\x00\x00\x40\
+        \x00\x00\x00\x00\x00\x00\xF0\x3F\
+        ",
+        Value::PostGisGeometry(
+            b"\
+            \x01\
+            \x01\x00\x00\x00\
+            \x00\x00\x00\x00\x00\x00\x00\x40\
+            \x00\x00\x00\x00\x00\x00\xF0\x3F\
+            "[..]
+                .into()
+        )
+    );
+    Ok(())
+}
+
+#[test]
+fn postgis_geography() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(
+        Some(TypePos(0)),
+        &[Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+            id: "4d738878-3a5f-4821-ab76-9d8e7d6b32c4"
+                .parse::<Uuid>()?
+                .into(),
+        })],
+    )?;
+    encoding_eq!(
+        &codec,
+        /*
+         * Point
+         * 01 - byteOrder, Little Endian
+         * 01000000 - wkbType, WKBPoint
+         * 0000000000000040 - x, 2.0
+         * 000000000000F03F - y, 1.0
+         */
+        b"\
+        \x01\
+        \x01\x00\x00\x00\
+        \x00\x00\x00\x00\x00\x00\x00\x40\
+        \x00\x00\x00\x00\x00\x00\xF0\x3F\
+        ",
+        Value::PostGisGeography(
+            b"\
+            \x01\
+            \x01\x00\x00\x00\
+            \x00\x00\x00\x00\x00\x00\x00\x40\
+            \x00\x00\x00\x00\x00\x00\xF0\x3F\
+            "[..]
+                .into()
+        )
+    );
+    Ok(())
+}
+
+#[test]
+fn postgis_box_2d() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(
+        Some(TypePos(0)),
+        &[Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+            id: "7fae5536-6311-4f60-8eb9-096a5d972f48"
+                .parse::<Uuid>()?
+                .into(),
+        })],
+    )?;
+    encoding_eq!(
+        &codec,
+        /*
+         * Polygon
+         * 01 - byteOrder, Little Endian
+         * 03000000 - wkbType, wkbPolygon
+         * 01000000 - numRings, 1
+         * 05000000 - numPoints, 5
+         * 000000000000F03F - x, 1.0
+         * 000000000000F03F - y, 1.0
+         * 0000000000000040 - x, 2.0
+         * 000000000000F03F - y, 1.0
+         * 0000000000000040 - x, 2.0
+         * 0000000000000040 - y, 2.0
+         * 000000000000F03F - x, 1.0
+         * 0000000000000040 - y, 2.0
+         * 000000000000F03F - x, 1.0
+         * 000000000000F03F - y, 1.0
+         */
+        b"\
+        \x01\
+        \x03\x00\x00\x00\
+        \x01\x00\x00\x00\
+        \x05\x00\x00\x00\
+        \x00\x00\x00\x00\x00\x00\xF0\x3F\
+        \x00\x00\x00\x00\x00\x00\xF0\x3F\
+        \x00\x00\x00\x00\x00\x00\x00\x40\
+        \x00\x00\x00\x00\x00\x00\xF0\x3F\
+        \x00\x00\x00\x00\x00\x00\x00\x40\
+        \x00\x00\x00\x00\x00\x00\x00\x40\
+        \x00\x00\x00\x00\x00\x00\xF0\x3F\
+        \x00\x00\x00\x00\x00\x00\x00\x40\
+        \x00\x00\x00\x00\x00\x00\xF0\x3F\
+        \x00\x00\x00\x00\x00\x00\xF0\x3F\
+        ",
+        Value::PostGisBox2d(
+            b"\
+            \x01\
+            \x03\x00\x00\x00\
+            \x01\x00\x00\x00\
+            \x05\x00\x00\x00\
+            \x00\x00\x00\x00\x00\x00\xF0\x3F\
+            \x00\x00\x00\x00\x00\x00\xF0\x3F\
+            \x00\x00\x00\x00\x00\x00\x00\x40\
+            \x00\x00\x00\x00\x00\x00\xF0\x3F\
+            \x00\x00\x00\x00\x00\x00\x00\x40\
+            \x00\x00\x00\x00\x00\x00\x00\x40\
+            \x00\x00\x00\x00\x00\x00\xF0\x3F\
+            \x00\x00\x00\x00\x00\x00\x00\x40\
+            \x00\x00\x00\x00\x00\x00\xF0\x3F\
+            \x00\x00\x00\x00\x00\x00\xF0\x3F\
+            "[..]
+                .into()
+        )
+    );
+    Ok(())
+}
+
+#[test]
+fn postgis_box_3d() -> Result<(), Box<dyn Error>> {
+    let codec = build_codec(
+        Some(TypePos(0)),
+        &[Descriptor::BaseScalar(BaseScalarTypeDescriptor {
+            id: "c1a50ff8-fded-48b0-85c2-4905a8481433"
+                .parse::<Uuid>()?
+                .into(),
+        })],
+    )?;
+    encoding_eq!(
+        &codec,
+        /*
+         * Polygon
+         * 01 - byteOrder, Little Endian
+         * 03000080 - wkbType, wkbPolygonZ
+         * 01000000 - numRings, 1
+         * 05000000 - numPoints, 5
+         * 000000000000F03F - x, 1.0
+         * 000000000000F03F - y, 1.0
+         * 0000000000000000 - z, 0.0
+         * 0000000000000040 - x, 2.0
+         * 000000000000F03F - y, 1.0
+         * 0000000000000000 - z, 0.0
+         * 0000000000000040 - x, 2.0
+         * 0000000000000040 - y, 2.0
+         * 000000000000F03F - x, 1.0
+         * 0000000000000000 - z, 0.0
+         * 0000000000000040 - y, 2.0
+         * 000000000000F03F - x, 1.0
+         * 000000000000F03F - y, 1.0
+         * 0000000000000000 - z, 0.0
+         */
+        b"\
+        \x01\
+        \x03\x00\x00\x80\
+        \x01\x00\x00\x00\
+        \x05\x00\x00\x00\
+        \x00\x00\x00\x00\x00\x00\xF0\x3F\
+        \x00\x00\x00\x00\x00\x00\xF0\x3F\
+        \x00\x00\x00\x00\x00\x00\x00\x00\
+        \x00\x00\x00\x00\x00\x00\x00\x40\
+        \x00\x00\x00\x00\x00\x00\xF0\x3F\
+        \x00\x00\x00\x00\x00\x00\x00\x00\
+        \x00\x00\x00\x00\x00\x00\x00\x40\
+        \x00\x00\x00\x00\x00\x00\x00\x40\
+        \x00\x00\x00\x00\x00\x00\x00\x00\
+        \x00\x00\x00\x00\x00\x00\xF0\x3F\
+        \x00\x00\x00\x00\x00\x00\x00\x40\
+        \x00\x00\x00\x00\x00\x00\x00\x00\
+        \x00\x00\x00\x00\x00\x00\xF0\x3F\
+        \x00\x00\x00\x00\x00\x00\xF0\x3F\
+        \x00\x00\x00\x00\x00\x00\x00\x00\
+        ",
+        Value::PostGisBox3d(
+            b"\
+            \x01\
+            \x03\x00\x00\x80\
+            \x01\x00\x00\x00\
+            \x05\x00\x00\x00\
+            \x00\x00\x00\x00\x00\x00\xF0\x3F\
+            \x00\x00\x00\x00\x00\x00\xF0\x3F\
+            \x00\x00\x00\x00\x00\x00\x00\x00\
+            \x00\x00\x00\x00\x00\x00\x00\x40\
+            \x00\x00\x00\x00\x00\x00\xF0\x3F\
+            \x00\x00\x00\x00\x00\x00\x00\x00\
+            \x00\x00\x00\x00\x00\x00\x00\x40\
+            \x00\x00\x00\x00\x00\x00\x00\x40\
+            \x00\x00\x00\x00\x00\x00\x00\x00\
+            \x00\x00\x00\x00\x00\x00\xF0\x3F\
+            \x00\x00\x00\x00\x00\x00\x00\x40\
+            \x00\x00\x00\x00\x00\x00\x00\x00\
+            \x00\x00\x00\x00\x00\x00\xF0\x3F\
+            \x00\x00\x00\x00\x00\x00\xF0\x3F\
+            \x00\x00\x00\x00\x00\x00\x00\x00\
+            "[..]
+                .into()
+        )
     );
     Ok(())
 }
