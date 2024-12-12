@@ -207,6 +207,11 @@ impl QueryArg for Value {
             PostGisGeography(v) => v.encode_slot(enc)?,
             PostGisBox2d(v) => v.encode_slot(enc)?,
             PostGisBox3d(v) => v.encode_slot(enc)?,
+            SQLRow { .. } => {
+                return Err(ClientEncodingError::with_message(
+                    "SQL row cannot be query argument",
+                ))
+            }
         }
 
         Ok(())
