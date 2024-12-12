@@ -72,6 +72,7 @@ pub enum Descriptor {
     MultiRange(MultiRangeTypeDescriptor),
     Object(ObjectTypeDescriptor),
     Compound(CompoundTypeDescriptor),
+    SQLRow(SQLRowDescriptor),
     TypeAnnotation(TypeAnnotationDescriptor),
 }
 
@@ -190,6 +191,18 @@ pub struct ObjectTypeDescriptor {
     pub id: DescriptorUuid,
     pub name: Option<String>,
     pub schema_defined: Option<bool>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SQLRowDescriptor {
+    pub id: DescriptorUuid,
+    pub elements: Vec<SQLRowElement>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SQLRowElement {
+    pub name: String,
+    pub type_pos: TypePos,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -548,6 +561,7 @@ impl Descriptor {
             InputShape(i) => &i.id,
             Object(i) => &i.id,
             Compound(i) => &i.id,
+            SQLRow(i) => &i.id,
             TypeAnnotation(i) => &i.id,
         }
     }
@@ -637,6 +651,7 @@ impl Decode for Descriptor {
             0x0A => ObjectTypeDescriptor::decode(buf).map(D::Object),
             0x0B => CompoundTypeDescriptor::decode(buf).map(D::Compound),
             0x0C => MultiRangeTypeDescriptor::decode(buf).map(D::MultiRange),
+            0x0D => SQLRowDescriptor::decode(buf).map(D::SQLRow),
             0x7F..=0xFF => TypeAnnotationDescriptor::decode(buf).map(D::TypeAnnotation),
             descriptor => InvalidTypeDescriptor { descriptor }.fail()?,
         }
@@ -747,6 +762,24 @@ impl Decode for BaseScalarTypeDescriptor {
         );
         let id = Uuid::decode(buf)?.into();
         Ok(BaseScalarTypeDescriptor { id })
+    }
+}
+
+impl Decode for SQLRowDescriptor {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
+        ensure!(buf.remaining() >= 19, errors::Underflow);
+        assert!(buf.get_u8() == 0x0D);
+        let id = Uuid::decode(buf)?.into();
+        let elements = Vec::<SQLRowElement>::decode(buf)?;
+        Ok(SQLRowDescriptor { id, elements })
+    }
+}
+
+impl Decode for SQLRowElement {
+    fn decode(buf: &mut Input) -> Result<Self, DecodeError> {
+        let name = String::decode(buf)?;
+        let type_pos = TypePos::decode(buf)?;
+        Ok(SQLRowElement { name, type_pos })
     }
 }
 

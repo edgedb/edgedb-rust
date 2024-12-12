@@ -2,7 +2,9 @@
 Contains the [Value] enum.
 */
 pub use crate::codec::EnumValue;
-use crate::codec::{InputObjectShape, InputShapeElement, NamedTupleShape, ObjectShape};
+use crate::codec::{
+    InputObjectShape, InputShapeElement, NamedTupleShape, ObjectShape, SQLRowShape,
+};
 use crate::common::Cardinality;
 use crate::model::{BigInt, ConfigMemory, Decimal, Range, Uuid};
 use crate::model::{DateDuration, Json, RelativeDuration};
@@ -40,6 +42,10 @@ pub enum Value {
     Tuple(Vec<Value>),
     NamedTuple {
         shape: NamedTupleShape,
+        fields: Vec<Value>,
+    },
+    SQLRow {
+        shape: SQLRowShape,
         fields: Vec<Value>,
     },
     Array(Vec<Value>),
@@ -96,6 +102,7 @@ impl Value {
             PostGisGeography(..) => "ext::postgis::geography",
             PostGisBox2d(..) => "ext::postgis::box2d",
             PostGisBox3d(..) => "ext::postgis::box3d",
+            SQLRow { .. } => "sql_row",
         }
     }
     pub fn empty_tuple() -> Value {

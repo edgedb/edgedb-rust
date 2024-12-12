@@ -101,6 +101,8 @@ pub struct EnumValue(Arc<str>);
 pub struct ObjectShape(pub(crate) Arc<ObjectShapeInfo>);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NamedTupleShape(Arc<NamedTupleShapeInfo>);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SQLRowShape(Arc<SQLRowShapeInfo>);
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ObjectShapeInfo {
@@ -137,6 +139,16 @@ pub struct NamedTupleShapeInfo {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct TupleElement {
+    pub name: String,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct SQLRowShapeInfo {
+    pub elements: Vec<SQLRowElement>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct SQLRowElement {
     pub name: String,
 }
 
@@ -240,6 +252,12 @@ pub struct NamedTuple {
 }
 
 #[derive(Debug)]
+pub struct SQLRow {
+    shape: SQLRowShape,
+    codecs: Vec<Arc<dyn Codec>>,
+}
+
+#[derive(Debug)]
 pub struct Array {
     element: Arc<dyn Codec>,
 }
@@ -314,6 +332,13 @@ impl Deref for NamedTupleShape {
     }
 }
 
+impl Deref for SQLRowShape {
+    type Target = SQLRowShapeInfo;
+    fn deref(&self) -> &SQLRowShapeInfo {
+        &self.0
+    }
+}
+
 impl<'a> CodecBuilder<'a> {
     fn build(&self, pos: TypePos) -> Result<Arc<dyn Codec>, CodecError> {
         use Descriptor as D;
@@ -347,6 +372,7 @@ impl<'a> CodecBuilder<'a> {
                 D::Object(_) => Ok(Arc::new(Nothing {})),
                 D::Compound(_) => Ok(Arc::new(Nothing {})),
                 D::InputShape(d) => Ok(Arc::new(Input::build(d, self)?)),
+                D::SQLRow(d) => Ok(Arc::new(SQLRow::build(d, self)?)),
                 // type annotations are stripped from codecs array before
                 // building a codec
                 D::TypeAnnotation(..) => unreachable!(),
@@ -687,6 +713,19 @@ impl NamedTuple {
     }
 }
 
+impl SQLRow {
+    fn build(d: &descriptors::SQLRowDescriptor, dec: &CodecBuilder) -> Result<SQLRow, CodecError> {
+        Ok(SQLRow {
+            shape: d.elements.as_slice().into(),
+            codecs: d
+                .elements
+                .iter()
+                .map(|e| dec.build(e.type_pos))
+                .collect::<Result<_, _>>()?,
+        })
+    }
+}
+
 fn decode_tuple(
     mut elements: DecodeTupleLike,
     codecs: &[Arc<dyn Codec>],
@@ -931,6 +970,20 @@ impl<'a> From<&'a [descriptors::TupleElement]> for NamedTupleShape {
                 .map(|e| {
                     let descriptors::TupleElement { name, type_pos: _ } = e;
                     TupleElement { name: name.clone() }
+                })
+                .collect(),
+        }))
+    }
+}
+
+impl<'a> From<&'a [descriptors::SQLRowElement]> for SQLRowShape {
+    fn from(shape: &'a [descriptors::SQLRowElement]) -> SQLRowShape {
+        SQLRowShape(Arc::new(SQLRowShapeInfo {
+            elements: shape
+                .iter()
+                .map(|e| {
+                    let descriptors::SQLRowElement { name, type_pos: _ } = e;
+                    SQLRowElement { name: name.clone() }
                 })
                 .collect(),
         }))
@@ -1297,6 +1350,20 @@ impl Codec for NamedTuple {
             );
         }
         Ok(())
+    }
+}
+
+impl Codec for SQLRow {
+    fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
+        let elements = DecodeTupleLike::new_tuple(buf, self.codecs.len())?;
+        let fields = decode_tuple(elements, &self.codecs)?;
+        Ok(Value::SQLRow {
+            shape: self.shape.clone(),
+            fields,
+        })
+    }
+    fn encode(&self, _buf: &mut BytesMut, _val: &Value) -> Result<(), EncodeError> {
+        errors::UnknownMessageCantBeEncoded.fail()?
     }
 }
 
