@@ -1,11 +1,10 @@
-use std::future::Future;
-use std::sync::Arc;
-
 use edgedb_protocol::common::{Capabilities, Cardinality, IoFormat};
 use edgedb_protocol::encoding::Annotations;
 use edgedb_protocol::model::Json;
 use edgedb_protocol::query_arg::QueryArgs;
 use edgedb_protocol::QueryResult;
+use std::future::Future;
+use std::sync::Arc;
 use tokio::time::sleep;
 
 use crate::builder::Config;
@@ -17,7 +16,7 @@ use crate::raw::{Options, PoolState, Response};
 use crate::raw::{Pool, QueryCapabilities};
 use crate::state::{AliasesDelta, ConfigDelta, GlobalsDelta};
 use crate::state::{AliasesModifier, ConfigModifier, Fn, GlobalsModifier};
-use crate::transaction::{transaction, Transaction};
+use crate::transaction::{retryable_transaction, Transaction};
 use crate::ResultVerbose;
 
 /// The EdgeDB Client.
@@ -371,12 +370,16 @@ impl Client {
         }
     }
 
-    /// Execute a transaction
+    /// Executes the provided closure and automatically retries it on database errors
     ///
-    /// Transaction body must be encompassed in the closure. The closure **may
+    /// The transaction body must be encompassed in the closure. The closure **may
     /// be executed multiple times**. This includes not only database queries
     /// but also executing the whole function, so the transaction code must be
     /// prepared to be idempotent.
+    ///
+    /// # Commiting and Rollbacks
+    ///
+    /// There is no implicit commit or rollback. It's up to the closure body to call commit or rollback.
     ///
     /// # Returning custom errors
     ///
@@ -384,34 +387,59 @@ impl Client {
     /// and [the documentation of the `edgedb_errors` crate](https://docs.rs/edgedb-errors/latest/edgedb_errors/)
     /// for how to return custom error types.
     ///
-    /// # Panics
-    ///
-    /// Function panics when transaction object passed to the closure is not
-    /// dropped after closure exists. General rule: do not store transaction
-    /// anywhere and do not send to another coroutine. Pass to all further
-    /// function calls by reference.
     ///
     /// # Example
     ///
     /// ```rust,no_run
-    /// # async fn transaction() -> Result<(), edgedb_tokio::Error> {
-    /// let conn = edgedb_tokio::create_client().await?;
-    /// let val = conn.transaction(|mut tx| async move {
-    ///     tx.query_required_single::<i64, _>("
-    ///         WITH C := UPDATE Counter SET { value := .value + 1}
-    ///         SELECT C.value LIMIT 1
-    ///     ", &()
-    ///     ).await
-    /// }).await?;
-    /// # Ok(())
-    /// # }
+    /// async fn retryable_transaction() -> Result<(), edgedb_tokio::Error> {
+    ///     let conn = edgedb_tokio::create_client().await?;
+    ///     let val = conn.retryable_transaction(|mut tx| async move {
+    ///         let new_value = tx.query_required_single::<i64, _>("
+    ///             WITH C := UPDATE Counter SET { value := .value + 1}
+    ///             SELECT C.value LIMIT 1
+    ///             ", &()
+    ///         ).await?;
+    ///         tx.commit().await?;
+    ///         Ok(new_value)
+    ///     }).await?;
+    ///    Ok(())
+    ///  }
     /// ```
-    pub async fn transaction<T, B, F>(&self, body: B) -> Result<T, Error>
+    pub async fn retryable_transaction<T, B, F>(&self, body: B) -> Result<T, Error>
     where
         B: FnMut(Transaction) -> F,
         F: Future<Output = Result<T, Error>>,
     {
-        transaction(&self.pool, &self.options, &self.annotations, body).await
+        retryable_transaction(&self.pool, &self.options, &self.annotations, body).await
+    }
+
+    /// Starts a new transaction.
+    ///
+    /// # Commiting and Rollbacks
+    ///
+    /// The user must explicitly commit it as it will rollback on drop.
+    ///
+    /// Explicitly calling rollback allows the user to check for errors during rollback.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// async fn transaction() -> Result<(), edgedb_tokio::Error> {
+    ///     let conn = edgedb_tokio::create_client().await?;
+    ///     let mut tx = conn.transaction().await?;
+    ///     let new_value = tx.query_required_single::<i64, _>("
+    ///         WITH C := UPDATE Counter SET { value := .value + 1}
+    ///         SELECT C.value LIMIT 1
+    ///     ", &()
+    ///     ).await?;
+    ///     tx.commit().await?;
+    ///     Ok(())
+    /// }
+    /// ```
+    pub async fn transaction(&self) -> Result<Transaction, Error> {
+        let conn = self.pool.acquire().await?;
+        let tran = Transaction::new(conn, self.options.state.clone(), self.annotations.clone());
+        Ok(tran)
     }
 
     /// Returns client with adjusted options for future transactions.
