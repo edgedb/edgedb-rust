@@ -8,7 +8,6 @@ use edgedb_protocol::encoding::Annotations;
 use edgedb_protocol::model::Json;
 use edgedb_protocol::query_arg::{Encoder, QueryArgs};
 use edgedb_protocol::QueryResult;
-use tokio::sync::oneshot;
 use tokio::time::sleep;
 
 use crate::errors::ClientError;
@@ -17,47 +16,57 @@ use crate::errors::{NoDataError, ProtocolEncodingError};
 use crate::raw::{Options, Pool, PoolConnection, PoolState, Response};
 use crate::ResultVerbose;
 
-/// Transaction object passed to the closure via
-/// [`Client::transaction()`](crate::Client::transaction) method
+/// Transaction struct created by calling the [`Client::transaction()`](crate::Client::transaction) method
 ///
-/// The Transaction object must be dropped by the end of the closure execution.
+/// The Transaction object must be explicitly commited. They are automatically rollback on drop if not commited.
 ///
 /// All database queries in transaction should be executed using methods on
 /// this object instead of using original [`Client`](crate::Client) instance.
 #[derive(Debug)]
 pub struct Transaction {
-    iteration: u32,
     state: Arc<PoolState>,
     annotations: Arc<Annotations>,
-    inner: Option<Inner>,
-}
-
-#[derive(Debug)]
-pub struct TransactionResult {
-    conn: PoolConnection,
+    /// this has to be an option because during Drop we need to take the value out and spawn a task to rollback the
+    /// transaction. Revisit this when async drop is stable.
+    conn: Option<PoolConnection>,
+    /// used to know if there is anything to be commited or rolled back
     started: bool,
-}
-
-#[derive(Debug)]
-pub struct Inner {
-    started: bool,
-    conn: PoolConnection,
-    return_conn: oneshot::Sender<TransactionResult>,
+    /// used to know if a rollback is required on drop
+    explicitly_commited_or_rolled_back: bool,
 }
 
 impl Drop for Transaction {
     fn drop(&mut self) {
-        self.inner.take().map(
-            |Inner {
-                 started,
-                 conn,
-                 return_conn,
-             }| { return_conn.send(TransactionResult { started, conn }).ok() },
-        );
+        if !self.started {
+            log::trace!("transaction was never started, noop drop");
+            return;
+        }
+        if self.explicitly_commited_or_rolled_back {
+            log::trace!("transaction explicitly_commited_or_rolled_back, noop drop");
+            return;
+        }
+        log::debug!("transaction dropped, so rolling back");
+        let mut con = self
+            .conn
+            .take()
+            .expect("con to only be taken on transaction drop");
+        let state = self.state.clone();
+        let annotations = self.annotations.clone();
+        tokio::task::spawn(async move {
+            match con.statement("ROLLBACK", &state, &annotations).await {
+                Ok(_) => {
+                    log::debug!("rollback successful");
+                }
+                Err(e) => {
+                    // let user know something happened
+                    log::error!("rollback error: {}", e);
+                }
+            }
+        });
     }
 }
 
-pub(crate) async fn transaction<T, B, F>(
+pub(crate) async fn retryable_transaction<T, B, F>(
     pool: &Pool,
     options: &Options,
     annotations: &Arc<Annotations>,
@@ -70,38 +79,15 @@ where
     let mut iteration = 0;
     'transaction: loop {
         let conn = pool.acquire().await?;
-        let (tx, mut rx) = oneshot::channel();
-        let tran = Transaction {
-            iteration,
-            state: options.state.clone(),
-            annotations: annotations.clone(),
-            inner: Some(Inner {
-                started: false,
-                conn,
-                return_conn: tx,
-            }),
-        };
-        let result = body(tran).await;
-        let TransactionResult { mut conn, started } = rx.try_recv().expect(
-            "Transaction object must \
-            be dropped by the time transaction body finishes.",
-        );
+        let tx = Transaction::new(conn, options.state.clone(), annotations.clone());
+        let result = body(tx).await;
         match result {
             Ok(val) => {
-                log::debug!("Comitting transaction");
-                if started {
-                    conn.statement("COMMIT", &options.state, annotations)
-                        .await?;
-                }
+                log::debug!("transaction successful");
                 return Ok(val);
             }
             Err(outer) => {
-                log::debug!("Rolling back transaction on error");
-                if started {
-                    conn.statement("ROLLBACK", &options.state, annotations)
-                        .await?;
-                }
-
+                log::debug!("transaction error");
                 let some_retry = outer.chain().find_map(|e| {
                     e.downcast_ref::<Error>().and_then(|e| {
                         if e.has_tag(SHOULD_RETRY) {
@@ -112,18 +98,24 @@ where
                     })
                 });
 
-                if some_retry.is_none() {
-                    return Err(outer);
-                } else {
-                    let e = some_retry.unwrap();
-                    let rule = options.retry.get_rule(e);
-                    if iteration >= rule.attempts {
+                match some_retry {
+                    None => {
+                        log::trace!("transaction NOT set as SHOULD_RETRY");
                         return Err(outer);
-                    } else {
-                        log::info!("Retrying transaction on {:#}", e);
-                        iteration += 1;
-                        sleep((rule.backoff)(iteration)).await;
-                        continue 'transaction;
+                    }
+                    Some(e) => {
+                        log::trace!("transaction set as SHOULD_RETRY");
+                        let rule = options.retry.get_rule(e);
+                        if iteration >= rule.attempts {
+                            log::trace!("max retry count reached");
+                            return Err(outer);
+                        } else {
+                            log::info!("Retrying transaction on {:#}", e);
+                            log::trace!("iteration: {}", iteration);
+                            iteration += 1;
+                            sleep((rule.backoff)(iteration)).await;
+                            continue 'transaction;
+                        }
                     }
                 }
             }
@@ -131,29 +123,63 @@ where
     }
 }
 
-fn assert_transaction(x: &mut Option<Inner>) -> &mut PoolConnection {
-    &mut x.as_mut().expect("transaction object is dropped").conn
-}
-
 impl Transaction {
-    /// Zero-based iteration (attempt) number for the current transaction
-    ///
-    /// First attempt gets `iteration = 0`, second attempt `iteration = 1`,
-    /// etc.
-    pub fn iteration(&self) -> u32 {
-        self.iteration
+    pub(crate) fn new(
+        conn: PoolConnection,
+        state: Arc<PoolState>,
+        annotations: Arc<Annotations>,
+    ) -> Self {
+        Self {
+            state,
+            annotations,
+            conn: Some(conn),
+            started: false,
+            explicitly_commited_or_rolled_back: false,
+        }
     }
+
+    /// Commits the transaction.
+    pub async fn commit(mut self) -> Result<(), Error> {
+        log::debug!("Commiting transaction");
+        self.explicitly_commited_or_rolled_back = true;
+        let mut con = self.conn.take().expect("con always exist before drop");
+        if self.started {
+            log::trace!("transaction was started, commiting");
+            con.statement("COMMIT", &self.state, &self.annotations)
+                .await?;
+        } else {
+            log::trace!("transaction was not started, nothing to commit");
+        }
+        Ok(())
+    }
+
+    /// Explicitly rolls back a transaction.
+    ///
+    /// This should be preferable to dropping the transaction struct since this allows the user to check for errors.
+    pub async fn rollback(mut self) -> Result<(), Error> {
+        log::debug!("Rolling back transaction");
+        self.explicitly_commited_or_rolled_back = true;
+        let mut con = self.conn.take().expect("con always exist before drop");
+        if self.started {
+            log::trace!("transaction was started, rolling back");
+            con.statement("ROLLBACK", &self.state, &self.annotations)
+                .await?;
+        } else {
+            log::trace!("transaction was not started, nothing to rollback");
+        }
+        Ok(())
+    }
+
     async fn ensure_started(&mut self) -> anyhow::Result<(), Error> {
-        if let Some(inner) = &mut self.inner {
-            if !inner.started {
-                inner
-                    .conn
-                    .statement("START TRANSACTION", &self.state, &self.annotations)
+        if let Some(conn) = &mut self.conn {
+            if !self.started {
+                conn.statement("START TRANSACTION", &self.state, &self.annotations)
                     .await?;
-                inner.started = true;
+                self.started = true;
             }
             return Ok(());
         }
+        // Is this needed? This should be unreachable since drops never calls it.
         Err(ClientError::with_message("using transaction after drop"))
     }
 
@@ -170,7 +196,11 @@ impl Transaction {
     {
         self.ensure_started().await?;
 
-        let conn = assert_transaction(&mut self.inner);
+        let conn = self
+            .conn
+            .as_mut()
+            .take()
+            .expect("con always exist before drop");
 
         conn.inner()
             .query(
@@ -397,7 +427,12 @@ impl Transaction {
             expected_cardinality: Cardinality::Many,
         };
         let state = self.state.clone(); // TODO: optimize, by careful borrow
-        let conn = assert_transaction(&mut self.inner);
+
+        let conn = self
+            .conn
+            .as_mut()
+            .take()
+            .expect("con always exist before drop");
         let desc = conn.parse(&flags, query, &state, &self.annotations).await?;
         let inp_desc = desc.input().map_err(ProtocolEncodingError::with_source)?;
 

@@ -31,7 +31,7 @@ async fn transaction1(
     lock: Arc<Mutex<()>>,
 ) -> anyhow::Result<i32> {
     let val = client
-        .transaction(|mut tx| {
+        .retryable_transaction(|mut tx| {
             let lock = lock.clone();
             let iterations = iterations.clone();
             let barrier = barrier.clone();
@@ -118,7 +118,7 @@ async fn transaction1e(
     lock: Arc<Mutex<()>>,
 ) -> anyhow::Result<i32> {
     let val = client
-        .transaction(|mut tx| {
+        .retryable_transaction(|mut tx| {
             let lock = lock.clone();
             let iterations = iterations.clone();
             let barrier = barrier.clone();
@@ -163,7 +163,7 @@ async fn transaction_conflict_with_complex_err() -> anyhow::Result<()> {
 async fn queries() -> anyhow::Result<()> {
     let client = Client::new(&SERVER.config);
     client
-        .transaction(|mut tx| async move {
+        .retryable_transaction(|mut tx| async move {
             let value = tx.query::<i64, _>("SELECT 7*93", &()).await?;
             assert_eq!(value, vec![651]);
 
