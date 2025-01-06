@@ -192,31 +192,37 @@ async fn big_num() -> anyhow::Result<()> {
         .query_required_single::<Value, _>("select 1234567890123456789012345678900000n", &())
         .await
         .unwrap();
-    if let Value::BigInt(res) = res {
-        assert_eq!(res.to_string(), "1234567890123456789012345678900000");
-    } else {
-        panic!();
-    }
+    let Value::BigInt(res) = res else { panic!() };
+    assert_eq!(res.to_string(), "1234567890123456789012345678900000");
 
     let res = client
         .query_required_single::<Value, _>("select 1234567891234567890.12345678900000n", &())
         .await
         .unwrap();
-    if let Value::Decimal(res) = res {
-        assert_eq!(res.to_string(), "1234567891234567890.12345678900000");
-    } else {
-        panic!();
-    }
+    let Value::Decimal(res) = res else { panic!() };
+    assert_eq!(res.to_string(), "1234567891234567890.12345678900000");
 
     let res = client
         .query_required_single::<Value, _>("select 0.00012n", &())
         .await
         .unwrap();
-    if let Value::Decimal(res) = res {
-        assert_eq!(res.to_string(), "0.00012");
-    } else {
-        panic!();
-    }
+    let Value::Decimal(res) = res else { panic!() };
+    assert!(!res.negative());
+    assert_eq!(res.decimal_digits(), 5);
+    assert_eq!(res.digits(), [1, 2000]);
+    assert_eq!(res.weight() * 4, -4);
+    assert_eq!(res.to_string(), "0.00012");
+
+    let res = client
+        .query_required_single::<Value, _>("select <decimal>0.000000000000000000001", &())
+        .await
+        .unwrap();
+    let Value::Decimal(res) = res else { panic!() };
+    assert!(!res.negative());
+    assert_eq!(res.decimal_digits(), 21);
+    assert_eq!(res.digits(), [1000]);
+    assert_eq!(res.weight() * 4, -24);
+    assert_eq!(res.to_string(), "0.000000000000000000001");
 
     Ok(())
 }

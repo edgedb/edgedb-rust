@@ -173,7 +173,7 @@ pub fn parse<T: FromStr>(var: &str, s: &str) -> Result<T, Error>
 where
     <T as FromStr>::Err: Debug,
 {
-    Ok(s.parse().map_err(|e| create_var_error(var, e))?)
+    s.parse().map_err(|e| create_var_error(var, e))
 }
 
 #[inline(never)]

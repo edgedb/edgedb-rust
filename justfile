@@ -1,3 +1,5 @@
+_default:
+    just --list
 
 test:
     # Test all features
