@@ -219,7 +219,7 @@ impl std::fmt::Display for Decimal {
         write!(f, ".")?;
 
         // leading zeros of the decimal part
-        let mut decimals = self.decimal_digits;
+        let mut decimals = u16::max(self.decimal_digits, 1);
         if index == 0 && self.weight < 0 {
             for _ in 0..(-1 - self.weight) {
                 f.write_str("0000")?;
@@ -360,7 +360,7 @@ mod test {
                 digits: vec![42],
             }
             .to_string(),
-            "42."
+            "42.0"
         );
 
         assert_eq!(
