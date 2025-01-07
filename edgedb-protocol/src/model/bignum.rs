@@ -205,6 +205,12 @@ impl std::fmt::Display for Decimal {
                 break;
             }
         }
+
+        // trailing zeros of the integer part
+        for _ in 0..(self.weight - index + 1) {
+            f.write_str("0000")?;
+        }
+
         if index == 0 {
             write!(f, "0")?;
         }
@@ -212,8 +218,15 @@ impl std::fmt::Display for Decimal {
         // dot
         write!(f, ".")?;
 
-        // decimal part
-        let mut decimals = self.decimal_digits;
+        // leading zeros of the decimal part
+        let mut decimals = u16::max(self.decimal_digits, 1);
+        if index == 0 && self.weight < 0 {
+            for _ in 0..(-1 - self.weight) {
+                f.write_str("0000")?;
+                decimals -= 4;
+            }
+        }
+
         while decimals > 0 {
             if let Some(digit) = self.digits.get(index as usize) {
                 let digit = format!("{digit:04}");
@@ -335,5 +348,74 @@ mod test {
             let i = super::test_helpers::gen_i64(&mut rng);
             assert_eq!(BigInt::from(i).to_string(), i.to_string());
         }
+    }
+
+    #[test]
+    fn decimal_display() {
+        assert_eq!(
+            Decimal {
+                negative: false,
+                weight: 0,
+                decimal_digits: 0,
+                digits: vec![42],
+            }
+            .to_string(),
+            "42.0"
+        );
+
+        assert_eq!(
+            Decimal {
+                negative: false,
+                weight: 0,
+                decimal_digits: 10,
+                digits: vec![42],
+            }
+            .to_string(),
+            "42.0000000000"
+        );
+
+        assert_eq!(
+            Decimal {
+                negative: true,
+                weight: 0,
+                decimal_digits: 1,
+                digits: vec![42],
+            }
+            .to_string(),
+            "-42.0"
+        );
+
+        assert_eq!(
+            Decimal {
+                negative: false,
+                weight: 1,
+                decimal_digits: 10,
+                digits: vec![42],
+            }
+            .to_string(),
+            "420000.0000000000"
+        );
+
+        assert_eq!(
+            Decimal {
+                negative: false,
+                weight: -2,
+                decimal_digits: 10,
+                digits: vec![42],
+            }
+            .to_string(),
+            "0.0000004200"
+        );
+
+        assert_eq!(
+            Decimal {
+                negative: false,
+                weight: -6,
+                decimal_digits: 21,
+                digits: vec![1000],
+            }
+            .to_string(),
+            "0.000000000000000000001"
+        );
     }
 }
