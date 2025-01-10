@@ -4,7 +4,7 @@ extern crate pretty_assertions;
 use std::error::Error;
 use std::sync::Arc;
 
-use bytes::{Buf, Bytes};
+use bytes::Bytes;
 
 use edgedb_protocol::codec::build_codec;
 use edgedb_protocol::codec::{Codec, ObjectShape};
