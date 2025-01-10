@@ -2,7 +2,6 @@ use std::future::Future;
 use std::sync::Arc;
 
 use edgedb_protocol::common::{Capabilities, Cardinality, IoFormat};
-use edgedb_protocol::encoding::Annotations;
 use edgedb_protocol::model::Json;
 use edgedb_protocol::query_arg::QueryArgs;
 use edgedb_protocol::QueryResult;
@@ -35,7 +34,6 @@ use crate::ResultVerbose;
 pub struct Client {
     options: Arc<Options>,
     pool: Pool,
-    annotations: Arc<Annotations>,
 }
 
 impl Client {
@@ -48,7 +46,6 @@ impl Client {
         Client {
             options: Default::default(),
             pool: Pool::new(config),
-            annotations: Default::default(),
         }
     }
 
@@ -85,7 +82,7 @@ impl Client {
                     query.as_ref(),
                     arguments,
                     state,
-                    &self.annotations,
+                    &self.options.annotations,
                     caps,
                     io_format,
                     cardinality,
@@ -343,7 +340,13 @@ impl Client {
             let state = &self.options.state;
             let caps = Capabilities::MODIFICATIONS | Capabilities::DDL;
             match conn
-                .execute(query.as_ref(), arguments, state, &self.annotations, caps)
+                .execute(
+                    query.as_ref(),
+                    arguments,
+                    state,
+                    &self.options.annotations,
+                    caps,
+                )
                 .await
             {
                 Ok(_) => return Ok(()),
@@ -411,7 +414,7 @@ impl Client {
         B: FnMut(Transaction) -> F,
         F: Future<Output = Result<T, Error>>,
     {
-        transaction(&self.pool, &self.options, &self.annotations, body).await
+        transaction(&self.pool, self.options.clone(), body).await
     }
 
     /// Returns client with adjusted options for future transactions.
@@ -429,9 +432,9 @@ impl Client {
                 transaction: options,
                 retry: self.options.retry.clone(),
                 state: self.options.state.clone(),
+                annotations: self.options.annotations.clone(),
             }),
             pool: self.pool.clone(),
-            annotations: self.annotations.clone(),
         }
     }
     /// Returns client with adjusted options for future retrying
@@ -448,9 +451,9 @@ impl Client {
                 transaction: self.options.transaction.clone(),
                 retry: options,
                 state: self.options.state.clone(),
+                annotations: self.options.annotations.clone(),
             }),
             pool: self.pool.clone(),
-            annotations: self.annotations.clone(),
         }
     }
 
@@ -460,9 +463,9 @@ impl Client {
                 transaction: self.options.transaction.clone(),
                 retry: self.options.retry.clone(),
                 state: Arc::new(f(&self.options.state)),
+                annotations: self.options.annotations.clone(),
             }),
             pool: self.pool.clone(),
-            annotations: self.annotations.clone(),
         }
     }
 
@@ -574,8 +577,8 @@ impl Client {
     pub fn with_tag(&self, tag: Option<&str>) -> Result<Self, Error> {
         const KEY: &str = "tag";
 
-        let annotations = if self.annotations.get(KEY).map(|s| s.as_str()) != tag {
-            let mut annotations = (*self.annotations).clone();
+        let annotations = if self.options.annotations.get(KEY).map(|s| s.as_str()) != tag {
+            let mut annotations = (*self.options.annotations).clone();
             if let Some(tag) = tag {
                 if tag.starts_with("edgedb/") {
                     return Err(InvalidArgumentError::with_message("reserved tag: edgedb/*"));
@@ -594,13 +597,17 @@ impl Client {
             }
             Arc::new(annotations)
         } else {
-            self.annotations.clone()
+            self.options.annotations.clone()
         };
 
         Ok(Client {
-            options: self.options.clone(),
+            options: Arc::new(Options {
+                transaction: self.options.transaction.clone(),
+                retry: self.options.retry.clone(),
+                state: self.options.state.clone(),
+                annotations,
+            }),
             pool: self.pool.clone(),
-            annotations,
         })
     }
 }

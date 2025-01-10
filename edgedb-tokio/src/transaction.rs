@@ -4,7 +4,6 @@ use std::sync::Arc;
 use bytes::BytesMut;
 use edgedb_protocol::common::CompilationOptions;
 use edgedb_protocol::common::{Capabilities, Cardinality, InputLanguage, IoFormat};
-use edgedb_protocol::encoding::Annotations;
 use edgedb_protocol::model::Json;
 use edgedb_protocol::query_arg::{Encoder, QueryArgs};
 use edgedb_protocol::QueryResult;
@@ -14,7 +13,7 @@ use tokio::time::sleep;
 use crate::errors::ClientError;
 use crate::errors::{Error, ErrorKind, SHOULD_RETRY};
 use crate::errors::{NoDataError, ProtocolEncodingError};
-use crate::raw::{Options, Pool, PoolConnection, PoolState, Response};
+use crate::raw::{Options, Pool, PoolConnection, Response};
 use crate::ResultVerbose;
 
 /// Transaction object passed to the closure via
@@ -27,8 +26,7 @@ use crate::ResultVerbose;
 #[derive(Debug)]
 pub struct Transaction {
     iteration: u32,
-    state: Arc<PoolState>,
-    annotations: Arc<Annotations>,
+    options: Arc<Options>,
     inner: Option<Inner>,
 }
 
@@ -59,8 +57,7 @@ impl Drop for Transaction {
 
 pub(crate) async fn transaction<T, B, F>(
     pool: &Pool,
-    options: &Options,
-    annotations: &Arc<Annotations>,
+    options: Arc<Options>,
     mut body: B,
 ) -> Result<T, Error>
 where
@@ -73,8 +70,7 @@ where
         let (tx, mut rx) = oneshot::channel();
         let tran = Transaction {
             iteration,
-            state: options.state.clone(),
-            annotations: annotations.clone(),
+            options: options.clone(),
             inner: Some(Inner {
                 started: false,
                 conn,
@@ -90,7 +86,7 @@ where
             Ok(val) => {
                 log::debug!("Comitting transaction");
                 if started {
-                    conn.statement("COMMIT", &options.state, annotations)
+                    conn.statement("COMMIT", &options.state, &options.annotations)
                         .await?;
                 }
                 return Ok(val);
@@ -98,7 +94,7 @@ where
             Err(outer) => {
                 log::debug!("Rolling back transaction on error");
                 if started {
-                    conn.statement("ROLLBACK", &options.state, annotations)
+                    conn.statement("ROLLBACK", &options.state, &options.annotations)
                         .await?;
                 }
 
@@ -146,9 +142,10 @@ impl Transaction {
     async fn ensure_started(&mut self) -> anyhow::Result<(), Error> {
         if let Some(inner) = &mut self.inner {
             if !inner.started {
+                let options = &self.options;
                 inner
                     .conn
-                    .statement("START TRANSACTION", &self.state, &self.annotations)
+                    .statement("START TRANSACTION", &options.state, &options.annotations)
                     .await?;
                 inner.started = true;
             }
@@ -176,8 +173,8 @@ impl Transaction {
             .query(
                 query.as_ref(),
                 arguments,
-                &self.state,
-                &self.annotations,
+                &self.options.state,
+                &self.options.annotations,
                 Capabilities::MODIFICATIONS,
                 io_format,
                 cardinality,
@@ -396,9 +393,11 @@ impl Transaction {
             io_format: IoFormat::Binary,
             expected_cardinality: Cardinality::Many,
         };
-        let state = self.state.clone(); // TODO: optimize, by careful borrow
+        let state = &self.options.state;
         let conn = assert_transaction(&mut self.inner);
-        let desc = conn.parse(&flags, query, &state, &self.annotations).await?;
+        let desc = conn
+            .parse(&flags, query, state, &self.options.annotations)
+            .await?;
         let inp_desc = desc.input().map_err(ProtocolEncodingError::with_source)?;
 
         let mut arg_buf = BytesMut::with_capacity(8);
@@ -410,8 +409,8 @@ impl Transaction {
         conn.execute(
             &flags,
             query,
-            &state,
-            &self.annotations,
+            state,
+            &self.options.annotations,
             &desc,
             &arg_buf.freeze(),
         )
