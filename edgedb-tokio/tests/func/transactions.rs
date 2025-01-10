@@ -31,7 +31,7 @@ async fn transaction1(
     lock: Arc<Mutex<()>>,
 ) -> anyhow::Result<i32> {
     let val = client
-        .transaction(|mut tx| {
+        .within_transaction(|mut tx| {
             let lock = lock.clone();
             let iterations = iterations.clone();
             let barrier = barrier.clone();
@@ -118,7 +118,7 @@ async fn transaction1e(
     lock: Arc<Mutex<()>>,
 ) -> anyhow::Result<i32> {
     let val = client
-        .transaction(|mut tx| {
+        .within_transaction(|mut tx| {
             let lock = lock.clone();
             let iterations = iterations.clone();
             let barrier = barrier.clone();
@@ -163,7 +163,7 @@ async fn transaction_conflict_with_complex_err() -> anyhow::Result<()> {
 async fn queries() -> anyhow::Result<()> {
     let client = Client::new(&SERVER.config);
     client
-        .transaction(|mut tx| async move {
+        .within_transaction(|mut tx| async move {
             let value = tx.query::<i64, _>("SELECT 7*93", &()).await?;
             assert_eq!(value, vec![651]);
 
@@ -204,5 +204,45 @@ async fn queries() -> anyhow::Result<()> {
             Ok(())
         })
         .await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn standalone_01() -> anyhow::Result<()> {
+    let client = Client::new(&SERVER.config);
+
+    let mut tx = client.transaction().await.unwrap();
+
+    let value = tx.query::<i64, _>("SELECT 7*93", &()).await?;
+    assert_eq!(value, vec![651]);
+
+    tx.execute("SELECT 1+1", &()).await?;
+
+    tx.commit().await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn standalone_02() -> anyhow::Result<()> {
+    let client = Client::new(&SERVER.config).with_default_module(Some("test"));
+
+    {
+        let mut tx = client.transaction().await.unwrap();
+
+        tx.execute("insert X { a := <str>$0 }", &("hello",)).await?;
+
+        let a = tx
+            .query_single::<String, _>("select X.a limit 1", &())
+            .await?;
+        assert_eq!(a, Some("hello".to_string()));
+
+        // no commit
+    }
+
+    let a = client
+        .query_single::<String, _>("select X.a limit 1", &())
+        .await?;
+    assert_eq!(a, None);
     Ok(())
 }
