@@ -44,6 +44,10 @@ pub struct StandaloneTransaction {
 }
 
 impl StandaloneTransaction {
+    /// Commit the transaction.
+    ///
+    /// If this method is not called, the transaction rolls back
+    /// when [StandaloneTransaction] is dropped.
     pub async fn commit(mut self) -> Result<(), Error> {
         if let Some(tran) = self.inner.take() {
             tran.commit().await
@@ -53,6 +57,7 @@ impl StandaloneTransaction {
         }
     }
 
+    /// Rollback the transaction.
     pub async fn rollback(mut self) -> Result<(), Error> {
         if let Some(tran) = self.inner.take() {
             tran.rollback().await
