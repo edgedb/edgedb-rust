@@ -580,7 +580,7 @@ impl LocalDate {
         days: -(30 * 365 + 7),
     }; // 1970-01-01
 
-    fn try_from_days(days: i32) -> Result<LocalDate, OutOfRangeError> {
+    pub(crate) fn try_from_days(days: i32) -> Result<LocalDate, OutOfRangeError> {
         if !(Self::MIN.days..=Self::MAX.days).contains(&days) {
             return Err(OutOfRangeError);
         }
