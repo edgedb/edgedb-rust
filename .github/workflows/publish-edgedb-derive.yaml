@@ -1,9 +1,9 @@
 on:
   push:
     tags:
-    - releases/edgedb-derive/v*
+    - releases/gel-derive/v*
 
-name: Release edgedb-derive
+name: Release gel-derive
 
 jobs:
   test_and_publish:
@@ -23,16 +23,16 @@ jobs:
 
       # test
       - name: Test
-        run: nix develop --command cargo test --all-features --package=edgedb-derive
+        run: nix develop --command cargo test --all-features --package=gel-derive
 
       # verify that git tag matches cargo version
       - run: |
           set -x
           cargo_version="$(cargo metadata --format-version 1 \
-            | jq -r '.packages[] | select(.name=="edgedb-derive") | .version')"
-          tag_version="${GITHUB_REF#refs/tags/releases/edgedb-derive/v}"
+            | jq -r '.packages[] | select(.name=="gel-derive") | .version')"
+          tag_version="${GITHUB_REF#refs/tags/releases/gel-derive/v}"
           test "$cargo_version" = "$tag_version"
 
-      - working-directory: ./edgedb-derive
+      - working-directory: ./gel-derive
         run: |
           nix develop --command cargo publish --token=${{ secrets.CARGO_REGISTRY_TOKEN }}

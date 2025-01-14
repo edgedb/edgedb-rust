@@ -1,9 +1,9 @@
-EdgeDB Rust Binding: Derive Crate
-=================================
+Gel Rust Binding: Derive Crate
+==============================
 
-This crate contains derive macros for the EdgeDB client.
+This crate contains derive macros for the Gel client.
 
-* [Documentation](https://docs.rs/edgedb-derive)
+* [Documentation](https://docs.rs/gel-derive)
 * [Tokio Client](https://docs.rs/edgedb-tokio)
 
 

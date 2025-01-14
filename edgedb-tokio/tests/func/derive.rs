@@ -1,5 +1,5 @@
-use edgedb_derive::Queryable;
 use edgedb_tokio::Client;
+use gel_derive::Queryable;
 use gel_protocol::model::Uuid;
 
 use crate::server::SERVER;

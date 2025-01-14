@@ -1,4 +1,4 @@
-use edgedb_derive::Queryable;
+use gel_derive::Queryable;
 use gel_protocol::queryable::{Decoder, Queryable};
 use serde::Deserialize;
 

@@ -1,11 +1,11 @@
 [package]
-name = "edgedb-derive"
+name = "gel-derive"
 license = "MIT/Apache-2.0"
 version = "0.5.2"
 authors = ["MagicStack Inc. <hello@magic.io>"]
 edition = "2018"
 description = """
-    Derive macros for EdgeDB database client.
+    Derive macros for Gel database client.
 """
 readme = "README.md"
 rust-version.workspace = true

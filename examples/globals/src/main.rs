@@ -1,4 +1,4 @@
-use edgedb_derive::GlobalsDelta;
+use gel_derive::GlobalsDelta;
 
 #[derive(GlobalsDelta)]
 struct Globals<'a> {

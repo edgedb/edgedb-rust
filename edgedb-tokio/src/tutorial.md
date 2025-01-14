@@ -18,9 +18,9 @@ The next most common dependency is [gel-protocol](https://docs.rs/gel-protocol/l
 
     gel-protocol = "0.4.0"
 
-A third crate called [edgedb-derive](https://docs.rs/edgedb-derive/latest/edgedb_derive/) contains the `#[derive(Queryable)]` derive macro which is the main way to unpack EdgeDB output into Rust types:
+A third crate called [gel-derive](https://docs.rs/gel-derive/latest/gel_derive/) contains the `#[derive(Queryable)]` derive macro which is the main way to unpack EdgeDB output into Rust types:
 
-    edgedb-derive = "0.5.0"
+    gel-derive = "0.5.0"
     
 The Rust client uses tokio so add this to Cargo.toml as well:
 
@@ -177,7 +177,7 @@ let query_res_opt: Option<String> = client.query_single(query, &()).await?;
 
 ## Using the `Queryable` macro
 
-The easiest way to unpack an EdgeDB query result is the built-in `Queryable` macro from the `edgedb-derive` crate. This turns queries directly into Rust types without having to match on a `Value` (more in the section on [the `Value` enum](#the-value-enum)), cast to JSON, etc.
+The easiest way to unpack an EdgeDB query result is the built-in `Queryable` macro from the `gel-derive` crate. This turns queries directly into Rust types without having to match on a `Value` (more in the section on [the `Value` enum](#the-value-enum)), cast to JSON, etc.
 
 ```rust
 #[derive(Debug, Deserialize, Queryable)]

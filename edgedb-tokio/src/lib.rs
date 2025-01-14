@@ -142,7 +142,7 @@ pub mod state;
 mod transaction;
 pub mod tutorial;
 
-pub use edgedb_derive::{ConfigDelta, GlobalsDelta, Queryable};
+pub use gel_derive::{ConfigDelta, GlobalsDelta, Queryable};
 
 pub use builder::{Builder, ClientSecurity, Config, InstanceName, TcpKeepalive};
 pub use client::Client;

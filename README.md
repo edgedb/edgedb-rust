@@ -5,7 +5,7 @@ This workspace is a collection of Rust crates for EdgeDB support. Individual
 docs can currently be found on docs.rs:
 
 * [edgedb-tokio](https://docs.rs/edgedb-tokio) -- client for Tokio
-* [edgedb-derive](https://docs.rs/edgedb-derive) -- derive macro for data
+* [gel-derive](https://docs.rs/gel-derive) -- derive macro for data
   structures fetched from the database
 * Async-std bindings [edgedb-client](https://docs.rs/edgedb-client) (currently
   deprecated, and moved to CLI tool repository)

@@ -23,7 +23,7 @@ async fn global_fn() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[derive(edgedb_derive::GlobalsDelta)]
+#[derive(gel_derive::GlobalsDelta)]
 struct Globals {
     str_val: &'static str,
     int_val: i32,

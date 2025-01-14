@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
     "gel-errors",
-    "edgedb-derive",
+    "gel-derive",
     "gel-protocol",
     "edgedb-tokio",
     "examples/globals",
