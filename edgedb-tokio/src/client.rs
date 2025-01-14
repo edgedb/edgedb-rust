@@ -16,7 +16,7 @@ use crate::raw::{Options, PoolState, Response};
 use crate::raw::{Pool, QueryCapabilities};
 use crate::state::{AliasesDelta, ConfigDelta, GlobalsDelta};
 use crate::state::{AliasesModifier, ConfigModifier, Fn, GlobalsModifier};
-use crate::transaction::{RetryingTransaction, StandaloneTransaction};
+use crate::transaction::{RetryingTransaction, RawTransaction};
 use crate::ResultVerbose;
 
 /// The EdgeDB Client.
@@ -414,7 +414,7 @@ impl Client {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn within_transaction<T, B, F>(&self, body: B) -> Result<T, Error>
+    pub async fn transaction<T, B, F>(&self, body: B) -> Result<T, Error>
     where
         B: FnMut(RetryingTransaction) -> F,
         F: Future<Output = Result<T, Error>>,
@@ -422,9 +422,9 @@ impl Client {
         crate::transaction::run_and_retry(&self.pool, self.options.clone(), body).await
     }
 
-    /// Start a transaction.
+    /// Start a transaction without the retry mechanism.
     ///
-    /// Returns [StandaloneTransaction] which implements [crate::QueryExecutor] and can
+    /// Returns [RawTransaction] which implements [crate::QueryExecutor] and can
     /// be used to execute queries within the transaction.
     ///
     /// The transaction will never retry failed queries, even if the database signals that the
@@ -433,7 +433,7 @@ impl Client {
     ///
     /// <div class="warning">
     /// Transactions can fail for benign reasons and should always handle that case gracefully.
-    /// `StandaloneTransaction` does not provide any retry mechanisms, so this responsibility falls
+    /// `RawTransaction` does not provide any retry mechanisms, so this responsibility falls
     /// onto the user. For example, even only two select queries in a transaction can fail due to
     /// concurrent modification of the database.
     /// </div>
@@ -441,8 +441,8 @@ impl Client {
     /// # Commit and rollback
     ///
     /// To commit the changes made during the transaction,
-    /// [commit](crate::StandaloneTransaction::commit) method must be called, otherwise the
-    /// transaction will roll back when [StandaloneTransaction] is dropped.
+    /// [commit](crate::RawTransaction::commit) method must be called, otherwise the
+    /// transaction will roll back when [RawTransaction] is dropped.
     ///
     /// # Example
     ///
@@ -459,7 +459,7 @@ impl Client {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn transaction(&self) -> Result<StandaloneTransaction, Error> {
+    pub async fn transaction_raw(&self) -> Result<RawTransaction, Error> {
         crate::transaction::start(&self.pool, self.options.clone()).await
     }
 

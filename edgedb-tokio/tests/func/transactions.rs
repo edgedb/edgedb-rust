@@ -31,7 +31,7 @@ async fn transaction1(
     lock: Arc<Mutex<()>>,
 ) -> anyhow::Result<i32> {
     let val = client
-        .within_transaction(|mut tx| {
+        .transaction(|mut tx| {
             let lock = lock.clone();
             let iterations = iterations.clone();
             let barrier = barrier.clone();
@@ -118,7 +118,7 @@ async fn transaction1e(
     lock: Arc<Mutex<()>>,
 ) -> anyhow::Result<i32> {
     let val = client
-        .within_transaction(|mut tx| {
+        .transaction(|mut tx| {
             let lock = lock.clone();
             let iterations = iterations.clone();
             let barrier = barrier.clone();
@@ -163,7 +163,7 @@ async fn transaction_conflict_with_complex_err() -> anyhow::Result<()> {
 async fn queries() -> anyhow::Result<()> {
     let client = Client::new(&SERVER.config);
     client
-        .within_transaction(|mut tx| async move {
+        .transaction(|mut tx| async move {
             let value = tx.query::<i64, _>("SELECT 7*93", &()).await?;
             assert_eq!(value, vec![651]);
 
@@ -208,10 +208,10 @@ async fn queries() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn standalone_01() -> anyhow::Result<()> {
+async fn raw_01() -> anyhow::Result<()> {
     let client = Client::new(&SERVER.config);
 
-    let mut tx = client.transaction().await.unwrap();
+    let mut tx = client.transaction_raw().await.unwrap();
 
     let value = tx.query::<i64, _>("SELECT 7*93", &()).await?;
     assert_eq!(value, vec![651]);
@@ -224,11 +224,11 @@ async fn standalone_01() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn standalone_02() -> anyhow::Result<()> {
+async fn raw_02() -> anyhow::Result<()> {
     let client = Client::new(&SERVER.config).with_default_module(Some("test"));
 
     {
-        let mut tx = client.transaction().await.unwrap();
+        let mut tx = client.transaction_raw().await.unwrap();
 
         tx.execute("insert X { a := <str>$0 }", &("hello",)).await?;
 

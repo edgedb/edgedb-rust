@@ -30,7 +30,7 @@ async fn main() -> anyhow::Result<()> {
     env_logger::init();
     let conn = edgedb_tokio::create_client().await?;
     let res = conn
-        .within_transaction(|mut transaction| async move {
+        .transaction(|mut transaction| async move {
             let val = transaction
                 .query_required_single::<i64, _>(
                     "

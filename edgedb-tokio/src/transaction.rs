@@ -19,7 +19,7 @@ use crate::ResultVerbose;
 ///
 /// It can be obtained in two flavors:
 /// - [`RetryingTransaction`] from [`Client::within_transaction()`](crate::Client::within_transaction),
-/// - [`StandaloneTransaction`] from [`Client::transaction()`](crate::Client::transaction).
+/// - [`RawTransaction`] from [`Client::transaction_raw()`](crate::Client::transaction_raw).
 ///
 /// Implements all query & execute functions as [Client](crate::Client) as well as
 /// [QueryExecutor](crate::QueryExecutor).
@@ -31,28 +31,28 @@ pub struct Transaction {
     started: bool,
 }
 
-/// Transaction object returned by [`Client::transaction()`](crate::Client::transaction) method.
+/// Transaction object returned by [`Client::transaction_raw()`](crate::Client::transaction_raw) method.
 ///
 /// When this object is dropped, the transaction will implicitly roll back.
-/// Use [commit](StandaloneTransaction::commit) method to commit the changes made in the transaction.
+/// Use [commit](RawTransaction::commit) method to commit the changes made in the transaction.
 ///
 /// All database queries in transaction should be executed using methods on
 /// this object instead of using original [`Client`](crate::Client) instance.
 #[derive(Debug)]
-pub struct StandaloneTransaction {
+pub struct RawTransaction {
     inner: Option<Transaction>,
 }
 
-impl StandaloneTransaction {
+impl RawTransaction {
     /// Commit the transaction.
     ///
     /// If this method is not called, the transaction rolls back
-    /// when [StandaloneTransaction] is dropped.
+    /// when [RawTransaction] is dropped.
     pub async fn commit(mut self) -> Result<(), Error> {
         if let Some(tran) = self.inner.take() {
             tran.commit().await
         } else {
-            log::trace!("standalone transaction done, noop commit");
+            log::trace!("raw transaction done, noop commit");
             Ok(())
         }
     }
@@ -62,13 +62,13 @@ impl StandaloneTransaction {
         if let Some(tran) = self.inner.take() {
             tran.rollback().await
         } else {
-            log::trace!("standalone transaction done, noop commit");
+            log::trace!("raw transaction done, noop rollback");
             Ok(())
         }
     }
 }
 
-impl std::ops::Deref for StandaloneTransaction {
+impl std::ops::Deref for RawTransaction {
     type Target = Transaction;
 
     fn deref(&self) -> &Self::Target {
@@ -76,13 +76,13 @@ impl std::ops::Deref for StandaloneTransaction {
     }
 }
 
-impl std::ops::DerefMut for StandaloneTransaction {
+impl std::ops::DerefMut for RawTransaction {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.inner.as_mut().unwrap()
     }
 }
 
-impl Drop for StandaloneTransaction {
+impl Drop for RawTransaction {
     fn drop(&mut self) {
         if let Some(tran) = self.inner.take() {
             tokio::task::spawn(tran.rollback());
@@ -90,13 +90,10 @@ impl Drop for StandaloneTransaction {
     }
 }
 
-pub(crate) async fn start(
-    pool: &Pool,
-    options: Arc<Options>,
-) -> Result<StandaloneTransaction, Error> {
+pub(crate) async fn start(pool: &Pool, options: Arc<Options>) -> Result<RawTransaction, Error> {
     let conn = pool.acquire().await?;
 
-    Ok(StandaloneTransaction {
+    Ok(RawTransaction {
         inner: Some(Transaction::new(options, conn)),
     })
 }
