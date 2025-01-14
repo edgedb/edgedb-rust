@@ -86,17 +86,17 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
             let fieldname = &field.name;
             if field.attrs.json {
                 quote! {
-                    let #fieldname: ::edgedb_protocol::model::Json =
-                        <::edgedb_protocol::model::Json as
-                            ::edgedb_protocol::queryable::Queryable>
+                    let #fieldname: ::gel_protocol::model::Json =
+                        <::gel_protocol::model::Json as
+                            ::gel_protocol::queryable::Queryable>
                         ::decode_optional(#decoder, #elements.read()?)?;
                     let #fieldname = ::serde_json::from_str(#fieldname.as_ref())
-                        .map_err(::edgedb_protocol::errors::decode_error)?;
+                        .map_err(::gel_protocol::errors::decode_error)?;
                 }
             } else {
                 quote! {
                     let #fieldname =
-                        ::edgedb_protocol::queryable::Queryable
+                        ::gel_protocol::queryable::Queryable
                         ::decode_optional(#decoder, #elements.read()?)?;
                 }
             }
@@ -116,13 +116,13 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
             let fieldtype = &field.ty;
             if field.attrs.json {
                 result.extend(quote! {
-                    <::edgedb_protocol::model::Json as
-                        ::edgedb_protocol::queryable::Queryable>
+                    <::gel_protocol::model::Json as
+                        ::gel_protocol::queryable::Queryable>
                         ::check_descriptor(ctx, el.type_pos)?;
                 });
             } else {
                 result.extend(quote! {
-                    <#fieldtype as ::edgedb_protocol::queryable::Queryable>
+                    <#fieldtype as ::gel_protocol::queryable::Queryable>
                         ::check_descriptor(ctx, el.type_pos)?;
                 });
             }
@@ -133,17 +133,17 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
     let field_count = fields.len();
 
     let expanded = quote! {
-        impl #impl_generics ::edgedb_protocol::queryable::Queryable
+        impl #impl_generics ::gel_protocol::queryable::Queryable
             for #name #ty_generics {
-            fn decode(#decoder: &::edgedb_protocol::queryable::Decoder, #buf: &[u8])
-                -> ::std::result::Result<Self, ::edgedb_protocol::errors::DecodeError>
+            fn decode(#decoder: &::gel_protocol::queryable::Decoder, #buf: &[u8])
+                -> ::std::result::Result<Self, ::gel_protocol::errors::DecodeError>
             {
                 let #nfields = #base_fields
                     + if #decoder.has_implicit_id { 1 } else { 0 }
                     + if #decoder.has_implicit_tid { 1 } else { 0 }
                     + if #decoder.has_implicit_tname { 1 } else { 0 };
                 let mut #elements =
-                    ::edgedb_protocol::serialization::decode::DecodeTupleLike
+                    ::gel_protocol::serialization::decode::DecodeTupleLike
                     ::new_object(#buf, #nfields)?;
 
                 #type_id_block
@@ -157,11 +157,11 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
                 })
             }
             fn check_descriptor(
-                ctx: &::edgedb_protocol::queryable::DescriptorContext,
-                type_pos: ::edgedb_protocol::descriptors::TypePos)
-                -> ::std::result::Result<(), ::edgedb_protocol::queryable::DescriptorMismatch>
+                ctx: &::gel_protocol::queryable::DescriptorContext,
+                type_pos: ::gel_protocol::descriptors::TypePos)
+                -> ::std::result::Result<(), ::gel_protocol::queryable::DescriptorMismatch>
             {
-                use ::edgedb_protocol::descriptors::Descriptor::ObjectShape;
+                use ::gel_protocol::descriptors::Descriptor::ObjectShape;
                 let desc = ctx.get(type_pos)?;
                 let shape = match desc {
                     ObjectShape(shape) => shape,

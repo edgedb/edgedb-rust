@@ -11,7 +11,7 @@ readme = "README.md"
 rust-version.workspace = true
 
 [dependencies]
-edgedb-protocol = { path = "../edgedb-protocol", version = "0.6.0", features = [
+gel-protocol = { path = "../gel-protocol", version = "0.6.0", features = [
     "with-serde",
 ] }
 gel-errors = { path = "../gel-errors", version = "0.4" }

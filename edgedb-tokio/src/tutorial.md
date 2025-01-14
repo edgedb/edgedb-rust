@@ -14,9 +14,9 @@ The minimum to add to your Cargo.toml to use the client is [edgedb-tokio](https:
 
     edgedb-tokio = "0.4.0"
 
-The next most common dependency is [edgedb-protocol](https://docs.rs/edgedb-protocol/latest/edgedb_protocol/), which includes the EdgeDB types used for data modeling:
+The next most common dependency is [gel-protocol](https://docs.rs/gel-protocol/latest/edgedb_protocol/), which includes the EdgeDB types used for data modeling:
 
-    edgedb-protocol = "0.4.0"
+    gel-protocol = "0.4.0"
 
 A third crate called [edgedb-derive](https://docs.rs/edgedb-derive/latest/edgedb_derive/) contains the `#[derive(Queryable)]` derive macro which is the main way to unpack EdgeDB output into Rust types:
 
@@ -100,7 +100,7 @@ Under the hood, this will create a [Builder](crate::Builder), look for environme
 
 Here are the simplified signatures of the client methods used for querying:
 
-(Note: `R` here means a type that implements [`QueryResult`](https://docs.rs/edgedb-protocol/0.4.0/edgedb_protocol/trait.QueryResult.html))
+(Note: `R` here means a type that implements [`QueryResult`](https://docs.rs/gel-protocol/0.4.0/edgedb_protocol/trait.QueryResult.html))
 
 ```rust
 fn query -> Result<Vec<R>, Error>
@@ -118,7 +118,7 @@ Note the difference between the `_single` and the `_required_single` methods:
 * The `_required_single` methods return empty results as a `NoDataError` which allows propagating errors normally through an application
 * The `_single` methods will simply give you an `Ok(None)` in this case
 
-These methods all take a *query* (a `&str`) and *arguments* (something that implements the [`QueryArgs`](https://docs.rs/edgedb-protocol/latest/edgedb_protocol/query_arg/trait.QueryArgs.html) trait).
+These methods all take a *query* (a `&str`) and *arguments* (something that implements the [`QueryArgs`](https://docs.rs/gel-protocol/latest/edgedb_protocol/query_arg/trait.QueryArgs.html) trait).
 
 The `()` unit type implements `QueryArgs` and is used when no arguments are present so `&()` is a pretty common sight when using the Rust client.
 
@@ -284,7 +284,7 @@ assert!(query_res
 
 ## The `Value` enum
 
-The [`Value`](https://docs.rs/edgedb-protocol/latest/edgedb_protocol/value/enum.Value.html) enum can be found in the edgedb-protocol crate. A `Value` represents anything returned from EdgeDB. This means you can always return a `Value` from any of the query methods without needing to deserialize into a Rust type, and the enum can be instructive in getting to know the protocol. On the other hand, returning a `Value` leads to pattern matching to get to the inner value and is not the most ergonomic way to work with results from EdgeDB.
+The [`Value`](https://docs.rs/gel-protocol/latest/edgedb_protocol/value/enum.Value.html) enum can be found in the gel-protocol crate. A `Value` represents anything returned from EdgeDB. This means you can always return a `Value` from any of the query methods without needing to deserialize into a Rust type, and the enum can be instructive in getting to know the protocol. On the other hand, returning a `Value` leads to pattern matching to get to the inner value and is not the most ergonomic way to work with results from EdgeDB.
 
 ```rust
 pub enum Value {
@@ -302,7 +302,7 @@ pub enum Value {
 }
 ```
 
-Most variants of the `Value` enum correspond to a Rust type from the standard library, while some are from the `edgedb-protocol` crate and will have to be constructed. For example, this query expecting an EdgeDB `bigint` type will return an error as it receives a `20`, which is *not* a `bigint` but an `i32`:
+Most variants of the `Value` enum correspond to a Rust type from the standard library, while some are from the `gel-protocol` crate and will have to be constructed. For example, this query expecting an EdgeDB `bigint` type will return an error as it receives a `20`, which is *not* a `bigint` but an `i32`:
 
 ```rust
 let query = "select <bigint>$0";

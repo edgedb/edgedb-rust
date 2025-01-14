@@ -1,15 +1,15 @@
 use bytes::{Buf, Bytes};
 use std::error::Error;
 
-use edgedb_protocol::descriptors::BaseScalarTypeDescriptor;
-use edgedb_protocol::descriptors::ObjectTypeDescriptor;
-use edgedb_protocol::descriptors::ScalarTypeDescriptor;
-use edgedb_protocol::descriptors::TupleTypeDescriptor;
-use edgedb_protocol::descriptors::{Descriptor, TypePos};
-use edgedb_protocol::descriptors::{ObjectShapeDescriptor, ShapeElement};
-use edgedb_protocol::encoding::Input;
-use edgedb_protocol::errors::DecodeError;
-use edgedb_protocol::features::ProtocolVersion;
+use gel_protocol::descriptors::BaseScalarTypeDescriptor;
+use gel_protocol::descriptors::ObjectTypeDescriptor;
+use gel_protocol::descriptors::ScalarTypeDescriptor;
+use gel_protocol::descriptors::TupleTypeDescriptor;
+use gel_protocol::descriptors::{Descriptor, TypePos};
+use gel_protocol::descriptors::{ObjectShapeDescriptor, ShapeElement};
+use gel_protocol::encoding::Input;
+use gel_protocol::errors::DecodeError;
+use gel_protocol::features::ProtocolVersion;
 use uuid::Uuid;
 
 mod base;
@@ -231,7 +231,7 @@ fn object_0_10() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn object_1_0() -> Result<(), Box<dyn Error>> {
-    use edgedb_protocol::common::Cardinality::*;
+    use gel_protocol::common::Cardinality::*;
     assert_eq!(
         decode_1_0(bconcat!(
         // equivalent of 0.10
@@ -299,7 +299,7 @@ fn object_1_0() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn object_2_0() -> Result<(), Box<dyn Error>> {
-    use edgedb_protocol::common::Cardinality::*;
+    use gel_protocol::common::Cardinality::*;
     // SELECT Foo {
     //   id,
     //   title,

@@ -5,22 +5,22 @@ use std::fs;
 use bytes::{Bytes, BytesMut};
 use uuid::Uuid;
 
-use edgedb_protocol::common::{Capabilities, RawTypedesc};
-use edgedb_protocol::encoding::{Input, Output};
-use edgedb_protocol::features::ProtocolVersion;
-use edgedb_protocol::server_message::Authentication;
-use edgedb_protocol::server_message::CommandDataDescription1;
-use edgedb_protocol::server_message::RestoreReady;
-use edgedb_protocol::server_message::ServerHandshake;
-use edgedb_protocol::server_message::ServerMessage;
-use edgedb_protocol::server_message::StateDataDescription;
-use edgedb_protocol::server_message::{Cardinality, PrepareComplete};
-use edgedb_protocol::server_message::{CommandComplete0, CommandComplete1};
-use edgedb_protocol::server_message::{CommandDataDescription0, Data};
-use edgedb_protocol::server_message::{ErrorResponse, ErrorSeverity};
-use edgedb_protocol::server_message::{LogMessage, MessageSeverity};
-use edgedb_protocol::server_message::{ParameterStatus, ServerKeyData};
-use edgedb_protocol::server_message::{ReadyForCommand, TransactionState};
+use gel_protocol::common::{Capabilities, RawTypedesc};
+use gel_protocol::encoding::{Input, Output};
+use gel_protocol::features::ProtocolVersion;
+use gel_protocol::server_message::Authentication;
+use gel_protocol::server_message::CommandDataDescription1;
+use gel_protocol::server_message::RestoreReady;
+use gel_protocol::server_message::ServerHandshake;
+use gel_protocol::server_message::ServerMessage;
+use gel_protocol::server_message::StateDataDescription;
+use gel_protocol::server_message::{Cardinality, PrepareComplete};
+use gel_protocol::server_message::{CommandComplete0, CommandComplete1};
+use gel_protocol::server_message::{CommandDataDescription0, Data};
+use gel_protocol::server_message::{ErrorResponse, ErrorSeverity};
+use gel_protocol::server_message::{LogMessage, MessageSeverity};
+use gel_protocol::server_message::{ParameterStatus, ServerKeyData};
+use gel_protocol::server_message::{ReadyForCommand, TransactionState};
 
 mod base;
 

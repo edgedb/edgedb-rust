@@ -1,6 +1,6 @@
 use edgedb_derive::Queryable;
-use edgedb_protocol::model::Uuid;
 use edgedb_tokio::Client;
+use gel_protocol::model::Uuid;
 
 use crate::server::SERVER;
 

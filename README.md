@@ -14,12 +14,7 @@ docs can currently be found on docs.rs:
 Running Tests
 =============
 
-Due to cargo's limitation on propagation of "features", tests can only be
-run as few separate command-lines:
-```
-cargo test --workspace
-cd edgedb-protocol; cargo test --no-default-features
-```
+See [justfile](./justfile) for all commands to run the tests.
 
 License
 =======

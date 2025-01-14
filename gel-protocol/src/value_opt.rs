@@ -99,10 +99,10 @@ impl QueryArgs for HashMap<&str, ValueOpt> {
 /// Constructs named query arguments that implement [QueryArgs] so they can be passed
 /// into any query method.
 /// ```no_run
-/// use edgedb_protocol::value::Value;
+/// use gel_protocol::value::Value;
 ///
 /// let query = "SELECT (<str>$my_str, <int64>$my_int)";
-/// let args = edgedb_protocol::named_args! {
+/// let args = gel_protocol::named_args! {
 ///     "my_str" => "Hello world!".to_string(),
 ///     "my_int" => Value::Int64(42),
 /// };

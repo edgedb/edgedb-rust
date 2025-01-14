@@ -1,6 +1,6 @@
-use edgedb_protocol::query_arg::QueryArgs;
-use edgedb_protocol::QueryResult;
-use edgedb_protocol::{annotations::Warning, model::Json};
+use gel_protocol::query_arg::QueryArgs;
+use gel_protocol::QueryResult;
+use gel_protocol::{annotations::Warning, model::Json};
 use std::future::Future;
 
 use crate::{Client, Error, Transaction};

@@ -1,10 +1,10 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use edgedb_protocol::common::{Capabilities, Cardinality, IoFormat};
-use edgedb_protocol::model::Json;
-use edgedb_protocol::query_arg::QueryArgs;
-use edgedb_protocol::QueryResult;
+use gel_protocol::common::{Capabilities, Cardinality, IoFormat};
+use gel_protocol::model::Json;
+use gel_protocol::query_arg::QueryArgs;
+use gel_protocol::QueryResult;
 use tokio::time::sleep;
 
 use crate::builder::Config;
@@ -123,7 +123,7 @@ impl Client {
     /// ```
     ///
     /// This method can be used with both static arguments, like a tuple of
-    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// scalars, and with dynamic arguments [`gel_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
     pub async fn query_verbose<R, A>(
         &self,
@@ -152,7 +152,7 @@ impl Client {
     /// ```
     ///
     /// This method can be used with both static arguments, like a tuple of
-    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// scalars, and with dynamic arguments [`gel_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
     pub async fn query<R, A>(
         &self,
@@ -182,7 +182,7 @@ impl Client {
     /// ```
     ///
     /// This method can be used with both static arguments, like a tuple of
-    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// scalars, and with dynamic arguments [`gel_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
     pub async fn query_single<R, A>(
         &self,
@@ -227,7 +227,7 @@ impl Client {
     /// ```
     ///
     /// This method can be used with both static arguments, like a tuple of
-    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// scalars, and with dynamic arguments [`gel_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
     pub async fn query_required_single<R, A>(
         &self,
@@ -326,7 +326,7 @@ impl Client {
     /// Execute a query and don't expect result
     ///
     /// This method can be used with both static arguments, like a tuple of
-    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// scalars, and with dynamic arguments [`gel_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
     pub async fn execute<A>(&self, query: impl AsRef<str>, arguments: &A) -> Result<(), Error>
     where

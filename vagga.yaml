@@ -43,13 +43,13 @@ commands:
   test-all-types: !Command
     description: Run tests
     container: ubuntu
-    work-dir: edgedb-protocol
+    work-dir: gel-protocol
     run: [cargo, test, --features=all-types]
 
   test-rust-no-features: !Command
     description: Run tests
     container: ubuntu
-    work-dir: edgedb-protocol
+    work-dir: gel-protocol
     run: [cargo, test, --no-default-features]
 
   test: !Command

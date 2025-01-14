@@ -5,12 +5,12 @@ use bytes::Bytes;
 use gel_errors::ProtocolEncodingError;
 use gel_errors::{Error, ErrorKind};
 use gel_errors::{ParameterTypeMismatchError, ProtocolOutOfOrderError};
-use edgedb_protocol::annotations::Warning;
-use edgedb_protocol::common::State;
-use edgedb_protocol::descriptors::Typedesc;
-use edgedb_protocol::server_message::CommandDataDescription1;
-use edgedb_protocol::server_message::{ErrorResponse, ServerMessage};
-use edgedb_protocol::{annotations, QueryResult};
+use gel_protocol::annotations::Warning;
+use gel_protocol::common::State;
+use gel_protocol::descriptors::Typedesc;
+use gel_protocol::server_message::CommandDataDescription1;
+use gel_protocol::server_message::{ErrorResponse, ServerMessage};
+use gel_protocol::{annotations, QueryResult};
 
 use crate::raw::queries::Guard;
 use crate::raw::{Connection, Description, Response};

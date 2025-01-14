@@ -5,20 +5,20 @@ use bytes::{Bytes, BytesMut};
 use tokio::time::Instant;
 
 use gel_errors::fields::QueryText;
-use edgedb_protocol::client_message::OptimisticExecute;
-use edgedb_protocol::client_message::{ClientMessage, Parse, Prepare};
-use edgedb_protocol::client_message::{DescribeAspect, DescribeStatement};
-use edgedb_protocol::client_message::{Execute0, Execute1};
-use edgedb_protocol::common::CompilationOptions;
-use edgedb_protocol::common::{Capabilities, Cardinality, InputLanguage, IoFormat};
-use edgedb_protocol::descriptors::Typedesc;
-use edgedb_protocol::encoding::Annotations;
-use edgedb_protocol::features::ProtocolVersion;
-use edgedb_protocol::model::Uuid;
-use edgedb_protocol::query_arg::{Encoder, QueryArgs};
-use edgedb_protocol::server_message::{CommandDataDescription1, PrepareComplete};
-use edgedb_protocol::server_message::{Data, ServerMessage};
-use edgedb_protocol::QueryResult;
+use gel_protocol::client_message::OptimisticExecute;
+use gel_protocol::client_message::{ClientMessage, Parse, Prepare};
+use gel_protocol::client_message::{DescribeAspect, DescribeStatement};
+use gel_protocol::client_message::{Execute0, Execute1};
+use gel_protocol::common::CompilationOptions;
+use gel_protocol::common::{Capabilities, Cardinality, InputLanguage, IoFormat};
+use gel_protocol::descriptors::Typedesc;
+use gel_protocol::encoding::Annotations;
+use gel_protocol::features::ProtocolVersion;
+use gel_protocol::model::Uuid;
+use gel_protocol::query_arg::{Encoder, QueryArgs};
+use gel_protocol::server_message::{CommandDataDescription1, PrepareComplete};
+use gel_protocol::server_message::{Data, ServerMessage};
+use gel_protocol::QueryResult;
 
 use crate::errors::NoResultExpected;
 use crate::errors::{ClientConnectionEosError, ProtocolEncodingError};
@@ -260,7 +260,7 @@ impl Connection {
 
         let mut data = Vec::new();
         let mut description = None;
-        let mut warnings: Vec<edgedb_protocol::annotations::Warning> = Vec::new();
+        let mut warnings: Vec<gel_protocol::annotations::Warning> = Vec::new();
         loop {
             let msg = self.message().await?;
             match msg {
@@ -268,7 +268,7 @@ impl Connection {
                     self.state_desc = d.typedesc;
                 }
                 ServerMessage::CommandDataDescription1(desc) => {
-                    warnings.extend(edgedb_protocol::annotations::decode_warnings(
+                    warnings.extend(gel_protocol::annotations::decode_warnings(
                         &desc.annotations,
                     )?);
                     description = Some(desc);

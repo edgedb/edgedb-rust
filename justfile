@@ -14,11 +14,11 @@ test:
     # Check with env feature, edgedb-tokio
     cargo check --features=env --package edgedb-tokio
 
-    # Test edgedb-protocol without default features
-    cargo test --package=edgedb-protocol --no-default-features
+    # Test gel-protocol without default features
+    cargo test --package=gel-protocol --no-default-features
 
-    # Test edgedb-protocol with "all-types" feature
-    cargo test --package=edgedb-protocol --features=all-types
+    # Test gel-protocol with "all-types" feature
+    cargo test --package=gel-protocol --features=all-types
 
     cargo clippy --workspace --all-features --all-targets
 

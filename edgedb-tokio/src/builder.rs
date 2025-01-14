@@ -16,7 +16,7 @@ use serde_json::from_slice;
 use sha1::Digest;
 use tokio::fs;
 
-use edgedb_protocol::model;
+use gel_protocol::model;
 
 use crate::credentials::{Credentials, TlsSecurity};
 use crate::env::{get_env, Env};

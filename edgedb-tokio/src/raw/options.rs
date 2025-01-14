@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use edgedb_protocol::encoding::Annotations;
+use gel_protocol::encoding::Annotations;
 
 use crate::options::{RetryOptions, TransactionOptions};
 use crate::raw::state::PoolState;

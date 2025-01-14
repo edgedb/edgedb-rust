@@ -19,23 +19,23 @@ pub fn derive(item: &syn::Item) -> syn::Result<TokenStream> {
         }
     };
     let expanded = quote! {
-        impl #impl_generics ::edgedb_protocol::queryable::Queryable
+        impl #impl_generics ::gel_protocol::queryable::Queryable
             for #name #ty_generics {
-            fn decode(decoder: &::edgedb_protocol::queryable::Decoder, buf: &[u8])
-                -> Result<Self, ::edgedb_protocol::errors::DecodeError>
+            fn decode(decoder: &::gel_protocol::queryable::Decoder, buf: &[u8])
+                -> Result<Self, ::gel_protocol::errors::DecodeError>
             {
-                let json: ::edgedb_protocol::model::Json =
-                    ::edgedb_protocol::queryable::Queryable::decode(decoder, buf)?;
+                let json: ::gel_protocol::model::Json =
+                    ::gel_protocol::queryable::Queryable::decode(decoder, buf)?;
                 ::serde_json::from_str(json.as_ref())
-                    .map_err(::edgedb_protocol::errors::decode_error)
+                    .map_err(::gel_protocol::errors::decode_error)
             }
             fn check_descriptor(
-                ctx: &::edgedb_protocol::queryable::DescriptorContext,
-                type_pos: ::edgedb_protocol::descriptors::TypePos)
-                -> Result<(), ::edgedb_protocol::queryable::DescriptorMismatch>
+                ctx: &::gel_protocol::queryable::DescriptorContext,
+                type_pos: ::gel_protocol::descriptors::TypePos)
+                -> Result<(), ::gel_protocol::queryable::DescriptorMismatch>
             {
-                <::edgedb_protocol::model::Json as
-                    ::edgedb_protocol::queryable::Queryable>
+                <::gel_protocol::model::Json as
+                    ::gel_protocol::queryable::Queryable>
                     ::check_descriptor(ctx, type_pos)
             }
         }

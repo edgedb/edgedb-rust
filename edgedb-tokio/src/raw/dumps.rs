@@ -8,9 +8,9 @@ use tokio_stream::{Stream, StreamExt};
 
 use gel_errors::ProtocolOutOfOrderError;
 use gel_errors::{Error, ErrorKind};
-use edgedb_protocol::client_message::{ClientMessage, Restore, RestoreBlock};
-use edgedb_protocol::client_message::{Dump2, Dump3, DumpFlags};
-use edgedb_protocol::server_message::{RawPacket, ServerMessage};
+use gel_protocol::client_message::{ClientMessage, Restore, RestoreBlock};
+use gel_protocol::client_message::{Dump2, Dump3, DumpFlags};
+use gel_protocol::server_message::{RawPacket, ServerMessage};
 
 use crate::raw::connection::{send_messages, wait_message};
 use crate::raw::queries::Guard;

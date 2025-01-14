@@ -2,20 +2,20 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use bytes::{Bytes, BytesMut};
-use edgedb_protocol::common::InputLanguage;
+use gel_protocol::common::InputLanguage;
 use uuid::Uuid;
 
-use edgedb_protocol::client_message::OptimisticExecute;
-use edgedb_protocol::client_message::Restore;
-use edgedb_protocol::client_message::SaslInitialResponse;
-use edgedb_protocol::client_message::SaslResponse;
-use edgedb_protocol::client_message::{Cardinality, IoFormat, Parse, Prepare};
-use edgedb_protocol::client_message::{ClientHandshake, ClientMessage};
-use edgedb_protocol::client_message::{DescribeAspect, DescribeStatement};
-use edgedb_protocol::client_message::{Execute0, Execute1, ExecuteScript};
-use edgedb_protocol::common::{Capabilities, CompilationFlags, State};
-use edgedb_protocol::encoding::{Input, Output};
-use edgedb_protocol::features::ProtocolVersion;
+use gel_protocol::client_message::OptimisticExecute;
+use gel_protocol::client_message::Restore;
+use gel_protocol::client_message::SaslInitialResponse;
+use gel_protocol::client_message::SaslResponse;
+use gel_protocol::client_message::{Cardinality, IoFormat, Parse, Prepare};
+use gel_protocol::client_message::{ClientHandshake, ClientMessage};
+use gel_protocol::client_message::{DescribeAspect, DescribeStatement};
+use gel_protocol::client_message::{Execute0, Execute1, ExecuteScript};
+use gel_protocol::common::{Capabilities, CompilationFlags, State};
+use gel_protocol::encoding::{Input, Output};
+use gel_protocol::features::ProtocolVersion;
 
 mod base;
 

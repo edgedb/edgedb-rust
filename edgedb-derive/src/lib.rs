@@ -18,7 +18,7 @@ struct User {
 ```
 
 This allows a query to directly unpack into the type instead
-of working with the [Value](https://docs.rs/edgedb-protocol/latest/edgedb_protocol/value/enum.Value.html) enum.
+of working with the [Value](https://docs.rs/gel-protocol/latest/gel_protocol/value/enum.Value.html) enum.
 
 ```rust,ignore
 let query = "select User { first_name, age };";

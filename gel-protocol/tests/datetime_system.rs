@@ -2,9 +2,9 @@ use std::convert::{TryFrom, TryInto};
 use std::time::{Duration as StdDuration, SystemTime, UNIX_EPOCH};
 
 use bytes::{Buf, BytesMut};
-use edgedb_protocol::codec::{self, Codec};
-use edgedb_protocol::model::{Datetime, Duration};
-use edgedb_protocol::value::Value;
+use gel_protocol::codec::{self, Codec};
+use gel_protocol::model::{Datetime, Duration};
+use gel_protocol::value::Value;
 use test_case::test_case;
 
 // ========

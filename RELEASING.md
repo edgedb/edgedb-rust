@@ -8,7 +8,7 @@ Releasing Rust Bindings
 
 In case multiple crates are released here is the order:
 * `gel-errors`
-* `edgedb-derive` and `edgedb-protocol`
+* `edgedb-derive` and `gel-protocol`
 * `edgedb-client`
 
 Notes on releasing multiple crates

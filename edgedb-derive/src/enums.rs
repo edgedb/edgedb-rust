@@ -20,22 +20,22 @@ pub fn derive_enum(s: &syn::ItemEnum) -> syn::Result<TokenStream> {
         })
         .collect::<Result<Vec<_>, _>>()?;
     let expanded = quote! {
-        impl #impl_generics ::edgedb_protocol::queryable::Queryable
+        impl #impl_generics ::gel_protocol::queryable::Queryable
             for #type_name #ty_generics {
-            fn decode(decoder: &::edgedb_protocol::queryable::Decoder, buf: &[u8])
-                -> Result<Self, ::edgedb_protocol::errors::DecodeError>
+            fn decode(decoder: &::gel_protocol::queryable::Decoder, buf: &[u8])
+                -> Result<Self, ::gel_protocol::errors::DecodeError>
             {
                 match buf {
                     #(#branches,)*
-                    _ => Err(::edgedb_protocol::errors::ExtraEnumValue.build()),
+                    _ => Err(::gel_protocol::errors::ExtraEnumValue.build()),
                 }
             }
             fn check_descriptor(
-                ctx: &::edgedb_protocol::queryable::DescriptorContext,
-                type_pos: ::edgedb_protocol::descriptors::TypePos)
-                -> Result<(), ::edgedb_protocol::queryable::DescriptorMismatch>
+                ctx: &::gel_protocol::queryable::DescriptorContext,
+                type_pos: ::gel_protocol::descriptors::TypePos)
+                -> Result<(), ::gel_protocol::queryable::DescriptorMismatch>
             {
-                use ::edgedb_protocol::descriptors::Descriptor::Enumeration;
+                use ::gel_protocol::descriptors::Descriptor::Enumeration;
                 let desc = ctx.get(type_pos)?;
                 match desc {
                     // There is no need to check the members of the enumeration

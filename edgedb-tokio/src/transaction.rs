@@ -2,11 +2,11 @@ use std::future::Future;
 use std::sync::Arc;
 
 use bytes::BytesMut;
-use edgedb_protocol::common::CompilationOptions;
-use edgedb_protocol::common::{Capabilities, Cardinality, InputLanguage, IoFormat};
-use edgedb_protocol::model::Json;
-use edgedb_protocol::query_arg::{Encoder, QueryArgs};
-use edgedb_protocol::QueryResult;
+use gel_protocol::common::CompilationOptions;
+use gel_protocol::common::{Capabilities, Cardinality, InputLanguage, IoFormat};
+use gel_protocol::model::Json;
+use gel_protocol::query_arg::{Encoder, QueryArgs};
+use gel_protocol::QueryResult;
 use tokio::sync::oneshot;
 use tokio::time::sleep;
 
@@ -193,7 +193,7 @@ impl Transaction {
     /// ```
     ///
     /// This method can be used with both static arguments, like a tuple of
-    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// scalars, and with dynamic arguments [`gel_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
     pub async fn query<R, A>(
         &mut self,
@@ -218,7 +218,7 @@ impl Transaction {
     /// ```
     ///
     /// This method can be used with both static arguments, like a tuple of
-    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// scalars, and with dynamic arguments [`gel_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
     pub async fn query_verbose<R, A>(
         &mut self,
@@ -257,7 +257,7 @@ impl Transaction {
     /// ```
     ///
     /// This method can be used with both static arguments, like a tuple of
-    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// scalars, and with dynamic arguments [`gel_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
     pub async fn query_single<R, A>(
         &mut self,
@@ -296,7 +296,7 @@ impl Transaction {
     /// ```
     ///
     /// This method can be used with both static arguments, like a tuple of
-    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// scalars, and with dynamic arguments [`gel_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
     pub async fn query_required_single<R, A>(
         &mut self,
@@ -376,7 +376,7 @@ impl Transaction {
     /// Execute a query and don't expect result
     ///
     /// This method can be used with both static arguments, like a tuple of
-    /// scalars, and with dynamic arguments [`edgedb_protocol::value::Value`].
+    /// scalars, and with dynamic arguments [`gel_protocol::value::Value`].
     /// Similarly, dynamically typed results are also supported.
     pub async fn execute<A>(&mut self, query: &str, arguments: &A) -> Result<(), Error>
     where

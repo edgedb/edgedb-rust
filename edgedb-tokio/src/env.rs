@@ -4,7 +4,7 @@ use std::num::NonZeroU16;
 use std::time::Duration;
 use std::{env, path::PathBuf, str::FromStr};
 
-use edgedb_protocol::model;
+use gel_protocol::model;
 use url::Url;
 
 use crate::errors::{ClientError, Error, ErrorKind};

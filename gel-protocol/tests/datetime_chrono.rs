@@ -5,9 +5,9 @@ mod chrono {
     use std::str::FromStr;
 
     use bytes::{Buf, BytesMut};
-    use edgedb_protocol::codec::{self, Codec};
-    use edgedb_protocol::model::{Datetime, LocalDatetime, LocalTime};
-    use edgedb_protocol::value::Value;
+    use gel_protocol::codec::{self, Codec};
+    use gel_protocol::model::{Datetime, LocalDatetime, LocalTime};
+    use gel_protocol::value::Value;
     use test_case::test_case;
 
     // ========

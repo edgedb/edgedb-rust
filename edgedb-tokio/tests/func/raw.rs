@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 
-use edgedb_protocol::common::Capabilities;
-use edgedb_protocol::common::{Cardinality, CompilationOptions, InputLanguage, IoFormat};
-use edgedb_protocol::encoding::Annotations;
 use edgedb_tokio::raw::{Pool, PoolState};
+use gel_protocol::common::Capabilities;
+use gel_protocol::common::{Cardinality, CompilationOptions, InputLanguage, IoFormat};
+use gel_protocol::encoding::Annotations;
 
 use crate::server::SERVER;
 

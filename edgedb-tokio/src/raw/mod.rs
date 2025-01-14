@@ -16,10 +16,10 @@ use bytes::{Bytes, BytesMut};
 use tls_api::TlsStream;
 use tokio::sync::{self, Semaphore};
 
-use edgedb_protocol::common::{Capabilities, RawTypedesc};
-use edgedb_protocol::features::ProtocolVersion;
-use edgedb_protocol::server_message::CommandDataDescription1;
-use edgedb_protocol::server_message::TransactionState;
+use gel_protocol::common::{Capabilities, RawTypedesc};
+use gel_protocol::features::ProtocolVersion;
+use gel_protocol::server_message::CommandDataDescription1;
+use gel_protocol::server_message::TransactionState;
 
 use crate::builder::Config;
 use crate::errors::{ClientError, Error, ErrorKind};
@@ -73,9 +73,9 @@ pub struct Connection {
 #[derive(Debug)]
 pub struct Response<T> {
     pub status_data: Bytes,
-    pub new_state: Option<edgedb_protocol::common::State>,
+    pub new_state: Option<gel_protocol::common::State>,
     pub data: T,
-    pub warnings: Vec<edgedb_protocol::annotations::Warning>,
+    pub warnings: Vec<gel_protocol::annotations::Warning>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]

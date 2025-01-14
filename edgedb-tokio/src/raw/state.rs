@@ -4,11 +4,11 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use arc_swap::ArcSwapOption;
-use edgedb_protocol::client_message::State as EncodedState;
-use edgedb_protocol::descriptors::{RawTypedesc, StateBorrow};
-use edgedb_protocol::model::Uuid;
-use edgedb_protocol::query_arg::QueryArg;
-use edgedb_protocol::value::Value;
+use gel_protocol::client_message::State as EncodedState;
+use gel_protocol::descriptors::{RawTypedesc, StateBorrow};
+use gel_protocol::model::Uuid;
+use gel_protocol::query_arg::QueryArg;
+use gel_protocol::value::Value;
 
 use crate::errors::{ClientError, Error, ErrorKind, ProtocolEncodingError};
 
@@ -147,7 +147,7 @@ impl GlobalsModifier<'_> {
     /// This methods panics if `value` cannot be converted into dynamically
     /// typed `Value` (`QueryArg::to_value()` method returns error). To avoid
     /// this panic use either native EdgeDB types (e.g.
-    /// `edgedb_protocol::model::Datetime` instead of `std::time::SystemTime`
+    /// `gel_protocol::model::Datetime` instead of `std::time::SystemTime`
     /// or call `to_value` manually before passing to `set`.
     pub fn set<T: QueryArg>(&mut self, key: &str, value: T) {
         let value = value.to_value().expect("global can be encoded");
@@ -196,7 +196,7 @@ impl ConfigModifier<'_> {
     /// This methods panics if `value` cannot be converted into dynamically
     /// typed `Value` (`QueryArg::to_value()` method returns error). To avoid
     /// this panic use either native EdgeDB types (e.g.
-    /// `edgedb_protocol::model::Datetime` instead of `std::time::SystemTime`
+    /// `gel_protocol::model::Datetime` instead of `std::time::SystemTime`
     /// or call `to_value` manually before passing to `set`.
     pub fn set<T: QueryArg>(&mut self, key: &str, value: T) {
         let value = value.to_value().expect("config can be encoded");

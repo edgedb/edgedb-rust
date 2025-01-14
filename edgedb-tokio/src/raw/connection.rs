@@ -21,16 +21,16 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time::{sleep, timeout_at, Instant};
 
-use edgedb_protocol::client_message::{ClientHandshake, ClientMessage};
-use edgedb_protocol::encoding::{Input, Output};
-use edgedb_protocol::features::ProtocolVersion;
-use edgedb_protocol::server_message::{
+use gel_protocol::client_message::{ClientHandshake, ClientMessage};
+use gel_protocol::encoding::{Input, Output};
+use gel_protocol::features::ProtocolVersion;
+use gel_protocol::server_message::{
     Authentication, ErrorResponse, ServerHandshake, ServerMessage,
 };
-use edgedb_protocol::server_message::{
+use gel_protocol::server_message::{
     MessageSeverity, ParameterStatus, RawTypedesc, TransactionState,
 };
-use edgedb_protocol::value::Value;
+use gel_protocol::value::Value;
 
 use crate::builder::{Address, Config};
 use crate::errors::{
@@ -561,8 +561,8 @@ async fn scram(
     user: &str,
     password: &str,
 ) -> Result<(), Error> {
-    use edgedb_protocol::client_message::SaslInitialResponse;
-    use edgedb_protocol::client_message::SaslResponse;
+    use gel_protocol::client_message::SaslInitialResponse;
+    use gel_protocol::client_message::SaslResponse;
 
     let scram = ScramClient::new(user, password, None);
 

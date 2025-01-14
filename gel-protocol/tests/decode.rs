@@ -1,5 +1,5 @@
-use edgedb_protocol::model::Vector;
-use edgedb_protocol::queryable::Queryable;
+use gel_protocol::model::Vector;
+use gel_protocol::queryable::Queryable;
 
 #[test]
 fn decode_vector() {

@@ -1,5 +1,5 @@
 use edgedb_derive::Queryable;
-use edgedb_protocol::queryable::{Decoder, Queryable};
+use gel_protocol::queryable::{Decoder, Queryable};
 
 #[derive(Queryable, Debug, PartialEq)]
 enum Status {
