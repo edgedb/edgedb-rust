@@ -185,7 +185,7 @@ impl<T> Response<T> {
 
     fn log_warnings(&self) {
         for w in &self.warnings {
-            log::warn!(target: "edgedb_tokio::warning", "{w}");
+            log::warn!(target: "gel_tokio::warning", "{w}");
         }
     }
 }

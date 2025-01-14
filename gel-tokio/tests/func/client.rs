@@ -1,11 +1,11 @@
 use std::str::FromStr;
 
-use edgedb_tokio::{Client, Queryable};
 use futures_util::stream::{self, StreamExt};
 use gel_errors::NoDataError;
 use gel_protocol::model::{Json, Uuid};
 use gel_protocol::named_args;
 use gel_protocol::value::{EnumValue, Value};
+use gel_tokio::{Client, Queryable};
 use serde::{Deserialize, Serialize};
 
 use crate::server::SERVER;

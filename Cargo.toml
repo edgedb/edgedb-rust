@@ -4,7 +4,7 @@ members = [
     "gel-errors",
     "gel-derive",
     "gel-protocol",
-    "edgedb-tokio",
+    "gel-tokio",
     "examples/globals",
     "examples/query-error",
 ]

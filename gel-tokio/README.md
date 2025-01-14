@@ -1,15 +1,14 @@
-EdgeDB Rust Binding for Tokio
-=============================
+Gel Rust Binding for Tokio
+==========================
 
-Work in progress asynchronous bindings of EdgeDB for [Tokio](https://tokio.rs/)
-main loop.
+Async client for the Gel database, using [Tokio](https://tokio.rs/) runtime.
 
 # Example Usage
 
 ```rust
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let conn = edgedb_tokio::create_client().await?;
+    let conn = gel_tokio::create_client().await?;
     let val = conn.query_required_single::<i64, _>(
         "SELECT 7*8",
         &(),
@@ -24,7 +23,7 @@ async fn main() -> anyhow::Result<()> {
 ```rust
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let conn = edgedb_tokio::create_client().await?;
+    let conn = gel_tokio::create_client().await?;
     let val = conn.transaction(|mut transaction| async move {
         transaction.query_required_single::<i64, _>(
             "SELECT (UPDATE Counter SET { value := .value + 1}).value LIMIT 1",
@@ -36,7 +35,7 @@ async fn main() -> anyhow::Result<()> {
 }
 ```
 
-More [examples on github](https://github.com/edgedb/edgedb-rust/tree/master/edgedb-tokio/examples)
+More [examples on github](https://github.com/edgedb/edgedb-rust/tree/master/gel-tokio/examples)
 
 
 License

@@ -6,7 +6,7 @@ authors = ["MagicStack Inc. <hello@magic.io>"]
 edition = "2018"
 description = """
     Low-level protocol implementation for Gel database client.
-    For applications, use edgedb-tokio.
+    For applications, use gel-tokio.
     Formerly published as edgedb-protocol.
 """
 readme = "README.md"

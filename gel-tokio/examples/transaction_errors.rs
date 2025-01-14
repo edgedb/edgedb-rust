@@ -28,7 +28,7 @@ fn check_val1(val: i64) -> Result<(), CounterError> {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     env_logger::init();
-    let conn = edgedb_tokio::create_client().await?;
+    let conn = gel_tokio::create_client().await?;
     let res = conn
         .transaction(|mut transaction| async move {
             let val = transaction

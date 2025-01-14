@@ -383,7 +383,7 @@ impl Client {
     ///
     /// # Returning custom errors
     ///
-    /// See [this example](https://github.com/edgedb/edgedb-rust/blob/master/edgedb-tokio/examples/transaction_errors.rs)
+    /// See [this example](https://github.com/edgedb/edgedb-rust/blob/master/gel-tokio/examples/transaction_errors.rs)
     /// and [the documentation of the `gel-errors` crate](https://docs.rs/gel-errors/latest/gel_errors/)
     /// for how to return custom error types.
     ///
@@ -397,8 +397,8 @@ impl Client {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # async fn transaction() -> Result<(), edgedb_tokio::Error> {
-    /// let conn = edgedb_tokio::create_client().await?;
+    /// # async fn transaction() -> Result<(), gel_tokio::Error> {
+    /// let conn = gel_tokio::create_client().await?;
     /// let val = conn.transaction(|mut tx| async move {
     ///     tx.query_required_single::<i64, _>("
     ///         WITH C := UPDATE Counter SET { value := .value + 1}

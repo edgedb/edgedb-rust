@@ -6,7 +6,7 @@ publish = false
 
 [dependencies]
 anyhow = "1.0"
-edgedb-tokio = { path = "../../edgedb-tokio", features = ["miette-errors"] }
+gel-tokio = { path = "../../gel-tokio", features = ["miette-errors"] }
 gel-derive = { path = "../../gel-derive" }
 tokio = { version = "1.20", features = ["macros", "rt", "rt-multi-thread"] }
 env_logger = "0.11.3"

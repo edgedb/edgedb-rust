@@ -4,7 +4,7 @@ Gel Rust Binding: Derive Crate
 This crate contains derive macros for the Gel client.
 
 * [Documentation](https://docs.rs/gel-derive)
-* [Tokio Client](https://docs.rs/edgedb-tokio)
+* [Tokio Client](https://docs.rs/gel-tokio)
 
 
 License

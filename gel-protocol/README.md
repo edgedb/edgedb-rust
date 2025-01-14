@@ -5,7 +5,7 @@ This crate contains data model types and internal protocol implementation for
 the Gel client.
 
 * [Documentation](https://docs.rs/gel-protocol)
-* [Tokio Client](https://docs.rs/edgedb-tokio)
+* [Tokio Client](https://docs.rs/gel-tokio)
 
 
 License

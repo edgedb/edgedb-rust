@@ -4,7 +4,7 @@ Gel Rust Binding: Errors Crate
 This crate contains definitions of errors returned from the database.
 
 * [Documentation](https://docs.rs/gel-errors)
-* [Tokio Client](https://docs.rs/edgedb-tokio)
+* [Tokio Client](https://docs.rs/gel-tokio)
 
 License
 =======

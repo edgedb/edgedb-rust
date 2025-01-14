@@ -45,11 +45,11 @@ jobs:
       - name: Check no default features
         run: cargo check --no-default-features --workspace
 
-      - name: Check `fs` feature (edgedb-tokio)
-        run: cargo check --features=fs --package edgedb-tokio
+      - name: Check `fs` feature (gel-tokio)
+        run: cargo check --features=fs --package gel-tokio
 
-      - name: Check with env feature, edgedb-tokio
-        run: cargo check --features=env --package edgedb-tokio
+      - name: Check with env feature, gel-tokio
+        run: cargo check --features=env --package gel-tokio
 
       - name: Test gel-protocol without default features
         run: cargo test --package=gel-protocol --no-default-features

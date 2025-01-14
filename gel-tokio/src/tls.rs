@@ -122,7 +122,7 @@ impl ServerCertVerifier for NullVerifier {
 
 pub fn connector(cert_verifier: Arc<dyn ServerCertVerifier>) -> anyhow::Result<TlsConnectorBox> {
     // ensure that crypto provider is installed per-process
-    // if users of edgedb-tokio have not installed a provider, we install ring here
+    // if users of gel-tokio have not installed a provider, we install ring here
     if crypto::CryptoProvider::get_default().is_none() {
         crypto::ring::default_provider().install_default().ok();
     }

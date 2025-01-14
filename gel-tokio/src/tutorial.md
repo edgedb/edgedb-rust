@@ -10,9 +10,9 @@ This tutorial contains a lot of similar examples to those found in the `main.rs`
 
 ### From scratch
 
-The minimum to add to your Cargo.toml to use the client is [edgedb-tokio](https://docs.rs/edgedb-tokio/latest/edgedb_tokio/):
+The minimum to add to your Cargo.toml to use the client is [gel-tokio](https://docs.rs/gel-tokio/latest/edgedb_tokio/):
 
-    edgedb-tokio = "0.4.0"
+    gel-tokio = "0.4.0"
 
 The next most common dependency is [gel-protocol](https://docs.rs/gel-protocol/latest/edgedb_protocol/), which includes the EdgeDB types used for data modeling:
 

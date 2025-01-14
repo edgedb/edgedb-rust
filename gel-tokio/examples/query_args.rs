@@ -1,6 +1,6 @@
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let conn = edgedb_tokio::create_client().await?;
+    let conn = gel_tokio::create_client().await?;
 
     let no_args: String = conn
         .query_required_single("select {'No args inside here'};", &())

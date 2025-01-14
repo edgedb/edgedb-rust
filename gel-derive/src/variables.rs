@@ -28,11 +28,11 @@ pub fn derive_globals(item: &syn::ItemStruct) -> syn::Result<proc_macro2::TokenS
     let name = &item.ident;
     let (impl_generics, ty_generics, where_c) = item.generics.split_for_impl();
     let expanded = quote! {
-        impl #impl_generics ::edgedb_tokio::state::GlobalsDelta
+        impl #impl_generics ::gel_tokio::state::GlobalsDelta
             for &'_ #name #ty_generics
             #where_c
         {
-            fn apply(self, #man: &mut ::edgedb_tokio::state::GlobalsModifier)
+            fn apply(self, #man: &mut ::gel_tokio::state::GlobalsModifier)
             {
                 #(#set_vars)*
             }
@@ -66,11 +66,11 @@ pub fn derive_config(item: &syn::ItemStruct) -> syn::Result<proc_macro2::TokenSt
     let name = &item.ident;
     let (impl_generics, ty_generics, where_c) = item.generics.split_for_impl();
     let expanded = quote! {
-        impl #impl_generics ::edgedb_tokio::state::ConfigDelta
+        impl #impl_generics ::gel_tokio::state::ConfigDelta
             for &'_ #name #ty_generics
             #where_c
         {
-            fn apply(self, #man: &mut ::edgedb_tokio::state::ConfigModifier)
+            fn apply(self, #man: &mut ::gel_tokio::state::ConfigModifier)
             {
                 #(#set_vars)*
             }

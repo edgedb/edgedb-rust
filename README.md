@@ -4,7 +4,7 @@ EdgeDB Rust Binding
 This workspace is a collection of Rust crates for EdgeDB support. Individual
 docs can currently be found on docs.rs:
 
-* [edgedb-tokio](https://docs.rs/edgedb-tokio) -- client for Tokio
+* [gel-tokio](https://docs.rs/gel-tokio) -- client for Tokio
 * [gel-derive](https://docs.rs/gel-derive) -- derive macro for data
   structures fetched from the database
 * Async-std bindings [edgedb-client](https://docs.rs/edgedb-client) (currently

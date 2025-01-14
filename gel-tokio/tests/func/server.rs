@@ -1,6 +1,6 @@
 use std::{path::PathBuf, str::FromStr};
 
-use edgedb_tokio::{Builder, Config};
+use gel_tokio::{Builder, Config};
 use once_cell::sync::Lazy;
 use test_utils::server::ServerInstance;
 

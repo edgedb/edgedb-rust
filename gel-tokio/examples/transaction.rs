@@ -1,7 +1,7 @@
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     env_logger::init();
-    let conn = edgedb_tokio::create_client().await?;
+    let conn = gel_tokio::create_client().await?;
     let val = conn
         .transaction(|mut transaction| async move {
             transaction

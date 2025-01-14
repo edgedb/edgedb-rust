@@ -17,10 +17,10 @@ use crate::errors::{ClientError, Error, ErrorKind, ProtocolEncodingError};
 /// Accepts an iterator of names. Used with globals lie this:
 ///
 /// ```rust,no_run
-/// # use edgedb_tokio::state::Unset;
+/// # use gel_tokio::state::Unset;
 /// # #[tokio::main]
 /// # async fn main() {
-/// # let conn = edgedb_tokio::create_client().await.unwrap();
+/// # let conn = gel_tokio::create_client().await.unwrap();
 /// let conn = conn.with_globals(Unset(["xxx", "yyy"]));
 /// # }
 /// ```
@@ -30,10 +30,10 @@ pub struct Unset<I>(pub I);
 /// Use a closure to set or unset global or config variables
 ///
 /// ```rust,no_run
-/// # use edgedb_tokio::state::{Fn, GlobalsModifier};
+/// # use gel_tokio::state::{Fn, GlobalsModifier};
 /// # #[tokio::main]
 /// # async fn main() {
-/// # let conn = edgedb_tokio::create_client().await.unwrap();
+/// # let conn = gel_tokio::create_client().await.unwrap();
 /// let conn = conn.with_globals(Fn(|m: &mut GlobalsModifier| {
 ///     m.set("x", "x_value");
 ///     m.unset("y");
@@ -129,10 +129,10 @@ impl GlobalsModifier<'_> {
     /// Otherwise, modules are resolved using aliases if any. Note: modules are
     /// resolved at method call time. This means that a sequence like this:
     /// ```rust,no_run
-    /// # use edgedb_tokio::state::Fn;
+    /// # use gel_tokio::state::Fn;
     /// # #[tokio::main]
     /// # async fn main() {
-    /// # let conn = edgedb_tokio::create_client().await.unwrap();
+    /// # let conn = gel_tokio::create_client().await.unwrap();
     /// let conn = conn
     ///     .with_globals_fn(|m| m.set("var1", "value1"))
     ///     .with_default_module(Some("another_module"))

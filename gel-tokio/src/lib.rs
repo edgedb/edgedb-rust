@@ -18,7 +18,7 @@ client](Client::new) using that config.
 ```rust,no_run
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let conn = edgedb_tokio::create_client().await?;
+    let conn = gel_tokio::create_client().await?;
     let val = conn.query_required_single::<i64, _>(
         "SELECT 7*8",
         &(),
@@ -27,7 +27,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 ```
-More [examples on github](https://github.com/edgedb/edgedb-rust/tree/master/edgedb-tokio/examples)
+More [examples on github](https://github.com/edgedb/edgedb-rust/tree/master/gel-tokio/examples)
 
 # Nice Error Reporting
 
@@ -38,7 +38,7 @@ crate's `Cargo.toml`:
 ```toml
 [dependencies]
 miette = { version="5.3.0", features=["fancy"] }
-edgedb-tokio = { version="*", features=["miette-errors"] }
+gel-tokio = { version="*", features=["miette-errors"] }
 ```
 
 Then if you use `miette` all the way through your application, it just
@@ -46,7 +46,7 @@ works:
 ```rust,no_run
 #[tokio::main]
 async fn main() -> miette::Result<()> {
-    let conn = edgedb_tokio::create_client().await?;
+    let conn = gel_tokio::create_client().await?;
     conn.query::<String, _>("SELECT 1+2)", &()).await?;
     Ok(())
 }
@@ -56,7 +56,7 @@ However, if you use some boxed error container (e.g. [anyhow]), you
 might need to downcast error for printing:
 ```rust,no_run
 async fn do_something() -> anyhow::Result<()> {
-    let conn = edgedb_tokio::create_client().await?;
+    let conn = gel_tokio::create_client().await?;
     conn.query::<String, _>("SELECT 1+2)", &()).await?;
     Ok(())
 }
@@ -66,7 +66,7 @@ async fn main() {
     match do_something().await {
         Ok(res) => res,
         Err(e) => {
-            e.downcast::<edgedb_tokio::Error>()
+            e.downcast::<gel_tokio::Error>()
                 .map(|e| eprintln!("{:?}", miette::Report::new(e)))
                 .unwrap_or_else(|e| eprintln!("{:#}", e));
             std::process::exit(1);
@@ -86,7 +86,7 @@ async fn main() {
     match do_something().await {
         Ok(res) => res,
         Err(e) => {
-            e.downcast::<edgedb_tokio::Error>()
+            e.downcast::<gel_tokio::Error>()
                 .map(|e| eprintln!("{:?}", miette::Report::new(e)))
                 .or_else(|e| e.downcast::<miette::Report>()
                     .map(|e| eprintln!("{:?}", e)))

@@ -1,4 +1,4 @@
-use edgedb_tokio::Client;
+use gel_tokio::Client;
 
 use crate::server::SERVER;
 

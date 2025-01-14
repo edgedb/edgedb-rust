@@ -73,7 +73,7 @@ Special care for errors must be taken in transactions. Generally:
 
 # Nice Error Reporting
 
-Refer to documentation in the [edgedb-tokio](https://docs.rs/edgedb-tokio) crate.
+Refer to documentation in the [gel-tokio](https://docs.rs/gel-tokio) crate.
 */
 mod error;
 mod traits;
