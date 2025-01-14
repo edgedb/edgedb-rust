@@ -10,12 +10,12 @@ struct Data {
 #[derive(Queryable, Debug, PartialEq)]
 struct ShapeWithJson {
     name: String,
-    #[edgedb(json)]
+    #[gel(json)]
     data: Data,
 }
 
 #[derive(Queryable, Deserialize, Debug, PartialEq)]
-#[edgedb(json)]
+#[gel(json)]
 struct JsonRow {
     field2: u32,
 }

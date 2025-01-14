@@ -165,7 +165,7 @@ async fn json() -> anyhow::Result<()> {
         .unwrap();
 
     #[derive(Clone, Debug, Serialize, Deserialize, Queryable)]
-    #[edgedb(json)]
+    #[gel(json)]
     pub struct OtpPhoneRequest {
         pub phone: String,
         pub otp: i32,

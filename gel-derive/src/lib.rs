@@ -32,8 +32,8 @@ let query_res: Vec<Value> = client.query(query, &()).await?;
 
 ## JSON
 
-The `#[edgedb(json)]` attribute decodes a field using `serde_json` instead
-of the EdgeDB binary protocol. This is useful if some data is stored in
+The `#[gel(json)]` attribute decodes a field using `serde_json` instead
+of the Gel binary protocol. This is useful if some data is stored in
 the database as JSON, but you need to process it. The underlying type must
 implement `serde::Deserialize`.
 
@@ -43,7 +43,7 @@ implement `serde::Deserialize`.
 
 #[derive(Queryable)]
 struct User {
-    #[edgedb(json)]
+    #[gel(json)]
     user_notes: HashMap<String, String>,
 }
 ```
@@ -52,14 +52,14 @@ struct User {
 
 ## JSON
 
-The `#[edgedb(json)]` attribute can be used to unpack the structure from
+The `#[gel(json)]` attribute can be used to unpack the structure from
 the returned JSON.  The underlying type must implement
 `serde::Deserialize`.
 
 ```rust
 # use gel_derive::Queryable;
 #[derive(Queryable, serde::Deserialize)]
-#[edgedb(json)]
+#[gel(json)]
 struct JsonData {
     field1: String,
     field2: u32,
@@ -86,8 +86,8 @@ mod json;
 mod shape;
 mod variables;
 
-#[proc_macro_derive(Queryable, attributes(edgedb))]
-pub fn edgedb_queryable(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(Queryable, attributes(gel))]
+pub fn queryable(input: TokenStream) -> TokenStream {
     let s = parse_macro_input!(input as syn::Item);
     match derive(&s) {
         Ok(stream) => stream.into(),
@@ -122,7 +122,7 @@ fn derive(item: &syn::Item) -> syn::Result<proc_macro2::TokenStream> {
     }
 }
 
-#[proc_macro_derive(GlobalsDelta, attributes(edgedb))]
+#[proc_macro_derive(GlobalsDelta, attributes(gel))]
 pub fn globals_delta(input: TokenStream) -> TokenStream {
     let s = parse_macro_input!(input as syn::ItemStruct);
     match variables::derive_globals(&s) {
@@ -131,7 +131,7 @@ pub fn globals_delta(input: TokenStream) -> TokenStream {
     }
 }
 
-#[proc_macro_derive(ConfigDelta, attributes(edgedb))]
+#[proc_macro_derive(ConfigDelta, attributes(gel))]
 pub fn config_delta(input: TokenStream) -> TokenStream {
     let s = parse_macro_input!(input as syn::ItemStruct);
     match variables::derive_config(&s) {
