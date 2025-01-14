@@ -19,7 +19,7 @@ const FIELD_POSITION_END: u16 = 0x_FF_F2;
 const FIELD_LINE: u16 = 0x_FF_F3;
 const FIELD_COLUMN: u16 = 0x_FF_F4;
 
-/// Error type returned from any EdgeDB call.
+/// Error type returned from Gel database calls.
 // This includes boxed error, because propagating through call chain is
 // faster when error is just one pointer
 #[derive(Debug)]

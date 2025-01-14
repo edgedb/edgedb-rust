@@ -10,9 +10,9 @@ use bytes::{BufMut, BytesMut};
 use snafu::OptionExt;
 use uuid::Uuid;
 
-use edgedb_errors::ParameterTypeMismatchError;
-use edgedb_errors::{ClientEncodingError, DescriptorMismatch, ProtocolError};
-use edgedb_errors::{Error, ErrorKind, InvalidReferenceError};
+use gel_errors::ParameterTypeMismatchError;
+use gel_errors::{ClientEncodingError, DescriptorMismatch, ProtocolError};
+use gel_errors::{Error, ErrorKind, InvalidReferenceError};
 
 use crate::codec::{self, build_codec, Codec};
 use crate::descriptors::TypePos;

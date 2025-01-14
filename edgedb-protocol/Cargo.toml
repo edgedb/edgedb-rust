@@ -19,7 +19,7 @@ num-bigint = {version="0.4.3", optional=true}
 num-traits = {version="0.2.10", optional=true}
 bigdecimal = {version="0.4.0", optional=true}
 chrono = {version="0.4.23", optional=true, features=["std"], default-features=false}
-edgedb-errors = {path = "../edgedb-errors", version = "0.4.0" }
+gel-errors = {path = "../gel-errors", version = "0.4" }
 bitflags = "2.4.0"
 serde = {version="1.0.190", features = ["derive"], optional=true}
 serde_json = {version="1", optional=true}

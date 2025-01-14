@@ -8,7 +8,7 @@ use std::sync::Arc;
 use crate::codec::{build_codec, Codec};
 use crate::descriptors::{Descriptor, TypePos};
 use crate::errors::{self, DecodeError};
-use edgedb_errors::{Error, ErrorKind, ProtocolEncodingError};
+use gel_errors::{Error, ErrorKind, ProtocolEncodingError};
 
 #[non_exhaustive]
 #[derive(Default)]

@@ -6,8 +6,8 @@ use bytes::Bytes;
 use tokio::time::sleep;
 use tokio_stream::{Stream, StreamExt};
 
-use edgedb_errors::ProtocolOutOfOrderError;
-use edgedb_errors::{Error, ErrorKind};
+use gel_errors::ProtocolOutOfOrderError;
+use gel_errors::{Error, ErrorKind};
 use edgedb_protocol::client_message::{ClientMessage, Restore, RestoreBlock};
 use edgedb_protocol::client_message::{Dump2, Dump3, DumpFlags};
 use edgedb_protocol::server_message::{RawPacket, ServerMessage};

@@ -1,7 +1,7 @@
 use rand::{thread_rng, Rng};
 use std::error::Error;
 
-use edgedb_errors::{ErrorKind, UserError};
+use gel_errors::{ErrorKind, UserError};
 
 #[derive(thiserror::Error, Debug)]
 #[error("should not apply this counter update")]

@@ -7,7 +7,7 @@ Releasing Rust Bindings
 4. Tag release via `releases/<crate-name>/v<version_no>` tag
 
 In case multiple crates are released here is the order:
-* `edgedb-errors`
+* `gel-errors`
 * `edgedb-derive` and `edgedb-protocol`
 * `edgedb-client`
 

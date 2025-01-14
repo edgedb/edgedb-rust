@@ -4,7 +4,7 @@ use std::sync::Arc;
 use bytes::{Bytes, BytesMut};
 use tokio::time::Instant;
 
-use edgedb_errors::fields::QueryText;
+use gel_errors::fields::QueryText;
 use edgedb_protocol::client_message::OptimisticExecute;
 use edgedb_protocol::client_message::{ClientMessage, Parse, Prepare};
 use edgedb_protocol::client_message::{DescribeAspect, DescribeStatement};

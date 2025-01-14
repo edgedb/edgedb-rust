@@ -38,7 +38,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use bytes::{Buf, BufMut, BytesMut};
-use edgedb_errors::{ClientEncodingError, DescriptorMismatch, Error, ErrorKind};
+use gel_errors::{ClientEncodingError, DescriptorMismatch, Error, ErrorKind};
 use snafu::{ensure, OptionExt};
 use uuid::Uuid;
 

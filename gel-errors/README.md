@@ -1,9 +1,9 @@
-EdgeDB Rust Binding: Errors Crate
-=================================
+Gel Rust Binding: Errors Crate
+==============================
 
 This crate contains definitions of errors returned from the database.
 
-* [Documentation](https://docs.rs/edgedb-errors)
+* [Documentation](https://docs.rs/gel-errors)
 * [Tokio Client](https://docs.rs/edgedb-tokio)
 
 License

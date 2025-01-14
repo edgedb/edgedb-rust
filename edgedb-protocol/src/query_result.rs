@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 
-use edgedb_errors::{DescriptorMismatch, ProtocolEncodingError};
-use edgedb_errors::{Error, ErrorKind};
+use gel_errors::{DescriptorMismatch, ProtocolEncodingError};
+use gel_errors::{Error, ErrorKind};
 
 use crate::codec::Codec;
 use crate::descriptors::TypePos;

@@ -2,9 +2,9 @@ use std::collections::VecDeque;
 use std::mem;
 
 use bytes::Bytes;
-use edgedb_errors::ProtocolEncodingError;
-use edgedb_errors::{Error, ErrorKind};
-use edgedb_errors::{ParameterTypeMismatchError, ProtocolOutOfOrderError};
+use gel_errors::ProtocolEncodingError;
+use gel_errors::{Error, ErrorKind};
+use gel_errors::{ParameterTypeMismatchError, ProtocolOutOfOrderError};
 use edgedb_protocol::annotations::Warning;
 use edgedb_protocol::common::State;
 use edgedb_protocol::descriptors::Typedesc;
@@ -96,7 +96,7 @@ where
                         .await
                         .map_err(|e| log::warn!("Error waiting for Ready after error: {e:#}"))
                         .ok();
-                    let mut err: edgedb_errors::Error = err.into();
+                    let mut err: gel_errors::Error = err.into();
                     if let Some(desc) = description.take() {
                         err = err.set::<Description>(desc);
                     }
@@ -307,7 +307,7 @@ where
             }
             Error(e) => Err(e),
             ErrorResponse(e) => {
-                let mut err: edgedb_errors::Error = e.into();
+                let mut err: gel_errors::Error = e.into();
                 if let Some(desc) = self.description.take() {
                     err = err.set::<Description>(desc);
                 }

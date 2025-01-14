@@ -384,7 +384,7 @@ impl Client {
     /// # Returning custom errors
     ///
     /// See [this example](https://github.com/edgedb/edgedb-rust/blob/master/edgedb-tokio/examples/transaction_errors.rs)
-    /// and [the documentation of the `edgedb_errors` crate](https://docs.rs/edgedb-errors/latest/edgedb_errors/)
+    /// and [the documentation of the `gel-errors` crate](https://docs.rs/gel-errors/latest/gel_errors/)
     /// for how to return custom error types.
     ///
     /// # Panics

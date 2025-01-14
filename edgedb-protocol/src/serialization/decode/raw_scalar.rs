@@ -4,7 +4,7 @@ use std::str;
 use std::time::SystemTime;
 
 use bytes::{Buf, BufMut, Bytes};
-use edgedb_errors::{ClientEncodingError, Error, ErrorKind};
+use gel_errors::{ClientEncodingError, Error, ErrorKind};
 use snafu::{ensure, ResultExt};
 
 use crate::codec;

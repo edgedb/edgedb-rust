@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use edgedb_errors::{ClientEncodingError, Error, ErrorKind};
+use gel_errors::{ClientEncodingError, Error, ErrorKind};
 
 use crate::codec::{ObjectShape, ShapeElement};
 use crate::descriptors::Descriptor;

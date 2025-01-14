@@ -16,7 +16,7 @@ error:
 
 ```rust
 # use std::io;
-# use edgedb_errors::{UserError, ErrorKind};
+# use gel_errors::{UserError, ErrorKind};
 let err = UserError::with_source(io::Error::from(io::ErrorKind::NotFound));
 assert!(err.is::<UserError>());
 ```
@@ -24,7 +24,7 @@ assert!(err.is::<UserError>());
 Since errors are hirarchical, [`Error::is`] works with any ancestor:
 
 ```rust
-# use edgedb_errors::*;
+# use gel_errors::*;
 # let err = MissingArgumentError::with_message("test error");
 assert!(err.is::<MissingArgumentError>());
 assert!(err.is::<QueryArgumentError>());  // implied by the assertion above
@@ -36,7 +36,7 @@ Error hierarchy doesn't have multiple inheritance (i.e. every error has only
 single parent). When we match across different parents we use error tags:
 
 ```rust
-# use edgedb_errors::*;
+# use gel_errors::*;
 # let err1 = ClientConnectionTimeoutError::with_message("test error");
 # let err2 = TransactionConflictError::with_message("test error");
 

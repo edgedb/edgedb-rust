@@ -85,12 +85,12 @@ pub(crate) enum PingInterval {
     Interval(Duration),
 }
 
-impl edgedb_errors::Field for QueryCapabilities {
+impl gel_errors::Field for QueryCapabilities {
     const NAME: &'static str = "capabilities";
     type Value = QueryCapabilities;
 }
 
-impl edgedb_errors::Field for Description {
+impl gel_errors::Field for Description {
     const NAME: &'static str = "descriptor";
     type Value = CommandDataDescription1;
 }

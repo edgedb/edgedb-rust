@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use tokio::sync::Mutex;
 
-use edgedb_errors::NoDataError;
 use edgedb_tokio::{Client, Transaction};
+use gel_errors::NoDataError;
 
 use crate::server::SERVER;
 

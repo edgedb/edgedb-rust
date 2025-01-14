@@ -78,8 +78,8 @@ impl std::fmt::Display for Warning {
 }
 
 #[cfg(feature = "with-serde")]
-pub fn decode_warnings(annotations: &Annotations) -> Result<Vec<Warning>, edgedb_errors::Error> {
-    use edgedb_errors::{ErrorKind, ProtocolEncodingError};
+pub fn decode_warnings(annotations: &Annotations) -> Result<Vec<Warning>, gel_errors::Error> {
+    use gel_errors::{ErrorKind, ProtocolEncodingError};
 
     const ANN_NAME: &str = "warnings";
 

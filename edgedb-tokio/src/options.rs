@@ -123,7 +123,7 @@ impl RetryOptions {
         self
     }
     pub(crate) fn get_rule(&self, err: &Error) -> &RetryRule {
-        use edgedb_errors::{ClientError, TransactionConflictError};
+        use gel_errors::{ClientError, TransactionConflictError};
         use RetryCondition::*;
 
         if err.is::<IdleSessionTimeoutError>() {

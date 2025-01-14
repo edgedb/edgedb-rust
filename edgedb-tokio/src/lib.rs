@@ -98,7 +98,7 @@ async fn main() {
 ```
 
 Note that last two examples do hide error contexts from anyhow and do not
-pretty print if `source()` of the error is `edgedb_errors::Error` but not
+pretty print if `source()` of the error is `gel_errors::Error` but not
 the top-level one. We leave those more complex cases as an excersize to the
 reader.
 

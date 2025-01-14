@@ -99,7 +99,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         all_errors.insert(code, (name, tags));
     }
 
-    let outfile = "./edgedb-errors/src/kinds.rs";
+    let outfile = "./gel-errors/src/kinds.rs";
     let template = fs::read_to_string(outfile)?;
     let mut out = String::with_capacity(template.len() + 100);
 

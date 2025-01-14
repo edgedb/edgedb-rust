@@ -1,4 +1,4 @@
-use edgedb_errors::Error;
+use gel_errors::Error;
 
 use crate::server_message::ErrorResponse;
 

@@ -14,7 +14,7 @@ rust-version.workspace = true
 edgedb-protocol = { path = "../edgedb-protocol", version = "0.6.0", features = [
     "with-serde",
 ] }
-edgedb-errors = { path = "../edgedb-errors", version = "0.4.1" }
+gel-errors = { path = "../gel-errors", version = "0.4" }
 edgedb-derive = { path = "../edgedb-derive", version = "0.5.1", optional = true }
 tokio = { version = "1.15", features = ["net", "time", "sync", "macros"] }
 bytes = "1.5.0"
@@ -58,7 +58,7 @@ thiserror = "2"
 test-log = "0.2.8"
 futures-util = "0.3.21"
 miette = { version = "7.2.0", features = ["fancy"] }
-edgedb-errors = { path = "../edgedb-errors", features = ["miette"] }
+gel-errors = { path = "../gel-errors", features = ["miette"] }
 test-utils = { git = "https://github.com/edgedb/test-utils.git" }
 tempfile = "3.13.0"
 
@@ -69,7 +69,7 @@ env = ["fs"]
 admin_socket = ["dirs"]
 unstable = ["serde_json", "tokio-stream"] # features for CLI and Wasm
 fs = ["tokio/fs", "dirs", "serde_json"]
-miette-errors = ["edgedb-errors/miette"]
+miette-errors = ["gel-errors/miette"]
 
 [lints]
 workspace = true
