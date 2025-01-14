@@ -29,7 +29,7 @@ pub trait QueryExecutor: Sized {
         A: QueryArgs,
         R: QueryResult + Send;
 
-    /// see [Client::query_with_warnings]
+    /// see [Client::query_verbose]
     fn query_verbose<R, A>(
         self,
         query: impl AsRef<str> + Send,
@@ -171,7 +171,7 @@ impl QueryExecutor for &Client {
     }
 }
 
-impl QueryExecutor for &mut Transaction {
+impl<T: std::ops::DerefMut<Target = Transaction>> QueryExecutor for &mut T {
     fn query<R, A>(
         self,
         query: impl AsRef<str> + Send,

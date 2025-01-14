@@ -16,7 +16,7 @@ edgedb-protocol = { path = "../edgedb-protocol", version = "0.6.0", features = [
 ] }
 edgedb-errors = { path = "../edgedb-errors", version = "0.4.1" }
 edgedb-derive = { path = "../edgedb-derive", version = "0.5.1", optional = true }
-tokio = { version = "1.15", features = ["net", "time", "sync", "macros"] }
+tokio = { version = "1.15", features = ["net", "time", "sync", "macros", "rt"] }
 bytes = "1.5.0"
 scram = { version = "0.7", package = "scram-2" }
 serde = { version = "1.0", features = ["derive"] }
