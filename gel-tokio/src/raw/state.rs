@@ -146,7 +146,7 @@ impl GlobalsModifier<'_> {
     ///
     /// This methods panics if `value` cannot be converted into dynamically
     /// typed `Value` (`QueryArg::to_value()` method returns error). To avoid
-    /// this panic use either native EdgeDB types (e.g.
+    /// this panic use either native Gel types (e.g.
     /// `gel_protocol::model::Datetime` instead of `std::time::SystemTime`
     /// or call `to_value` manually before passing to `set`.
     pub fn set<T: QueryArg>(&mut self, key: &str, value: T) {
@@ -195,7 +195,7 @@ impl ConfigModifier<'_> {
     ///
     /// This methods panics if `value` cannot be converted into dynamically
     /// typed `Value` (`QueryArg::to_value()` method returns error). To avoid
-    /// this panic use either native EdgeDB types (e.g.
+    /// this panic use either native Gel types (e.g.
     /// `gel_protocol::model::Datetime` instead of `std::time::SystemTime`
     /// or call `to_value` manually before passing to `set`.
     pub fn set<T: QueryArg>(&mut self, key: &str, value: T) {

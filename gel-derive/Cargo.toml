@@ -6,6 +6,7 @@ authors = ["MagicStack Inc. <hello@magic.io>"]
 edition = "2018"
 description = """
     Derive macros for Gel database client.
+    Formerly published as gel-derive.
 """
 readme = "README.md"
 rust-version.workspace = true

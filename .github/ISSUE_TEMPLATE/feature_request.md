@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest a feature for the EdgeDB Rust binding
+about: Suggest a feature for Gel Rust bindings
 ---
 
 <!-- Please search existing issues to avoid creating duplicates. -->

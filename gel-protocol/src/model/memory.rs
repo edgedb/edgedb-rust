@@ -14,7 +14,7 @@ static TIB: i64 = 1024 * GIB;
 
 impl Display for ConfigMemory {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Use the same rendering logic we have in EdgeDB server
+        // Use the same rendering logic we have in Gel server
         // to cast cfg::memory to std::str.
         let v = self.0;
         if v >= TIB && v % TIB == 0 {

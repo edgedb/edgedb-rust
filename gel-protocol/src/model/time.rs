@@ -1666,7 +1666,7 @@ mod chrono_interop {
             let duration = chrono::Duration::microseconds(value.micros);
             pg_epoch
                 .checked_add_signed(duration)
-                .expect("EdgeDB datetime range is smaller than Chrono's")
+                .expect("Gel datetime range is smaller than Chrono's")
         }
     }
 

@@ -16,7 +16,7 @@ impl Json {
     ///    [to_string](https://docs.rs/serde_json/latest/serde_json/ser/fn.to_string.html)
     ///    to construct a String is highly recommended.
     ///
-    /// When used in a client query method, EdgeDB itself will recognize if the
+    /// When used in a client query method, Gel itself will recognize if the
     /// String inside `Json` is invalid JSON by returning `InvalidValueError:
     /// invalid input syntax for type json`.
     pub fn new_unchecked(value: String) -> Json {

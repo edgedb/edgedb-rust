@@ -19,7 +19,7 @@ use crate::state::{AliasesModifier, ConfigModifier, Fn, GlobalsModifier};
 use crate::transaction::{transaction, Transaction};
 use crate::ResultVerbose;
 
-/// The EdgeDB Client.
+/// Gel database client.
 ///
 /// Internally it contains a connection pool.
 ///

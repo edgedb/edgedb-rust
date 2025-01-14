@@ -1,4 +1,4 @@
-//! Miette support for EdgeDB errors. Add "miette" feature flag to enable.
+//! Miette support for Gel errors. Add "miette" feature flag to enable.
 //!
 //! [miette](https://docs.rs/miette/latest/miette/) allows nice error formatting via its [Diagnostic](https://docs.rs/miette/latest/miette/trait.Diagnostic.html) trait
 //!

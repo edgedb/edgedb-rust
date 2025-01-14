@@ -219,12 +219,12 @@ struct DsnHelper<'a> {
     query: HashMap<Cow<'a, str>, Cow<'a, str>>,
 }
 
-/// Parsed EdgeDB instance name.
+/// Parsed Gel instance name.
 #[derive(Clone, Debug)]
 pub enum InstanceName {
     /// Instance configured locally
     Local(String),
-    /// Instance running on the EdgeDB Cloud
+    /// Instance running on the Gel Cloud
     Cloud {
         /// Organization name
         org_slug: String,
@@ -977,8 +977,8 @@ impl Builder {
         let (complete, config, mut errors) = self._build_no_fail().await;
         if !complete {
             return Err(ClientNoCredentialsError::with_message(
-                "EdgeDB connection options are not initialized. \
-                Run `edgedb project init` or use environment variables \
+                "Gel connection options are not initialized. \
+                Run `gel project init` or use environment variables \
                 to configure connection.",
             ));
         }
@@ -1183,7 +1183,7 @@ impl Builder {
 
                 if database.is_some() && branch.is_some() {
                     errors.push(InvalidArgumentError::with_message(
-                        "Invalid environment: variables `EDGEDB_DATABASE` and `EDGEDB_BRANCH` are mutually exclusive",
+                        "Invalid environment: variables `GEL_DATABASE` and `GEL_BRANCH` are mutually exclusive",
                     ));
                     return None;
                 }
@@ -1546,9 +1546,9 @@ async fn read_instance(cfg: &mut ConfigInner, name: &InstanceName) -> Result<(),
                     Ok(data) => data,
                     Err(e) if e.kind() == io::ErrorKind::NotFound => {
                         let hint_cmd = if profile == "default" {
-                            "edgedb cloud login".into()
+                            "gel cloud login".into()
                         } else {
-                            format!("edgedb cloud login --cloud-profile {:?}", profile)
+                            format!("gel cloud login --cloud-profile {:?}", profile)
                         };
                         return Err(NoCloudConfigFound::with_message(
                             "connecting cloud instance requires a secret key",

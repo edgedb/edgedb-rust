@@ -1,12 +1,12 @@
 /*!
-([Website reference](https://www.edgedb.com/docs/reference/protocol/index)) The EdgeDB protocol for Edgedb-Rust.
+([Website reference](https://www.edgedb.com/docs/reference/protocol/index)) The Gel protocol for Gel-Rust.
 
-EdgeDB types used for data modeling can be seen on the [model] crate, in which the [Value](crate::value::Value)
+Gel types used for data modeling can be seen on the [model] crate, in which the [Value](crate::value::Value)
 enum provides the quickest overview of all the possible types encountered using the client. Many of the variants hold Rust
 standard library types while others contain types defined in this protocol. Some types such as [Duration](crate::model::Duration)
-appear to be standard library types but are unique to the EdgeDB protocol.
+appear to be standard library types but are unique to the Gel protocol.
 
-Other parts of this crate pertain to the rest of the EdgeDB protocol (e.g. client + server message formats), plus various traits
+Other parts of this crate pertain to the rest of the Gel protocol (e.g. client + server message formats), plus various traits
 for working with the client such as:
 
 * [QueryArg](crate::query_arg::QueryArg): a single argument for a query

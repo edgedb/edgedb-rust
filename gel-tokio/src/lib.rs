@@ -1,9 +1,9 @@
 /*!
-EdgeDB client for Tokio
+Client for the Gel database, using async Tokio runtime
 
-👉 New! Check out the new [EdgeDB client tutorial](`tutorial`). 👈
+To get started, check out the [Rust client tutorial](`tutorial`).
 
-The main way to use EdgeDB bindings is to use the [`Client`]. It encompasses
+The main way to use Gel bindings is to use the [`Client`]. It encompasses
 connection pool to the database that is transparent for user. Individual
 queries can be made via methods on the client. Correlated queries are done
 via [transactions](Client::transaction).

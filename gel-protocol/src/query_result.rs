@@ -18,7 +18,7 @@ pub trait Sealed: Sized {}
 
 /// A trait representing single result from a query.
 ///
-/// This is implemented for scalars and tuples. To receive a shape from EdgeDB
+/// This is implemented for scalars and tuples. To receive a shape from Gel
 /// derive [`Queryable`](Queryable) for a structure. This will automatically
 /// implement `QueryResult` for you.
 pub trait QueryResult: Sealed {

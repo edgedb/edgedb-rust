@@ -24,11 +24,11 @@ From the website:
 >* each block encodes one type;
 >* blocks can reference other blocks.
 
->While parsing the _blocks_, a database driver can assemble an _encoder_ or a _decoder_ of the EdgeDB binary data.
+>While parsing the _blocks_, a database driver can assemble an _encoder_ or a _decoder_ of the Gel binary data.
 
 >An _encoder_ is used to encode objects, native to the driver’s runtime, to binary data that EdegDB can decode and work with.
 
->A _decoder_ is used to decode data from EdgeDB native format to data types native to the driver.
+>A _decoder_ is used to decode data from Gel native format to data types native to the driver.
 */
 
 use std::collections::{BTreeMap, BTreeSet};

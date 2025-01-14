@@ -1,30 +1,32 @@
-# EdgeDB Rust client tutorial
+# Gel Rust client tutorial
 
 ## Getting started
 
 ### From examples repo
 
-If you just want a working repo to get started, clone the [Rust client examples repo](https://github.com/Dhghomon/edgedb_rust_client_examples), type `edgedb project init` to start an EdgeDB project, and then `cargo run` to run the samples.
+If you just want a working repo to get started, clone the [Rust client examples repo](https://github.com/edgedb/rust_client_examples), type `gel project init` to start a Gel project, and then `cargo run` to run the samples.
 
 This tutorial contains a lot of similar examples to those found in the `main.rs` file inside that repo.
 
 ### From scratch
 
-The minimum to add to your Cargo.toml to use the client is [gel-tokio](https://docs.rs/gel-tokio/latest/edgedb_tokio/):
+The minimum to add to your Cargo.toml to use the client is [gel-tokio](https://docs.rs/gel-tokio/latest/gel_tokio/):
 
-    gel-tokio = "0.4.0"
+    gel-tokio = "0.5.1"
 
-The next most common dependency is [gel-protocol](https://docs.rs/gel-protocol/latest/edgedb_protocol/), which includes the EdgeDB types used for data modeling:
+The next most common dependency is [gel-protocol](https://docs.rs/gel-protocol/latest/gel_protocol/), which includes the Gel types used for data modeling:
 
-    gel-protocol = "0.4.0"
+    gel-protocol = "0.6.1"
 
-A third crate called [gel-derive](https://docs.rs/gel-derive/latest/gel_derive/) contains the `#[derive(Queryable)]` derive macro which is the main way to unpack EdgeDB output into Rust types:
+A third crate called [gel-derive](https://docs.rs/gel-derive/latest/gel_derive/) contains the `#[derive(Queryable)]` derive macro which is the most convenient way to unpack Gel output into Rust types:
 
     gel-derive = "0.5.0"
     
 The Rust client uses tokio so add this to Cargo.toml as well:
 
     tokio = { version = "1.28.0", features = ["macros", "rt-multi-thread"] }`
+
+## Non-async
 
 If you are avoiding async code and want to emulate a blocking client, you will still need to use tokio as a dependency but can bridge with async using [one of the bridging methods recommended by tokio](https://tokio.rs/tokio/topics/bridging). This won't require any added features:
 
@@ -40,58 +42,58 @@ let just_a_string: String =
     rt.block_on(client.query_required_single("select 'Just a string'", &()))?;
 ```
 
-## Edgedb project setup
+## Gel project setup
 
 
-The EdgeDB CLI initializes an EdgeDB project with a single command in the same way that Cargo initializes a Rust project, except it does not create a new directory. So to start a project: 
+The Gel CLI initializes an Gel project with a single command in the same way that Cargo initializes a Rust project, except it does not create a new directory. So to start a project: 
 
 * Use `cargo new <your_crate_name>` as usual, then:
-* Go into the directory and type `edgedb project init`.
+* Go into the directory and type `gel project init`.
 
-The CLI will prompt you for the instance name and version of EdgeDB to use. It will look something like this:
+The CLI will prompt you for the instance name and version of Gel server to use. It will look something like this:
 
-    PS C:\rust\my_db> edgedb project init
-    No `edgedb.toml` found in `\\?\C:\rust\my_db` or above
+    PS C:\rust\my_db> gel project init
+    No `gel.toml` found in `\\?\C:\rust\my_db` or above
     Do you want to initialize a new project? [Y/n]
     > Y
-    Specify the name of EdgeDB instance to use with this project [default: my_db]:
+    Specify the name of Gel instance to use with this project [default: my_db]:
     > my_db
-    Checking EdgeDB versions...
-    Specify the version of EdgeDB to use with this project [default: 3.0]:
+    Checking Gel versions...
+    Specify the version to use with this project [default: 3.0]:
     > 3.0
     ┌─────────────────────┬─────────────────────────────────┐
     │ Project directory   │ \\?\C:\rust\my_db               │
-    │ Project config      │ \\?\C:\rust\my_db\edgedb.toml   │
+    │ Project config      │ \\?\C:\rust\my_db\gel.toml   │
     │ Schema dir (empty)  │ \\?\C:\rust\my_db\dbschema      │
     │ Installation method │ WSL                             │
     │ Version             │ 3.0+e7d38e9                     │
     │ Instance name       │ my_db                           │
     └─────────────────────┴─────────────────────────────────┘
     Version 3.0+e7d38e9 is already installed
-    Initializing EdgeDB instance...
+    Initializing instance...
     Applying migrations...
     Everything is up to date. Revision initial
     Project initialized.
-    To connect to my_db, run `edgedb`
+    To connect to my_db, run `gel`
 
 Inside your project directory you'll notice some new items:
 
-* `edgedb.toml`, which is used to mark the directory as an EdgeDB project. The file itself doesn't contain much — just the version of EdgeDB being used — but is used by the CLI to run commands without connection flags. (E.g., `edgedb -I my_project migrate` becomes simply `edgedb migrate`). See more on edgedb.toml [in the blog post introducing the EdgeDB projects CLI](https://www.edgedb.com/blog/introducing-edgedb-projects).
+* `gel.toml`, which is used to mark the directory as an Gel project. The file itself doesn't contain much — just the version of Gel being used — but is used by the CLI to run commands without connection flags. (E.g., `gel -I my_project migrate` becomes simply `gel migrate`). See more on gel.toml [in the blog post introducing the Gel projects CLI](https://www.edgedb.com/blog/introducing-edgedb-projects).
 
 * A `/dbschema` folder containing:
-    * a `default.esdl` file which holds your schema. You can change the schema by directly modifying this file followed by `edgedb migration create` and `edgedb migrate`.
+    * a `default.esdl` file which holds your schema. You can change the schema by directly modifying this file followed by `gel migration create` and `gel migrate`.
     * a `/migrations` folder with `.edgeql` files named starting at `00001`. These hold the [ddl](https://www.edgedb.com/docs/reference/ddl/index) commands that were used to migrate your schema. A new file will show up in this directory every time your schema is migrated.
 
-If you are running EdgeDB 3.0 and above, you also have the option of using the [edgedb watch](https://www.edgedb.com/docs/cli/edgedb_watch) command. Doing so starts a long-running process that keeps an eye on changes in `/dbschema`, automatically applying these changes in real time.
+If you are running Gel instance 3.0 and above, you also have the option of using the [gel watch](https://www.edgedb.com/docs/cli/edgedb_watch) command. Doing so starts a long-running process that keeps an eye on changes in `/dbschema`, automatically applying these changes in real time.
 
-Now that you have the right dependencies and an EdgeDB instance, you can create a client.
+Now that you have the right dependencies and an Gel instance, you can create a client.
 
 # Using the client
 
-Creating a new EdgeDB client can be done in a single line:
+Creating a new client can be done in a single line:
 
 ```rust
-let client = edgedb_tokio::create_client().await?;
+let client = gel_tokio::create_client().await?;
 ```
 
 Under the hood, this will create a [Builder](crate::Builder), look for environment variables and/or an `edgedb.toml` file and return an `Ok(Self)` if successful. This `Builder` can be used on its own instead of `create_client()` if you need a more customized setup.
@@ -177,7 +179,7 @@ let query_res_opt: Option<String> = client.query_single(query, &()).await?;
 
 ## Using the `Queryable` macro
 
-The easiest way to unpack an EdgeDB query result is the built-in `Queryable` macro from the `gel-derive` crate. This turns queries directly into Rust types without having to match on a `Value` (more in the section on [the `Value` enum](#the-value-enum)), cast to JSON, etc.
+The easiest way to unpack a Gel query result is the built-in `Queryable` macro from the `gel-derive` crate. This turns queries directly into Rust types without having to match on a `Value` (more in the section on [the `Value` enum](#the-value-enum)), cast to JSON, etc.
 
 ```rust
 #[derive(Debug, Deserialize, Queryable)]
@@ -211,7 +213,7 @@ assert!(
 );
 ```
 
-You can use [`cargo expand`](https://github.com/dtolnay/cargo-expand) with the nightly compiler to see the code generated by the `Queryable` macro, but the minimal example repo also contains [a somewhat cleaned up version of the generated `Queryable` code](https://github.com/Dhghomon/edgedb_rust_client_examples/blob/master/src/lib.rs#L12).
+You can use [`cargo expand`](https://github.com/dtolnay/cargo-expand) with the nightly compiler to see the code generated by the `Queryable` macro, but the minimal example repo also contains [a somewhat cleaned up version of the generated `Queryable` code](https://github.com/edgedb/rust_client_examples/blob/master/src/lib.rs#L12).
 
 ## Passing in arguments
 
@@ -262,7 +264,7 @@ movie := (insert Movie {
 let query_res: Value = client.query_required_single(query, &(arguments)).await?;
 ```
 
-A note on the casting syntax: EdgeDB requires arguments to have a cast in the same way that Rust requires a type declaration in function signatures. As such, arguments in queries are used as type specification for the EdgeDB compiler, not to cast from queries from the Rust side. Take this query as an example:
+A note on the casting syntax: Gel requires arguments to have a cast in the same way that Rust requires a type declaration in function signatures. As such, arguments in queries are used as type specification for the Gel compiler, not to cast from queries from the Rust side. Take this query as an example:
 
 ```rust
 let query = "select <int32>$0";
@@ -284,7 +286,7 @@ assert!(query_res
 
 ## The `Value` enum
 
-The [`Value`](https://docs.rs/gel-protocol/latest/edgedb_protocol/value/enum.Value.html) enum can be found in the gel-protocol crate. A `Value` represents anything returned from EdgeDB. This means you can always return a `Value` from any of the query methods without needing to deserialize into a Rust type, and the enum can be instructive in getting to know the protocol. On the other hand, returning a `Value` leads to pattern matching to get to the inner value and is not the most ergonomic way to work with results from EdgeDB.
+The [`Value`](https://docs.rs/gel-protocol/latest/gel_protocol/value/enum.Value.html) enum can be found in the gel-protocol crate. A `Value` represents anything returned from Gel. This means you can always return a `Value` from any of the query methods without needing to deserialize into a Rust type, and the enum can be instructive in getting to know the protocol. On the other hand, returning a `Value` leads to pattern matching to get to the inner value and is not the most ergonomic way to work with results from Gel.
 
 ```rust
 pub enum Value {
@@ -302,7 +304,7 @@ pub enum Value {
 }
 ```
 
-Most variants of the `Value` enum correspond to a Rust type from the standard library, while some are from the `gel-protocol` crate and will have to be constructed. For example, this query expecting an EdgeDB `bigint` type will return an error as it receives a `20`, which is *not* a `bigint` but an `i32`:
+Most variants of the `Value` enum correspond to a Rust type from the standard library, while some are from the `gel-protocol` crate and will have to be constructed. For example, this query expecting an Gel `bigint` type will return an error as it receives a `20`, which is *not* a `bigint` but an `i32`:
 
 ```rust
 let query = "select <bigint>$0";
@@ -314,7 +316,7 @@ assert!(format!("{query_res:?}").contains("expected std::int32"));
 Instead, first construct a `BigInt` from the `i32` and pass that in as an argument:
 
 ```rust
-use edgedb_protocol::model::BigInt;
+use gel_protocol::model::BigInt;
 
 let query = "select <bigint>$0";
 let bigint_arg = BigInt::from(20);
@@ -327,7 +329,7 @@ assert_eq!(
 
 ## Using JSON
 
-EdgeDB can cast any type to JSON with `<json>`, but the `_json` methods don't require this cast in the query. This result can be turned into a `String` and used to respond to some JSON API request directly, unpacked into a struct using `serde` and `serde_json`, etc.
+Gel can cast any type to JSON with `<json>`, but the `_json` methods don't require this cast in the query. This result can be turned into a `String` and used to respond to some JSON API request directly, unpacked into a struct using `serde` and `serde_json`, etc.
 
 ```rust
 #[derive(Debug, Deserialize)]
@@ -424,7 +426,7 @@ client
     .await?;
 ```
 
-Note: What often may seem to require an atomic transaction can instead be achieved with links and [backlinks](https://www.edgedb.com/docs/edgeql/paths#backlinks) which are both idiomatic and easy to use in EdgeDB. For example, if one object holds a `required link` to two other objects and each of these two objects has a single backlink to the first one, simply updating the first object will effectively change the state of the other two instantaneously.
+Note: What often may seem to require an atomic transaction can instead be achieved with links and [backlinks](https://www.edgedb.com/docs/edgeql/paths#backlinks) which are both idiomatic and easy to use in Gel. For example, if one object holds a `required link` to two other objects and each of these two objects has a single backlink to the first one, simply updating the first object will effectively change the state of the other two instantaneously.
 
 ## Client configuration
 
@@ -446,7 +448,7 @@ The Client can still be configured after initialization via the `with_` methods 
 // };
 
 // The regular client will query from module 'default' by default
-let client = edgedb_tokio::create_client().await?;
+let client = gel_tokio::create_client().await?;
 
 // This client will query from module 'test' by default
 // The original client is unaffected

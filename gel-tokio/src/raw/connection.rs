@@ -321,7 +321,7 @@ async fn connect2(
             Ok(Some(protocol)) if protocol == b"edgedb-binary" => r,
             _ => match &cfg.0.address {
                 Address::Tcp(_) => Err(ClientConnectionFailedError::with_message(
-                    "Server does not support the EdgeDB binary protocol.",
+                    "Server does not support the Gel binary protocol.",
                 ))?,
                 Address::Unix(_) => r, // don't check ALPN on UNIX stream
             },

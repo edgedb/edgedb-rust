@@ -8,7 +8,7 @@ mod bigdecimal_interop;
 
 /// Virtually unlimited precision integer.
 ///
-/// See EdgeDB [protocol documentation](https://docs.edgedb.com/database/reference/protocol/dataformats#std-bigint).
+/// See Gel [protocol documentation](https://docs.edgedb.com/database/reference/protocol/dataformats#std-bigint).
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BigInt {
@@ -19,7 +19,7 @@ pub struct BigInt {
 
 /// High-precision decimal number.
 ///
-/// See EdgeDB [protocol documentation](https://docs.edgedb.com/database/reference/protocol/dataformats#std-decimal).
+/// See Gel [protocol documentation](https://docs.edgedb.com/database/reference/protocol/dataformats#std-decimal).
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Decimal {

@@ -3,8 +3,8 @@ Derive macro that allows structs and enums to be populated by database
 queries.
 
 This derive can be used on structures with named fields (which correspond
-to "shapes" in EdgeDB). Note that field order matters, so the struct below
-corresponds to an EdgeDB `User` query with `first_name` followed by `age`.
+to "shapes" in Gel). Note that field order matters, so the struct below
+corresponds to an Gel `User` query with `first_name` followed by `age`.
 A `DescriptorMismatch` will be returned if the fields in the Rust struct
 are not in the same order as those in the query shape.
 

@@ -9,7 +9,7 @@ Releasing Rust Bindings
 In case multiple crates are released here is the order:
 * `gel-errors`
 * `gel-derive` and `gel-protocol`
-* `edgedb-client`
+* `gel-tokio`
 
 Notes on releasing multiple crates
 1. All of the version bumps can to in a single PR

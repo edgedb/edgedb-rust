@@ -1,4 +1,4 @@
-//! # EdgeDB Types Used for Data Modelling
+//! # Gel Types Used for Data Modelling
 
 mod bignum;
 mod json;
@@ -20,7 +20,7 @@ pub use vector::Vector;
 use std::fmt;
 use std::num::ParseIntError;
 
-/// Error converting an out of range value to/from EdgeDB type.
+/// Error converting an out of range value to/from Gel type.
 #[derive(Debug, PartialEq)]
 pub struct OutOfRangeError;
 
@@ -37,7 +37,7 @@ impl From<std::num::TryFromIntError> for OutOfRangeError {
     }
 }
 
-/// Error parsing string into EdgeDB Duration type.
+/// Error parsing string into Gel Duration type.
 #[derive(Debug, PartialEq)]
 pub struct ParseDurationError {
     pub(crate) message: String,

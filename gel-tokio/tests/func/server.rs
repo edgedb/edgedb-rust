@@ -11,7 +11,7 @@ pub struct ServerGuard {
 
 pub static SERVER: Lazy<ServerGuard> = Lazy::new(start_server);
 
-/// Starts edgedb-server. Stops it after the test process exits.
+/// Starts gel-server. Stops it after the test process exits.
 /// Writes its log into a tmp file.
 ///
 /// To debug, run any test with --nocapture Rust flag.

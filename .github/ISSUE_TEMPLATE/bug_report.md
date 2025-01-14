@@ -22,19 +22,19 @@ A clear and concise description of what you expected to happen. If applicable, a
 **Versions (please complete the following information):**
 
 <!--
-For EdgeDB version: Run `edgedb` from your project directory copying the first line of output or query `select sys::get_version_as_str();`
-For EdgeDB CLI version: Run `edgedb --version` from anywhere
-For Rust compiler version: Run `rustc --version`
-For Cargo version: Run `cargo --version`
-For EdgeDB Rust versions: Run `cargo tree | grep edgedb` from your project directory and copy/paste the entire output
+Gel instance version: Run `gel` from your project directory copying the first line of output or query `select sys::get_version_as_str();`
+Gel CLI version: Run `gel --version` from anywhere
+Rust compiler version: Run `rustc --version`
+Cargo version: Run `cargo --version`
+Gel rust binding versions: Run `cargo tree | grep gel-` from your project directory and copy/paste the entire output
 -->
 
 - OS:
-- EdgeDB version:
-- EdgeDB CLI version:
+- Gel instance version:
+- Gel CLI version:
 - Rust compiler version:
 - Cargo version:
-- EdgeDB Rust versions:
+- Gel rust bindings versions:
 
 **Additional context**
 Add any other context about the problem here.

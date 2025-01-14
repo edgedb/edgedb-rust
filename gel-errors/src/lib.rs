@@ -1,13 +1,13 @@
 /*!
-# Error Handling for EdgeDB
+# Error Handling for Gel
 
-All errors that EdgeDB Rust bindings produce are encapsulated into the
+All errors that Gel Rust bindings produce are encapsulated into the
 [`Error`] structure. The structure is a bit like `Box<dyn Error>` or
-[`anyhow::Error`], except it can only contain EdgeDB error types. Or
+[`anyhow::Error`], except it can only contain Gel error types. Or
 [`UserError`] can be used to encapsulate custom errors (commonly used
 to return an error from a transaction).
 
-A full list of EdgeDB error types on a single page can be found on the [website documentation](https://www.edgedb.com/docs/reference/protocol/errors#error-codes).
+A full list of Gel error types on a single page can be found on the [website documentation](https://www.edgedb.com/docs/reference/protocol/errors#error-codes).
 
 Each error kind is represented as a separate type that implements the
 [`ErrorKind`] trait. But error kinds are used like marker structs; you can
