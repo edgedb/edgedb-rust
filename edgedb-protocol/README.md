@@ -1,12 +1,10 @@
 EdgeDB Rust Binding: Protocol Crate
 =================================
 
+> This crate has been renamed to [gel-protocol](https://crates.io/crates/gel-protocol).
+
 This crate contains data model types and internal protocol implementation for
 the EdgeDB client.
-
-* [Documentation](https://docs.rs/edgedb-protocol)
-* [Tokio Client](https://docs.rs/edgedb-tokio)
-
 
 License
 =======

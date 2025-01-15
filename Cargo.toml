@@ -5,8 +5,6 @@ members = [
     "edgedb-derive",
     "edgedb-protocol",
     "edgedb-tokio",
-    "examples/globals",
-    "examples/query-error",
 ]
 
 [profile.release]
