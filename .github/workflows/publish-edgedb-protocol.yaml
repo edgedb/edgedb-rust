@@ -13,13 +13,12 @@ jobs:
       id-token: "write"
       contents: "read"
     steps:
-            # checkout and env setup
+      # checkout and env setup
       - uses: actions/checkout@v3
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
       - name: Build the nix shell
         run: nix develop --command just --version
-      - uses: Swatinem/rust-cache@v2
 
       # test
       - name: Test

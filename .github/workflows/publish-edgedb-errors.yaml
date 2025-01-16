@@ -18,8 +18,7 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
       - name: Build the nix shell
-        run: nix develop --command just --version
-      - uses: Swatinem/rust-cache@v2
+        run: nix develop --command cargo --version
 
       # test
       - name: Test
