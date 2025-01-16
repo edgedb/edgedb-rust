@@ -16,7 +16,7 @@ use crate::raw::{Options, PoolState, Response};
 use crate::raw::{Pool, QueryCapabilities};
 use crate::state::{AliasesDelta, ConfigDelta, GlobalsDelta};
 use crate::state::{AliasesModifier, ConfigModifier, Fn, GlobalsModifier};
-use crate::transaction::{RetryingTransaction, RawTransaction};
+use crate::transaction::{RawTransaction, RetryingTransaction};
 use crate::ResultVerbose;
 
 /// The EdgeDB Client.
@@ -404,7 +404,7 @@ impl Client {
     /// ```rust,no_run
     /// # async fn main_() -> Result<(), edgedb_tokio::Error> {
     /// let conn = edgedb_tokio::create_client().await?;
-    /// let val = conn.within_transaction(|mut tx| async move {
+    /// let val = conn.transaction(|mut tx| async move {
     ///     tx.query_required_single::<i64, _>("
     ///         WITH C := UPDATE Counter SET { value := .value + 1}
     ///         SELECT C.value LIMIT 1
@@ -449,7 +449,7 @@ impl Client {
     /// ```rust,no_run
     /// # async fn main_() -> Result<(), edgedb_tokio::Error> {
     /// let conn = edgedb_tokio::create_client().await?;
-    /// let mut tx = conn.transaction().await?;
+    /// let mut tx = conn.transaction_raw().await?;
     /// tx.query_required_single::<i64, _>("
     ///     WITH C := UPDATE Counter SET { value := .value + 1}
     ///     SELECT C.value LIMIT 1
