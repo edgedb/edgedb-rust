@@ -1,0 +1,30 @@
+[package]
+name = "gel-derive"
+license = "MIT/Apache-2.0"
+version = "0.5.2"
+authors = ["MagicStack Inc. <hello@magic.io>"]
+edition = "2018"
+description = """
+    Derive macros for Gel database client.
+    Formerly published as gel-derive.
+"""
+readme = "README.md"
+rust-version.workspace = true
+
+[dependencies]
+syn = {version="2.0", features=["full"]}
+proc-macro2 = "1.0.19"
+quote = "1.0"
+trybuild = "1.0.19"
+
+[dev-dependencies]
+bytes = "1.0.1"
+gel-protocol = {path="../gel-protocol"}
+serde = {version="1.0", features=["derive"]}
+serde_json = "1.0"
+
+[lib]
+proc-macro = true
+
+[lints]
+workspace = true

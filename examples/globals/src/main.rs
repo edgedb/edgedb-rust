@@ -1,4 +1,4 @@
-use edgedb_derive::GlobalsDelta;
+use gel_derive::GlobalsDelta;
 
 #[derive(GlobalsDelta)]
 struct Globals<'a> {
@@ -8,7 +8,7 @@ struct Globals<'a> {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
-    let conn = edgedb_tokio::create_client().await?;
+    let conn = gel_tokio::create_client().await?;
     let conn = conn.with_globals(&Globals { str_global: "val1" });
     let val = conn
         .query_required_single::<String, _>("SELECT (GLOBAL str_global)", &())

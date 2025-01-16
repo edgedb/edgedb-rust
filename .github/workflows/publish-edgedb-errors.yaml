@@ -1,9 +1,9 @@
 on:
   push:
     tags:
-    - releases/edgedb-errors/v*
+    - releases/gel-errors/v*
 
-name: Release edgedb-errors
+name: Release gel-errors
 
 jobs:
   test_and_publish:
@@ -23,16 +23,16 @@ jobs:
 
       # test
       - name: Test
-        run: nix develop --command cargo test --all-features --package=edgedb-errors
+        run: nix develop --command cargo test --all-features --package=gel-errors
 
       # verify that git tag matches cargo version
       - run: |
           set -x
           cargo_version="$(cargo metadata --format-version 1 \
-            | jq -r '.packages[] | select(.name=="edgedb-errors") | .version')"
-          tag_version="${GITHUB_REF#refs/tags/releases/edgedb-errors/v}"
+            | jq -r '.packages[] | select(.name=="gel-errors") | .version')"
+          tag_version="${GITHUB_REF#refs/tags/releases/gel-errors/v}"
           test "$cargo_version" = "$tag_version"
 
-      - working-directory: ./edgedb-errors
+      - working-directory: ./gel-errors
         run: |
           nix develop --command cargo publish --token=${{ secrets.CARGO_REGISTRY_TOKEN }}

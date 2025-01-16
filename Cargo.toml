@@ -1,10 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
-    "edgedb-errors",
-    "edgedb-derive",
-    "edgedb-protocol",
-    "edgedb-tokio",
+    "gel-errors",
+    "gel-derive",
+    "gel-protocol",
+    "gel-tokio",
     "examples/globals",
     "examples/query-error",
 ]

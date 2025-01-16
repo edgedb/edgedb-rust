@@ -1,25 +1,22 @@
-EdgeDB Rust Binding
+Gel Rust Binding
 ===================
 
-This workspace is a collection of Rust crates for EdgeDB support. Individual
+This workspace is a collection of Rust crates for the Gel database. Individual
 docs can currently be found on docs.rs:
 
-* [edgedb-tokio](https://docs.rs/edgedb-tokio) -- client for Tokio
-* [edgedb-derive](https://docs.rs/edgedb-derive) -- derive macro for data
-  structures fetched from the database
-* Async-std bindings [edgedb-client](https://docs.rs/edgedb-client) (currently
-  deprecated, and moved to CLI tool repository)
+* [gel-tokio](https://docs.rs/gel-tokio) -- client using Tokio async runtime,
+* [gel-derive](https://docs.rs/gel-derive) -- derive macro for data
+  structures fetched from the database,
+* [gel-protocol](https://docs.rs/gel-protocol) -- low-level definitions for
+  data model of the Gel protocol.
+* [gel-errors](https://docs.rs/gel-protocol) -- low-level definitions for
+  data model of the Gel protocol.
 
 
 Running Tests
 =============
 
-Due to cargo's limitation on propagation of "features", tests can only be
-run as few separate command-lines:
-```
-cargo test --workspace
-cd edgedb-protocol; cargo test --no-default-features
-```
+See [justfile](./justfile) for all commands to run the tests.
 
 License
 =======

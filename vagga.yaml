@@ -43,13 +43,13 @@ commands:
   test-all-types: !Command
     description: Run tests
     container: ubuntu
-    work-dir: edgedb-protocol
+    work-dir: gel-protocol
     run: [cargo, test, --features=all-types]
 
   test-rust-no-features: !Command
     description: Run tests
     container: ubuntu
-    work-dir: edgedb-protocol
+    work-dir: gel-protocol
     run: [cargo, test, --no-default-features]
 
   test: !Command
@@ -115,7 +115,7 @@ commands:
     environ:
       EDGEDB_CLIENT_TLS_SECURITY: insecure
       EDGEDB_HOST: localhost
-    run: [cargo, run, --package=edgedb-tokio, --example]
+    run: [cargo, run, --package=gel-tokio, --example]
 
   example-globals: !Command
     description: Run tokio example
