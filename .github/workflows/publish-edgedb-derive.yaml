@@ -22,7 +22,7 @@ jobs:
 
       # test
       - name: Test
-        run: nix develop --command cargo test --all-features --package=gel-derive
+        run: nix develop --command just test
 
       # verify that git tag matches cargo version
       - run: |
