@@ -247,6 +247,20 @@ async fn bytes() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn time() -> anyhow::Result<()> {
+    let client = Client::new(&SERVER.config);
+    client.ensure_connected().await?;
+
+    let res: gel_protocol::model::Duration = client
+        .query_required_single("select <duration>'45.6 seconds';", &())
+        .await
+        .unwrap();
+    assert_eq!(res, gel_protocol::model::Duration::from_micros(45_600_000));
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn wrong_field_number() -> anyhow::Result<()> {
     let client = Client::new(&SERVER.config);
     client.ensure_connected().await?;
