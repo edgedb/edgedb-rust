@@ -7,20 +7,20 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// A span of time.
 ///
 /// Precision: microseconds.
-/// 
+///
 /// ```
 /// # use gel_protocol::model::Duration;
-/// assert_eq!(&Duration::from_micros(1_000_000).to_string(), "0:00:1");
+/// assert_eq!(&Duration::from_micros(1_000_000).to_string(), "0:00:01");
 /// ```
-/// 
-/// This type implements [FromStr] and parses microseconds or PostgreSQL
+///
+/// This type implements [FromStr] and parses either seconds or PostgreSQL
 /// simple duration format:
-/// 
+///
 /// ```
 /// # use gel_protocol::model::Duration;
 /// # use std::str::FromStr;
-/// assert_eq!(&Duration::from_str("10987654320").to_string(), "0:00:7.65432");
-/// assert_eq!(&Duration::from_str("2:12:7.65432").to_string(), "2:12:7.65432");
+/// assert_eq!(&Duration::from_str("65").unwrap().to_string(), "0:01:05");
+/// assert_eq!(&Duration::from_str("2:12:7.65432").unwrap().to_string(), "2:12:07.65432");
 /// ```
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "with-serde", derive(serde::Serialize, serde::Deserialize))]
