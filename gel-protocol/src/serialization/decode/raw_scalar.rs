@@ -10,7 +10,7 @@ use snafu::{ensure, ResultExt};
 use crate::codec;
 use crate::descriptors::{Descriptor, TypePos};
 use crate::errors::{self, DecodeError};
-use crate::model::range;
+use crate::model::{range, Vector, VectorRef};
 use crate::model::{BigInt, Decimal};
 use crate::model::{ConfigMemory, Range};
 use crate::model::{DateDuration, RelativeDuration};
@@ -732,5 +732,44 @@ impl<T: ScalarArg + Clone> ScalarArg for Range<T> {
             inc_upper: self.inc_upper,
             empty: self.empty,
         }))
+    }
+}
+
+impl<'a> ScalarArg for VectorRef<'a> {
+    fn encode(&self, encoder: &mut crate::query_arg::Encoder) -> Result<(), gel_errors::Error> {
+        encoder.buf.reserve(2 + 2 + self.0.len() * 4);
+        encoder.buf.put_u16(self.0.len() as u16); // len
+        encoder.buf.put_u16(0); // reserved
+        for v in self.0 {
+            encoder.buf.put_u32(v.to_bits());
+        }
+        Ok(())
+    }
+
+    fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos) -> Result<(), Error> {
+        check_scalar(
+            ctx,
+            type_pos,
+            codec::PGVECTOR_VECTOR,
+            "ext::pgvector::vector",
+        )
+    }
+
+    fn to_value(&self) -> Result<Value, gel_errors::Error> {
+        Ok(Value::Vector(self.0.to_vec()))
+    }
+}
+
+impl ScalarArg for Vector {
+    fn encode(&self, encoder: &mut crate::query_arg::Encoder) -> Result<(), gel_errors::Error> {
+        VectorRef(&self.0).encode(encoder)
+    }
+
+    fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos) -> Result<(), Error> {
+        VectorRef::check_descriptor(ctx, type_pos)
+    }
+
+    fn to_value(&self) -> Result<Value, gel_errors::Error> {
+        VectorRef(&self.0).to_value()
     }
 }

@@ -202,7 +202,7 @@ impl QueryArg for Value {
             Array(v) => v.encode_slot(enc)?,
             Enum(v) => v.encode_slot(enc)?,
             Range(v) => v.encode_slot(enc)?,
-            Vector(v) => v.encode_slot(enc)?,
+            Vector(v) => crate::model::VectorRef(v).encode_slot(enc)?,
             PostGisGeometry(v) => v.encode_slot(enc)?,
             PostGisGeography(v) => v.encode_slot(enc)?,
             PostGisBox2d(v) => v.encode_slot(enc)?,
@@ -247,6 +247,7 @@ impl QueryArg for Value {
                 let val = val.deref();
                 check_enum(val, &members)
             }
+            (Vector(_), BaseScalar(d)) if d.id == codec::PGVECTOR_VECTOR => Ok(()),
             (PostGisGeometry(_), BaseScalar(d)) if d.id == codec::POSTGIS_GEOMETRY => Ok(()),
             (PostGisGeography(_), BaseScalar(d)) if d.id == codec::POSTGIS_GEOGRAPHY => Ok(()),
             (PostGisBox2d(_), BaseScalar(d)) if d.id == codec::POSTGIS_BOX_2D => Ok(()),
