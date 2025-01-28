@@ -24,6 +24,7 @@ macro_rules! define_env {
         pub struct Env {
         }
 
+        #[allow(clippy::diverging_sub_expression)]
         impl Env {
             $(
                 #[doc = $doc]

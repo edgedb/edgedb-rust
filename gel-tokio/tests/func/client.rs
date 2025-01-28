@@ -301,3 +301,44 @@ async fn warnings() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn vector() -> anyhow::Result<()> {
+    let client = Client::new(&SERVER.config);
+    client.ensure_connected().await?;
+
+    let res: Value = client
+        .query_required_single("select <ext::pgvector::vector>[9.9, 8.8]", &())
+        .await
+        .unwrap();
+    let Value::Vector(res) = res else { panic!() };
+    assert_eq!(res, vec![9.9, 8.8]);
+
+    let res: gel_protocol::model::Vector = client
+        .query_required_single("select <ext::pgvector::vector>[9.9, 8.8]", &())
+        .await
+        .unwrap();
+    assert_eq!(res.0, vec![9.9, 8.8]);
+
+    let arg = Value::Vector(vec![9.9, 8.8]);
+    let res: f32 = client
+        .query_required_single(
+            "select (<array<float32>>(<ext::pgvector::vector>$0))[0]",
+            &(arg,),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res, 9.9);
+
+    let arg = gel_protocol::model::Vector(vec![9.9, 8.8]);
+    let res: f32 = client
+        .query_required_single(
+            "select (<array<float32>>(<ext::pgvector::vector>$0))[0]",
+            &(arg,),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res, 9.9);
+
+    Ok(())
+}

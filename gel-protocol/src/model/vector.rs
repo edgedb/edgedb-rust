@@ -1,14 +1,14 @@
 use std::ops::{Deref, DerefMut};
 
 use bytes::Buf;
+
 use snafu::ensure;
 
-use crate::codec;
 use crate::descriptors::TypePos;
 use crate::errors::{self, DecodeError};
-use crate::queryable::DescriptorMismatch;
-use crate::queryable::{Decoder, DescriptorContext, Queryable};
+use crate::queryable::{Decoder, Queryable};
 use crate::serialization::decode::queryable::scalars::check_scalar;
+use crate::{codec, queryable};
 
 /// A structure that represents `ext::pgvector::vector`
 #[derive(Debug, PartialEq, Clone)]
@@ -39,9 +39,9 @@ impl Queryable for Vector {
     }
 
     fn check_descriptor(
-        ctx: &DescriptorContext,
+        ctx: &queryable::DescriptorContext,
         type_pos: TypePos,
-    ) -> Result<(), DescriptorMismatch> {
+    ) -> Result<(), queryable::DescriptorMismatch> {
         check_scalar(
             ctx,
             type_pos,
@@ -50,3 +50,6 @@ impl Queryable for Vector {
         )
     }
 }
+
+#[derive(Debug, PartialEq, Clone)]
+pub(crate) struct VectorRef<'a>(pub &'a [f32]);

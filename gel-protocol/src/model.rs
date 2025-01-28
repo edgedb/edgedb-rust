@@ -16,6 +16,7 @@ pub use memory::ConfigMemory;
 pub use range::Range;
 pub use uuid::Uuid;
 pub use vector::Vector;
+pub(crate) use vector::VectorRef;
 
 use std::fmt;
 use std::num::ParseIntError;

@@ -1,3 +1,5 @@
+using extension pgvector;
+
 module test {
     scalar type State extending enum<'done', 'waiting', 'blocked'>;
 
