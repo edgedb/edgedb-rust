@@ -381,24 +381,6 @@ impl Client {
     /// but also executing the whole function, so the transaction code must be
     /// prepared to be idempotent.
     ///
-    /// # Commit and rollback
-    ///
-    /// When the closure returns, the transaction is commit. Transaction cannot
-    /// be rolled back explicitly.
-    ///
-    /// # Returning custom errors
-    ///
-    /// See [this example](https://github.com/edgedb/edgedb-rust/blob/master/gel-tokio/examples/transaction_errors.rs)
-    /// and [the documentation of the `gel-errors` crate](https://docs.rs/gel-errors/latest/gel_errors/)
-    /// for how to return custom error types.
-    ///
-    /// # Panics
-    ///
-    /// Function panics when transaction object passed to the closure is not
-    /// dropped after closure exists. General rule: do not store transaction
-    /// anywhere and do not send to another coroutine. Pass to all further
-    /// function calls by reference.
-    ///
     /// # Example
     ///
     /// ```rust,no_run
@@ -414,6 +396,39 @@ impl Client {
     /// # Ok(())
     /// # }
     /// ```
+    ///
+    /// # Commit and rollback
+    ///
+    /// If the closure returns [Result::Ok], the transaction is committed.
+    /// If the closure returns [Result::Err], the transaction is either retried or aborted,
+    /// depending on weather the error has `SHOULD_RETRY`` tag set.
+    ///
+    /// To manually abort a transaction, [gel_errors::UserError] can be returned:
+    ///
+    /// ```rust,no_run
+    /// use gel_errors::ErrorKind;
+    /// # async fn main_() -> Result<(), gel_tokio::Error> {
+    /// # let conn = gel_tokio::create_client().await?;
+    /// let val = conn.transaction(|mut tx| async move {
+    ///     tx.execute("UPDATE Foo SET { x := 1 };", &()).await;
+    ///     Err(gel_errors::UserError::build()) // abort transaction
+    /// }).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Returning custom errors
+    ///
+    /// See [this example](https://github.com/edgedb/edgedb-rust/blob/master/gel-tokio/examples/transaction_errors.rs)
+    /// and [the documentation of the `gel-errors` crate](https://docs.rs/gel-errors/latest/gel_errors/)
+    /// for how to return custom error types.
+    ///
+    /// # Panics
+    ///
+    /// Function panics when transaction object passed to the closure is not
+    /// dropped after closure exists. General rule: do not store transaction
+    /// anywhere and do not send to another coroutine. Pass to all further
+    /// function calls by reference.
     pub async fn transaction<T, B, F>(&self, body: B) -> Result<T, Error>
     where
         B: FnMut(transaction::RetryingTransaction) -> F,

@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use tokio::sync::Mutex;
 
-use gel_errors::NoDataError;
+use gel_errors::{ErrorKind, NoDataError};
 use gel_tokio::{Client, Transaction};
 
 use crate::server::SERVER;
@@ -244,5 +244,26 @@ async fn raw_02() -> anyhow::Result<()> {
         .query_single::<String, _>("select X.a limit 1", &())
         .await?;
     assert_eq!(a, None);
+    Ok(())
+}
+
+#[tokio::test]
+async fn abort_01() -> anyhow::Result<()> {
+    let client = Client::new(&SERVER.config);
+
+    let err = client
+        .transaction(|mut tx| async move {
+            tx.execute(r#"INSERT test::Y { a := "hello" };"#, &())
+                .await?;
+
+            if 1 == 1 {
+                Err(gel_errors::UserError::build())
+            } else {
+                Ok(())
+            }
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind_name(), "UserError");
     Ok(())
 }

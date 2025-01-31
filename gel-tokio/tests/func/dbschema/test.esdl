@@ -25,4 +25,8 @@ module test {
     type X {
         a: str;
     }
+
+    type Y {
+        a: str;
+    }
 }
