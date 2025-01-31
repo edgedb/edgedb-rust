@@ -742,6 +742,21 @@ fn decode_tuple(
         .collect::<Result<Vec<Value>, DecodeError>>()
 }
 
+fn decode_object(
+    mut elements: DecodeTupleLike,
+    codecs: &[Arc<dyn Codec>],
+) -> Result<Vec<Option<Value>>, DecodeError> {
+    codecs
+        .iter()
+        .map(|codec| {
+            elements
+                .read()?
+                .map(|element| codec.decode(element))
+                .transpose()
+        })
+        .collect::<Result<Vec<Option<Value>>, DecodeError>>()
+}
+
 fn decode_array_like(
     elements: DecodeArrayLike<'_>,
     codec: &dyn Codec,
@@ -753,18 +768,8 @@ fn decode_array_like(
 
 impl Codec for Object {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
-        let mut elements = DecodeTupleLike::new_object(buf, self.codecs.len())?;
-        let fields = self
-            .codecs
-            .iter()
-            .map(|codec| {
-                elements
-                    .read()?
-                    .map(|element| codec.decode(element))
-                    .transpose()
-            })
-            .collect::<Result<Vec<Option<Value>>, DecodeError>>()?;
-
+        let elements = DecodeTupleLike::new_object(buf, self.codecs.len())?;
+        let fields = decode_object(elements, &self.codecs)?;
         Ok(Value::Object {
             shape: self.shape.clone(),
             fields,
@@ -1355,8 +1360,8 @@ impl Codec for NamedTuple {
 
 impl Codec for SQLRow {
     fn decode(&self, buf: &[u8]) -> Result<Value, DecodeError> {
-        let elements = DecodeTupleLike::new_tuple(buf, self.codecs.len())?;
-        let fields = decode_tuple(elements, &self.codecs)?;
+        let elements = DecodeTupleLike::new_object(buf, self.codecs.len())?;
+        let fields = decode_object(elements, &self.codecs)?;
         Ok(Value::SQLRow {
             shape: self.shape.clone(),
             fields,

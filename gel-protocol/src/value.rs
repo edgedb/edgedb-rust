@@ -46,7 +46,7 @@ pub enum Value {
     },
     SQLRow {
         shape: SQLRowShape,
-        fields: Vec<Value>,
+        fields: Vec<Option<Value>>,
     },
     Array(Vec<Value>),
     Vector(Vec<f32>),
