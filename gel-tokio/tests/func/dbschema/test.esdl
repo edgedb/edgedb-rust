@@ -21,4 +21,12 @@ module test {
         required sent_at: datetime;
         confirmed_at: datetime;
     }
+
+    type X {
+        a: str;
+    }
+
+    type Y {
+        a: str;
+    }
 }
