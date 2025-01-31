@@ -16,7 +16,7 @@ use crate::raw::{Options, PoolState, Response};
 use crate::raw::{Pool, QueryCapabilities};
 use crate::state::{AliasesDelta, ConfigDelta, GlobalsDelta};
 use crate::state::{AliasesModifier, ConfigModifier, Fn, GlobalsModifier};
-use crate::transaction::{transaction, Transaction};
+use crate::transaction::{RawTransaction, RetryingTransaction};
 use crate::ResultVerbose;
 
 /// Gel database client.
@@ -374,12 +374,17 @@ impl Client {
         }
     }
 
-    /// Execute a transaction
+    /// Execute a transaction and retry.
     ///
     /// Transaction body must be encompassed in the closure. The closure **may
     /// be executed multiple times**. This includes not only database queries
     /// but also executing the whole function, so the transaction code must be
     /// prepared to be idempotent.
+    ///
+    /// # Commit and rollback
+    ///
+    /// When the closure returns, the transaction is commit. Transaction cannot
+    /// be rolled back explicitly.
     ///
     /// # Returning custom errors
     ///
@@ -397,13 +402,13 @@ impl Client {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # async fn transaction() -> Result<(), gel_tokio::Error> {
+    /// # async fn main_() -> Result<(), gel_tokio::Error> {
     /// let conn = gel_tokio::create_client().await?;
     /// let val = conn.transaction(|mut tx| async move {
     ///     tx.query_required_single::<i64, _>("
     ///         WITH C := UPDATE Counter SET { value := .value + 1}
     ///         SELECT C.value LIMIT 1
-    ///     ", &()
+    ///         ", &()
     ///     ).await
     /// }).await?;
     /// # Ok(())
@@ -411,10 +416,51 @@ impl Client {
     /// ```
     pub async fn transaction<T, B, F>(&self, body: B) -> Result<T, Error>
     where
-        B: FnMut(Transaction) -> F,
+        B: FnMut(RetryingTransaction) -> F,
         F: Future<Output = Result<T, Error>>,
     {
-        transaction(&self.pool, self.options.clone(), body).await
+        crate::transaction::run_and_retry(&self.pool, self.options.clone(), body).await
+    }
+
+    /// Start a transaction without the retry mechanism.
+    ///
+    /// Returns [RawTransaction] which implements [crate::QueryExecutor] and can
+    /// be used to execute queries within the transaction.
+    ///
+    /// The transaction will never retry failed queries, even if the database signals that the
+    /// query should be retried. For this reason, it is recommended to use [Client::within_transaction]
+    /// when possible.
+    ///
+    /// <div class="warning">
+    /// Transactions can fail for benign reasons and should always handle that case gracefully.
+    /// `RawTransaction` does not provide any retry mechanisms, so this responsibility falls
+    /// onto the user. For example, even only two select queries in a transaction can fail due to
+    /// concurrent modification of the database.
+    /// </div>
+    ///
+    /// # Commit and rollback
+    ///
+    /// To commit the changes made during the transaction,
+    /// [commit](crate::RawTransaction::commit) method must be called, otherwise the
+    /// transaction will roll back when [RawTransaction] is dropped.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// # async fn main_() -> Result<(), edgedb_tokio::Error> {
+    /// let conn = edgedb_tokio::create_client().await?;
+    /// let mut tx = conn.transaction_raw().await?;
+    /// tx.query_required_single::<i64, _>("
+    ///     WITH C := UPDATE Counter SET { value := .value + 1}
+    ///     SELECT C.value LIMIT 1
+    ///     ", &()
+    /// ).await;
+    /// tx.commit().await;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn transaction_raw(&self) -> Result<RawTransaction, Error> {
+        crate::transaction::start(&self.pool, self.options.clone()).await
     }
 
     /// Returns client with adjusted options for future transactions.

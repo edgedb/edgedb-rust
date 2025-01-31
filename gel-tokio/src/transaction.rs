@@ -10,93 +10,174 @@ use gel_protocol::QueryResult;
 use tokio::sync::oneshot;
 use tokio::time::sleep;
 
-use crate::errors::ClientError;
 use crate::errors::{Error, ErrorKind, SHOULD_RETRY};
 use crate::errors::{NoDataError, ProtocolEncodingError};
 use crate::raw::{Options, Pool, PoolConnection, Response};
 use crate::ResultVerbose;
 
-/// Transaction object passed to the closure via
-/// [`Client::transaction()`](crate::Client::transaction) method
+/// A representation of a transaction.
 ///
-/// The Transaction object must be dropped by the end of the closure execution.
+/// It can be obtained in two flavors:
+/// - [`RetryingTransaction`] from [`Client::within_transaction()`](crate::Client::within_transaction),
+/// - [`RawTransaction`] from [`Client::transaction_raw()`](crate::Client::transaction_raw).
+///
+/// Implements all query & execute functions as [Client](crate::Client) as well as
+/// [QueryExecutor](crate::QueryExecutor).
+#[derive(Debug)]
+pub struct Transaction {
+    options: Arc<Options>,
+    conn: PoolConnection,
+
+    started: bool,
+}
+
+/// Transaction object returned by [`Client::transaction_raw()`](crate::Client::transaction_raw) method.
+///
+/// When this object is dropped, the transaction will implicitly roll back.
+/// Use [commit](RawTransaction::commit) method to commit the changes made in the transaction.
 ///
 /// All database queries in transaction should be executed using methods on
 /// this object instead of using original [`Client`](crate::Client) instance.
 #[derive(Debug)]
-pub struct Transaction {
-    iteration: u32,
-    options: Arc<Options>,
-    inner: Option<Inner>,
+pub struct RawTransaction {
+    inner: Option<Transaction>,
 }
 
-#[derive(Debug)]
-pub struct TransactionResult {
-    conn: PoolConnection,
-    started: bool,
-}
+impl RawTransaction {
+    /// Commit the transaction.
+    ///
+    /// If this method is not called, the transaction rolls back
+    /// when [RawTransaction] is dropped.
+    pub async fn commit(mut self) -> Result<(), Error> {
+        if let Some(tran) = self.inner.take() {
+            tran.commit().await
+        } else {
+            log::trace!("raw transaction done, noop commit");
+            Ok(())
+        }
+    }
 
-#[derive(Debug)]
-pub struct Inner {
-    started: bool,
-    conn: PoolConnection,
-    return_conn: oneshot::Sender<TransactionResult>,
-}
-
-impl Drop for Transaction {
-    fn drop(&mut self) {
-        self.inner.take().map(
-            |Inner {
-                 started,
-                 conn,
-                 return_conn,
-             }| { return_conn.send(TransactionResult { started, conn }).ok() },
-        );
+    /// Rollback the transaction.
+    pub async fn rollback(mut self) -> Result<(), Error> {
+        if let Some(tran) = self.inner.take() {
+            tran.rollback().await
+        } else {
+            log::trace!("raw transaction done, noop rollback");
+            Ok(())
+        }
     }
 }
 
-pub(crate) async fn transaction<T, B, F>(
+impl std::ops::Deref for RawTransaction {
+    type Target = Transaction;
+
+    fn deref(&self) -> &Self::Target {
+        self.inner.as_ref().unwrap()
+    }
+}
+
+impl std::ops::DerefMut for RawTransaction {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.inner.as_mut().unwrap()
+    }
+}
+
+impl Drop for RawTransaction {
+    fn drop(&mut self) {
+        if let Some(tran) = self.inner.take() {
+            tokio::task::spawn(tran.rollback());
+        }
+    }
+}
+
+pub(crate) async fn start(pool: &Pool, options: Arc<Options>) -> Result<RawTransaction, Error> {
+    let conn = pool.acquire().await?;
+
+    Ok(RawTransaction {
+        inner: Some(Transaction::new(options, conn)),
+    })
+}
+
+/// Transaction object passed to the closure via
+/// [`Client::within_transaction()`](crate::Client::within_transaction) method.
+///
+/// This object must be dropped by the end of the closure execution.
+///
+/// All database queries in transaction should be executed using methods on
+/// this object instead of using original [`Client`](crate::Client) instance.
+#[derive(Debug)]
+pub struct RetryingTransaction {
+    inner: Option<Transaction>,
+    iteration: u32,
+    result_tx: Option<oneshot::Sender<Transaction>>,
+}
+
+impl RetryingTransaction {
+    /// Zero-based iteration (attempt) number for the current transaction
+    ///
+    /// First attempt gets `iteration = 0`, second attempt `iteration = 1`,
+    /// etc.
+    pub fn iteration(&self) -> u32 {
+        self.iteration
+    }
+}
+
+impl std::ops::Deref for RetryingTransaction {
+    type Target = Transaction;
+
+    fn deref(&self) -> &Self::Target {
+        self.inner.as_ref().unwrap()
+    }
+}
+
+impl std::ops::DerefMut for RetryingTransaction {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.inner.as_mut().unwrap()
+    }
+}
+
+impl Drop for RetryingTransaction {
+    fn drop(&mut self) {
+        let tran = self.inner.take().unwrap();
+        self.result_tx.take().unwrap().send(tran).ok();
+    }
+}
+
+pub(crate) async fn run_and_retry<T, B, F>(
     pool: &Pool,
     options: Arc<Options>,
     mut body: B,
 ) -> Result<T, Error>
 where
-    B: FnMut(Transaction) -> F,
+    B: FnMut(RetryingTransaction) -> F,
     F: Future<Output = Result<T, Error>>,
 {
     let mut iteration = 0;
     'transaction: loop {
         let conn = pool.acquire().await?;
+        let tran = Transaction::new(options.clone(), conn);
+
         let (tx, mut rx) = oneshot::channel();
-        let tran = Transaction {
+
+        let tran = RetryingTransaction {
+            inner: Some(tran),
             iteration,
-            options: options.clone(),
-            inner: Some(Inner {
-                started: false,
-                conn,
-                return_conn: tx,
-            }),
+            result_tx: Some(tx),
         };
         let result = body(tran).await;
-        let TransactionResult { mut conn, started } = rx.try_recv().expect(
+        let tran = rx.try_recv().expect(
             "Transaction object must \
             be dropped by the time transaction body finishes.",
         );
         match result {
             Ok(val) => {
                 log::debug!("Comitting transaction");
-                if started {
-                    conn.statement("COMMIT", &options.state, &options.annotations)
-                        .await?;
-                }
+                tran.commit().await?;
                 return Ok(val);
             }
             Err(outer) => {
                 log::debug!("Rolling back transaction on error");
-                if started {
-                    conn.statement("ROLLBACK", &options.state, &options.annotations)
-                        .await?;
-                }
+                tran.rollback().await?;
 
                 let some_retry = outer.chain().find_map(|e| {
                     e.downcast_ref::<Error>().and_then(|e| {
@@ -127,31 +208,52 @@ where
     }
 }
 
-fn assert_transaction(x: &mut Option<Inner>) -> &mut PoolConnection {
-    &mut x.as_mut().expect("transaction object is dropped").conn
-}
-
 impl Transaction {
-    /// Zero-based iteration (attempt) number for the current transaction
-    ///
-    /// First attempt gets `iteration = 0`, second attempt `iteration = 1`,
-    /// etc.
-    pub fn iteration(&self) -> u32 {
-        self.iteration
+    fn new(options: Arc<Options>, conn: PoolConnection) -> Self {
+        Transaction {
+            options,
+            conn,
+            started: false,
+        }
     }
+
     async fn ensure_started(&mut self) -> anyhow::Result<(), Error> {
-        if let Some(inner) = &mut self.inner {
-            if !inner.started {
-                let options = &self.options;
-                inner
-                    .conn
-                    .statement("START TRANSACTION", &options.state, &options.annotations)
-                    .await?;
-                inner.started = true;
-            }
+        if !self.started {
+            let options = &self.options;
+            self.conn
+                .statement("START TRANSACTION", &options.state, &options.annotations)
+                .await?;
+            self.started = true;
+        }
+        Ok(())
+    }
+
+    async fn commit(mut self) -> anyhow::Result<(), Error> {
+        if !self.started {
+            log::trace!("transaction was never started, noop commit");
             return Ok(());
         }
-        Err(ClientError::with_message("using transaction after drop"))
+
+        log::trace!("commit");
+        let options = &self.options;
+        self.conn
+            .statement("COMMIT", &options.state, &options.annotations)
+            .await?;
+        Ok(())
+    }
+
+    async fn rollback(mut self) -> anyhow::Result<(), Error> {
+        if !self.started {
+            log::trace!("transaction was never started, noop commit");
+            return Ok(());
+        }
+
+        log::trace!("rollback");
+        let options = &self.options;
+        self.conn
+            .statement("ROLLBACK", &options.state, &options.annotations)
+            .await?;
+        Ok(())
     }
 
     async fn query_helper<R, A>(
@@ -167,9 +269,8 @@ impl Transaction {
     {
         self.ensure_started().await?;
 
-        let conn = assert_transaction(&mut self.inner);
-
-        conn.inner()
+        self.conn
+            .inner()
             .query(
                 query.as_ref(),
                 arguments,
@@ -394,8 +495,8 @@ impl Transaction {
             expected_cardinality: Cardinality::Many,
         };
         let state = &self.options.state;
-        let conn = assert_transaction(&mut self.inner);
-        let desc = conn
+        let desc = self
+            .conn
             .parse(&flags, query, state, &self.options.annotations)
             .await?;
         let inp_desc = desc.input().map_err(ProtocolEncodingError::with_source)?;
@@ -406,15 +507,16 @@ impl Transaction {
             &mut arg_buf,
         ))?;
 
-        conn.execute(
-            &flags,
-            query,
-            state,
-            &self.options.annotations,
-            &desc,
-            &arg_buf.freeze(),
-        )
-        .await?;
+        self.conn
+            .execute(
+                &flags,
+                query,
+                state,
+                &self.options.annotations,
+                &desc,
+                &arg_buf.freeze(),
+            )
+            .await?;
         Ok(())
     }
 }

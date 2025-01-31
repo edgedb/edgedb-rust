@@ -151,7 +151,7 @@ pub use errors::Error;
 pub use options::{RetryCondition, RetryOptions, TransactionOptions};
 pub use query_executor::{QueryExecutor, ResultVerbose};
 pub use state::{ConfigDelta, GlobalsDelta};
-pub use transaction::Transaction;
+pub use transaction::{RawTransaction, RetryingTransaction, Transaction};
 
 /// The ordered list of project filenames supported.
 pub const PROJECT_FILES: &[&str] = &["gel.toml", "edgedb.toml"];
