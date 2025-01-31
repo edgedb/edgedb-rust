@@ -39,10 +39,12 @@ pub struct Transaction {
 /// All database queries in transaction should be executed using methods on
 /// this object instead of using original [`Client`](crate::Client) instance.
 #[derive(Debug)]
+#[cfg(feature = "unstable")]
 pub struct RawTransaction {
     inner: Option<Transaction>,
 }
 
+#[cfg(feature = "unstable")]
 impl RawTransaction {
     /// Commit the transaction.
     ///
@@ -68,6 +70,7 @@ impl RawTransaction {
     }
 }
 
+#[cfg(feature = "unstable")]
 impl std::ops::Deref for RawTransaction {
     type Target = Transaction;
 
@@ -76,12 +79,14 @@ impl std::ops::Deref for RawTransaction {
     }
 }
 
+#[cfg(feature = "unstable")]
 impl std::ops::DerefMut for RawTransaction {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.inner.as_mut().unwrap()
     }
 }
 
+#[cfg(feature = "unstable")]
 impl Drop for RawTransaction {
     fn drop(&mut self) {
         if let Some(tran) = self.inner.take() {
@@ -90,6 +95,7 @@ impl Drop for RawTransaction {
     }
 }
 
+#[cfg(feature = "unstable")]
 pub(crate) async fn start(pool: &Pool, options: Arc<Options>) -> Result<RawTransaction, Error> {
     let conn = pool.acquire().await?;
 

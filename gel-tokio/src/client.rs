@@ -16,7 +16,7 @@ use crate::raw::{Options, PoolState, Response};
 use crate::raw::{Pool, QueryCapabilities};
 use crate::state::{AliasesDelta, ConfigDelta, GlobalsDelta};
 use crate::state::{AliasesModifier, ConfigModifier, Fn, GlobalsModifier};
-use crate::transaction::{RawTransaction, RetryingTransaction};
+use crate::transaction;
 use crate::ResultVerbose;
 
 /// Gel database client.
@@ -416,10 +416,10 @@ impl Client {
     /// ```
     pub async fn transaction<T, B, F>(&self, body: B) -> Result<T, Error>
     where
-        B: FnMut(RetryingTransaction) -> F,
+        B: FnMut(transaction::RetryingTransaction) -> F,
         F: Future<Output = Result<T, Error>>,
     {
-        crate::transaction::run_and_retry(&self.pool, self.options.clone(), body).await
+        transaction::run_and_retry(&self.pool, self.options.clone(), body).await
     }
 
     /// Start a transaction without the retry mechanism.
@@ -447,8 +447,8 @@ impl Client {
     /// # Example
     ///
     /// ```rust,no_run
-    /// # async fn main_() -> Result<(), edgedb_tokio::Error> {
-    /// let conn = edgedb_tokio::create_client().await?;
+    /// # async fn main_() -> Result<(), gel_tokio::Error> {
+    /// let conn = gel_tokio::create_client().await?;
     /// let mut tx = conn.transaction_raw().await?;
     /// tx.query_required_single::<i64, _>("
     ///     WITH C := UPDATE Counter SET { value := .value + 1}
@@ -459,7 +459,8 @@ impl Client {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn transaction_raw(&self) -> Result<RawTransaction, Error> {
+    #[cfg(feature = "unstable")]
+    pub async fn transaction_raw(&self) -> Result<transaction::RawTransaction, Error> {
         crate::transaction::start(&self.pool, self.options.clone()).await
     }
 

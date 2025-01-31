@@ -151,7 +151,7 @@ pub use errors::Error;
 pub use options::{RetryCondition, RetryOptions, TransactionOptions};
 pub use query_executor::{QueryExecutor, ResultVerbose};
 pub use state::{ConfigDelta, GlobalsDelta};
-pub use transaction::{RawTransaction, RetryingTransaction, Transaction};
+pub use transaction::{RetryingTransaction, Transaction};
 
 /// The ordered list of project filenames supported.
 pub const PROJECT_FILES: &[&str] = &["gel.toml", "edgedb.toml"];
@@ -161,6 +161,8 @@ pub const DEFAULT_PROJECT_FILE: &str = PROJECT_FILES[0];
 
 #[cfg(feature = "unstable")]
 pub use builder::{get_project_path, get_stash_path};
+#[cfg(feature = "unstable")]
+pub use transaction::RawTransaction;
 
 /// Create a connection to the database with default parameters
 ///
