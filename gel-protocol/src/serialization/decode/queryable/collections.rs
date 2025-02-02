@@ -6,6 +6,8 @@ use crate::serialization::decode::DecodeArrayLike;
 use std::iter::FromIterator;
 
 impl<T: Queryable> Queryable for Option<T> {
+    type Args = T::Args;
+
     fn decode(decoder: &Decoder, buf: &[u8]) -> Result<Self, DecodeError> {
         Ok(Some(T::decode(decoder, buf)?))
     }
@@ -17,7 +19,7 @@ impl<T: Queryable> Queryable for Option<T> {
     fn check_descriptor(
         ctx: &DescriptorContext,
         type_pos: TypePos,
-    ) -> Result<(), DescriptorMismatch> {
+    ) -> Result<T::Args, DescriptorMismatch> {
         T::check_descriptor(ctx, type_pos)
     }
 }
@@ -44,7 +46,7 @@ where
     fn check_descriptor(
         ctx: &DescriptorContext,
         type_pos: TypePos,
-    ) -> Result<(), DescriptorMismatch> {
+    ) -> Result<<<T as IntoIterator>::Item as Queryable>::Args, DescriptorMismatch> {
         let desc = ctx.get(type_pos)?;
         let element_type_pos = match desc {
             Descriptor::Set(desc) => desc.type_pos,
@@ -56,6 +58,8 @@ where
 }
 
 impl<T: Queryable> Queryable for Vec<T> {
+    type Args = T::Args;
+
     fn decode(decoder: &Decoder, buf: &[u8]) -> Result<Self, DecodeError> {
         Collection::<Vec<T>>::decode(decoder, buf)
     }
@@ -67,7 +71,7 @@ impl<T: Queryable> Queryable for Vec<T> {
     fn check_descriptor(
         ctx: &DescriptorContext,
         type_pos: TypePos,
-    ) -> Result<(), DescriptorMismatch> {
+    ) -> Result<T::Args, DescriptorMismatch> {
         Collection::<Vec<T>>::check_descriptor(ctx, type_pos)
     }
 }

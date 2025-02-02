@@ -19,6 +19,8 @@ pub struct Decoder {
 }
 
 pub trait Queryable: Sized {
+    type Args;
+
     fn decode(decoder: &Decoder, buf: &[u8]) -> Result<Self, DecodeError>;
     fn decode_optional(decoder: &Decoder, buf: Option<&[u8]>) -> Result<Self, DecodeError> {
         ensure!(buf.is_some(), errors::MissingRequiredElement);
@@ -27,7 +29,7 @@ pub trait Queryable: Sized {
     fn check_descriptor(
         ctx: &DescriptorContext,
         type_pos: TypePos,
-    ) -> Result<(), DescriptorMismatch>;
+    ) -> Result<Self::Args, DescriptorMismatch>;
 }
 
 #[derive(Snafu, Debug)]

@@ -135,6 +135,8 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
     let expanded = quote! {
         impl #impl_generics ::gel_protocol::queryable::Queryable
             for #name #ty_generics {
+            type Args = ();
+
             fn decode(#decoder: &::gel_protocol::queryable::Decoder, #buf: &[u8])
                 -> ::std::result::Result<Self, ::gel_protocol::errors::DecodeError>
             {

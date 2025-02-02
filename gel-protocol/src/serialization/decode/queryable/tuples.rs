@@ -7,6 +7,12 @@ use crate::serialization::decode::DecodeTupleLike;
 macro_rules! implement_tuple {
     ( $count:expr, $($name:ident,)+ ) => (
         impl<$($name:Queryable),+> Queryable for ($($name,)+) {
+            type Args = (
+                $(
+                    <$name as crate::queryable::Queryable>::Args,
+                )+
+            );
+
             fn decode(decoder: &Decoder, buf: &[u8])
                 -> Result<Self, DecodeError>
             {
@@ -20,7 +26,7 @@ macro_rules! implement_tuple {
             }
 
             fn check_descriptor(ctx: &DescriptorContext, type_pos: TypePos)
-            -> Result<(), DescriptorMismatch>
+            -> Result<Self::Args, DescriptorMismatch>
             {
                 let desc = ctx.get(type_pos)?;
                 match desc {
@@ -29,8 +35,9 @@ macro_rules! implement_tuple {
                             return Err(ctx.field_number($count, desc.element_types.len()));
                         }
                         let mut element_types = desc.element_types.iter().copied();
-                        $($name::check_descriptor(ctx, element_types.next().unwrap())?;)+
-                        Ok(())
+                        Ok((
+                            $($name::check_descriptor(ctx, element_types.next().unwrap())?,)+
+                        ))
                     }
                     _ => Err(ctx.wrong_type(desc, "tuple"))
                 }

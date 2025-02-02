@@ -29,6 +29,8 @@ impl DerefMut for Vector {
 }
 
 impl Queryable for Vector {
+    type Args = ();
+
     fn decode(_decoder: &Decoder, mut buf: &[u8]) -> Result<Self, DecodeError> {
         ensure!(buf.remaining() >= 4, errors::Underflow);
         let length = buf.get_u16() as usize;

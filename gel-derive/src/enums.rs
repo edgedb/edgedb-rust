@@ -22,6 +22,8 @@ pub fn derive_enum(s: &syn::ItemEnum) -> syn::Result<TokenStream> {
     let expanded = quote! {
         impl #impl_generics ::gel_protocol::queryable::Queryable
             for #type_name #ty_generics {
+            type Args = ();
+
             fn decode(decoder: &::gel_protocol::queryable::Decoder, buf: &[u8])
                 -> Result<Self, ::gel_protocol::errors::DecodeError>
             {
