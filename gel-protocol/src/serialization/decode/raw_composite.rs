@@ -30,8 +30,16 @@ impl<'t> DecodeTupleLike<'t> {
         Ok(elements)
     }
 
-    pub fn read(&mut self) -> Result<Option<&[u8]>, DecodeError> {
+    pub fn read(&mut self) -> Result<Option<&'t [u8]>, DecodeError> {
         self.inner.read_object_element()
+    }
+
+    pub fn read_n(&mut self, n: usize) -> Result<Vec<Option<&'t [u8]>>, DecodeError> {
+        let mut bufs = Vec::with_capacity(n);
+        for _ in 0..n {
+            bufs.push(self.read()?);
+        }
+        Ok(bufs)
     }
 
     pub fn skip_element(&mut self) -> Result<(), DecodeError> {

@@ -62,6 +62,7 @@ miette = { version = "7.2.0", features = ["fancy"] }
 gel-errors = { path = "../gel-errors", features = ["miette"] }
 test-utils = { git = "https://github.com/edgedb/test-utils.git" }
 tempfile = "3.13.0"
+tokio = { version = "1.15", features = ["rt"] }
 
 [features]
 default = ["derive", "env"]
