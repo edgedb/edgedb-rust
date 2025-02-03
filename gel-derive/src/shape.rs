@@ -17,6 +17,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
     let nfields = syn::Ident::new("nfields", Span::mixed_site());
     let elements = syn::Ident::new("elements", Span::mixed_site());
     let order = syn::Ident::new("order", Span::mixed_site());
+    let sub_args = syn::Ident::new("sub_args", Span::mixed_site());
     let (impl_generics, ty_generics, _) = s.generics.split_for_impl();
     let fields = match &s.fields {
         syn::Fields::Named(named) => {
@@ -87,6 +88,8 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
         .map(|(index, field)| {
             let fieldname = &field.name;
 
+            let index_lit = syn::LitInt::new(&index.to_string(), Span::mixed_site());
+            let sub_arg = quote! { &#sub_args.#index_lit };
             let buf = quote! { fields[#order[#index]].as_deref() };
 
             if field.attrs.json {
@@ -94,7 +97,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
                     let #fieldname: ::gel_protocol::model::Json =
                         <::gel_protocol::model::Json as
                             ::gel_protocol::queryable::Queryable>
-                        ::decode_optional(#decoder, &(), #buf)?;
+                        ::decode_optional(#decoder, #sub_arg, #buf)?;
                     let #fieldname = ::serde_json::from_str(#fieldname.as_ref())
                         .map_err(::gel_protocol::errors::decode_error)?;
                 }
@@ -102,14 +105,15 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
                 quote! {
                     let #fieldname =
                         ::gel_protocol::queryable::Queryable
-                        ::decode_optional(#decoder, &(), #buf)?;
+                        ::decode_optional(#decoder, #sub_arg, #buf)?;
                 }
             }
         })
         .collect::<TokenStream>();
     let field_checks = fields
         .iter()
-        .map(|field| {
+        .enumerate()
+        .map(|(field_index, field)| {
             let name_str = &field.str_name;
             let description_str = syn::LitStr::new(
                 &format!("field {}", field.str_name.value()),
@@ -127,18 +131,39 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
                 quote! {
                     <::gel_protocol::model::Json as
                         ::gel_protocol::queryable::Queryable>
-                        ::check_descriptor(ctx, el.type_pos)?;
+                        ::check_descriptor(ctx, el.type_pos)?
                 }
             } else {
                 quote! {
                     <#fieldtype as ::gel_protocol::queryable::Queryable>
-                        ::check_descriptor(ctx, el.type_pos)?;
+                        ::check_descriptor(ctx, el.type_pos)?
                 }
             };
 
+            let arg_ident = quote::format_ident!("arg_{field_index}");
+
             quote! {
                 #get_element
-                #check_descriptor
+                let #arg_ident = #check_descriptor;
+            }
+        })
+        .collect::<TokenStream>();
+    let construct_sub_args = fields
+        .iter()
+        .enumerate()
+        .map(|(field_index, _)| {
+            let arg_ident = quote::format_ident!("arg_{field_index}");
+            quote! { #arg_ident,  }
+        })
+        .collect::<TokenStream>();
+    let args_ty = fields
+        .iter()
+        .map(|field| {
+            if field.attrs.json {
+                quote! { (), }
+            } else {
+                let ty = &field.ty;
+                quote! { <#ty as ::gel_protocol::queryable::Queryable>::Args, }
             }
         })
         .collect::<TokenStream>();
@@ -148,11 +173,13 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
     let expanded = quote! {
         impl #impl_generics ::gel_protocol::queryable::Queryable
             for #name #ty_generics {
-            type Args = ::std::vec::Vec<usize>;
+            type Args = (::std::vec::Vec<usize>, (#args_ty));
 
-            fn decode(#decoder: &::gel_protocol::queryable::Decoder, #order: &Self::Args, #buf: &[u8])
-                -> ::std::result::Result<Self, ::gel_protocol::errors::DecodeError>
-            {
+            fn decode(
+                #decoder: &::gel_protocol::queryable::Decoder,
+                (#order, #sub_args): &Self::Args,
+                #buf: &[u8]
+            ) -> ::std::result::Result<Self, ::gel_protocol::errors::DecodeError> {
                 let #nfields = #base_fields
                     + if #decoder.has_implicit_id { 1 } else { 0 }
                     + if #decoder.has_implicit_tid { 1 } else { 0 }
@@ -204,7 +231,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
                 }
                 let mut order = ::std::vec::Vec::with_capacity(shape.elements.len());
                 #field_checks
-                ::std::result::Result::Ok(order)
+                ::std::result::Result::Ok((order, (#construct_sub_args)))
             }
         }
     };

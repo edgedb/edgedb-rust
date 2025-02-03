@@ -361,20 +361,45 @@ async fn props_in_wrong_order() -> anyhow::Result<()> {
 
     #[derive(Debug, PartialEq, Queryable)]
     struct Foo {
-        foo: String,
-        bar: i64,
+        hello: String,
+        world: i64,
     }
 
     let res = client
-        .query_required_single::<Foo, _>("select { bar := 42, foo := 'hello' }", &())
+        .query_required_single::<Foo, _>("select { world := 42, hello := 'hello' }", &())
         .await
         .unwrap();
 
     assert_eq!(
         res,
         Foo {
-            foo: "hello".into(),
-            bar: 42
+            hello: "hello".into(),
+            world: 42
+        }
+    );
+
+    #[derive(Debug, PartialEq, Queryable)]
+    struct Bar {
+        foo: Foo,
+        baz: i64,
+    }
+
+    let res = client
+        .query_required_single::<Bar, _>(
+            "select { baz := 3, foo := { world := 42, hello := 'hello' } }",
+            &(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        res,
+        Bar {
+            foo: Foo {
+                hello: "hello".into(),
+                world: 42
+            },
+            baz: 3
         }
     );
 
