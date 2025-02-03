@@ -20,7 +20,7 @@ fn decode_new() {
     let data = b"\0\0\0\x03\0\0\0\x19\0\0\0\x0fcal::local_date\
                \0\0\0\x19\0\0\0 std::anyscalar, std::anydiscrete\
                \0\0\0\x19\0\0\0\x06normal";
-    let res = ScalarType::decode(&Decoder::default(), data);
+    let res = ScalarType::decode(&Decoder::default(), &(), data);
     assert_eq!(
         res.unwrap(),
         ScalarType {
@@ -38,7 +38,7 @@ fn decode_old() {
         \xee\xfc\xb6\x12\0\0\x0b\x86\0\0\0\x10\0\0\0\0\0\0\0\0\0\0\0\0\0\0\
         \x01\x0c\0\0\0\x19\0\0\0\x0fcal::local_date\
         \0\0\0\x19\0\0\0\x0estd::anyscalar\0\0\0\x19\0\0\0\x06normal";
-    let res = ScalarType::decode(&old_decoder(), data);
+    let res = ScalarType::decode(&old_decoder(), &(), data);
     assert_eq!(
         res.unwrap(),
         ScalarType {

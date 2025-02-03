@@ -89,7 +89,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
                     let #fieldname: ::gel_protocol::model::Json =
                         <::gel_protocol::model::Json as
                             ::gel_protocol::queryable::Queryable>
-                        ::decode_optional(#decoder, #elements.read()?)?;
+                        ::decode_optional(#decoder, &(), #elements.read()?)?;
                     let #fieldname = ::serde_json::from_str(#fieldname.as_ref())
                         .map_err(::gel_protocol::errors::decode_error)?;
                 }
@@ -97,7 +97,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
                 quote! {
                     let #fieldname =
                         ::gel_protocol::queryable::Queryable
-                        ::decode_optional(#decoder, #elements.read()?)?;
+                        ::decode_optional(#decoder, &(), #elements.read()?)?;
                 }
             }
         })
@@ -135,7 +135,9 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
     let expanded = quote! {
         impl #impl_generics ::gel_protocol::queryable::Queryable
             for #name #ty_generics {
-            fn decode(#decoder: &::gel_protocol::queryable::Decoder, #buf: &[u8])
+            type Args = ();
+
+            fn decode(#decoder: &::gel_protocol::queryable::Decoder, _args: &(), #buf: &[u8])
                 -> ::std::result::Result<Self, ::gel_protocol::errors::DecodeError>
             {
                 let #nfields = #base_fields

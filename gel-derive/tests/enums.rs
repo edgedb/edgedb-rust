@@ -11,14 +11,17 @@ enum Status {
 #[test]
 fn enumeration() {
     let dec = Decoder::default();
-    assert_eq!(Status::decode(&dec, &b"Open"[..]).unwrap(), Status::Open);
     assert_eq!(
-        Status::decode(&dec, &b"Closed"[..]).unwrap(),
+        Status::decode(&dec, &(), &b"Open"[..]).unwrap(),
+        Status::Open
+    );
+    assert_eq!(
+        Status::decode(&dec, &(), &b"Closed"[..]).unwrap(),
         Status::Closed
     );
     assert_eq!(
-        Status::decode(&dec, &b"Invalid"[..]).unwrap(),
+        Status::decode(&dec, &(), &b"Invalid"[..]).unwrap(),
         Status::Invalid
     );
-    Status::decode(&dec, &b"closed"[..]).unwrap_err();
+    Status::decode(&dec, &(), &b"closed"[..]).unwrap_err();
 }

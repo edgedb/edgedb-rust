@@ -41,7 +41,9 @@ pub trait DecodeScalar: for<'a> RawCodec<'a> + Sized {
 }
 
 impl<T: DecodeScalar> Queryable for T {
-    fn decode(_decoder: &Decoder, buf: &[u8]) -> Result<Self, DecodeError> {
+    type Args = ();
+
+    fn decode(_decoder: &Decoder, _args: &(), buf: &[u8]) -> Result<Self, DecodeError> {
         RawCodec::decode(buf)
     }
     fn check_descriptor(
