@@ -24,7 +24,7 @@ pub fn derive_enum(s: &syn::ItemEnum) -> syn::Result<TokenStream> {
             for #type_name #ty_generics {
             type Args = ();
 
-            fn decode(decoder: &::gel_protocol::queryable::Decoder, buf: &[u8])
+            fn decode(decoder: &::gel_protocol::queryable::Decoder, _args: &(), buf: &[u8])
                 -> Result<Self, ::gel_protocol::errors::DecodeError>
             {
                 match buf {

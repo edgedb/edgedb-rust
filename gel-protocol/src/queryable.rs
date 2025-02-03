@@ -19,12 +19,19 @@ pub struct Decoder {
 }
 
 pub trait Queryable: Sized {
+    /// Data returned by [Queryable::check_descriptor], that can be used during decoding.
+    /// For example, this is used to pass the order of object pointers (which is sent in
+    /// type descriptors) to decode function.
     type Args;
 
-    fn decode(decoder: &Decoder, buf: &[u8]) -> Result<Self, DecodeError>;
-    fn decode_optional(decoder: &Decoder, buf: Option<&[u8]>) -> Result<Self, DecodeError> {
+    fn decode(decoder: &Decoder, args: &Self::Args, buf: &[u8]) -> Result<Self, DecodeError>;
+    fn decode_optional(
+        decoder: &Decoder,
+        args: &Self::Args,
+        buf: Option<&[u8]>,
+    ) -> Result<Self, DecodeError> {
         ensure!(buf.is_some(), errors::MissingRequiredElement);
-        Self::decode(decoder, buf.unwrap())
+        Self::decode(decoder, args, buf.unwrap())
     }
     fn check_descriptor(
         ctx: &DescriptorContext,

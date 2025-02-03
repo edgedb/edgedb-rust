@@ -23,11 +23,11 @@ pub fn derive(item: &syn::Item) -> syn::Result<TokenStream> {
             for #name #ty_generics {
             type Args = ();
 
-            fn decode(decoder: &::gel_protocol::queryable::Decoder, buf: &[u8])
+            fn decode(decoder: &::gel_protocol::queryable::Decoder, _args: &(), buf: &[u8])
                 -> Result<Self, ::gel_protocol::errors::DecodeError>
             {
                 let json: ::gel_protocol::model::Json =
-                    ::gel_protocol::queryable::Queryable::decode(decoder, buf)?;
+                    ::gel_protocol::queryable::Queryable::decode(decoder, &(), buf)?;
                 ::serde_json::from_str(json.as_ref())
                     .map_err(::gel_protocol::errors::decode_error)
             }

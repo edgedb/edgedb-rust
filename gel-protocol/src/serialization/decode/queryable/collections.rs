@@ -8,12 +8,16 @@ use std::iter::FromIterator;
 impl<T: Queryable> Queryable for Option<T> {
     type Args = T::Args;
 
-    fn decode(decoder: &Decoder, buf: &[u8]) -> Result<Self, DecodeError> {
-        Ok(Some(T::decode(decoder, buf)?))
+    fn decode(decoder: &Decoder, args: &Self::Args, buf: &[u8]) -> Result<Self, DecodeError> {
+        Ok(Some(T::decode(decoder, args, buf)?))
     }
 
-    fn decode_optional(decoder: &Decoder, buf: Option<&[u8]>) -> Result<Self, DecodeError> {
-        buf.map(|buf| T::decode(decoder, buf)).transpose()
+    fn decode_optional(
+        decoder: &Decoder,
+        args: &Self::Args,
+        buf: Option<&[u8]>,
+    ) -> Result<Self, DecodeError> {
+        buf.map(|buf| T::decode(decoder, args, buf)).transpose()
     }
 
     fn check_descriptor(
@@ -30,15 +34,23 @@ impl<T: IntoIterator + FromIterator<<T as IntoIterator>::Item>> Collection<T>
 where
     <T as IntoIterator>::Item: Queryable,
 {
-    fn decode(decoder: &Decoder, buf: &[u8]) -> Result<T, DecodeError> {
+    fn decode(
+        decoder: &Decoder,
+        args: &<<T as IntoIterator>::Item as Queryable>::Args,
+        buf: &[u8],
+    ) -> Result<T, DecodeError> {
         let elements = DecodeArrayLike::new_collection(buf)?;
-        let elements = elements.map(|e| <T as IntoIterator>::Item::decode(decoder, e?));
+        let elements = elements.map(|e| <T as IntoIterator>::Item::decode(decoder, args, e?));
         elements.collect::<Result<T, DecodeError>>()
     }
 
-    fn decode_optional(decoder: &Decoder, buf: Option<&[u8]>) -> Result<T, DecodeError> {
+    fn decode_optional(
+        decoder: &Decoder,
+        args: &<<T as IntoIterator>::Item as Queryable>::Args,
+        buf: Option<&[u8]>,
+    ) -> Result<T, DecodeError> {
         match buf {
-            Some(buf) => Self::decode(decoder, buf),
+            Some(buf) => Self::decode(decoder, args, buf),
             None => Ok(T::from_iter(std::iter::empty())),
         }
     }
@@ -60,12 +72,16 @@ where
 impl<T: Queryable> Queryable for Vec<T> {
     type Args = T::Args;
 
-    fn decode(decoder: &Decoder, buf: &[u8]) -> Result<Self, DecodeError> {
-        Collection::<Vec<T>>::decode(decoder, buf)
+    fn decode(decoder: &Decoder, args: &T::Args, buf: &[u8]) -> Result<Self, DecodeError> {
+        Collection::<Vec<T>>::decode(decoder, args, buf)
     }
 
-    fn decode_optional(decoder: &Decoder, buf: Option<&[u8]>) -> Result<Self, DecodeError> {
-        Collection::<Vec<T>>::decode_optional(decoder, buf)
+    fn decode_optional(
+        decoder: &Decoder,
+        args: &T::Args,
+        buf: Option<&[u8]>,
+    ) -> Result<Self, DecodeError> {
+        Collection::<Vec<T>>::decode_optional(decoder, args, buf)
     }
 
     fn check_descriptor(
