@@ -34,7 +34,8 @@ fn json_field() {
         \0\0\x0b\x86\0\0\0\x10\xf2\xe6F9\xd7\x04\x11\xea\
         \xa0<\x83\x9f\xd9\xbd\x88\x94\0\0\0\x19\
         \0\0\0\x02id\0\0\x0e\xda\0\0\0\x10\x01{\"field1\": 123}";
-    let res = ShapeWithJson::decode(&old_decoder(), &(), data);
+    let order = (vec![0_usize, 1], ((), ()));
+    let res = ShapeWithJson::decode(&old_decoder(), &order, data);
     assert_eq!(
         res.unwrap(),
         ShapeWithJson {

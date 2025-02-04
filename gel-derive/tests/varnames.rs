@@ -14,7 +14,8 @@ fn decode() {
     let data = b"\0\0\0\x04\0\0\0\x14\0\0\0\x08\0\0\0\0\0\0\x03\0\0\0\
                   \0\x19\0\0\0\0\0\0\0\x19\0\0\0\x0bSomeDecoder\
                   \0\0\0\x14\0\0\0\x08\0\0\0\0\0\0\0{";
-    let res = WeirdStruct::decode(&Decoder::default(), &(), data);
+    let order = (vec![0, 1, 2, 3], ((), (), (), ()));
+    let res = WeirdStruct::decode(&Decoder::default(), &order, data);
     assert_eq!(
         res.unwrap(),
         WeirdStruct {

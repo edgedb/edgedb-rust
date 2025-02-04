@@ -16,6 +16,8 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
     let buf = syn::Ident::new("buf", Span::mixed_site());
     let nfields = syn::Ident::new("nfields", Span::mixed_site());
     let elements = syn::Ident::new("elements", Span::mixed_site());
+    let order = syn::Ident::new("order", Span::mixed_site());
+    let sub_args = syn::Ident::new("sub_args", Span::mixed_site());
     let (impl_generics, ty_generics, _) = s.generics.split_for_impl();
     let fields = match &s.fields {
         syn::Fields::Named(named) => {
@@ -82,14 +84,20 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
     });
     let field_decoders = fields
         .iter()
-        .map(|field| {
+        .enumerate()
+        .map(|(index, field)| {
             let fieldname = &field.name;
+
+            let index_lit = syn::LitInt::new(&index.to_string(), Span::mixed_site());
+            let sub_arg = quote! { &#sub_args.#index_lit };
+            let buf = quote! { fields[#order[#index]].as_deref() };
+
             if field.attrs.json {
                 quote! {
                     let #fieldname: ::gel_protocol::model::Json =
                         <::gel_protocol::model::Json as
                             ::gel_protocol::queryable::Queryable>
-                        ::decode_optional(#decoder, &(), #elements.read()?)?;
+                        ::decode_optional(#decoder, #sub_arg, #buf)?;
                     let #fieldname = ::serde_json::from_str(#fieldname.as_ref())
                         .map_err(::gel_protocol::errors::decode_error)?;
                 }
@@ -97,36 +105,66 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
                 quote! {
                     let #fieldname =
                         ::gel_protocol::queryable::Queryable
-                        ::decode_optional(#decoder, &(), #elements.read()?)?;
+                        ::decode_optional(#decoder, #sub_arg, #buf)?;
                 }
             }
         })
         .collect::<TokenStream>();
     let field_checks = fields
         .iter()
-        .map(|field| {
+        .enumerate()
+        .map(|(field_index, field)| {
             let name_str = &field.str_name;
-            let mut result = quote! {
-                let el = &shape.elements[idx];
-                if(el.name != #name_str) {
-                    return ::std::result::Result::Err(ctx.wrong_field(#name_str, &el.name));
-                }
-                idx += 1;
+            let description_str = syn::LitStr::new(
+                &format!("field {}", field.str_name.value()),
+                field.str_name.span(),
+            );
+            let get_element = quote! {
+                let ::std::option::Option::Some((position, el)) = elements.get(#name_str) else {
+                    return ::std::result::Result::Err(ctx.expected(#description_str));
+                };
+                order.push(*position);
             };
+
             let fieldtype = &field.ty;
-            if field.attrs.json {
-                result.extend(quote! {
+            let check_descriptor = if field.attrs.json {
+                quote! {
                     <::gel_protocol::model::Json as
                         ::gel_protocol::queryable::Queryable>
-                        ::check_descriptor(ctx, el.type_pos)?;
-                });
+                        ::check_descriptor(ctx, el.type_pos)?
+                }
             } else {
-                result.extend(quote! {
+                quote! {
                     <#fieldtype as ::gel_protocol::queryable::Queryable>
-                        ::check_descriptor(ctx, el.type_pos)?;
-                });
+                        ::check_descriptor(ctx, el.type_pos)?
+                }
+            };
+
+            let arg_ident = quote::format_ident!("arg_{field_index}");
+
+            quote! {
+                #get_element
+                let #arg_ident = #check_descriptor;
             }
-            result
+        })
+        .collect::<TokenStream>();
+    let construct_sub_args = fields
+        .iter()
+        .enumerate()
+        .map(|(field_index, _)| {
+            let arg_ident = quote::format_ident!("arg_{field_index}");
+            quote! { #arg_ident,  }
+        })
+        .collect::<TokenStream>();
+    let args_ty = fields
+        .iter()
+        .map(|field| {
+            if field.attrs.json {
+                quote! { (), }
+            } else {
+                let ty = &field.ty;
+                quote! { <#ty as ::gel_protocol::queryable::Queryable>::Args, }
+            }
         })
         .collect::<TokenStream>();
 
@@ -135,11 +173,13 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
     let expanded = quote! {
         impl #impl_generics ::gel_protocol::queryable::Queryable
             for #name #ty_generics {
-            type Args = ();
+            type Args = (::std::vec::Vec<usize>, (#args_ty));
 
-            fn decode(#decoder: &::gel_protocol::queryable::Decoder, _args: &(), #buf: &[u8])
-                -> ::std::result::Result<Self, ::gel_protocol::errors::DecodeError>
-            {
+            fn decode(
+                #decoder: &::gel_protocol::queryable::Decoder,
+                (#order, #sub_args): &Self::Args,
+                #buf: &[u8]
+            ) -> ::std::result::Result<Self, ::gel_protocol::errors::DecodeError> {
                 let #nfields = #base_fields
                     + if #decoder.has_implicit_id { 1 } else { 0 }
                     + if #decoder.has_implicit_tid { 1 } else { 0 }
@@ -151,6 +191,7 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
                 #type_id_block
                 #type_name_block
                 #id_block
+                let fields = #elements.read_n(#field_count)?;
                 #field_decoders
                 ::std::result::Result::Ok(#name {
                     #(
@@ -160,8 +201,8 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
             }
             fn check_descriptor(
                 ctx: &::gel_protocol::queryable::DescriptorContext,
-                type_pos: ::gel_protocol::descriptors::TypePos)
-                -> ::std::result::Result<(), ::gel_protocol::queryable::DescriptorMismatch>
+                type_pos: ::gel_protocol::descriptors::TypePos
+            ) -> ::std::result::Result<Self::Args, ::gel_protocol::queryable::DescriptorMismatch>
             {
                 use ::gel_protocol::descriptors::Descriptor::ObjectShape;
                 let desc = ctx.get(type_pos)?;
@@ -174,7 +215,6 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
 
                 // TODO(tailhook) cache shape.id somewhere
                 let mut idx = 0;
-
                 #type_id_check
                 #type_name_check
                 #id_check
@@ -183,8 +223,15 @@ pub fn derive_struct(s: &syn::ItemStruct) -> syn::Result<TokenStream> {
                         #field_count, shape.elements.len())
                     );
                 }
+
+                let mut elements = ::std::collections::HashMap::with_capacity(shape.elements.len());
+                use ::std::iter::Iterator;
+                for (position, element) in shape.elements.iter().enumerate() {
+                    elements.insert(element.name.as_str(), (position, element));
+                }
+                let mut order = ::std::vec::Vec::with_capacity(shape.elements.len());
                 #field_checks
-                ::std::result::Result::Ok(())
+                ::std::result::Result::Ok((order, (#construct_sub_args)))
             }
         }
     };

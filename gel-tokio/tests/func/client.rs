@@ -292,10 +292,7 @@ async fn wrong_field_number() -> anyhow::Result<()> {
         .query_required_single::<Thing, _>("select { a := 'hello', c := 'world' }", &())
         .await
         .unwrap_err();
-    assert_eq!(
-        format!("{err:#}"),
-        "DescriptorMismatch: unexpected field c, expected b"
-    );
+    assert_eq!(format!("{err:#}"), "DescriptorMismatch: expected field b");
 
     Ok(())
 }
@@ -353,6 +350,58 @@ async fn vector() -> anyhow::Result<()> {
         .await
         .unwrap();
     assert_eq!(res, 9.9);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn props_in_wrong_order() -> anyhow::Result<()> {
+    let client = Client::new(&SERVER.config);
+    client.ensure_connected().await?;
+
+    #[derive(Debug, PartialEq, Queryable)]
+    struct Foo {
+        hello: String,
+        world: i64,
+    }
+
+    let res = client
+        .query_required_single::<Foo, _>("select { world := 42, hello := 'hello' }", &())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        res,
+        Foo {
+            hello: "hello".into(),
+            world: 42
+        }
+    );
+
+    #[derive(Debug, PartialEq, Queryable)]
+    struct Bar {
+        foo: Foo,
+        baz: i64,
+    }
+
+    let res = client
+        .query_required_single::<Bar, _>(
+            "select { baz := 3, foo := { world := 42, hello := 'hello' } }",
+            &(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        res,
+        Bar {
+            foo: Foo {
+                hello: "hello".into(),
+                world: 42
+            },
+            baz: 3
+        }
+    );
 
     Ok(())
 }
