@@ -200,6 +200,11 @@ impl Target {
         }
     }
 
+    /// Check if the target is a TCP connection.
+    pub fn is_tcp(&self) -> bool {
+        self.maybe_resolved().port().is_some()
+    }
+
     /// Get the port of the target. If the target type does not include a port,
     /// this will return None.
     pub fn port(&self) -> Option<u16> {

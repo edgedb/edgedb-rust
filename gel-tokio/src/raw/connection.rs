@@ -315,7 +315,8 @@ async fn connect2(
     mut target: Target,
     warned: &mut bool,
 ) -> Result<Connection, Error> {
-    let connector = Connector::new(target.clone()).map_err(ClientConnectionError::with_source)?;
+    let mut connector = Connector::new(target.clone()).map_err(ClientConnectionError::with_source)?;
+    connector.set_keepalive(cfg.0.tcp_keepalive);
     let mut res = connector.connect().await;
 
     // Allow plaintext reconnection if and only if ClientSecurity is InsecureDevMode and
@@ -327,7 +328,8 @@ async fn connect2(
                 warn!("TLS handshake failed, trying again without TLS");
                 *warned = true;
 
-                let connector = Connector::new(target.clone()).map_err(ClientConnectionError::with_source)?;
+                let mut connector = Connector::new(target.clone()).map_err(ClientConnectionError::with_source)?;
+                connector.set_keepalive(cfg.0.tcp_keepalive);
                 res = connector.connect().await;
             }
         }
