@@ -7,7 +7,6 @@ mod options;
 mod queries;
 mod response;
 pub mod state;
-mod tls;
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex as BlockingMutex};

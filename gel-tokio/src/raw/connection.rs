@@ -10,11 +10,10 @@ use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
 use gel_stream::{Connector, Target, TlsAlpn, TlsParameters};
-use socket2::TcpKeepalive;
+use rand::{rng, Rng};
 use tokio::io::ReadBuf;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
-use tokio::net::TcpStream;
 use tokio::time::{sleep, timeout_at, Instant};
 
 use gel_protocol::client_message::{ClientHandshake, ClientMessage};
@@ -28,7 +27,7 @@ use gel_protocol::server_message::{
 };
 use gel_protocol::value::Value;
 
-use crate::builder::{Address, Config};
+use crate::builder::Config;
 use crate::errors::{
     AuthenticationError, ClientConnectionEosError, ClientConnectionError,
     ClientConnectionFailedError, ClientConnectionFailedTemporarilyError, ClientEncodingError,
@@ -250,10 +249,10 @@ impl Connection {
 }
 
 async fn connect(cfg: &Config) -> Result<Connection, Error> {
-    let tls = TlsParameters::insecure();
+    let mut tls = TlsParameters::insecure();
     tls.alpn = TlsAlpn::new_str(&["edgedb-binary", "gel-binary"]);
     tls.sni_override = match &cfg.0.tls_server_name {
-        Some(server_name) => Some(Cow::from(server_name)),
+        Some(server_name) => Some(Cow::from(server_name.clone())),
         None => {
             let host = cfg.0.address.host();
             if let Some(host) = host {
@@ -268,7 +267,11 @@ async fn connect(cfg: &Config) -> Result<Connection, Error> {
                         Some(Cow::from(host))
                     }
                 } else {
-                    cfg.0.address.host()
+                    if let Some(host) = cfg.0.address.host() {
+                        Some(Cow::from(host.to_string()))
+                    } else {
+                        None
+                    }
                 }
             } else {
                 None
@@ -283,7 +286,7 @@ async fn connect(cfg: &Config) -> Result<Connection, Error> {
     let wait = cfg.0.wait;
     let warned = &mut false;
     let conn = loop {
-        match connect_timeout(cfg, connect2(cfg, &target, warned)).await {
+        match connect_timeout(cfg, connect2(cfg, &mut target, warned)).await {
             Err(e) if is_temporary(&e) => {
                 log::debug!("Temporary connection error: {:#}", e);
                 if wait > start.elapsed() {
@@ -310,12 +313,12 @@ async fn connect2(
     target: &mut Target,
     warned: &mut bool,
 ) -> Result<Connection, Error> {
-    let connector = Connector::new(target.clone()).map_err(|e| ClientError::with_source_ref(e).context("cannot create connector"))?;
-    let stream = connector.connect().await?;
+    let connector = Connector::new(target.clone()).map_err(ClientConnectionError::with_source)?;
+    let stream = connector.connect().await.map_err(ClientConnectionError::with_source)?;
     connect4(cfg, stream).await
 }
- 
-async fn connect4(cfg: &Config, mut stream: gel_stream::GelStream) -> Result<Connection, Error> {
+
+async fn connect4(cfg: &Config, mut stream: gel_stream::RawStream) -> Result<Connection, Error> {
     let mut proto = ProtocolVersion::current();
     let mut out_buf = BytesMut::with_capacity(8192);
     let mut in_buf = BytesMut::with_capacity(8192);
@@ -468,7 +471,7 @@ async fn connect4(cfg: &Config, mut stream: gel_stream::GelStream) -> Result<Con
 }
 
 async fn scram(
-    stream: &mut TlsStream,
+    stream: &mut gel_stream::RawStream,
     in_buf: &mut BytesMut,
     out_buf: &mut BytesMut,
     proto: &ProtocolVersion,
@@ -478,9 +481,19 @@ async fn scram(
     use gel_protocol::client_message::SaslInitialResponse;
     use gel_protocol::client_message::SaslResponse;
 
-    let scram = ScramClient::new(user, password, None);
+    let mut scram = gel_auth::scram::ClientTransaction::new(Cow::Owned(user.to_string()));
+    struct Env<'a>(&'a str);
+    impl <'a> gel_auth::scram::ClientEnvironment for Env<'a> {
+        fn get_salted_password(&self, salt: &[u8], iterations: usize) -> gel_auth::scram::Sha256Out {
+            gel_auth::scram::generate_salted_password(self.0.as_bytes(), salt, iterations)
+        }
+        fn generate_nonce(&self) -> String {
+            gel_auth::scram::generate_nonce()
+        }
+    }
 
-    let (scram, first) = scram.client_first();
+    let env = Env(password);
+    let msg = scram.process_message(&[], &env).map_err(AuthenticationError::with_source)?;
     send_messages(
         stream,
         out_buf,
@@ -488,7 +501,7 @@ async fn scram(
         &[ClientMessage::AuthenticationSaslInitialResponse(
             SaslInitialResponse {
                 method: "SCRAM-SHA-256".into(),
-                data: Bytes::copy_from_slice(first.as_bytes()),
+                data: Bytes::from(msg.unwrap_or_default()),
             },
         )],
     )
@@ -506,19 +519,14 @@ async fn scram(
             )));
         }
     };
-    let data = str::from_utf8(&data[..]).map_err(|e| {
-        ProtocolError::with_source(e).context("invalid utf-8 in SCRAM-SHA-256 auth")
-    })?;
-    let scram = scram
-        .handle_server_first(data)
-        .map_err(AuthenticationError::with_source)?;
-    let (scram, data) = scram.client_final();
+
+    let data = scram.process_message(&data, &env).map_err(AuthenticationError::with_source)?;
     send_messages(
         stream,
         out_buf,
         proto,
         &[ClientMessage::AuthenticationSaslResponse(SaslResponse {
-            data: Bytes::copy_from_slice(data.as_bytes()),
+            data: Bytes::from(data.unwrap_or_default()),
         })],
     )
     .await?;
@@ -535,11 +543,10 @@ async fn scram(
             )));
         }
     };
-    let data = str::from_utf8(&data[..])
-        .map_err(|_| ProtocolError::with_message("invalid utf-8 in SCRAM-SHA-256 auth"))?;
-    scram
-        .handle_server_final(data)
-        .map_err(|e| AuthenticationError::with_message(format!("Authentication error: {}", e)))?;
+    let data = scram.process_message(&data, &env).map_err(AuthenticationError::with_source)?;
+    if data.is_some() || !scram.success() {
+        return Err(AuthenticationError::with_message("Authentication failed"));
+    }
     loop {
         let msg = wait_message(stream, in_buf, proto).await?;
         match msg {
@@ -707,7 +714,7 @@ async fn _wait_message<'x>(
 }
 
 fn connect_sleep() -> Duration {
-    Duration::from_millis(thread_rng().gen_range(10u64..200u64))
+    Duration::from_millis(rng().random_range(10u64..200u64))
 }
 
 async fn connect_timeout<F, T>(cfg: &Config, f: F) -> Result<T, Error>

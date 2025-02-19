@@ -138,6 +138,7 @@ mod options;
 mod query_executor;
 mod sealed;
 pub mod state;
+mod tls;
 mod transaction;
 pub mod tutorial;
 

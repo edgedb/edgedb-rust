@@ -73,7 +73,7 @@ mod sealed {
 use sealed::ErrorBuilder;
 
 /// Client security mode.
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ClientSecurity {
     /// Disable security checks
     InsecureDevMode,
@@ -198,13 +198,6 @@ pub(crate) struct ConfigInner {
     tls_security: TlsSecurity,
     client_security: ClientSecurity,
     pem_certificates: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) enum Address {
-    Tcp((String, u16)),
-    #[allow(dead_code)] // TODO(tailhook), but for cli only
-    Unix(PathBuf),
 }
 
 struct DisplayAddr<'a>(Option<&'a gel_stream::Target>);
@@ -1420,7 +1413,7 @@ impl Builder {
         let mut errors = Vec::new();
 
         let mut cfg = ConfigInner {
-            address: Target::new_tcp((DEFAULT_HOST.into(), DEFAULT_PORT)),
+            address: Target::new_tcp((DEFAULT_HOST, DEFAULT_PORT)),
             tls_server_name: self.tls_server_name.clone(),
             admin: self.admin,
             user: "edgedb".into(),
@@ -1482,12 +1475,9 @@ impl Builder {
             cfg.cloud_certs = Some(cloud_certs);
         }
 
-        // we don't overwrite this param in cfg because we want
-        // `with_pem_certificates` to bump security to Strict
-        let tls_security = errors
-            .check(cfg.compute_tls_security())
-            .unwrap_or(TlsSecurity::Strict);
-        cfg.verifier = cfg.make_verifier(tls_security);
+        if cfg.client_security == ClientSecurity::Strict && (cfg.tls_security == TlsSecurity::Insecure || cfg.tls_security == TlsSecurity::NoHostVerification) {
+            errors.push(ClientError::with_message("Insecure TLS configuration is not allowed in strict mode"));
+        }
 
         (complete, Config(Arc::new(cfg)), errors)
     }
@@ -1635,7 +1625,7 @@ fn set_credentials(cfg: &mut ConfigInner, creds: &Credentials) -> Result<(), Err
 }
 
 fn validate_certs(data: &str) -> Result<(), Error> {
-    let root_store = tls::read_root_cert_pem(data).map_err(ClientError::with_source_ref)?;
+    let root_store = super::tls::read_root_cert_pem(data).map_err(ClientError::with_source_ref)?;
     if root_store.is_empty() {
         return Err(ClientError::with_message(
             "PEM data contains no certificate",
@@ -1761,18 +1751,22 @@ impl Config {
     /// Generate debug JSON string
     #[cfg(feature = "unstable")]
     pub fn to_json(&self) -> String {
+        let address = if let Some((host, port)) = self.0.address.tcp() {
+            serde_json::json!([host, port])
+        } else if let Some(path) = self.0.address.path() {
+            serde_json::json!(path.to_string_lossy())
+        } else {
+            serde_json::json!("<no address>")
+        };
         serde_json::json!({
-            "address": match &self.0.address {
-                Address::Tcp((host, port)) => serde_json::json!([host, port]),
-                Address::Unix(path) => serde_json::json!(path.to_str().unwrap()),
-            },
+            "address": address,
             "database": self.0.database,
             "branch": self.0.branch,
             "user": self.0.user,
             "password": self.0.password,
             "secretKey": self.0.secret_key,
             "tlsCAData": self.0.pem_certificates,
-            "tlsSecurity": self.0.compute_tls_security().unwrap(),
+            // "tlsSecurity": self.0.compute_tls_security().unwrap(),
             "tlsServerName": self.0.tls_server_name,
             "serverSettings": self.0.extra_dsn_query_args,
             "waitUntilAvailable": self.0.wait.as_micros() as i64,

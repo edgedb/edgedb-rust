@@ -1,13 +1,14 @@
-pub fn read_root_cert_pem(data: &str) -> anyhow::Result<rustls::RootCertStore> {
+use gel_stream::pki_types::CertificateDer;
+use std::io;
+
+pub fn read_root_cert_pem(data: &str) -> anyhow::Result<Vec<CertificateDer<'static>>> {
     let mut cursor = io::Cursor::new(data);
     let open_data = rustls_pemfile::read_all(&mut cursor);
-    let mut cert_store = rustls::RootCertStore::empty();
+    let mut certs = Vec::new();
     for item in open_data {
         match item {
             Ok(rustls_pemfile::Item::X509Certificate(data)) => {
-                cert_store
-                    .add(data)
-                    .context("certificate data found, but is not a valid root certificate")?;
+                certs.push(data);
             }
             Ok(rustls_pemfile::Item::Pkcs1Key(_))
             | Ok(rustls_pemfile::Item::Pkcs8Key(_))
@@ -25,5 +26,5 @@ pub fn read_root_cert_pem(data: &str) -> anyhow::Result<rustls::RootCertStore> {
             }
         }
     }
-    Ok(cert_store)
+    Ok(certs)
 }

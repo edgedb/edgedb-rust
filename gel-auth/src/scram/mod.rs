@@ -545,6 +545,12 @@ pub fn generate_salted_password(password: &[u8], salt: &[u8], iterations: usize)
     u.as_slice().try_into().unwrap()
 }
 
+pub fn generate_nonce() -> String {
+    let mut rng = rand::thread_rng();
+    let bytes: [u8; 32] = rng.gen();
+    BASE64_STANDARD.encode(bytes)
+}
+
 #[derive(Clone, Debug)]
 pub struct StoredKey {
     pub iterations: usize,
