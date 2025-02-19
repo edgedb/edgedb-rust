@@ -32,8 +32,8 @@ use crate::builder::Config;
 use crate::errors::{
     AuthenticationError, ClientConnectionEosError, ClientConnectionError,
     ClientConnectionFailedError, ClientConnectionFailedTemporarilyError, ClientEncodingError,
-    ClientError, Error, ErrorKind, IdleSessionTimeoutError, PasswordRequired,
-    ProtocolEncodingError, ProtocolError, ProtocolTlsError,
+    Error, ErrorKind, IdleSessionTimeoutError, PasswordRequired,
+    ProtocolEncodingError, ProtocolError,
 };
 use crate::raw::queries::Guard;
 use crate::raw::{Connection, PingInterval};
@@ -340,6 +340,15 @@ async fn connect2(
 }
 
 async fn connect4(cfg: &Config, mut stream: gel_stream::RawStream) -> Result<Connection, Error> {
+    // Allow the client to check the certificate
+    if let Some(cert_check) = &cfg.0.cert_check {
+        if let Some(handshake) = stream.handshake() {
+            if let Some(cert) = &handshake.cert {
+                cert_check.call(&cert).await?;
+            }
+        }
+    }
+
     let mut proto = ProtocolVersion::current();
     let mut out_buf = BytesMut::with_capacity(8192);
     let mut in_buf = BytesMut::with_capacity(8192);

@@ -5,9 +5,11 @@ use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::str::{self, FromStr};
 use std::sync::Arc;
 use std::time::Duration;
+use std::future::Future;
 
 use base64::Engine;
 use gel_stream::Target;
@@ -196,8 +198,50 @@ pub(crate) struct ConfigInner {
 
     instance_name: Option<InstanceName>,
     tls_security: TlsSecurity,
-    pub(crate) client_security: ClientSecurity,
+    pub client_security: ClientSecurity,
     pem_certificates: Option<String>,
+    // A certificate check function that allows for custom certificate validation.
+    pub cert_check: Option<CertCheck>
+}
+
+pub trait CertChecker: Send + Sync + 'static {
+    fn call(&self, cert: &[u8]) -> Pin<Box<dyn Future<Output = Result<(), gel_errors::Error>> + Send + Sync + 'static>>;
+}
+
+impl<T> CertChecker for T where T: for <'a> Fn(&'a [u8]) -> Pin<Box<dyn Future<Output = Result<(), gel_errors::Error>> + Send + Sync + 'static>> + Send + Sync + 'static {
+    fn call(&self, cert: &[u8]) -> Pin<Box<dyn Future<Output = Result<(), gel_errors::Error>> + Send + Sync + 'static>> {
+        (self)(cert)
+    }
+}
+
+#[derive(Clone)]
+pub struct CertCheck {
+    function: Arc<dyn CertChecker>
+}
+
+impl CertCheck {
+    pub fn new(function: impl Into<Arc<dyn CertChecker>>) -> Self {
+        Self { function: function.into() }
+    }
+
+    pub fn new_fn<F: Future<Output = Result<(), gel_errors::Error>> + Send + Sync + 'static>(function: impl for <'a> Fn(&'a [u8]) -> F + Send + Sync + 'static) -> Self {
+        let function = Arc::new(move |cert: &'_[u8]| { 
+            let fut = function(cert);
+            Box::pin(async move { fut.await }) as _
+        });
+
+        Self { function }
+    }
+
+    pub(crate) fn call(&self, cert: &[u8]) -> impl Future<Output = Result<(), gel_errors::Error>> + Send + Sync + Unpin + 'static {
+        self.function.call(cert)
+    }
+}
+
+impl std::fmt::Debug for CertCheck {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "(fn)")
+    }
 }
 
 struct DisplayAddr<'a>(Option<&'a gel_stream::Target>);
@@ -955,6 +999,7 @@ impl Builder {
                 .tls_security
                 .or_else(|| creds.map(|c| c.tls_security))
                 .unwrap_or_default(),
+            cert_check: None,
         };
 
         Ok(Config(Arc::new(cfg)))
@@ -1434,6 +1479,7 @@ impl Builder {
             tcp_keepalive: self.tcp_keepalive.unwrap_or_default().as_keepalive(),
             // Pool configuration
             max_concurrency: self.max_concurrency,
+            cert_check: None,
         };
 
         cfg.cloud_profile = self
@@ -1846,6 +1892,13 @@ impl Config {
         Ok(self)
     }
 
+    /// Return the same config with changed certificate check
+    #[cfg(any(feature = "unstable", test))]
+    pub fn with_cert_check(mut self, cert_check: CertCheck) -> Config {
+        Arc::make_mut(&mut self.0).cert_check = Some(cert_check);
+        self
+    }
+
     /// Return the same config with changed wait until available timeout
     #[cfg(any(feature = "unstable", test))]
     pub fn with_wait_until_available(mut self, wait: Duration) -> Config {
@@ -2227,5 +2280,16 @@ mod tests {
                 name
             );
         }
+    }
+
+    #[test]
+    fn test_cert_check() {
+        CertCheck::new_fn(|cert| { 
+            let cert = cert.to_vec();
+            async move {
+                assert_eq!(cert, b"cert");
+                Ok(())
+            }
+        });
     }
 }

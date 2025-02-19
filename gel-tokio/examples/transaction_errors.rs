@@ -1,4 +1,4 @@
-use rand::{thread_rng, Rng};
+use rand::{rng, Rng};
 use std::error::Error;
 
 use gel_errors::{ErrorKind, UserError};
@@ -9,7 +9,7 @@ struct CounterError;
 
 fn check_val0(val: i64) -> anyhow::Result<()> {
     if val % 3 == 0 {
-        if thread_rng().gen_bool(0.9) {
+        if rng().random_bool(0.9) {
             Err(CounterError)?;
         }
     }
@@ -18,7 +18,7 @@ fn check_val0(val: i64) -> anyhow::Result<()> {
 
 fn check_val1(val: i64) -> Result<(), CounterError> {
     if val % 3 == 1 {
-        if thread_rng().gen_bool(0.1) {
+        if rng().random_bool(0.1) {
             Err(CounterError)?;
         }
     }

@@ -75,6 +75,13 @@ impl<S: Stream, D: TlsDriver> UpgradableStream<S, D> {
             UpgradableStreamInner::Upgrading => Err(self),
         }
     }
+
+    pub fn handshake(&self) -> Option<&TlsHandshake> {
+        match &self.inner {
+            UpgradableStreamInner::Upgraded(_, handshake) => Some(handshake),
+            _ => None,
+        }
+    }
 }
 
 impl<S: Stream, D: TlsDriver> StreamUpgrade for UpgradableStream<S, D> {
