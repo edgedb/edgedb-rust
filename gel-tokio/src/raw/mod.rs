@@ -7,13 +7,13 @@ mod options;
 mod queries;
 mod response;
 pub mod state;
+mod tls;
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex as BlockingMutex};
 use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
-use tls_api::TlsStream;
 use tokio::sync::{self, Semaphore};
 
 use gel_protocol::common::{Capabilities, RawTypedesc};
@@ -66,7 +66,7 @@ pub struct Connection {
     state_desc: RawTypedesc,
     in_buf: BytesMut,
     out_buf: BytesMut,
-    stream: TlsStream,
+    stream: gel_stream::UpgradableStream<gel_stream::BaseStream>,
     ping_interval: PingInterval,
 }
 

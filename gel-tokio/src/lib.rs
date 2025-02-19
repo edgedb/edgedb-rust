@@ -129,7 +129,6 @@ unstable_pub_mods! {
     mod credentials;
     mod raw;
     mod server_params;
-    mod tls;
     mod env;
 }
 

@@ -4,17 +4,13 @@ use std::collections::HashMap;
 use std::error::Error as _;
 use std::future::{self, Future};
 use std::io;
-use std::str;
+use std::net::IpAddr;
+use std::str::{self, FromStr};
 use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
-use rand::{thread_rng, Rng};
-use rustls::pki_types::DnsName;
-use scram::ScramClient;
+use gel_stream::{Connector, Target, TlsAlpn, TlsParameters};
 use socket2::TcpKeepalive;
-use tls_api::TlsConnectorBuilder;
-use tls_api::{TlsConnector, TlsConnectorBox, TlsStream, TlsStreamDyn};
-use tls_api_not_tls::TlsConnector as PlainConnector;
 use tokio::io::ReadBuf;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
@@ -42,7 +38,6 @@ use crate::errors::{
 use crate::raw::queries::Guard;
 use crate::raw::{Connection, PingInterval};
 use crate::server_params::{ServerParam, ServerParams, SystemConfig};
-use crate::tls;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum Mode {
@@ -255,22 +250,40 @@ impl Connection {
 }
 
 async fn connect(cfg: &Config) -> Result<Connection, Error> {
-    let tls = tls::connector(cfg.0.verifier.clone())
-        .map_err(|e| ClientError::with_source_ref(e).context("cannot create TLS connector"))?;
-    match &cfg.0.address {
-        Address::Unix(path) => {
-            log::info!("Connecting via Unix `{}`", path.display());
+    let tls = TlsParameters::insecure();
+    tls.alpn = TlsAlpn::new_str(&["edgedb-binary", "gel-binary"]);
+    tls.sni_override = match &cfg.0.tls_server_name {
+        Some(server_name) => Some(Cow::from(server_name)),
+        None => {
+            let host = cfg.0.address.host();
+            if let Some(host) = host {
+                if let Ok(ip) = IpAddr::from_str(&host) {
+                    // FIXME: https://github.com/rustls/rustls/issues/184
+                    let host = format!("{}.host-for-ip.edgedb.net", ip);
+                    // for ipv6addr
+                    let host = host.replace([':', '%'], "-");
+                    if host.starts_with('-') {
+                        Some(Cow::from(format!("i{}", host)))
+                    } else {
+                        Some(Cow::from(host))
+                    }
+                } else {
+                    cfg.0.address.host()
+                }
+            } else {
+                None
+            }
         }
-        Address::Tcp((host, port)) => {
-            log::info!("Connecting via TCP {host}:{port}");
-        }
-    }
+    };
+
+    let mut target = cfg.0.address.clone();
+    target.try_set_tls(tls);
 
     let start = Instant::now();
     let wait = cfg.0.wait;
     let warned = &mut false;
     let conn = loop {
-        match connect_timeout(cfg, connect2(cfg, &tls, warned)).await {
+        match connect_timeout(cfg, connect2(cfg, &target, warned)).await {
             Err(e) if is_temporary(&e) => {
                 log::debug!("Temporary connection error: {:#}", e);
                 if wait > start.elapsed() {
@@ -294,114 +307,15 @@ async fn connect(cfg: &Config) -> Result<Connection, Error> {
 
 async fn connect2(
     cfg: &Config,
-    tls: &TlsConnectorBox,
+    target: &mut Target,
     warned: &mut bool,
 ) -> Result<Connection, Error> {
-    let stream = match connect3(cfg, tls).await {
-        Err(e) if e.is::<ProtocolTlsError>() => {
-            if !*warned {
-                log::warn!(
-                    "TLS connection failed. \
-                    Trying plaintext..."
-                );
-                *warned = true;
-            }
-            connect3(
-                cfg,
-                &PlainConnector::builder()
-                    .map_err(ClientError::with_source_ref)?
-                    .build()
-                    .map_err(ClientError::with_source_ref)?
-                    .into_dyn(),
-            )
-            .await?
-        }
-        Err(e) => return Err(e),
-        Ok(r) => match r.get_alpn_protocol() {
-            Ok(Some(protocol)) if protocol == b"edgedb-binary" => r,
-            _ => match &cfg.0.address {
-                Address::Tcp(_) => Err(ClientConnectionFailedError::with_message(
-                    "Server does not support the Gel binary protocol.",
-                ))?,
-                Address::Unix(_) => r, // don't check ALPN on UNIX stream
-            },
-        },
-    };
+    let connector = Connector::new(target.clone()).map_err(|e| ClientError::with_source_ref(e).context("cannot create connector"))?;
+    let stream = connector.connect().await?;
     connect4(cfg, stream).await
 }
-
-async fn connect3(cfg: &Config, tls: &TlsConnectorBox) -> Result<TlsStream, Error> {
-    match &cfg.0.address {
-        Address::Tcp(addr @ (host, _)) => {
-            let conn = TcpStream::connect(addr)
-                .await
-                .map_err(ClientConnectionError::with_source)?;
-
-            // Set keep-alive on the socket, but don't fail if this isn't successful
-            if let Some(keepalive) = cfg.0.tcp_keepalive {
-                let sock = socket2::SockRef::from(&conn);
-                #[cfg(target_os = "openbsd")]
-                let res = sock.set_keepalive(true);
-                #[cfg(not(target_os = "openbsd"))]
-                let res = sock.set_tcp_keepalive(
-                    &TcpKeepalive::new()
-                        .with_interval(keepalive)
-                        .with_time(keepalive),
-                );
-                if let Err(e) = res {
-                    log::warn!("Failed to set TCP keepalive: {e:?}");
-                }
-            }
-
-            let host = match &cfg.0.tls_server_name {
-                Some(server_name) => Cow::from(server_name),
-                None => {
-                    if DnsName::try_from(host.clone()).is_err() {
-                        // FIXME: https://github.com/rustls/rustls/issues/184
-                        // If self.host is neither an IP address nor a valid DNS
-                        // name, the hacks below won't make it valid anyways.
-                        let host = format!("{}.host-for-ip.edgedb.net", host);
-                        // for ipv6addr
-                        let host = host.replace([':', '%'], "-");
-                        if host.starts_with('-') {
-                            Cow::from(format!("i{}", host))
-                        } else {
-                            Cow::from(host)
-                        }
-                    } else {
-                        Cow::from(host)
-                    }
-                }
-            };
-            Ok(tls.connect(&host[..], conn).await.map_err(tls_fail)?)
-        }
-        Address::Unix(path) => {
-            #[cfg(windows)]
-            {
-                return Err(ClientError::with_message(
-                    "Unix socket are not supported on windows",
-                ));
-            }
-            #[cfg(unix)]
-            {
-                use tokio::net::UnixStream;
-                let conn = UnixStream::connect(&path)
-                    .await
-                    .map_err(ClientConnectionError::with_source)?;
-                Ok(PlainConnector::builder()
-                    .map_err(ClientError::with_source_ref)?
-                    .build()
-                    .map_err(ClientError::with_source_ref)?
-                    .into_dyn()
-                    .connect("localhost", conn)
-                    .await
-                    .map_err(tls_fail)?)
-            }
-        }
-    }
-}
-
-async fn connect4(cfg: &Config, mut stream: TlsStream) -> Result<Connection, Error> {
+ 
+async fn connect4(cfg: &Config, mut stream: gel_stream::GelStream) -> Result<Connection, Error> {
     let mut proto = ProtocolVersion::current();
     let mut out_buf = BytesMut::with_capacity(8192);
     let mut in_buf = BytesMut::with_capacity(8192);
@@ -839,16 +753,4 @@ fn is_temporary(e: &Error) -> bool {
         }
     }
     false
-}
-
-fn tls_fail(e: anyhow::Error) -> Error {
-    if let Some(e) = e.downcast_ref::<rustls::Error>() {
-        if matches!(e, rustls::Error::InvalidMessage(_)) {
-            return ProtocolTlsError::with_message(
-                "corrupt message, possibly server \
-                 does not support TLS connection.",
-            );
-        }
-    }
-    ClientConnectionError::with_source_ref(e)
 }

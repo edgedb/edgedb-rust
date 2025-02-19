@@ -26,6 +26,8 @@ pub use common::openssl::OpensslDriver;
 pub use common::rustls::RustlsDriver;
 pub use common::{stream::*, target::*, tls::*, BaseStream};
 
+pub type RawStream = UpgradableStream<BaseStream>;
+
 #[derive(Debug, thiserror::Error)]
 pub enum ConnectionError {
     /// I/O error encountered during connection operations.

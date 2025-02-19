@@ -1,10 +1,11 @@
 use std::{
     borrow::Cow,
-    net::{IpAddr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     path::Path,
     sync::Arc,
 };
 
+use derive_more::Debug;
 use rustls_pki_types::ServerName;
 
 use crate::TlsParameters;
@@ -64,6 +65,7 @@ impl TargetName {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Target {
     inner: TargetInner,
 }
@@ -147,14 +149,82 @@ impl Target {
         }
     }
 
-    /// Get the name of the target. For resolved IP addresses, this is the string representation of the IP address.
-    /// For unresolved hostnames, this is the hostname.
+    pub fn try_set_tls(&mut self, params: TlsParameters) -> Option<Option<Arc<TlsParameters>>> {
+        // Don't set TLS parameters on Unix sockets.
+        if self.maybe_resolved().path().is_some() {
+            return None;
+        }
+
+        let params = params.into();
+
+        // Temporary
+        let no_target = TargetInner::NoTls(MaybeResolvedTarget::Resolved(ResolvedTarget::SocketAddr(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0))));
+        
+        match std::mem::replace(&mut self.inner, no_target) {
+            TargetInner::NoTls(target) => {
+                self.inner = TargetInner::Tls(target, params);
+                Some(None)
+            }
+            TargetInner::Tls(target, old_params) => {
+                self.inner = TargetInner::Tls(target, params);
+                Some(Some(old_params))
+            }
+            TargetInner::StartTls(target, old_params) => {
+                self.inner = TargetInner::StartTls(target, params);
+                Some(Some(old_params))
+            }
+        }
+    }
+
+    /// Get the port of the target. If the target type does not include a port,
+    /// this will return None.
+    pub fn port(&self) -> Option<u16> {
+        self.maybe_resolved().port()
+    }
+
+    /// Set the port of the target. If the target type does not include a port,
+    /// this will return None. Otherwise, it will return the old port.
+    pub fn try_set_port(&mut self, port: u16) -> Option<u16> {
+        self.maybe_resolved_mut().set_port(port)
+    }
+
+    /// Get the path of the target. If the target type does not include a path,
+    /// this will return None.
+    pub fn path(&self) -> Option<&Path> {
+        self.maybe_resolved().path()
+    }
+
+    /// Get the host of the target. For resolved IP addresses, this is the
+    /// string representation of the IP address. For unresolved hostnames, this
+    /// is the hostname. If the target type does not include a host, this will
+    /// return None.
+    pub fn host(&self) -> Option<Cow<str>> {
+        self.maybe_resolved().host()
+    }
+
+    /// Get the name of the target. For resolved IP addresses, this is the
+    /// string representation of the IP address. For unresolved hostnames, this
+    /// is the hostname.
     pub fn name(&self) -> Option<ServerName> {
         self.maybe_resolved().name()
     }
 
+    /// Get the host and port of the target. If the target type does not include
+    /// a host or port, this will return None.
+    pub fn tcp(&self) -> Option<(Cow<str>, u16)> {
+        self.maybe_resolved().tcp()
+    }
+
     pub(crate) fn maybe_resolved(&self) -> &MaybeResolvedTarget {
         match &self.inner {
+            TargetInner::NoTls(target) => target,
+            TargetInner::Tls(target, _) => target,
+            TargetInner::StartTls(target, _) => target,
+        }
+    }
+
+    pub(crate) fn maybe_resolved_mut(&mut self) -> &mut MaybeResolvedTarget {
+        match &mut self.inner {
             TargetInner::NoTls(target) => target,
             TargetInner::Tls(target, _) => target,
             TargetInner::StartTls(target, _) => target,
@@ -228,6 +298,59 @@ impl MaybeResolvedTarget {
             MaybeResolvedTarget::Unresolved(host, _, _) => {
                 Some(ServerName::DnsName(host.to_string().try_into().ok()?))
             }
+            _ => None,
+        }
+    }
+
+    fn tcp(&self) -> Option<(Cow<str>, u16)> {
+        match self {
+            MaybeResolvedTarget::Resolved(ResolvedTarget::SocketAddr(addr)) => {
+                Some((Cow::Owned(addr.ip().to_string()), addr.port()))
+            }
+            MaybeResolvedTarget::Unresolved(host, port, _) => {
+                Some((Cow::Borrowed(host), *port))
+            }
+            _ => None,
+        }
+    }
+
+    fn path(&self) -> Option<&Path> {
+        match self {
+            MaybeResolvedTarget::Resolved(ResolvedTarget::UnixSocketAddr(addr)) => addr.as_pathname(),
+            _ => None,
+        }
+    }
+
+    fn host(&self) -> Option<Cow<str>> {
+        match self {
+            MaybeResolvedTarget::Resolved(ResolvedTarget::SocketAddr(addr)) => {
+                Some(Cow::Owned(addr.ip().to_string()))
+            }
+            MaybeResolvedTarget::Unresolved(host, _, _) => Some(Cow::Borrowed(host)),
+            _ => None,
+        }
+    }
+
+    fn port(&self) -> Option<u16> {
+        match self {
+            MaybeResolvedTarget::Resolved(ResolvedTarget::SocketAddr(addr)) => Some(addr.port()),
+            MaybeResolvedTarget::Unresolved(_, port, _) => Some(*port),
+            _ => None,
+        }
+    }
+
+    fn set_port(&mut self, new_port: u16) -> Option<u16> {
+        match self {
+            MaybeResolvedTarget::Resolved(ResolvedTarget::SocketAddr(addr)) => {
+                let old_port = addr.port();
+                addr.set_port(new_port);
+                Some(old_port)
+            },
+            MaybeResolvedTarget::Unresolved(_, port, _) => {
+                let old_port = *port;
+                *port = new_port;
+                Some(old_port)
+            },
             _ => None,
         }
     }

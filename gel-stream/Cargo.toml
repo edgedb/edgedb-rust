@@ -18,6 +18,7 @@ tokio = ["dep:tokio"]
 rustls = ["tokio", "dep:rustls", "dep:rustls-tokio-stream", "dep:rustls-platform-verifier", "dep:webpki"]
 openssl = ["tokio", "dep:openssl", "dep:tokio-openssl", "dep:foreign-types", "dep:openssl-sys"]
 hickory = ["dep:hickory-resolver"]
+keepalive = ["dep:socket2"]
 __manual_tests = []
 
 [dependencies]
@@ -29,6 +30,9 @@ futures = "0.3"
 # features we enable by default.
 
 rustls-pki-types = { version = "1", default-features = false, features = ["std"] }
+
+# feature = "keepalive"
+socket2 = { version = "0.5.2", optional = true }
 
 # feature = "tokio"
 tokio = { version = "1", optional = true, default-features = false, features = ["net", "rt"] }

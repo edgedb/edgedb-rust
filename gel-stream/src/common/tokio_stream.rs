@@ -148,6 +148,29 @@ pub enum TokioStream {
     Unix(UnixStream),
 }
 
+impl TokioStream {
+    #[cfg(feature = "keepalive")]
+    pub fn set_keepalive(&self, keepalive: Option<std::time::Duration>) -> std::io::Result<()> {
+        use socket2::*;
+        match self {
+            TokioStream::Tcp(stream) => {
+                let sock = socket2::SockRef::from(&stream);
+                if let Some(keepalive) = keepalive {
+                    sock.set_tcp_keepalive(
+                        &TcpKeepalive::new()
+                            .with_interval(keepalive)
+                            .with_time(keepalive),
+                    )
+                } else {
+                    sock.set_keepalive(false)
+                }
+            }
+            #[cfg(unix)]
+            TokioStream::Unix(_) => Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "Unix sockets do not support keepalive")),
+        }
+    }
+}
+
 impl AsyncRead for TokioStream {
     #[inline(always)]
     fn poll_read(
