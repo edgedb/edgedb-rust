@@ -9,7 +9,8 @@ use std::str::{self, FromStr};
 use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
-use gel_stream::{Connector, Target, TlsAlpn, TlsParameters};
+use gel_stream::{CommonError, ConnectionError, Connector, Target, TlsAlpn, TlsParameters};
+use log::warn;
 use rand::{rng, Rng};
 use tokio::io::ReadBuf;
 use tokio::io::{AsyncRead, AsyncReadExt};
@@ -37,6 +38,7 @@ use crate::errors::{
 use crate::raw::queries::Guard;
 use crate::raw::{Connection, PingInterval};
 use crate::server_params::{ServerParam, ServerParams, SystemConfig};
+use crate::ClientSecurity;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum Mode {
@@ -286,7 +288,7 @@ async fn connect(cfg: &Config) -> Result<Connection, Error> {
     let wait = cfg.0.wait;
     let warned = &mut false;
     let conn = loop {
-        match connect_timeout(cfg, connect2(cfg, &mut target, warned)).await {
+        match connect_timeout(cfg, connect2(cfg, target.clone(), warned)).await {
             Err(e) if is_temporary(&e) => {
                 log::debug!("Temporary connection error: {:#}", e);
                 if wait > start.elapsed() {
@@ -310,11 +312,28 @@ async fn connect(cfg: &Config) -> Result<Connection, Error> {
 
 async fn connect2(
     cfg: &Config,
-    target: &mut Target,
+    mut target: Target,
     warned: &mut bool,
 ) -> Result<Connection, Error> {
     let connector = Connector::new(target.clone()).map_err(ClientConnectionError::with_source)?;
-    let stream = connector.connect().await.map_err(ClientConnectionError::with_source)?;
+    let mut res = connector.connect().await;
+
+    // Allow plaintext reconnection if and only if ClientSecurity is InsecureDevMode and
+    // the server replied with something that looks like TLS handshake failure.
+    if let Err(ConnectionError::SslError(e)) = &res {
+        if e.common_error() == Some(CommonError::InvalidTlsProtocolData) {
+            if cfg.0.client_security == ClientSecurity::InsecureDevMode {
+                target.try_remove_tls();
+                warn!("TLS handshake failed, trying again without TLS");
+                *warned = true;
+
+                let connector = Connector::new(target.clone()).map_err(ClientConnectionError::with_source)?;
+                res = connector.connect().await;
+            }
+        }
+    }
+
+    let stream = res.map_err(ClientConnectionError::with_source)?;
     connect4(cfg, stream).await
 }
 

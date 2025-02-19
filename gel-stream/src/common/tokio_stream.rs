@@ -166,7 +166,10 @@ impl TokioStream {
                 }
             }
             #[cfg(unix)]
-            TokioStream::Unix(_) => Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "Unix sockets do not support keepalive")),
+            TokioStream::Unix(_) => Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "Unix sockets do not support keepalive",
+            )),
         }
     }
 }

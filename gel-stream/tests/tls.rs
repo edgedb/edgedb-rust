@@ -105,6 +105,27 @@ async fn spawn_tls_server<S: TlsDriver>(
     Ok((addr, accept_task))
 }
 
+async fn spawn_tcp_server<S: TlsDriver>() -> Result<
+    (
+        ResolvedTarget,
+        tokio::task::JoinHandle<Result<(), ConnectionError>>,
+    ),
+    ConnectionError,
+> {
+    let mut acceptor = Acceptor::new_tcp(SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 0))
+        .bind_explicit::<S>()
+        .await?;
+    let addr = acceptor.local_address()?;
+
+    let accept_task = tokio::spawn(async move {
+        let mut connection = acceptor.next().await.unwrap()?;
+        connection.write_all(b"No TLS!").await?;
+        connection.shutdown().await?;
+        Ok::<_, ConnectionError>(())
+    });
+    Ok((addr, accept_task))
+}
+
 macro_rules! tls_test (
     (
         $(
@@ -412,6 +433,35 @@ tls_test! {
         connect_task.await.unwrap().unwrap();
         Ok(())
     }
+
+    #[tokio::test]
+    #[ntest::timeout(30_000)]
+    async fn test_target_non_tls_server<C: TlsDriver, S: TlsDriver>() -> Result<(), ConnectionError> {
+        let (addr, accept_task) = spawn_tcp_server::<S>(
+        )
+        .await?;
+        let connect_task = tokio::spawn(async move {
+            let target = Target::new_resolved_tls(
+                addr,
+                TlsParameters {
+                    server_cert_verify: TlsServerCertVerify::Insecure,
+                    cert: Some(load_client_test_cert()),
+                    key: Some(load_client_test_key()),
+                    ..Default::default()
+                },
+            );
+            let stm = Connector::<C>::new_explicit(target).unwrap().connect().await;
+            assert!(
+                matches!(&stm, Err(ConnectionError::SslError(ssl)) if ssl.common_error() == Some(CommonError::InvalidTlsProtocolData)),
+                "{stm:?}"
+            );
+            Ok::<_, std::io::Error>(())
+        });
+        accept_task.await.unwrap().unwrap();
+        connect_task.await.unwrap().unwrap();
+        Ok(())
+    }
+
 }
 
 #[cfg(feature = "__manual_tests")]

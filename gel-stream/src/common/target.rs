@@ -158,8 +158,10 @@ impl Target {
         let params = params.into();
 
         // Temporary
-        let no_target = TargetInner::NoTls(MaybeResolvedTarget::Resolved(ResolvedTarget::SocketAddr(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0))));
-        
+        let no_target = TargetInner::NoTls(MaybeResolvedTarget::Resolved(
+            ResolvedTarget::SocketAddr(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0)),
+        ));
+
         match std::mem::replace(&mut self.inner, no_target) {
             TargetInner::NoTls(target) => {
                 self.inner = TargetInner::Tls(target, params);
@@ -172,6 +174,28 @@ impl Target {
             TargetInner::StartTls(target, old_params) => {
                 self.inner = TargetInner::StartTls(target, params);
                 Some(Some(old_params))
+            }
+        }
+    }
+
+    pub fn try_remove_tls(&mut self) -> Option<Arc<TlsParameters>> {
+        // Temporary
+        let no_target = TargetInner::NoTls(MaybeResolvedTarget::Resolved(
+            ResolvedTarget::SocketAddr(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0)),
+        ));
+
+        match std::mem::replace(&mut self.inner, no_target) {
+            TargetInner::NoTls(target) => {
+                self.inner = TargetInner::NoTls(target);
+                None
+            }
+            TargetInner::Tls(target, old_params) => {
+                self.inner = TargetInner::NoTls(target);
+                Some(old_params)
+            }
+            TargetInner::StartTls(target, old_params) => {
+                self.inner = TargetInner::NoTls(target);
+                Some(old_params)
             }
         }
     }
@@ -307,16 +331,16 @@ impl MaybeResolvedTarget {
             MaybeResolvedTarget::Resolved(ResolvedTarget::SocketAddr(addr)) => {
                 Some((Cow::Owned(addr.ip().to_string()), addr.port()))
             }
-            MaybeResolvedTarget::Unresolved(host, port, _) => {
-                Some((Cow::Borrowed(host), *port))
-            }
+            MaybeResolvedTarget::Unresolved(host, port, _) => Some((Cow::Borrowed(host), *port)),
             _ => None,
         }
     }
 
     fn path(&self) -> Option<&Path> {
         match self {
-            MaybeResolvedTarget::Resolved(ResolvedTarget::UnixSocketAddr(addr)) => addr.as_pathname(),
+            MaybeResolvedTarget::Resolved(ResolvedTarget::UnixSocketAddr(addr)) => {
+                addr.as_pathname()
+            }
             _ => None,
         }
     }
@@ -345,12 +369,12 @@ impl MaybeResolvedTarget {
                 let old_port = addr.port();
                 addr.set_port(new_port);
                 Some(old_port)
-            },
+            }
             MaybeResolvedTarget::Unresolved(_, port, _) => {
                 let old_port = *port;
                 *port = new_port;
                 Some(old_port)
-            },
+            }
             _ => None,
         }
     }

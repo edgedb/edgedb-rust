@@ -96,6 +96,10 @@ impl SslError {
                     _ => None,
                 }
             }
+            #[cfg(feature = "rustls")]
+            SslError::RustlsError(::rustls::Error::InvalidMessage(_)) => {
+                Some(CommonError::InvalidTlsProtocolData)
+            }
             #[cfg(feature = "openssl")]
             SslError::OpenSslErrorVerify(e) => match e.as_raw() {
                 openssl_sys::X509_V_ERR_HOSTNAME_MISMATCH => {
@@ -112,6 +116,28 @@ impl SslError {
                 }
                 _ => None,
             },
+            #[cfg(feature = "openssl")]
+            SslError::OpenSslErrorStack(e) => match e.errors().get(0).map(|err| err.code()) {
+                // SSL_R_WRONG_VERSION_NUMBER
+                Some(0xa00010b) => Some(CommonError::InvalidTlsProtocolData),
+                _ => None,
+            },
+            #[cfg(feature = "openssl")]
+            SslError::OpenSslError(e) => match e.code().as_raw() {
+                openssl_sys::SSL_ERROR_SSL => {
+                    match e
+                        .ssl_error()
+                        .and_then(|e| e.errors().get(0))
+                        .map(|err| err.code())
+                    {
+                        // SSL_R_WRONG_VERSION_NUMBER
+                        Some(0xa00010b) => Some(CommonError::InvalidTlsProtocolData),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            },
+            #[cfg(feature = "rustls")]
             _ => None,
         }
     }
@@ -127,4 +153,6 @@ pub enum CommonError {
     CertificateExpired,
     #[error("The certificate was issued by an untrusted authority")]
     InvalidIssuer,
+    #[error("TLS protocol error")]
+    InvalidTlsProtocolData,
 }

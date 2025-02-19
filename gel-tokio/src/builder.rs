@@ -196,7 +196,7 @@ pub(crate) struct ConfigInner {
 
     instance_name: Option<InstanceName>,
     tls_security: TlsSecurity,
-    client_security: ClientSecurity,
+    pub(crate) client_security: ClientSecurity,
     pem_certificates: Option<String>,
 }
 
