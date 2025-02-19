@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use once_cell::sync::Lazy;
-use rand::{thread_rng, Rng};
+use rand::{rng, Rng};
 
 use crate::errors::{Error, IdleSessionTimeoutError};
 
@@ -75,7 +75,7 @@ impl Default for RetryRule {
         RetryRule {
             attempts: 3,
             backoff: Arc::new(|n| {
-                Duration::from_millis(2u64.pow(n) * 100 + thread_rng().gen_range(0..100))
+                Duration::from_millis(2u64.pow(n) * 100 + rng().random_range(0..100))
             }),
         }
     }

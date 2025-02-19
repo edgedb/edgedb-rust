@@ -3,8 +3,8 @@ use std::mem;
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
+use futures_util::{Stream, StreamExt};
 use tokio::time::sleep;
-use tokio_stream::{Stream, StreamExt};
 
 use gel_errors::ProtocolOutOfOrderError;
 use gel_errors::{Error, ErrorKind};

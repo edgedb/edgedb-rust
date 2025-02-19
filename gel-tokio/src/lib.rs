@@ -129,7 +129,6 @@ unstable_pub_mods! {
     mod credentials;
     mod raw;
     mod server_params;
-    mod tls;
     mod env;
 }
 
@@ -139,6 +138,7 @@ mod options;
 mod query_executor;
 mod sealed;
 pub mod state;
+mod tls;
 mod transaction;
 pub mod tutorial;
 
