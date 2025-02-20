@@ -1,7 +1,9 @@
 #![allow(dead_code)]
-use gel_tokio::Config;
+use gel_tokio::{Builder, Config};
 use once_cell::sync::Lazy;
 use test_utils::server::ServerInstance;
+use std::{path::PathBuf, str::FromStr};
+use dtor::dtor;
 
 pub struct ServerGuard {
     instance: ServerInstance,
@@ -10,24 +12,21 @@ pub struct ServerGuard {
 
 pub static SERVER: Lazy<ServerGuard> = Lazy::new(start_server);
 
+#[dtor]
+unsafe fn stop_server() {
+    SERVER.instance.stop()
+}
+
 /// Starts gel-server. Stops it after the test process exits.
 /// Writes its log into a tmp file.
 ///
 /// To debug, run any test with --nocapture Rust flag.
-#[cfg(feature = "unstable")]
 fn start_server() -> ServerGuard {
-    use gel_tokio::Builder;
-    use std::{path::PathBuf, str::FromStr};
-
-    extern "C" fn stop_server() {
-        SERVER.instance.stop()
-    }
-
-    shutdown_hooks::add_shutdown_hook(stop_server);
-
     let instance = ServerInstance::start();
 
-    instance.apply_schema(&PathBuf::from_str("./tests/func/dbschema").unwrap());
+    let schema_dir = PathBuf::from_str(env!("CARGO_MANIFEST_DIR")).unwrap().join("functional").join("testdata").join("dbschema");
+    eprintln!("Applying schema in {schema_dir:?}");
+    instance.apply_schema(&schema_dir);
 
     let cert_data = std::fs::read_to_string(&instance.info.tls_cert_file)
         .expect("cert file should be readable");
@@ -39,9 +38,4 @@ fn start_server() -> ServerGuard {
         .constrained_build() // if this method is not found, you need --features=unstable
         .unwrap();
     ServerGuard { instance, config }
-}
-
-#[cfg(not(feature = "unstable"))]
-fn start_server() -> ServerGuard {
-    panic!("Using --feature unstable to run server tests")
 }

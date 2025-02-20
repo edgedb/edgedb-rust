@@ -2153,7 +2153,7 @@ mod tests {
     #[tokio::test]
     async fn test_read_credentials() {
         let cfg = Builder::new()
-            .credentials_file("tests/credentials1.json")
+            .credentials_file("testdata/credentials/credentials1.json")
             .build_env()
             .await
             .unwrap();
