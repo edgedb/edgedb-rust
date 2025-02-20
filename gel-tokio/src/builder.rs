@@ -4,6 +4,7 @@ use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::io;
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::str::{self, FromStr};
@@ -12,7 +13,7 @@ use std::time::Duration;
 use std::future::Future;
 
 use base64::Engine;
-use gel_stream::Target;
+use gel_stream::{Target, TlsAlpn, TlsCert, TlsParameters};
 use serde_json::from_slice;
 use sha1::Digest;
 use tokio::fs;
@@ -24,6 +25,7 @@ use crate::env::{get_env, Env};
 use crate::errors::{ClientError, Error, ErrorKind, ResultExt};
 use crate::errors::{ClientNoCredentialsError, NoCloudConfigFound};
 use crate::errors::{InterfaceError, InvalidArgumentError};
+use crate::tls::read_root_cert_pem;
 use crate::PROJECT_FILES;
 
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -196,10 +198,10 @@ pub(crate) struct ConfigInner {
 
     pub tls_server_name: Option<String>,
 
-    instance_name: Option<InstanceName>,
-    tls_security: TlsSecurity,
+    pub instance_name: Option<InstanceName>,
+    pub tls_security: TlsSecurity,
     pub client_security: ClientSecurity,
-    pem_certificates: Option<String>,
+    pub pem_certificates: Option<String>,
     // A certificate check function that allows for custom certificate validation.
     pub cert_check: Option<CertCheck>
 }
@@ -1812,7 +1814,7 @@ impl Config {
             "password": self.0.password,
             "secretKey": self.0.secret_key,
             "tlsCAData": self.0.pem_certificates,
-            // "tlsSecurity": self.0.compute_tls_security().unwrap(),
+            "tlsSecurity": format!("{:?}", self.0.compute_tls_security().unwrap()),
             "tlsServerName": self.0.tls_server_name,
             "serverSettings": self.0.extra_dsn_query_args,
             "waitUntilAvailable": self.0.wait.as_micros() as i64,
@@ -1928,10 +1930,72 @@ impl Config {
     pub fn is_creds_file_outdated(&self) -> bool {
         self.0.creds_file_outdated
     }
+
+    pub(crate) fn tls(&self) -> Result<TlsParameters, Error> {
+        let mut tls = TlsParameters::default();
+        match &self.0.pem_certificates {
+            Some(pem_certificates) => {
+                tls.root_cert = TlsCert::Custom(read_root_cert_pem(&pem_certificates)?);
+            }
+            None => {
+                if let Some(cloud_certs) = self.0.cloud_certs {
+                    tls.root_cert = TlsCert::WebpkiPlus(read_root_cert_pem(cloud_certs.root())?);
+                }
+                tls.server_cert_verify = self.0.compute_tls_security()?;
+            }
+        }
+        tls.alpn = TlsAlpn::new_str(&["edgedb-binary", "gel-binary"]);
+        tls.sni_override = match &self.0.tls_server_name {
+            Some(server_name) => Some(Cow::from(server_name.clone())),
+            None => {
+                let host = self.host();
+                if let Some(host) = host {
+                    if let Ok(ip) = IpAddr::from_str(&host) {
+                        // FIXME: https://github.com/rustls/rustls/issues/184
+                        let host = format!("{}.host-for-ip.edgedb.net", ip);
+                        // for ipv6addr
+                        let host = host.replace([':', '%'], "-");
+                        if host.starts_with('-') {
+                            Some(Cow::from(format!("i{}", host)))
+                        } else {
+                            Some(Cow::from(host))
+                        }
+                    } else {
+                        if let Some(host) = self.0.address.host() {
+                            Some(Cow::from(host.to_string()))
+                        } else {
+                            None
+                        }
+                    }
+                } else {
+                    None
+                }
+            }
+        };
+        Ok(tls)
+    }
 }
 
 impl ConfigInner {
-    
+    pub(crate) fn compute_tls_security(&self) -> Result<gel_stream::TlsServerCertVerify, Error> {
+        use gel_stream::TlsServerCertVerify::*;
+
+        match (self.client_security, self.tls_security) {
+            (ClientSecurity::Strict, TlsSecurity::Insecure | TlsSecurity::NoHostVerification) => {
+                Err(ClientError::with_message(format!(
+                    "client_security=strict and tls_security={} don't comply",
+                    self.tls_security,
+                )))
+            }
+            (ClientSecurity::Strict, _) => Ok(VerifyFull),
+            (ClientSecurity::InsecureDevMode, TlsSecurity::Default) => Ok(Insecure),
+            (_, TlsSecurity::Default) if self.pem_certificates.is_none() => Ok(VerifyFull),
+            (_, TlsSecurity::Default) => Ok(IgnoreHostname),
+            (_, TlsSecurity::Insecure) => Ok(Insecure),
+            (_, TlsSecurity::NoHostVerification) => Ok(IgnoreHostname),
+            (_, TlsSecurity::Strict) => Ok(VerifyFull),
+        }
+    }
 }
 
 impl fmt::Debug for Config {

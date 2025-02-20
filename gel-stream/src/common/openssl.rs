@@ -117,6 +117,9 @@ impl AsyncWrite for TlsStream {
     }
 }
 
+/// Cache for the WebPKI roots
+static WEB_PKI_ROOTS: OnceLock<Vec<openssl::x509::X509>> = OnceLock::new();
+
 impl TlsDriver for OpensslDriver {
     type Stream = TlsStream;
     type ClientParams = openssl::ssl::Ssl;
@@ -142,13 +145,62 @@ impl TlsDriver for OpensslDriver {
         // let mut ssl = SslConnector::builder(SslMethod::tls_client())?;
         let mut ssl = SslContextBuilder::new(SslMethod::tls_client())?;
 
-        // Load root cert
-        if let TlsCert::Custom(root) = root_cert {
-            let root = openssl::x509::X509::from_der(root.as_ref())?;
-            ssl.cert_store_mut().add_cert(root)?;
-            ssl.set_verify(SslVerifyMode::PEER);
-        } else if *server_cert_verify == TlsServerCertVerify::Insecure {
-            ssl.set_verify(SslVerifyMode::NONE);
+        // Load additional root certs
+        match root_cert {
+            TlsCert::Custom(root) | TlsCert::SystemPlus(root) | TlsCert::WebpkiPlus(root) => {
+                for root in root {
+                    let root = openssl::x509::X509::from_der(root.as_ref())?;
+                    ssl.cert_store_mut().add_cert(root)?;
+                }
+            }
+            _ => {}
+        }
+
+        match root_cert {
+            TlsCert::Webpki | TlsCert::WebpkiPlus(_) => {
+                let webpki_roots = WEB_PKI_ROOTS.get_or_init(|| {
+                    let webpki_roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS;
+                    let mut roots = Vec::new();
+                    for root in webpki_roots.iter().cloned() {
+                        // Don't expect the roots to fail to load
+                        if let Ok(root) = openssl::x509::X509::from_der(root.as_ref()) {
+                            roots.push(root);
+                        }
+                    }
+                    roots
+                });
+                for root in webpki_roots {
+                    ssl.cert_store_mut().add_cert(root.clone())?;
+                }
+            }
+            _ => {}
+        }
+
+        // Load CA certificates from system for System/SystemPlus
+        if matches!(root_cert, TlsCert::SystemPlus(_) | TlsCert::System) {
+            // DANGER! Don't use the environment variable setter functions!
+            let probe = openssl_probe::probe();
+            ssl.load_verify_locations(probe.cert_file.as_deref(), probe.cert_dir.as_deref())?;
+        }
+
+        // Configure hostname verification
+        match server_cert_verify {
+            TlsServerCertVerify::Insecure => {
+                ssl.set_verify(SslVerifyMode::NONE);
+            }
+            TlsServerCertVerify::IgnoreHostname => {
+                ssl.set_verify(SslVerifyMode::PEER);
+            }
+            TlsServerCertVerify::VerifyFull => {
+                ssl.set_verify(SslVerifyMode::PEER);
+                if let Some(hostname) = sni_override {
+                    ssl.verify_param_mut().set_host(hostname)?;
+                } else if let Some(ServerName::DnsName(hostname)) = &name {
+                    ssl.verify_param_mut().set_host(hostname.as_ref())?;
+                } else if let Some(ServerName::IpAddress(ip)) = &name {
+                    ssl.verify_param_mut().set_ip((*ip).into())?;
+                }
+            }
         }
 
         // Load CRL
@@ -191,11 +243,6 @@ impl TlsDriver for OpensslDriver {
             ssl.set_private_key(&builder)?;
         }
 
-        // Configure hostname verification
-        if *server_cert_verify == TlsServerCertVerify::VerifyFull {
-            ssl.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
-        }
-
         ssl.set_min_proto_version(min_protocol_version.map(|s| s.into()))?;
         ssl.set_max_proto_version(max_protocol_version.map(|s| s.into()))?;
 
@@ -208,16 +255,6 @@ impl TlsDriver for OpensslDriver {
                     };
                     let _ = std::io::Write::write_all(&mut file, msg.as_bytes());
                 });
-            }
-        }
-
-        if *server_cert_verify == TlsServerCertVerify::VerifyFull {
-            if let Some(hostname) = sni_override {
-                ssl.verify_param_mut().set_host(hostname)?;
-            } else if let Some(ServerName::DnsName(hostname)) = &name {
-                ssl.verify_param_mut().set_host(hostname.as_ref())?;
-            } else if let Some(ServerName::IpAddress(ip)) = &name {
-                ssl.verify_param_mut().set_ip((*ip).into())?;
             }
         }
 

@@ -37,6 +37,7 @@ impl<D: TlsDriver> Connector<D> {
 
     /// Set a keepalive for the connection. This is only supported for TCP
     /// connections and will be ignored for unix sockets.
+    #[cfg(feature = "keepalive")]
     pub fn set_keepalive(&mut self, keepalive: Option<std::time::Duration>) {
         self.keepalive = keepalive;
     }
@@ -55,6 +56,7 @@ impl<D: TlsDriver> Connector<D> {
             }
         };
 
+        #[cfg(feature = "keepalive")]
         if let Some(keepalive) = self.keepalive {
             if self.target.is_tcp() {
                 stream.set_keepalive(Some(keepalive))?;

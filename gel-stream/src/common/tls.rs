@@ -105,8 +105,16 @@ pub enum TlsCert {
     /// Use the system's default certificate.
     #[default]
     System,
+    /// Use the system's default certificate and a set of custom root
+    /// certificates.
+    SystemPlus(Vec<CertificateDer<'static>>),
+    /// Use the webpki-roots default certificate.
+    Webpki,
+    /// Use the webpki-roots default certificate and a set of custom root
+    /// certificates.
+    WebpkiPlus(Vec<CertificateDer<'static>>),
     /// Use a custom root certificate only.
-    Custom(CertificateDer<'static>),
+    Custom(Vec<CertificateDer<'static>>),
 }
 
 #[derive(Default, Debug, PartialEq, Eq)]

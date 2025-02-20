@@ -4,12 +4,11 @@ use std::collections::HashMap;
 use std::error::Error as _;
 use std::future::{self, Future};
 use std::io;
-use std::net::IpAddr;
-use std::str::{self, FromStr};
+use std::str;
 use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
-use gel_stream::{CommonError, ConnectionError, Connector, Target, TlsAlpn, TlsParameters};
+use gel_stream::{CommonError, ConnectionError, Connector, Target};
 use log::warn;
 use rand::{rng, Rng};
 use tokio::io::ReadBuf;
@@ -251,37 +250,8 @@ impl Connection {
 }
 
 async fn connect(cfg: &Config) -> Result<Connection, Error> {
-    let mut tls = TlsParameters::insecure();
-    tls.alpn = TlsAlpn::new_str(&["edgedb-binary", "gel-binary"]);
-    tls.sni_override = match &cfg.0.tls_server_name {
-        Some(server_name) => Some(Cow::from(server_name.clone())),
-        None => {
-            let host = cfg.0.address.host();
-            if let Some(host) = host {
-                if let Ok(ip) = IpAddr::from_str(&host) {
-                    // FIXME: https://github.com/rustls/rustls/issues/184
-                    let host = format!("{}.host-for-ip.edgedb.net", ip);
-                    // for ipv6addr
-                    let host = host.replace([':', '%'], "-");
-                    if host.starts_with('-') {
-                        Some(Cow::from(format!("i{}", host)))
-                    } else {
-                        Some(Cow::from(host))
-                    }
-                } else {
-                    if let Some(host) = cfg.0.address.host() {
-                        Some(Cow::from(host.to_string()))
-                    } else {
-                        None
-                    }
-                }
-            } else {
-                None
-            }
-        }
-    };
-
     let mut target = cfg.0.address.clone();
+    let tls = cfg.tls()?;
     target.try_set_tls(tls);
 
     let start = Instant::now();

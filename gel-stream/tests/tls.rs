@@ -105,7 +105,7 @@ async fn spawn_tls_server<S: TlsDriver>(
     Ok((addr, accept_task))
 }
 
-async fn spawn_tcp_server<S: TlsDriver>() -> Result<
+async fn spawn_tcp_server() -> Result<
     (
         ResolvedTarget,
         tokio::task::JoinHandle<Result<(), ConnectionError>>,
@@ -113,7 +113,7 @@ async fn spawn_tcp_server<S: TlsDriver>() -> Result<
     ConnectionError,
 > {
     let mut acceptor = Acceptor::new_tcp(SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 0))
-        .bind_explicit::<S>()
+        .bind()
         .await?;
     let addr = acceptor.local_address()?;
 
@@ -229,7 +229,7 @@ tls_test! {
             let target = Target::new_resolved_tls(
                 addr, // Raw IP
                 TlsParameters {
-                    root_cert: TlsCert::Custom(load_test_ca()),
+                    root_cert: TlsCert::Custom(vec![load_test_ca()]),
                     ..Default::default()
                 },
             );
@@ -263,7 +263,39 @@ tls_test! {
             let target = Target::new_tcp_tls(
                 ("localhost", addr.tcp().unwrap().port()),
                 TlsParameters {
-                    root_cert: TlsCert::Custom(load_test_ca()),
+                    root_cert: TlsCert::Custom(vec![load_test_ca()]),
+                    ..Default::default()
+                },
+            );
+            let mut stm = Connector::<C>::new_explicit(target).unwrap().connect().await?;
+            stm.write_all(b"Hello, world!").await?;
+            stm.shutdown().await?;
+            Ok::<_, ConnectionError>(())
+        });
+
+        accept_task.await.unwrap().unwrap();
+        connect_task.await.unwrap().unwrap();
+
+        Ok(())
+    }
+
+    /// The certificate is valid for "localhost", so the connection should succeed.
+    #[tokio::test]
+    #[ntest::timeout(30_000)]
+    async fn test_target_tcp_tls_verify_full_addl_certs_ok<C: TlsDriver, S: TlsDriver>() -> Result<(), ConnectionError> {
+        let (addr, accept_task) = spawn_tls_server::<S>(
+            Some("localhost"),
+            TlsAlpn::default(),
+            None,
+            TlsClientCertVerify::Ignore,
+        )
+        .await?;
+
+        let connect_task = tokio::spawn(async move {
+            let target = Target::new_tcp_tls(
+                ("localhost", addr.tcp().unwrap().port()),
+                TlsParameters {
+                    root_cert: TlsCert::SystemPlus(vec![load_test_ca()]),
                     ..Default::default()
                 },
             );
@@ -320,7 +352,7 @@ tls_test! {
             let target = Target::new_tcp_tls(
                 ("localhost", addr.tcp().unwrap().port()),
                 TlsParameters {
-                    root_cert: TlsCert::Custom(load_test_ca()),
+                    root_cert: TlsCert::Custom(vec![load_test_ca()]),
                     crl: load_test_crls(),
                     ..Default::default()
                 },
@@ -434,11 +466,50 @@ tls_test! {
         Ok(())
     }
 
+}
+
+macro_rules! tls_client_test (
+    (
+        $(
+            $(#[ $attr:meta ])*
+            async fn $name:ident<C: TlsDriver>() -> Result<(), ConnectionError> $body:block
+        )*
+    ) => {
+        mod rustls_client {
+            use super::*;
+            $(
+                $(#[ $attr ])*
+                async fn $name() -> Result<(), ConnectionError> {
+                    async fn test_inner<C: TlsDriver>() -> Result<(), ConnectionError> {
+                        $body
+                    }
+                    test_inner::<RustlsDriver>().await
+                }
+            )*
+        }
+
+        mod openssl_client {
+            use super::*;
+
+            $(
+                $(#[ $attr ])*
+                async fn $name() -> Result<(), ConnectionError> {
+                    async fn test_inner<C: TlsDriver>() -> Result<(), ConnectionError> {
+                        $body
+                    }
+                    test_inner::<OpensslDriver>().await
+                }
+            )*
+        }
+
+    }
+);
+
+tls_client_test! {
     #[tokio::test]
     #[ntest::timeout(30_000)]
-    async fn test_target_non_tls_server<C: TlsDriver, S: TlsDriver>() -> Result<(), ConnectionError> {
-        let (addr, accept_task) = spawn_tcp_server::<S>(
-        )
+    async fn test_target_non_tls_server<C: TlsDriver>() -> Result<(), ConnectionError> {
+        let (addr, accept_task) = spawn_tcp_server()
         .await?;
         let connect_task = tokio::spawn(async move {
             let target = Target::new_resolved_tls(
@@ -462,40 +533,81 @@ tls_test! {
         Ok(())
     }
 
-}
-
-#[cfg(feature = "__manual_tests")]
-#[tokio::test]
-async fn test_live_server_manual_google_com() {
-    let target = Target::new_tcp_tls(("www.google.com", 443), TlsParameters::default());
-    let mut stm = Connector::new(target).unwrap().connect().await.unwrap();
-    stm.write_all(b"GET / HTTP/1.0\r\n\r\n").await.unwrap();
-    // HTTP/1. .....
-    assert_eq!(stm.read_u8().await.unwrap(), b'H');
-}
-
-/// Normally connecting to Google's IP will send an invalid SNI and fail.
-/// This test ensures that we can override the SNI to the correct hostname.
-#[cfg(feature = "__manual_tests")]
-#[tokio::test]
-async fn test_live_server_google_com_override_sni() {
-    use std::net::ToSocketAddrs;
-
-    let addr = "www.google.com:443"
-        .to_socket_addrs()
-        .unwrap()
-        .into_iter()
-        .next()
-        .unwrap();
-    let target = Target::new_tcp_tls(
-        addr,
-        TlsParameters {
-            sni_override: Some(Cow::Borrowed("www.google.com")),
+    #[cfg(feature = "__manual_tests")]
+    #[tokio::test]
+    async fn test_live_server_with_custom_certs<C: TlsDriver>() -> Result<(), ConnectionError> {
+        let target = Target::new_tcp_tls(("www.google.com", 443), TlsParameters {
+            root_cert: TlsCert::Custom(vec![load_test_ca()]),
             ..Default::default()
-        },
-    );
-    let mut stm = Connector::new(target).unwrap().connect().await.unwrap();
-    stm.write_all(b"GET / HTTP/1.0\r\n\r\n").await.unwrap();
-    // HTTP/1. .....
-    assert_eq!(stm.read_u8().await.unwrap(), b'H');
+        });
+        let err = Connector::new(target).unwrap().connect().await.unwrap_err();
+        assert!(matches!(&err, ConnectionError::SslError(ssl) if ssl.common_error() == Some(CommonError::InvalidIssuer)), "{err:?}");
+        Ok(())
+    }
+
+    #[cfg(feature = "__manual_tests")]
+    #[tokio::test]
+    async fn test_live_server_with_addl_certs<C: TlsDriver>() -> Result<(), ConnectionError> {
+        let target = Target::new_tcp_tls(("www.google.com", 443), TlsParameters {
+            root_cert: TlsCert::SystemPlus(vec![load_test_ca()]),
+            ..Default::default()
+        });
+        let mut stm = Connector::new(target).unwrap().connect().await.unwrap();
+        stm.write_all(b"GET / HTTP/1.0\r\n\r\n").await.unwrap();
+        // HTTP/1. .....
+        assert_eq!(stm.read_u8().await.unwrap(), b'H');
+        Ok(())
+    }
+
+    #[cfg(feature = "__manual_tests")]
+    #[tokio::test]
+    async fn test_live_server_with_webpki_certs<C: TlsDriver>() -> Result<(), ConnectionError> {
+        let target = Target::new_tcp_tls(("www.google.com", 443), TlsParameters {
+            root_cert: TlsCert::WebpkiPlus(vec![load_test_ca()]),
+            ..Default::default()
+        });
+        let mut stm = Connector::new(target).unwrap().connect().await.unwrap();
+        stm.write_all(b"GET / HTTP/1.0\r\n\r\n").await.unwrap();
+        // HTTP/1. .....
+        assert_eq!(stm.read_u8().await.unwrap(), b'H');
+        Ok(())
+    }
+
+    #[cfg(feature = "__manual_tests")]
+    #[tokio::test]
+    async fn test_live_server_manual_google_com<C: TlsDriver>() -> Result<(), ConnectionError> {
+        let target = Target::new_tcp_tls(("www.google.com", 443), TlsParameters::default());
+        let mut stm = Connector::new(target).unwrap().connect().await.unwrap();
+        stm.write_all(b"GET / HTTP/1.0\r\n\r\n").await.unwrap();
+        // HTTP/1. .....
+        assert_eq!(stm.read_u8().await.unwrap(), b'H');
+        Ok(())
+    }
+
+    /// Normally connecting to Google's IP will send an invalid SNI and fail.
+    /// This test ensures that we can override the SNI to the correct hostname.
+    #[cfg(feature = "__manual_tests")]
+    #[tokio::test]
+    async fn test_live_server_google_com_override_sni<C: TlsDriver>() -> Result<(), ConnectionError> {
+        use std::net::ToSocketAddrs;
+
+        let addr = "www.google.com:443"
+            .to_socket_addrs()
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
+        let target = Target::new_tcp_tls(
+            addr,
+            TlsParameters {
+                sni_override: Some(Cow::Borrowed("www.google.com")),
+                ..Default::default()
+            },
+        );
+        let mut stm = Connector::new(target).unwrap().connect().await.unwrap();
+        stm.write_all(b"GET / HTTP/1.0\r\n\r\n").await.unwrap();
+        // HTTP/1. .....
+        assert_eq!(stm.read_u8().await.unwrap(), b'H');
+        Ok(())
+    }
 }

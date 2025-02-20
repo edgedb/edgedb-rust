@@ -15,8 +15,8 @@ default = ["tokio"]
 client = []
 server = []
 tokio = ["dep:tokio"]
-rustls = ["tokio", "dep:rustls", "dep:rustls-tokio-stream", "dep:rustls-platform-verifier", "dep:webpki"]
-openssl = ["tokio", "dep:openssl", "dep:tokio-openssl", "dep:foreign-types", "dep:openssl-sys"]
+rustls = ["tokio", "dep:rustls", "dep:rustls-tokio-stream", "dep:rustls-platform-verifier", "dep:webpki", "dep:webpki-roots"]
+openssl = ["tokio", "dep:openssl", "dep:tokio-openssl", "dep:foreign-types", "dep:openssl-sys", "dep:openssl-probe", "dep:webpki-root-certs"]
 hickory = ["dep:hickory-resolver"]
 keepalive = ["dep:socket2"]
 __manual_tests = []
@@ -43,6 +43,7 @@ rustls = { version = "0.23", optional = true, default-features = false, features
 rustls-tokio-stream = { version = "0.5.0", optional = true }
 rustls-platform-verifier = { version = "0.5.0", optional = true }
 webpki = { version = "0.22", optional = true }
+webpki-roots = { version = "0.26.8", optional = true }
 
 # feature = "openssl"
 openssl = { version = "0.10.71", optional = true, default-features = false }
@@ -50,6 +51,8 @@ tokio-openssl = { version = "0.6.5", optional = true, default-features = false }
 # Get these from openssl
 foreign-types = { version = "0.3", optional = true, default-features = false }
 openssl-sys = { version = "0.9", optional = true, default-features = false }
+openssl-probe = { version = "0.1.6", optional = true, default-features = false }
+webpki-root-certs = { version = "0.26.8", optional = true }
 
 [dev-dependencies]
 # Run tests with all features enabled

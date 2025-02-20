@@ -227,15 +227,25 @@ fn make_verifier(
         return Ok(Arc::new(NullVerifier));
     }
 
-    if let TlsCert::Custom(root) = root_cert {
+    if matches!(
+        root_cert,
+        TlsCert::Webpki | TlsCert::WebpkiPlus(_) | TlsCert::Custom(_)
+    ) {
         let mut roots = RootCertStore::empty();
-        let (loaded, ignored) = roots.add_parsable_certificates([root.clone()]);
-        if loaded == 0 || ignored > 0 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Invalid certificate",
-            )
-            .into());
+        if matches!(root_cert, TlsCert::Webpki | TlsCert::WebpkiPlus(_)) {
+            let webpki_roots = webpki_roots::TLS_SERVER_ROOTS;
+            roots.extend(webpki_roots.iter().cloned());
+        }
+
+        if let TlsCert::Custom(root) = root_cert {
+            let (loaded, ignored) = roots.add_parsable_certificates(root.iter().cloned());
+            if loaded == 0 || ignored > 0 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Invalid certificate",
+                )
+                .into());
+            }
         }
 
         let verifier = WebPkiServerVerifier::builder(Arc::new(roots))
@@ -247,13 +257,19 @@ fn make_verifier(
         return Ok(verifier);
     }
 
-    if *server_cert_verify == TlsServerCertVerify::IgnoreHostname {
-        return Ok(Arc::new(IgnoreHostnameVerifier::new(Arc::new(
-            Verifier::new(),
-        ))));
-    }
+    let verifier = if let TlsCert::SystemPlus(roots) = root_cert {
+        Verifier::new_with_extra_roots(roots.iter().cloned())?
+    } else {
+        Verifier::new()
+    };
 
-    Ok(Arc::new(Verifier::new()))
+    let verifier = if *server_cert_verify == TlsServerCertVerify::IgnoreHostname {
+        Arc::new(IgnoreHostnameVerifier::new(Arc::new(verifier))) as Arc<dyn ServerCertVerifier>
+    } else {
+        Arc::new(verifier)
+    };
+
+    Ok(verifier)
 }
 
 #[derive(Debug)]
