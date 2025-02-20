@@ -4,14 +4,16 @@ use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::io;
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::str::{self, FromStr};
 use std::sync::Arc;
 use std::time::Duration;
+use std::future::Future;
 
 use base64::Engine;
-use rustls::client::danger::ServerCertVerifier;
-use rustls::crypto;
+use gel_stream::{Target, TlsAlpn, TlsCert, TlsParameters};
 use serde_json::from_slice;
 use sha1::Digest;
 use tokio::fs;
@@ -23,7 +25,8 @@ use crate::env::{get_env, Env};
 use crate::errors::{ClientError, Error, ErrorKind, ResultExt};
 use crate::errors::{ClientNoCredentialsError, NoCloudConfigFound};
 use crate::errors::{InterfaceError, InvalidArgumentError};
-use crate::{tls, PROJECT_FILES};
+use crate::tls::read_root_cert_pem;
+use crate::PROJECT_FILES;
 
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub const DEFAULT_WAIT: Duration = Duration::from_secs(30);
@@ -33,8 +36,6 @@ pub const DEFAULT_HOST: &str = "localhost";
 pub const DEFAULT_PORT: u16 = 5656;
 const DOMAIN_LABEL_MAX_LENGTH: usize = 63;
 const CLOUD_INSTANCE_NAME_MAX_LENGTH: usize = DOMAIN_LABEL_MAX_LENGTH - 2 + 1; // "--" -> "/"
-
-type Verifier = Arc<dyn ServerCertVerifier>;
 
 mod sealed {
     use super::*;
@@ -76,7 +77,7 @@ mod sealed {
 use sealed::ErrorBuilder;
 
 /// Client security mode.
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ClientSecurity {
     /// Disable security checks
     InsecureDevMode,
@@ -171,9 +172,9 @@ impl Config {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct ConfigInner {
-    pub address: Address,
+    pub address: gel_stream::Target,
     pub admin: bool,
     pub user: String,
     pub password: Option<String>,
@@ -181,7 +182,6 @@ pub(crate) struct ConfigInner {
     pub cloud_profile: Option<String>,
     pub database: String,
     pub branch: String,
-    pub verifier: Verifier,
     pub wait: Duration,
     pub connect_timeout: Duration,
     pub cloud_certs: Option<CloudCerts>,
@@ -198,20 +198,55 @@ pub(crate) struct ConfigInner {
 
     pub tls_server_name: Option<String>,
 
-    instance_name: Option<InstanceName>,
-    tls_security: TlsSecurity,
-    client_security: ClientSecurity,
-    pem_certificates: Option<String>,
+    pub instance_name: Option<InstanceName>,
+    pub tls_security: TlsSecurity,
+    pub client_security: ClientSecurity,
+    pub pem_certificates: Option<String>,
+    // A certificate check function that allows for custom certificate validation.
+    pub cert_check: Option<CertCheck>
 }
 
-#[derive(Debug, Clone)]
-pub(crate) enum Address {
-    Tcp((String, u16)),
-    #[allow(dead_code)] // TODO(tailhook), but for cli only
-    Unix(PathBuf),
+pub trait CertChecker: Send + Sync + 'static {
+    fn call(&self, cert: &[u8]) -> Pin<Box<dyn Future<Output = Result<(), gel_errors::Error>> + Send + Sync + 'static>>;
 }
 
-struct DisplayAddr<'a>(Option<&'a Address>);
+impl<T> CertChecker for T where T: for <'a> Fn(&'a [u8]) -> Pin<Box<dyn Future<Output = Result<(), gel_errors::Error>> + Send + Sync + 'static>> + Send + Sync + 'static {
+    fn call(&self, cert: &[u8]) -> Pin<Box<dyn Future<Output = Result<(), gel_errors::Error>> + Send + Sync + 'static>> {
+        (self)(cert)
+    }
+}
+
+#[derive(Clone)]
+pub struct CertCheck {
+    function: Arc<dyn CertChecker>
+}
+
+impl CertCheck {
+    pub fn new(function: impl Into<Arc<dyn CertChecker>>) -> Self {
+        Self { function: function.into() }
+    }
+
+    pub fn new_fn<F: Future<Output = Result<(), gel_errors::Error>> + Send + Sync + 'static>(function: impl for <'a> Fn(&'a [u8]) -> F + Send + Sync + 'static) -> Self {
+        let function = Arc::new(move |cert: &'_[u8]| { 
+            let fut = function(cert);
+            Box::pin(async move { fut.await }) as _
+        });
+
+        Self { function }
+    }
+
+    pub(crate) fn call(&self, cert: &[u8]) -> impl Future<Output = Result<(), gel_errors::Error>> + Send + Sync + Unpin + 'static {
+        self.function.call(cert)
+    }
+}
+
+impl std::fmt::Debug for CertCheck {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "(fn)")
+    }
+}
+
+struct DisplayAddr<'a>(Option<&'a gel_stream::Target>);
 
 struct DsnHelper<'a> {
     url: &'a url::Url,
@@ -456,12 +491,12 @@ fn cloud_config_file(profile: &str) -> anyhow::Result<PathBuf> {
 
 impl fmt::Display for DisplayAddr<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self.0 {
-            Some(Address::Tcp((host, port))) => {
-                write!(f, "{}:{}", host, port)
-            }
-            Some(Address::Unix(path)) => write!(f, "unix:{}", path.display()),
-            None => write!(f, "<no address>"),
+        if let Some((host, port)) = self.0.and_then(Target::tcp) {
+            write!(f, "{}:{}", host, port)
+        } else if let Some(path) = self.0.and_then(Target::path) {
+            write!(f, "unix:{}", path.display())
+        } else {
+            write!(f, "<no address>")
         }
     }
 }
@@ -892,7 +927,10 @@ impl Builder {
     pub fn constrained_build(&self) -> Result<Config, Error> {
         let address = if let Some(unix_path) = &self.unix_path {
             let port = self.port.unwrap_or(DEFAULT_PORT);
-            Address::Unix(resolve_unix(unix_path, port, self.admin))
+            Target::new_unix_path(resolve_unix(unix_path, port, self.admin))
+                .map_err(|e| ClientError::with_message(format!(
+                    "Invalid unix path: {e}"
+                )))?
         } else if let Some(credentials) = &self.credentials {
             let host = self
                 .host
@@ -900,9 +938,9 @@ impl Builder {
                 .or_else(|| credentials.host.clone())
                 .unwrap_or(DEFAULT_HOST.into());
             let port = self.port.unwrap_or(credentials.port);
-            Address::Tcp((host, port))
+            Target::new_tcp((host, port))
         } else {
-            Address::Tcp((
+            Target::new_tcp((
                 self.host.clone().unwrap_or_else(|| DEFAULT_HOST.into()),
                 self.port.unwrap_or(DEFAULT_PORT),
             ))
@@ -919,7 +957,7 @@ impl Builder {
             ));
         }
         let creds = self.credentials.as_ref();
-        let mut cfg = ConfigInner {
+        let cfg = ConfigInner {
             address,
             tls_server_name: self.tls_server_name.clone(),
             admin: self.admin,
@@ -958,16 +996,13 @@ impl Builder {
             // Pool configuration
             max_concurrency: self.max_concurrency,
 
-            // Temporary placeholders
-            verifier: Arc::new(tls::NullVerifier),
             client_security: self.client_security.unwrap_or_default(),
             tls_security: self
                 .tls_security
                 .or_else(|| creds.map(|c| c.tls_security))
                 .unwrap_or_default(),
+            cert_check: None,
         };
-
-        cfg.verifier = cfg.make_verifier(cfg.compute_tls_security()?);
 
         Ok(Config(Arc::new(cfg)))
     }
@@ -1032,7 +1067,7 @@ impl Builder {
                 )));
             }
             conflict = Some("host");
-            cfg.address = Address::Tcp((host.into(), self.port.unwrap_or(DEFAULT_PORT)));
+            cfg.address = Target::new_tcp((host, self.port.unwrap_or(DEFAULT_PORT)));
         } else if let Some(port) = &self.port {
             if let Some(conflict) = conflict {
                 errors.push(InvalidArgumentError::with_message(format!(
@@ -1040,9 +1075,7 @@ impl Builder {
                     conflict
                 )));
             }
-            if let Address::Tcp((_, ref mut portref)) = &mut cfg.address {
-                *portref = *port
-            }
+            _ = cfg.address.try_set_port(*port);
         }
         if let Some(unix_path) = &self.unix_path {
             if let Some(conflict) = conflict {
@@ -1055,12 +1088,14 @@ impl Builder {
             {
                 conflict = Some("unix_path");
             }
-            let port = match cfg.address {
-                Address::Tcp((_, port)) => port,
-                Address::Unix(_) => DEFAULT_PORT,
-            };
+            let port = cfg.address.port().unwrap_or(DEFAULT_PORT);
             let full_path = resolve_unix(unix_path, port, self.admin);
-            cfg.address = Address::Unix(full_path);
+            match Target::new_unix_path(full_path) {
+                Ok(target) => cfg.address = target,
+                Err(e) => errors.push(ClientError::with_message(format!(
+                    "Invalid unix path: {e}"
+                ))),
+            }
         }
         if let Some((d, b)) = &self.database.as_ref().zip(self.branch.as_ref()) {
             if d != b {
@@ -1152,12 +1187,10 @@ impl Builder {
             errors.check(read_credentials(cfg, fpath).await);
         }
         if let Some(host) = errors.maybe(host) {
-            cfg.address = Address::Tcp((host, DEFAULT_PORT));
+            cfg.address = Target::new_tcp((host, DEFAULT_PORT));
         }
         if let Some(port) = errors.maybe(port) {
-            if let Address::Tcp((_, ref mut portref)) = &mut cfg.address {
-                *portref = port.into();
-            }
+            _ = cfg.address.try_set_port(port.into());
         }
 
         // This code needs a total rework...
@@ -1263,7 +1296,7 @@ impl Builder {
         if let Some(value) = errors.maybe(dsn.retrieve_tls_server_name().await) {
             cfg.tls_server_name = Some(value)
         }
-        cfg.address = Address::Tcp((host, port));
+        cfg.address = Target::new_tcp((host, port));
         cfg.admin = dsn.admin;
         if let Some(value) = errors.maybe(dsn.retrieve_user().await) {
             cfg.user = value
@@ -1427,7 +1460,7 @@ impl Builder {
         let mut errors = Vec::new();
 
         let mut cfg = ConfigInner {
-            address: Address::Tcp((DEFAULT_HOST.into(), DEFAULT_PORT)),
+            address: Target::new_tcp((DEFAULT_HOST, DEFAULT_PORT)),
             tls_server_name: self.tls_server_name.clone(),
             admin: self.admin,
             user: "edgedb".into(),
@@ -1448,9 +1481,7 @@ impl Builder {
             tcp_keepalive: self.tcp_keepalive.unwrap_or_default().as_keepalive(),
             // Pool configuration
             max_concurrency: self.max_concurrency,
-
-            // Temporary placeholders
-            verifier: Arc::new(tls::NullVerifier),
+            cert_check: None,
         };
 
         cfg.cloud_profile = self
@@ -1492,12 +1523,9 @@ impl Builder {
             cfg.cloud_certs = Some(cloud_certs);
         }
 
-        // we don't overwrite this param in cfg because we want
-        // `with_pem_certificates` to bump security to Strict
-        let tls_security = errors
-            .check(cfg.compute_tls_security())
-            .unwrap_or(TlsSecurity::Strict);
-        cfg.verifier = cfg.make_verifier(tls_security);
+        if cfg.client_security == ClientSecurity::Strict && (cfg.tls_security == TlsSecurity::Insecure || cfg.tls_security == TlsSecurity::NoHostVerification) {
+            errors.push(ClientError::with_message("Insecure TLS configuration is not allowed in strict mode"));
+        }
 
         (complete, Config(Arc::new(cfg)), errors)
     }
@@ -1582,7 +1610,7 @@ async fn read_instance(cfg: &mut ConfigInner, name: &InstanceName) -> Result<(),
             let msg = format!("{}/{}", org_slug, name);
             let checksum = crc16::State::<crc16::XMODEM>::calculate(msg.as_bytes());
             let dns_bucket = format!("c-{:02}", checksum % 100);
-            cfg.address = Address::Tcp((
+            cfg.address = Target::new_tcp((
                 format!("{}--{}.{}.i.{}", name, org_slug, dns_bucket, dns_zone),
                 DEFAULT_PORT,
             ));
@@ -1618,7 +1646,7 @@ fn set_credentials(cfg: &mut ConfigInner, creds: &Credentials) -> Result<(), Err
         validate_certs(cert_data).context("invalid certificates in `tls_ca`")?;
         cfg.pem_certificates = Some(cert_data.into());
     }
-    cfg.address = Address::Tcp((
+    cfg.address = Target::new_tcp((
         creds.host.clone().unwrap_or_else(|| DEFAULT_HOST.into()),
         creds.port,
     ));
@@ -1645,7 +1673,7 @@ fn set_credentials(cfg: &mut ConfigInner, creds: &Credentials) -> Result<(), Err
 }
 
 fn validate_certs(data: &str) -> Result<(), Error> {
-    let root_store = tls::read_root_cert_pem(data).map_err(ClientError::with_source_ref)?;
+    let root_store = super::tls::read_root_cert_pem(data).map_err(ClientError::with_source_ref)?;
     if root_store.is_empty() {
         return Err(ClientError::with_message(
             "PEM data contains no certificate",
@@ -1732,9 +1760,9 @@ impl Config {
 
     /// Extract credentials from the [Builder] so they can be saved as JSON.
     pub fn as_credentials(&self) -> Result<Credentials, Error> {
-        let (host, port) = match &self.0.address {
-            Address::Tcp(pair) => pair,
-            Address::Unix(_) => {
+        let (host, port) = match self.0.address.tcp() {
+            Some(pair) => pair,
+            None => {
                 return Err(ClientError::with_message(
                     "Unix socket address cannot \
                     be saved as credentials file",
@@ -1743,8 +1771,8 @@ impl Config {
         };
 
         Ok(Credentials {
-            host: Some(host.clone()),
-            port: *port,
+            host: Some(host.to_string()),
+            port,
             user: self.0.user.clone(),
             password: self.0.password.clone(),
             branch: if self.0.branch == "__default__" {
@@ -1771,18 +1799,22 @@ impl Config {
     /// Generate debug JSON string
     #[cfg(feature = "unstable")]
     pub fn to_json(&self) -> String {
+        let address = if let Some((host, port)) = self.0.address.tcp() {
+            serde_json::json!([host, port])
+        } else if let Some(path) = self.0.address.path() {
+            serde_json::json!(path.to_string_lossy())
+        } else {
+            serde_json::json!("<no address>")
+        };
         serde_json::json!({
-            "address": match &self.0.address {
-                Address::Tcp((host, port)) => serde_json::json!([host, port]),
-                Address::Unix(path) => serde_json::json!(path.to_str().unwrap()),
-            },
+            "address": address,
             "database": self.0.database,
             "branch": self.0.branch,
             "user": self.0.user,
             "password": self.0.password,
             "secretKey": self.0.secret_key,
             "tlsCAData": self.0.pem_certificates,
-            "tlsSecurity": self.0.compute_tls_security().unwrap(),
+            "tlsSecurity": format!("{:?}", self.0.compute_tls_security().unwrap()),
             "tlsServerName": self.0.tls_server_name,
             "serverSettings": self.0.extra_dsn_query_args,
             "waitUntilAvailable": self.0.wait.as_micros() as i64,
@@ -1791,19 +1823,13 @@ impl Config {
     }
 
     /// Server host name (if doesn't use unix socket)
-    pub fn host(&self) -> Option<&str> {
-        match self.0.address {
-            Address::Tcp((ref host, _)) => Some(host),
-            _ => None,
-        }
+    pub fn host(&self) -> Option<Cow<str>> {
+        self.0.address.host()
     }
 
     /// Server port (if doesn't use unix socket)
     pub fn port(&self) -> Option<u16> {
-        match self.0.address {
-            Address::Tcp((_, port)) => Some(port),
-            _ => None,
-        }
+        self.0.address.port()
     }
 
     /// Instance name if set and if it's local
@@ -1828,20 +1854,16 @@ impl Config {
     ///
     /// If not connected via unix socket
     pub fn http_url(&self, tls: bool) -> Option<String> {
-        match &self.0.address {
-            Address::Tcp((host, port)) => {
-                let s = if tls { "s" } else { "" };
-                Some(format!("http{}://{}:{}", s, host, port))
-            }
-            Address::Unix(_) => None,
+        if let Some((host, port)) = self.0.address.tcp() {
+            let s = if tls { "s" } else { "" };
+            Some(format!("http{}://{}:{}", s, host, port))
+        } else {
+            None
         }
     }
 
     fn _get_unix_path(&self) -> Result<Option<PathBuf>, Error> {
-        match &self.0.address {
-            Address::Unix(path) => Ok(Some(path.clone())),
-            Address::Tcp(_) => Ok(None),
-        }
+        Ok(self.0.address.path().map(|p| p.to_path_buf()))
     }
 
     /// Return the same config with changed password
@@ -1872,6 +1894,13 @@ impl Config {
         Ok(self)
     }
 
+    /// Return the same config with changed certificate check
+    #[cfg(any(feature = "unstable", test))]
+    pub fn with_cert_check(mut self, cert_check: CertCheck) -> Config {
+        Arc::make_mut(&mut self.0).cert_check = Some(cert_check);
+        self
+    }
+
     /// Return the same config with changed wait until available timeout
     #[cfg(any(feature = "unstable", test))]
     pub fn with_wait_until_available(mut self, wait: Duration) -> Config {
@@ -1885,14 +1914,15 @@ impl Config {
         validate_certs(pem).context("invalid PEM certificate")?;
         let cfg = Arc::make_mut(&mut self.0);
         cfg.pem_certificates = Some(pem.to_owned());
-        cfg.verifier = cfg.make_verifier(cfg.compute_tls_security()?);
         Ok(self)
     }
 
     #[cfg(feature = "admin_socket")]
-    pub fn with_unix_path(mut self, path: &Path) -> Config {
-        Arc::make_mut(&mut self.0).address = Address::Unix(path.into());
-        self
+    pub fn with_unix_path(mut self, path: &Path) -> Result<Config, Error> {
+        Arc::make_mut(&mut self.0).address = Target::new_unix_path(path).map_err(|e| ClientError::with_message(format!(
+            "Invalid unix path: {e}"
+        )))?;
+        Ok(self)
     }
 
     /// Returns true if credentials file is in outdated format
@@ -1901,80 +1931,69 @@ impl Config {
         self.0.creds_file_outdated
     }
 
-    /// Return the certificate store of the config
-    #[cfg(any(feature = "unstable", test))]
-    pub fn root_cert_store(&self) -> Result<rustls::RootCertStore, Error> {
-        Ok(self.0.root_cert_store())
-    }
-
-    /// Return the same config with changed certificate verifier
-    ///
-    /// Command-line tool uses this for interactive verifier
-    #[cfg(any(feature = "unstable", test))]
-    pub fn with_cert_verifier(mut self, verifier: Verifier) -> Config {
-        Arc::make_mut(&mut self.0).verifier = verifier;
-        self
+    pub(crate) fn tls(&self) -> Result<TlsParameters, Error> {
+        let mut tls = TlsParameters::default();
+        match &self.0.pem_certificates {
+            Some(pem_certificates) => {
+                tls.root_cert = TlsCert::Custom(read_root_cert_pem(&pem_certificates)?);
+            }
+            None => {
+                if let Some(cloud_certs) = self.0.cloud_certs {
+                    tls.root_cert = TlsCert::WebpkiPlus(read_root_cert_pem(cloud_certs.root())?);
+                }
+                tls.server_cert_verify = self.0.compute_tls_security()?;
+            }
+        }
+        tls.alpn = TlsAlpn::new_str(&["edgedb-binary", "gel-binary"]);
+        tls.sni_override = match &self.0.tls_server_name {
+            Some(server_name) => Some(Cow::from(server_name.clone())),
+            None => {
+                let host = self.host();
+                if let Some(host) = host {
+                    if let Ok(ip) = IpAddr::from_str(&host) {
+                        // FIXME: https://github.com/rustls/rustls/issues/184
+                        let host = format!("{}.host-for-ip.edgedb.net", ip);
+                        // for ipv6addr
+                        let host = host.replace([':', '%'], "-");
+                        if host.starts_with('-') {
+                            Some(Cow::from(format!("i{}", host)))
+                        } else {
+                            Some(Cow::from(host))
+                        }
+                    } else {
+                        if let Some(host) = self.0.address.host() {
+                            Some(Cow::from(host.to_string()))
+                        } else {
+                            None
+                        }
+                    }
+                } else {
+                    None
+                }
+            }
+        };
+        Ok(tls)
     }
 }
 
 impl ConfigInner {
-    fn compute_tls_security(&self) -> Result<TlsSecurity, Error> {
-        use TlsSecurity::*;
+    pub(crate) fn compute_tls_security(&self) -> Result<gel_stream::TlsServerCertVerify, Error> {
+        use gel_stream::TlsServerCertVerify::*;
 
         match (self.client_security, self.tls_security) {
-            (ClientSecurity::Strict, Insecure | NoHostVerification) => {
+            (ClientSecurity::Strict, TlsSecurity::Insecure | TlsSecurity::NoHostVerification) => {
                 Err(ClientError::with_message(format!(
                     "client_security=strict and tls_security={} don't comply",
                     self.tls_security,
                 )))
             }
-            (ClientSecurity::Strict, _) => Ok(Strict),
-            (ClientSecurity::InsecureDevMode, Default) => Ok(Insecure),
-            (_, Default) if self.pem_certificates.is_none() => Ok(Strict),
-            (_, Default) => Ok(NoHostVerification),
-            (_, ts) => Ok(ts),
-        }
-    }
-    fn root_cert_store(&self) -> rustls::RootCertStore {
-        if self.pem_certificates.is_some() {
-            tls::read_root_cert_pem(self.pem_certificates.as_deref().unwrap_or(""))
-                .expect("all certificates have been verified previously")
-        } else {
-            let mut root_store = rustls::RootCertStore {
-                roots: webpki_roots::TLS_SERVER_ROOTS.into(),
-            };
-            if let Some(certs) = self.cloud_certs {
-                root_store.extend(
-                    tls::read_root_cert_pem(certs.root())
-                        .expect("embedded certs are correct")
-                        .roots,
-                );
-            }
-
-            root_store
-        }
-    }
-    fn make_verifier(&self, tls_security: TlsSecurity) -> Verifier {
-        use TlsSecurity::*;
-
-        let root_store = Arc::new(self.root_cert_store());
-
-        match tls_security {
-            Insecure => Arc::new(tls::NullVerifier) as Verifier,
-            NoHostVerification => Arc::new(tls::NoHostnameVerifier::new(root_store)) as Verifier,
-            Strict => {
-                let cryto_provider = crypto::CryptoProvider::get_default()
-                    .cloned()
-                    .unwrap_or_else(|| Arc::new(crypto::ring::default_provider()));
-
-                rustls::client::WebPkiServerVerifier::builder_with_provider(
-                    root_store,
-                    cryto_provider,
-                )
-                .build()
-                .expect("WebPkiServerVerifier to build correctly") as Verifier
-            }
-            Default => unreachable!(),
+            (ClientSecurity::Strict, _) => Ok(VerifyFull),
+            (ClientSecurity::InsecureDevMode, TlsSecurity::Default) => Ok(Insecure),
+            (_, TlsSecurity::Default) if self.pem_certificates.is_none() => Ok(VerifyFull),
+            (_, TlsSecurity::Default) => Ok(IgnoreHostname),
+            (_, TlsSecurity::Insecure) => Ok(Insecure),
+            (_, TlsSecurity::NoHostVerification) => Ok(IgnoreHostname),
+            (_, TlsSecurity::Strict) => Ok(VerifyFull),
         }
     }
 }
@@ -2137,7 +2156,7 @@ mod tests {
             .build_env()
             .await
             .unwrap();
-        assert!(matches!(&cfg.0.address, Address::Tcp((_, 10702))));
+        assert_eq!(cfg.0.address.port(), Some(10702));
         assert_eq!(&cfg.0.user, "test3n");
         assert_eq!(&cfg.0.database, "test3n");
         assert_eq!(cfg.0.password, Some("lZTBy1RVCfOpBAOwSCwIyBIR".into()));
@@ -2153,10 +2172,7 @@ mod tests {
                 .build_env()
                 .await
                 .unwrap();
-            assert!(matches!(
-                &cfg.0.address,
-                Address::Tcp((host, 1756)) if host == "localhost"
-            ));
+            assert_eq!(cfg.0.address.tcp(), Some(("localhost".into(), 1756)));
             /* TODO(tailhook)
             bld.unix_path("/test/my.sock");
             assert_eq!(bld.build().unwrap()._get_unix_path().unwrap(),
@@ -2198,11 +2214,10 @@ mod tests {
                 .build_env()
                 .await
                 .unwrap();
-            assert!(matches!(
-                &cfg.0.address,
-                Address::Tcp((host, 5656))
-                if host == "edb-0134.elb.us-east-2.amazonaws.com",
-            ));
+            assert_eq!(
+                cfg.0.address.tcp(),
+                Some(("edb-0134.elb.us-east-2.amazonaws.com".into(), 5656))
+            );
             assert_eq!(&cfg.0.user, "user1");
             assert_eq!(&cfg.0.database, "db2");
             assert_eq!(&cfg.0.branch, "db2");
@@ -2214,11 +2229,10 @@ mod tests {
                 .build_env()
                 .await
                 .unwrap();
-            assert!(matches!(
-                &cfg.0.address,
-                Address::Tcp((host, 1756))
-                if host == "edb-0134.elb.us-east-2.amazonaws.com",
-            ));
+            assert_eq!(
+                cfg.0.address.tcp(),
+                Some(("edb-0134.elb.us-east-2.amazonaws.com".into(), 1756))
+            );
             assert_eq!(&cfg.0.user, "user2");
             assert_eq!(&cfg.0.database, "db2");
             assert_eq!(&cfg.0.branch, "db2");
@@ -2231,11 +2245,10 @@ mod tests {
                 .build_env()
                 .await
                 .unwrap();
-            assert!(matches!(
-                &cfg.0.address,
-                Address::Tcp((host, 1756))
-                if host == "edb-0134.elb.us-east-2.amazonaws.com",
-            ));
+            assert_eq!(
+                cfg.0.address.tcp(),
+                Some(("edb-0134.elb.us-east-2.amazonaws.com".into(), 1756))
+            );
             assert_eq!(&cfg.0.user, "edgedb");
             assert_eq!(&cfg.0.database, "edgedb");
             assert_eq!(&cfg.0.branch, "__default__");
@@ -2247,10 +2260,10 @@ mod tests {
                 .build_env()
                 .await
                 .unwrap();
-            assert!(matches!(
-                &cfg.0.address,
-                Address::Tcp((host, 5555)) if host == "::1",
-            ));
+            assert_eq!(
+                cfg.0.address.tcp(),
+                Some(("::1".into(), 5555))
+            );
             assert_eq!(&cfg.0.user, "user3");
             assert_eq!(&cfg.0.database, "abcdef");
             assert_eq!(&cfg.0.branch, "abcdef");
@@ -2269,10 +2282,10 @@ mod tests {
                 .build_env()
                 .await
                 .unwrap();
-            assert!(matches!(
-                &cfg.0.address,
-                Address::Tcp((host, 3000)) if host == "fe80::1ff:fe23:4567:890a%eth0",
-            ));
+            assert_eq!(
+                cfg.0.address.tcp(),
+                Some(("fe80::1ff:fe23:4567:890a%eth0".into(), 3000))
+            );
             assert_eq!(&cfg.0.user, "user3");
             assert_eq!(&cfg.0.database, "ab");
             assert_eq!(cfg.0.password, None);
@@ -2331,5 +2344,16 @@ mod tests {
                 name
             );
         }
+    }
+
+    #[test]
+    fn test_cert_check() {
+        CertCheck::new_fn(|cert| { 
+            let cert = cert.to_vec();
+            async move {
+                assert_eq!(cert, b"cert");
+                Ok(())
+            }
+        });
     }
 }

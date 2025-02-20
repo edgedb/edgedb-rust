@@ -8,17 +8,12 @@ use std::str;
 use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
-use rand::{thread_rng, Rng};
-use rustls::pki_types::DnsName;
-use scram::ScramClient;
-use socket2::TcpKeepalive;
-use tls_api::TlsConnectorBuilder;
-use tls_api::{TlsConnector, TlsConnectorBox, TlsStream, TlsStreamDyn};
-use tls_api_not_tls::TlsConnector as PlainConnector;
+use gel_stream::{CommonError, ConnectionError, Connector, Target};
+use log::warn;
+use rand::{rng, Rng};
 use tokio::io::ReadBuf;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
-use tokio::net::TcpStream;
 use tokio::time::{sleep, timeout_at, Instant};
 
 use gel_protocol::client_message::{ClientHandshake, ClientMessage};
@@ -32,17 +27,17 @@ use gel_protocol::server_message::{
 };
 use gel_protocol::value::Value;
 
-use crate::builder::{Address, Config};
+use crate::builder::Config;
 use crate::errors::{
     AuthenticationError, ClientConnectionEosError, ClientConnectionError,
     ClientConnectionFailedError, ClientConnectionFailedTemporarilyError, ClientEncodingError,
-    ClientError, Error, ErrorKind, IdleSessionTimeoutError, PasswordRequired,
-    ProtocolEncodingError, ProtocolError, ProtocolTlsError,
+    Error, ErrorKind, IdleSessionTimeoutError, PasswordRequired,
+    ProtocolEncodingError, ProtocolError,
 };
 use crate::raw::queries::Guard;
 use crate::raw::{Connection, PingInterval};
 use crate::server_params::{ServerParam, ServerParams, SystemConfig};
-use crate::tls;
+use crate::ClientSecurity;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum Mode {
@@ -255,22 +250,15 @@ impl Connection {
 }
 
 async fn connect(cfg: &Config) -> Result<Connection, Error> {
-    let tls = tls::connector(cfg.0.verifier.clone())
-        .map_err(|e| ClientError::with_source_ref(e).context("cannot create TLS connector"))?;
-    match &cfg.0.address {
-        Address::Unix(path) => {
-            log::info!("Connecting via Unix `{}`", path.display());
-        }
-        Address::Tcp((host, port)) => {
-            log::info!("Connecting via TCP {host}:{port}");
-        }
-    }
+    let mut target = cfg.0.address.clone();
+    let tls = cfg.tls()?;
+    target.try_set_tls(tls);
 
     let start = Instant::now();
     let wait = cfg.0.wait;
     let warned = &mut false;
     let conn = loop {
-        match connect_timeout(cfg, connect2(cfg, &tls, warned)).await {
+        match connect_timeout(cfg, connect2(cfg, target.clone(), warned)).await {
             Err(e) if is_temporary(&e) => {
                 log::debug!("Temporary connection error: {:#}", e);
                 if wait > start.elapsed() {
@@ -294,114 +282,43 @@ async fn connect(cfg: &Config) -> Result<Connection, Error> {
 
 async fn connect2(
     cfg: &Config,
-    tls: &TlsConnectorBox,
+    mut target: Target,
     warned: &mut bool,
 ) -> Result<Connection, Error> {
-    let stream = match connect3(cfg, tls).await {
-        Err(e) if e.is::<ProtocolTlsError>() => {
-            if !*warned {
-                log::warn!(
-                    "TLS connection failed. \
-                    Trying plaintext..."
-                );
+    let mut connector = Connector::new(target.clone()).map_err(ClientConnectionError::with_source)?;
+    connector.set_keepalive(cfg.0.tcp_keepalive);
+    let mut res = connector.connect().await;
+
+    // Allow plaintext reconnection if and only if ClientSecurity is InsecureDevMode and
+    // the server replied with something that looks like TLS handshake failure.
+    if let Err(ConnectionError::SslError(e)) = &res {
+        if e.common_error() == Some(CommonError::InvalidTlsProtocolData) {
+            if cfg.0.client_security == ClientSecurity::InsecureDevMode {
+                target.try_remove_tls();
+                warn!("TLS handshake failed, trying again without TLS");
                 *warned = true;
-            }
-            connect3(
-                cfg,
-                &PlainConnector::builder()
-                    .map_err(ClientError::with_source_ref)?
-                    .build()
-                    .map_err(ClientError::with_source_ref)?
-                    .into_dyn(),
-            )
-            .await?
-        }
-        Err(e) => return Err(e),
-        Ok(r) => match r.get_alpn_protocol() {
-            Ok(Some(protocol)) if protocol == b"edgedb-binary" => r,
-            _ => match &cfg.0.address {
-                Address::Tcp(_) => Err(ClientConnectionFailedError::with_message(
-                    "Server does not support the Gel binary protocol.",
-                ))?,
-                Address::Unix(_) => r, // don't check ALPN on UNIX stream
-            },
-        },
-    };
-    connect4(cfg, stream).await
-}
 
-async fn connect3(cfg: &Config, tls: &TlsConnectorBox) -> Result<TlsStream, Error> {
-    match &cfg.0.address {
-        Address::Tcp(addr @ (host, _)) => {
-            let conn = TcpStream::connect(addr)
-                .await
-                .map_err(ClientConnectionError::with_source)?;
-
-            // Set keep-alive on the socket, but don't fail if this isn't successful
-            if let Some(keepalive) = cfg.0.tcp_keepalive {
-                let sock = socket2::SockRef::from(&conn);
-                #[cfg(target_os = "openbsd")]
-                let res = sock.set_keepalive(true);
-                #[cfg(not(target_os = "openbsd"))]
-                let res = sock.set_tcp_keepalive(
-                    &TcpKeepalive::new()
-                        .with_interval(keepalive)
-                        .with_time(keepalive),
-                );
-                if let Err(e) = res {
-                    log::warn!("Failed to set TCP keepalive: {e:?}");
-                }
-            }
-
-            let host = match &cfg.0.tls_server_name {
-                Some(server_name) => Cow::from(server_name),
-                None => {
-                    if DnsName::try_from(host.clone()).is_err() {
-                        // FIXME: https://github.com/rustls/rustls/issues/184
-                        // If self.host is neither an IP address nor a valid DNS
-                        // name, the hacks below won't make it valid anyways.
-                        let host = format!("{}.host-for-ip.edgedb.net", host);
-                        // for ipv6addr
-                        let host = host.replace([':', '%'], "-");
-                        if host.starts_with('-') {
-                            Cow::from(format!("i{}", host))
-                        } else {
-                            Cow::from(host)
-                        }
-                    } else {
-                        Cow::from(host)
-                    }
-                }
-            };
-            Ok(tls.connect(&host[..], conn).await.map_err(tls_fail)?)
-        }
-        Address::Unix(path) => {
-            #[cfg(windows)]
-            {
-                return Err(ClientError::with_message(
-                    "Unix socket are not supported on windows",
-                ));
-            }
-            #[cfg(unix)]
-            {
-                use tokio::net::UnixStream;
-                let conn = UnixStream::connect(&path)
-                    .await
-                    .map_err(ClientConnectionError::with_source)?;
-                Ok(PlainConnector::builder()
-                    .map_err(ClientError::with_source_ref)?
-                    .build()
-                    .map_err(ClientError::with_source_ref)?
-                    .into_dyn()
-                    .connect("localhost", conn)
-                    .await
-                    .map_err(tls_fail)?)
+                let mut connector = Connector::new(target.clone()).map_err(ClientConnectionError::with_source)?;
+                connector.set_keepalive(cfg.0.tcp_keepalive);
+                res = connector.connect().await;
             }
         }
     }
+
+    let stream = res.map_err(ClientConnectionError::with_source)?;
+    connect4(cfg, stream).await
 }
 
-async fn connect4(cfg: &Config, mut stream: TlsStream) -> Result<Connection, Error> {
+async fn connect4(cfg: &Config, mut stream: gel_stream::RawStream) -> Result<Connection, Error> {
+    // Allow the client to check the certificate
+    if let Some(cert_check) = &cfg.0.cert_check {
+        if let Some(handshake) = stream.handshake() {
+            if let Some(cert) = &handshake.cert {
+                cert_check.call(&cert).await?;
+            }
+        }
+    }
+
     let mut proto = ProtocolVersion::current();
     let mut out_buf = BytesMut::with_capacity(8192);
     let mut in_buf = BytesMut::with_capacity(8192);
@@ -554,7 +471,7 @@ async fn connect4(cfg: &Config, mut stream: TlsStream) -> Result<Connection, Err
 }
 
 async fn scram(
-    stream: &mut TlsStream,
+    stream: &mut gel_stream::RawStream,
     in_buf: &mut BytesMut,
     out_buf: &mut BytesMut,
     proto: &ProtocolVersion,
@@ -564,9 +481,19 @@ async fn scram(
     use gel_protocol::client_message::SaslInitialResponse;
     use gel_protocol::client_message::SaslResponse;
 
-    let scram = ScramClient::new(user, password, None);
+    let mut scram = gel_auth::scram::ClientTransaction::new(Cow::Owned(user.to_string()));
+    struct Env<'a>(&'a str);
+    impl <'a> gel_auth::scram::ClientEnvironment for Env<'a> {
+        fn get_salted_password(&self, salt: &[u8], iterations: usize) -> gel_auth::scram::Sha256Out {
+            gel_auth::scram::generate_salted_password(self.0.as_bytes(), salt, iterations)
+        }
+        fn generate_nonce(&self) -> String {
+            gel_auth::scram::generate_nonce()
+        }
+    }
 
-    let (scram, first) = scram.client_first();
+    let env = Env(password);
+    let msg = scram.process_message(&[], &env).map_err(AuthenticationError::with_source)?;
     send_messages(
         stream,
         out_buf,
@@ -574,7 +501,7 @@ async fn scram(
         &[ClientMessage::AuthenticationSaslInitialResponse(
             SaslInitialResponse {
                 method: "SCRAM-SHA-256".into(),
-                data: Bytes::copy_from_slice(first.as_bytes()),
+                data: Bytes::from(msg.unwrap_or_default()),
             },
         )],
     )
@@ -592,19 +519,14 @@ async fn scram(
             )));
         }
     };
-    let data = str::from_utf8(&data[..]).map_err(|e| {
-        ProtocolError::with_source(e).context("invalid utf-8 in SCRAM-SHA-256 auth")
-    })?;
-    let scram = scram
-        .handle_server_first(data)
-        .map_err(AuthenticationError::with_source)?;
-    let (scram, data) = scram.client_final();
+
+    let data = scram.process_message(&data, &env).map_err(AuthenticationError::with_source)?;
     send_messages(
         stream,
         out_buf,
         proto,
         &[ClientMessage::AuthenticationSaslResponse(SaslResponse {
-            data: Bytes::copy_from_slice(data.as_bytes()),
+            data: Bytes::from(data.unwrap_or_default()),
         })],
     )
     .await?;
@@ -621,11 +543,10 @@ async fn scram(
             )));
         }
     };
-    let data = str::from_utf8(&data[..])
-        .map_err(|_| ProtocolError::with_message("invalid utf-8 in SCRAM-SHA-256 auth"))?;
-    scram
-        .handle_server_final(data)
-        .map_err(|e| AuthenticationError::with_message(format!("Authentication error: {}", e)))?;
+    let data = scram.process_message(&data, &env).map_err(AuthenticationError::with_source)?;
+    if data.is_some() || !scram.success() {
+        return Err(AuthenticationError::with_message("Authentication failed"));
+    }
     loop {
         let msg = wait_message(stream, in_buf, proto).await?;
         match msg {
@@ -793,7 +714,7 @@ async fn _wait_message<'x>(
 }
 
 fn connect_sleep() -> Duration {
-    Duration::from_millis(thread_rng().gen_range(10u64..200u64))
+    Duration::from_millis(rng().random_range(10u64..200u64))
 }
 
 async fn connect_timeout<F, T>(cfg: &Config, f: F) -> Result<T, Error>
@@ -839,16 +760,4 @@ fn is_temporary(e: &Error) -> bool {
         }
     }
     false
-}
-
-fn tls_fail(e: anyhow::Error) -> Error {
-    if let Some(e) = e.downcast_ref::<rustls::Error>() {
-        if matches!(e, rustls::Error::InvalidMessage(_)) {
-            return ProtocolTlsError::with_message(
-                "corrupt message, possibly server \
-                 does not support TLS connection.",
-            );
-        }
-    }
-    ClientConnectionError::with_source_ref(e)
 }
