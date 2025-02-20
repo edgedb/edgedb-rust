@@ -1,9 +1,9 @@
 #![allow(dead_code)]
+use dtor::dtor;
 use gel_tokio::{Builder, Config};
 use once_cell::sync::Lazy;
-use test_utils::server::ServerInstance;
 use std::{path::PathBuf, str::FromStr};
-use dtor::dtor;
+use test_utils::server::ServerInstance;
 
 pub struct ServerGuard {
     instance: ServerInstance,
@@ -24,7 +24,11 @@ unsafe fn stop_server() {
 fn start_server() -> ServerGuard {
     let instance = ServerInstance::start();
 
-    let schema_dir = PathBuf::from_str(env!("CARGO_MANIFEST_DIR")).unwrap().join("functional").join("testdata").join("dbschema");
+    let schema_dir = PathBuf::from_str(env!("CARGO_MANIFEST_DIR"))
+        .unwrap()
+        .join("functional")
+        .join("testdata")
+        .join("dbschema");
     eprintln!("Applying schema in {schema_dir:?}");
     instance.apply_schema(&schema_dir);
 
