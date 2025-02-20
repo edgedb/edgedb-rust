@@ -4,14 +4,14 @@ mod server;
 #[cfg(all(not(windows), feature = "unstable"))]
 mod raw;
 
-#[cfg(not(windows))]
+#[cfg(all(not(windows), feature = "unstable"))]
 mod client;
 
-#[cfg(not(windows))]
+#[cfg(all(not(windows), feature = "unstable"))]
 mod transactions;
 
-#[cfg(not(windows))]
+#[cfg(all(not(windows), feature = "unstable"))]
 mod globals;
 
-#[cfg(not(windows))]
+#[cfg(all(not(windows), feature = "unstable"))]
 mod derive;

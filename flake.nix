@@ -27,6 +27,8 @@
 
           common = [
             pkgs.just
+            pkgs.openssl
+            pkgs.pkg-config
 
             # needed for tests
             edgedb.packages.${system}.edgedb-server-nightly

@@ -124,6 +124,7 @@ impl SslError {
             },
             #[cfg(feature = "openssl")]
             SslError::OpenSslError(e) => match e.code().as_raw() {
+                // TODO: We should probably wrap up handshake errors differently.
                 openssl_sys::SSL_ERROR_SSL => {
                     match e
                         .ssl_error()
@@ -132,6 +133,8 @@ impl SslError {
                     {
                         // SSL_R_WRONG_VERSION_NUMBER
                         Some(0xa00010b) => Some(CommonError::InvalidTlsProtocolData),
+                        // SSL_R_PACKET_LENGTH_TOO_LONG
+                        Some(0xa0000c6) => Some(CommonError::InvalidTlsProtocolData),
                         _ => None,
                     }
                 }

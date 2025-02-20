@@ -112,6 +112,16 @@ impl AsyncWrite for TlsStream {
             if e.kind() == std::io::ErrorKind::NotConnected {
                 return Poll::Ready(Ok(()));
             }
+
+            // Treat OpenSSL syscall errors during shutdown as graceful
+            if let Some(ssl_err) = e
+                .get_ref()
+                .and_then(|e| e.downcast_ref::<openssl::ssl::Error>())
+            {
+                if ssl_err.code() == openssl::ssl::ErrorCode::SYSCALL {
+                    return Poll::Ready(Ok(()));
+                }
+            }
         }
         Poll::Ready(res)
     }
