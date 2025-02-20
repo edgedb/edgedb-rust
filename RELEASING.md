@@ -9,6 +9,8 @@ Releasing Rust Bindings
 In case multiple crates are released here is the order:
 * `gel-errors`
 * `gel-derive` and `gel-protocol`
+* `gel-stream`
+* `gel-auth`
 * `gel-tokio`
 
 Notes on releasing multiple crates
