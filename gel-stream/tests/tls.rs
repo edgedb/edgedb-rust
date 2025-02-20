@@ -76,6 +76,7 @@ async fn spawn_tls_server<S: TlsDriver>(
     ),
     ConnectionError,
 > {
+    let validate_cert = client_cert_verify != TlsClientCertVerify::Ignore;
     let mut acceptor = Acceptor::new_tcp_tls(
         SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 0),
         tls_server_parameters(server_alpn, client_cert_verify),
@@ -96,6 +97,15 @@ async fn spawn_tls_server<S: TlsDriver>(
             expected_alpn
         );
         assert_eq!(handshake.sni.as_deref(), expected_hostname.as_deref());
+        if validate_cert {
+            assert!(handshake.cert.is_some());
+            let cert = parse_cert(&handshake.cert.as_ref().unwrap());
+            let subject = cert.subject().to_string();
+            assert!(
+                subject.to_ascii_lowercase().contains("ssl_user"),
+                "subject: {subject}"
+            );
+        }
         let mut buf = String::new();
         connection.read_to_string(&mut buf).await.unwrap();
         assert_eq!(buf, "Hello, world!");
@@ -438,6 +448,36 @@ tls_test! {
 
     #[tokio::test]
     #[ntest::timeout(30_000)]
+    async fn test_target_tcp_tls_client_verify_required<C: TlsDriver, S: TlsDriver>() -> Result<(), ConnectionError> {
+        let (addr, accept_task) = spawn_tls_server::<S>(
+            None,
+            TlsAlpn::default(),
+            None,
+            TlsClientCertVerify::Validate(vec![load_client_test_ca()]),
+        )
+        .await?;
+        let connect_task = tokio::spawn(async move {
+            let target = Target::new_resolved_tls(
+                addr,
+                TlsParameters {
+                    server_cert_verify: TlsServerCertVerify::Insecure,
+                    cert: Some(load_client_test_cert()),
+                    key: Some(load_client_test_key()),
+                    ..Default::default()
+                },
+            );
+            let mut stm = Connector::<C>::new_explicit(target).unwrap().connect().await.unwrap();
+            stm.write_all(b"Hello, world!").await.unwrap();
+            stm.shutdown().await?;
+            Ok::<_, std::io::Error>(())
+        });
+        accept_task.await.unwrap().unwrap();
+        connect_task.await.unwrap().unwrap();
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[ntest::timeout(30_000)]
     async fn test_target_tcp_tls_client_verify_optional<C: TlsDriver, S: TlsDriver>() -> Result<(), ConnectionError> {
         let (addr, accept_task) = spawn_tls_server::<S>(
             None,
@@ -514,12 +554,7 @@ tls_client_test! {
         let connect_task = tokio::spawn(async move {
             let target = Target::new_resolved_tls(
                 addr,
-                TlsParameters {
-                    server_cert_verify: TlsServerCertVerify::Insecure,
-                    cert: Some(load_client_test_cert()),
-                    key: Some(load_client_test_key()),
-                    ..Default::default()
-                },
+                TlsParameters::insecure(),
             );
             let stm = Connector::<C>::new_explicit(target).unwrap().connect().await;
             assert!(
@@ -540,7 +575,7 @@ tls_client_test! {
             root_cert: TlsCert::Custom(vec![load_test_ca()]),
             ..Default::default()
         });
-        let err = Connector::new(target).unwrap().connect().await.unwrap_err();
+        let err = Connector::<C>::new_explicit(target).unwrap().connect().await.unwrap_err();
         assert!(matches!(&err, ConnectionError::SslError(ssl) if ssl.common_error() == Some(CommonError::InvalidIssuer)), "{err:?}");
         Ok(())
     }
@@ -552,7 +587,7 @@ tls_client_test! {
             root_cert: TlsCert::SystemPlus(vec![load_test_ca()]),
             ..Default::default()
         });
-        let mut stm = Connector::new(target).unwrap().connect().await.unwrap();
+        let mut stm = Connector::<C>::new_explicit(target).unwrap().connect().await.unwrap();
         stm.write_all(b"GET / HTTP/1.0\r\n\r\n").await.unwrap();
         // HTTP/1. .....
         assert_eq!(stm.read_u8().await.unwrap(), b'H');
@@ -566,7 +601,7 @@ tls_client_test! {
             root_cert: TlsCert::WebpkiPlus(vec![load_test_ca()]),
             ..Default::default()
         });
-        let mut stm = Connector::new(target).unwrap().connect().await.unwrap();
+        let mut stm = Connector::<C>::new_explicit(target).unwrap().connect().await.unwrap();
         stm.write_all(b"GET / HTTP/1.0\r\n\r\n").await.unwrap();
         // HTTP/1. .....
         assert_eq!(stm.read_u8().await.unwrap(), b'H');
@@ -577,7 +612,12 @@ tls_client_test! {
     #[tokio::test]
     async fn test_live_server_manual_google_com<C: TlsDriver>() -> Result<(), ConnectionError> {
         let target = Target::new_tcp_tls(("www.google.com", 443), TlsParameters::default());
-        let mut stm = Connector::new(target).unwrap().connect().await.unwrap();
+        let mut stm = Connector::<C>::new_explicit(target).unwrap().connect().await.unwrap();
+        let handshake = stm.handshake().unwrap();
+        assert!(!handshake.cert.is_none());
+        let cert = parse_cert(&handshake.cert.as_ref().unwrap());
+        let subject = cert.subject().to_string();
+        assert!(subject.to_ascii_lowercase().contains("google"));
         stm.write_all(b"GET / HTTP/1.0\r\n\r\n").await.unwrap();
         // HTTP/1. .....
         assert_eq!(stm.read_u8().await.unwrap(), b'H');
@@ -604,10 +644,17 @@ tls_client_test! {
                 ..Default::default()
             },
         );
-        let mut stm = Connector::new(target).unwrap().connect().await.unwrap();
+        let mut stm = Connector::<C>::new_explicit(target).unwrap().connect().await.unwrap();
         stm.write_all(b"GET / HTTP/1.0\r\n\r\n").await.unwrap();
         // HTTP/1. .....
         assert_eq!(stm.read_u8().await.unwrap(), b'H');
         Ok(())
     }
+}
+
+fn parse_cert<'a>(
+    cert: &'a rustls_pki_types::CertificateDer<'a>,
+) -> x509_parser::prelude::X509Certificate<'a> {
+    let (_, cert) = x509_parser::parse_x509_certificate(&cert).unwrap();
+    cert
 }

@@ -136,16 +136,21 @@ impl TlsDriver for RustlsDriver {
         };
 
         let mut stream = TlsStream::new_client_side(stream, params, None);
-
         match stream.handshake().await {
-            Ok(handshake) => Ok((
-                stream,
-                TlsHandshake {
-                    alpn: handshake.alpn.map(|alpn| Cow::Owned(alpn.to_vec())),
-                    sni: handshake.sni.map(|sni| Cow::Owned(sni.to_string())),
-                    cert: None,
-                },
-            )),
+            Ok(handshake) => {
+                let cert = stream
+                    .connection()
+                    .and_then(|c| c.peer_certificates())
+                    .and_then(|c| c.first().map(|cert| cert.to_owned()));
+                Ok((
+                    stream,
+                    TlsHandshake {
+                        alpn: handshake.alpn.map(|alpn| Cow::Owned(alpn.to_vec())),
+                        sni: handshake.sni.map(|sni| Cow::Owned(sni.to_string())),
+                        cert,
+                    },
+                ))
+            }
             Err(e) => {
                 let kind = e.kind();
                 if let Some(e2) = e.into_inner() {
@@ -195,14 +200,20 @@ impl TlsDriver for RustlsDriver {
         );
 
         match stream.handshake().await {
-            Ok(handshake) => Ok((
-                stream,
-                TlsHandshake {
-                    alpn: handshake.alpn.map(|alpn| Cow::Owned(alpn.to_vec())),
-                    sni: handshake.sni.map(|sni| Cow::Owned(sni.to_string())),
-                    cert: None,
-                },
-            )),
+            Ok(handshake) => {
+                let cert = stream
+                    .connection()
+                    .and_then(|c| c.peer_certificates())
+                    .and_then(|c| c.first().map(|cert| cert.to_owned()));
+                Ok((
+                    stream,
+                    TlsHandshake {
+                        alpn: handshake.alpn.map(|alpn| Cow::Owned(alpn.to_vec())),
+                        sni: handshake.sni.map(|sni| Cow::Owned(sni.to_string())),
+                        cert,
+                    },
+                ))
+            }
             Err(e) => {
                 let kind = e.kind();
                 if let Some(e2) = e.into_inner() {

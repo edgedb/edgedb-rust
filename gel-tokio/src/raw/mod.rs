@@ -65,7 +65,7 @@ pub struct Connection {
     state_desc: RawTypedesc,
     in_buf: BytesMut,
     out_buf: BytesMut,
-    stream: gel_stream::UpgradableStream<gel_stream::BaseStream>,
+    stream: gel_stream::RawStream,
     ping_interval: PingInterval,
 }
 

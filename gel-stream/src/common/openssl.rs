@@ -1,11 +1,11 @@
 use openssl::{
     ssl::{
-        AlpnError, NameType, SniError, Ssl, SslAcceptor, SslContextBuilder, SslMethod, SslRef,
-        SslVerifyMode,
+        AlpnError, ClientHelloResponse, NameType, SniError, Ssl, SslAcceptor, SslContextBuilder,
+        SslMethod, SslRef, SslVerifyMode,
     },
     x509::{verify::X509VerifyFlags, X509VerifyResult},
 };
-use rustls_pki_types::ServerName;
+use rustls_pki_types::{CertificateDer, ServerName};
 use std::{
     borrow::Cow,
     io::IoSlice,
@@ -118,7 +118,7 @@ impl AsyncWrite for TlsStream {
 }
 
 /// Cache for the WebPKI roots
-static WEB_PKI_ROOTS: OnceLock<Vec<openssl::x509::X509>> = OnceLock::new();
+static WEBPKI_ROOTS: OnceLock<Vec<openssl::x509::X509>> = OnceLock::new();
 
 impl TlsDriver for OpensslDriver {
     type Stream = TlsStream;
@@ -158,7 +158,7 @@ impl TlsDriver for OpensslDriver {
 
         match root_cert {
             TlsCert::Webpki | TlsCert::WebpkiPlus(_) => {
-                let webpki_roots = WEB_PKI_ROOTS.get_or_init(|| {
+                let webpki_roots = WEBPKI_ROOTS.get_or_init(|| {
                     let webpki_roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS;
                     let mut roots = Vec::new();
                     for root in webpki_roots.iter().cloned() {
@@ -337,12 +337,18 @@ impl TlsDriver for OpensslDriver {
             .map(|p| Cow::Owned(p.to_vec()));
 
         res.map_err(SslError::OpenSslError)?;
+        let cert = stream
+            .ssl()
+            .peer_certificate()
+            .map(|cert| cert.to_der())
+            .transpose()?;
+        let cert = cert.map(|cert| CertificateDer::from(cert));
         Ok((
             TlsStream(stream),
             TlsHandshake {
                 alpn,
                 sni: None,
-                cert: None,
+                cert,
             },
         ))
     }
@@ -368,6 +374,15 @@ impl TlsDriver for OpensslDriver {
         let mut ssl = SslContextBuilder::new(SslMethod::tls_server())?;
         create_alpn_callback(&mut ssl);
         create_sni_callback(&mut ssl, params);
+        ssl.set_client_hello_callback(move |ssl_ref, _alert| {
+            // TODO: We need to check the clienthello for the SNI and determine
+            // if we should verify the certificate or not. For now, just always
+            // request a certificate. Note that if we return RETRY, we'll have
+            // another chance to respond later (ie: when we implement async lookup
+            // for TLS parameters).
+            ssl_ref.set_verify(SslVerifyMode::PEER);
+            Ok(ClientHelloResponse::SUCCESS)
+        });
 
         let mut ssl = Ssl::new(&ssl.build())?;
         ssl.set_accept_state();
@@ -377,7 +392,14 @@ impl TlsDriver for OpensslDriver {
         let res = Pin::new(&mut stream).do_handshake().await;
         res.map_err(SslError::OpenSslError)?;
 
-        let handshake = handshake.lock().unwrap().handshake.clone();
+        let mut handshake = std::mem::take(&mut handshake.lock().unwrap().handshake);
+        let cert = stream
+            .ssl()
+            .peer_certificate()
+            .and_then(|c| c.to_der().ok());
+        if let Some(cert) = cert {
+            handshake.cert = Some(CertificateDer::from(cert));
+        }
 
         Ok((TlsStream(stream), handshake))
     }
@@ -439,7 +461,6 @@ fn create_sni_callback(ssl: &mut SslContextBuilder, params: TlsServerParameterPr
         if !params.alpn.is_empty() {
             handshake.server_alpn = Some(params.alpn.as_bytes().to_vec());
         }
-
         drop(handshake);
 
         let Ok(ssl) = OpensslDriver::init_server(&params) else {

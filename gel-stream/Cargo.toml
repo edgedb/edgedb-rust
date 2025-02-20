@@ -12,6 +12,7 @@ rust-version.workspace = true
 # rustls or openssl imply tokio, and tokio is the only stream we support
 # at this time.
 default = ["tokio"]
+full = ["client", "server", "tokio", "rustls", "openssl", "hickory", "keepalive"]
 client = []
 server = []
 tokio = ["dep:tokio"]
@@ -56,12 +57,13 @@ webpki-root-certs = { version = "0.26.8", optional = true }
 
 [dev-dependencies]
 # Run tests with all features enabled
-gel-stream = { path = ".", features = ["client", "server", "tokio", "rustls", "openssl"] }
+gel-stream = { path = ".", features = ["full"] }
 
 tokio = { version = "1", features = ["full"] }
 tempfile = "3"
 ntest = "0.9.3"
 rustls-pemfile = "2"
+x509-parser = "0.17.0"
 
 [lints]
 workspace = true
