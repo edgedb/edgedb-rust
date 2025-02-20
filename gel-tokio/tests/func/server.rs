@@ -16,8 +16,8 @@ pub static SERVER: Lazy<ServerGuard> = Lazy::new(start_server);
 /// To debug, run any test with --nocapture Rust flag.
 #[cfg(feature = "unstable")]
 fn start_server() -> ServerGuard {
-    use std::{path::PathBuf, str::FromStr};
     use gel_tokio::Builder;
+    use std::{path::PathBuf, str::FromStr};
 
     extern "C" fn stop_server() {
         SERVER.instance.stop()
