@@ -120,6 +120,8 @@ impl SslError {
             SslError::OpenSslErrorStack(e) => match e.errors().get(0).map(|err| err.code()) {
                 // SSL_R_WRONG_VERSION_NUMBER
                 Some(0xa00010b) => Some(CommonError::InvalidTlsProtocolData),
+                // SSL_R_PACKET_LENGTH_TOO_LONG
+                Some(0xa0000c6) => Some(CommonError::InvalidTlsProtocolData),
                 _ => None,
             },
             #[cfg(feature = "openssl")]
@@ -140,7 +142,6 @@ impl SslError {
                 }
                 _ => None,
             },
-            #[cfg(feature = "rustls")]
             _ => None,
         }
     }
