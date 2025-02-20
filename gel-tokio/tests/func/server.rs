@@ -1,6 +1,5 @@
-use std::{path::PathBuf, str::FromStr};
-
-use gel_tokio::{Builder, Config};
+#![allow(dead_code)]
+use gel_tokio::Config;
 use once_cell::sync::Lazy;
 use test_utils::server::ServerInstance;
 
@@ -15,7 +14,15 @@ pub static SERVER: Lazy<ServerGuard> = Lazy::new(start_server);
 /// Writes its log into a tmp file.
 ///
 /// To debug, run any test with --nocapture Rust flag.
+#[cfg(feature = "unstable")]
 fn start_server() -> ServerGuard {
+    use gel_tokio::Builder;
+    use std::{path::PathBuf, str::FromStr};
+
+    extern "C" fn stop_server() {
+        SERVER.instance.stop()
+    }
+
     shutdown_hooks::add_shutdown_hook(stop_server);
 
     let instance = ServerInstance::start();
@@ -34,6 +41,7 @@ fn start_server() -> ServerGuard {
     ServerGuard { instance, config }
 }
 
-extern "C" fn stop_server() {
-    SERVER.instance.stop()
+#[cfg(not(feature = "unstable"))]
+fn start_server() -> ServerGuard {
+    panic!("Using --feature unstable to run server tests")
 }

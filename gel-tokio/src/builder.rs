@@ -221,6 +221,7 @@ pub struct CertCheck {
     function: Arc<dyn CertChecker>
 }
 
+#[allow(dead_code)]
 impl CertCheck {
     pub fn new(function: impl Into<Arc<dyn CertChecker>>) -> Self {
         Self { function: function.into() }

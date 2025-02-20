@@ -224,7 +224,6 @@ async fn raw_01() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-#[cfg(feature = "unstable")]
 async fn raw_02() -> anyhow::Result<()> {
     let client = Client::new(&SERVER.config).with_default_module(Some("test"));
 
