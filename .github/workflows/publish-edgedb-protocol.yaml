@@ -16,7 +16,7 @@ jobs:
       # checkout and env setup
       - uses: actions/checkout@v3
       - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - uses: DeterminateSystems/flakehub-cache-action@main
       - name: Build the nix shell
         run: nix develop --command just --version
 
