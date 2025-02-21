@@ -293,6 +293,7 @@ impl std::fmt::Debug for MaybeResolvedTarget {
                     write!(f, "{}:{}", addr.ip(), addr.port())
                 }
             }
+            #[cfg(unix)]
             MaybeResolvedTarget::Resolved(ResolvedTarget::UnixSocketAddr(addr)) => {
                 if let Some(path) = addr.as_pathname() {
                     return write!(f, "{}", path.to_string_lossy());
@@ -343,6 +344,7 @@ impl MaybeResolvedTarget {
 
     fn path(&self) -> Option<&Path> {
         match self {
+            #[cfg(unix)]
             MaybeResolvedTarget::Resolved(ResolvedTarget::UnixSocketAddr(addr)) => {
                 addr.as_pathname()
             }

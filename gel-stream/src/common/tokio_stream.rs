@@ -4,9 +4,9 @@ use std::net::{IpAddr, ToSocketAddrs};
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::net::{TcpListener, TcpStream};
 #[cfg(unix)]
-use tokio::net::UnixStream;
-use tokio::net::{TcpListener, TcpStream, UnixListener};
+use tokio::net::{UnixListener, UnixStream};
 
 use super::target::{LocalAddress, ResolvedTarget};
 
