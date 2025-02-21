@@ -23,13 +23,14 @@ jobs:
           bash <(curl --proto '=https' --tlsv1.2 -sSf https://sh.edgedb.com) --nightly -y
           . ~/.bash_profile
           gel server install --nightly
-          ls -l "$(gel server info --channel=nightly --get bin-path)"
           mkdir -p ~/.local/bin/
           ln -s "$(gel server info --channel=nightly --get bin-path)" ~/.local/bin/edgedb-server
         shell: bash
 
       - name: Show binaries
-        run: ls -l ~/.local/bin
+        run: |
+          ls -l ~/.local/bin
+          edgedb-server --version
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
