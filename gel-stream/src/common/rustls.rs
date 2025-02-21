@@ -276,6 +276,8 @@ fn make_verifier(
         return Ok(verifier);
     }
 
+    // We need to work around macOS returning `certificate is not standards compliant: -67901`
+    // when using the system verifier.
     let verifier: Arc<dyn ServerCertVerifier> = if let TlsCert::SystemPlus(roots) = root_cert {
         let roots = make_roots(roots, false)?;
         let v1 = WebPkiServerVerifier::builder(Arc::new(roots))
@@ -284,7 +286,7 @@ fn make_verifier(
         let v2 = Arc::new(Verifier::new());
         Arc::new(ChainingVerifier::new(v1, v2))
     } else {
-        Arc::new(Verifier::new())
+        Arc::new(ErrorFilteringVerifier::new(Arc::new(Verifier::new())))
     };
 
     let verifier: Arc<dyn ServerCertVerifier> =
@@ -491,5 +493,70 @@ impl ServerCertVerifier for NullVerifier {
             ED25519,
             ED448,
         ]
+    }
+}
+
+#[derive(Debug)]
+struct ErrorFilteringVerifier {
+    verifier: Arc<dyn ServerCertVerifier>,
+}
+
+impl ErrorFilteringVerifier {
+    fn new(verifier: Arc<dyn ServerCertVerifier>) -> Self {
+        Self { verifier }
+    }
+
+    fn filter_err<T>(res: Result<T, rustls::Error>) -> Result<T, rustls::Error> {
+        match res {
+            Ok(res) => Ok(res),
+            // On macOS, the system verifier returns `certificate is not standards compliant: -67901`
+            // for self-signed certificates that have too long of a validity period.
+            #[cfg(target_vendor = "apple")]
+            Err(rustls::Error::Other(e)) if e.to_string().contains("-67901") => Err(
+                rustls::Error::InvalidCertificate(rustls::CertificateError::UnknownIssuer),
+            ),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+impl ServerCertVerifier for ErrorFilteringVerifier {
+    fn verify_server_cert(
+        &self,
+        end_entity: &CertificateDer<'_>,
+        intermediates: &[CertificateDer<'_>],
+        server_name: &ServerName,
+        ocsp_response: &[u8],
+        now: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        Self::filter_err(self.verifier.verify_server_cert(
+            end_entity,
+            intermediates,
+            server_name,
+            ocsp_response,
+            now,
+        ))
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        Self::filter_err(self.verifier.verify_tls12_signature(message, cert, dss))
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        Self::filter_err(self.verifier.verify_tls13_signature(message, cert, dss))
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        self.verifier.supported_verify_schemes()
     }
 }
