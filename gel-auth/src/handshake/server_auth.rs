@@ -33,6 +33,7 @@ enum ServerAuthState {
     Password(CredentialData),
     MD5([u8; 4], CredentialData),
     Sasl(ServerTransaction, StoredKey),
+    Complete,
 }
 
 #[derive(Debug)]
@@ -57,6 +58,10 @@ impl ServerAuth {
             auth_type,
             credential_data,
         }
+    }
+
+    pub fn is_complete(&self) -> bool {
+        matches!(self.state, ServerAuthState::Complete)
     }
 
     pub fn is_initial_message(&self) -> bool {
@@ -90,6 +95,7 @@ impl ServerAuth {
                         key.stored_key == scram.stored_key
                     }
                 };
+                self.state = ServerAuthState::Complete;
                 if success {
                     ServerAuthResponse::Complete(Vec::new())
                 } else {
@@ -111,6 +117,7 @@ impl ServerAuth {
                     }
                 };
 
+                self.state = ServerAuthState::Complete;
                 if success {
                     ServerAuthResponse::Complete(Vec::new())
                 } else {
@@ -127,13 +134,18 @@ impl ServerAuth {
                         if initial {
                             ServerAuthResponse::Continue(final_message)
                         } else {
+                            self.state = ServerAuthState::Complete;
                             ServerAuthResponse::Complete(final_message)
                         }
                     }
-                    Err(e) => ServerAuthResponse::Error(ServerAuthError::InvalidSaslMessage(e)),
+                    Err(e) => {
+                        self.state = ServerAuthState::Complete;
+                        ServerAuthResponse::Error(ServerAuthError::InvalidSaslMessage(e))
+                    }
                 }
             }
             (_, drive) => {
+                self.state = ServerAuthState::Complete;
                 error!("Received invalid drive {drive:?} in state {:?}", self.state);
                 ServerAuthResponse::Error(ServerAuthError::InvalidMessageType)
             }
@@ -143,9 +155,13 @@ impl ServerAuth {
     fn handle_initial(&mut self) -> ServerAuthResponse {
         match self.auth_type {
             AuthType::Deny => {
+                self.state = ServerAuthState::Complete;
                 ServerAuthResponse::Error(ServerAuthError::InvalidAuthorizationSpecification)
             }
-            AuthType::Trust => ServerAuthResponse::Complete(Vec::new()),
+            AuthType::Trust => {
+                self.state = ServerAuthState::Complete;
+                ServerAuthResponse::Complete(Vec::new())
+            }
             AuthType::Plain => {
                 self.state = ServerAuthState::Password(self.credential_data.clone());
                 ServerAuthResponse::Initial(AuthType::Plain, Vec::new())
