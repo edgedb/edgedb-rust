@@ -228,6 +228,35 @@ tls_test! {
 
         Ok(())
     }
+    
+    /// The certificate is not valid for 127.0.0.1, so the connection should fail.
+    #[tokio::test]
+    #[ntest::timeout(30_000)]
+    async fn test_target_tcp_tls_verify_full_fails_webpki<C: TlsDriver, S: TlsDriver>() -> Result<(), ConnectionError> {
+        let (addr, accept_task) =
+            spawn_tls_server::<S>(None, TlsAlpn::default(), None, TlsClientCertVerify::Ignore).await?;
+
+        let connect_task = tokio::spawn(async move {
+            let target = Target::new_resolved_tls(
+                addr, // Raw IP
+                TlsParameters {
+                    root_cert: TlsCert::Webpki,
+                    ..Default::default()
+                },
+            );
+            let stm = Connector::<C>::new_explicit(target).unwrap().connect().await;
+            assert!(
+                matches!(&stm, Err(ConnectionError::SslError(ssl)) if ssl.common_error() == Some(CommonError::InvalidIssuer)),
+                "{stm:?}"
+            );
+            Ok::<_, std::io::Error>(())
+        });
+
+        accept_task.await.unwrap().unwrap_err();
+        connect_task.await.unwrap().unwrap();
+
+        Ok(())
+    }
 
     /// The certificate is not valid for 127.0.0.1, so the connection should fail.
     #[tokio::test]
@@ -241,6 +270,35 @@ tls_test! {
                 addr, // Raw IP
                 TlsParameters {
                     root_cert: TlsCert::Custom(vec![load_test_ca()]),
+                    ..Default::default()
+                },
+            );
+            let stm = Connector::<C>::new_explicit(target).unwrap().connect().await;
+            assert!(
+                matches!(&stm, Err(ConnectionError::SslError(ssl)) if ssl.common_error() == Some(CommonError::InvalidCertificateForName)),
+                "{stm:?}"
+            );
+            Ok::<_, std::io::Error>(())
+        });
+
+        accept_task.await.unwrap().unwrap_err();
+        connect_task.await.unwrap().unwrap();
+
+        Ok(())
+    }
+
+    /// The certificate is not valid for 127.0.0.1, so the connection should fail.
+    #[tokio::test]
+    #[ntest::timeout(30_000)]
+    async fn test_target_tcp_tls_verify_full_fails_name_system_plus<C: TlsDriver, S: TlsDriver>() -> Result<(), ConnectionError> {
+        let (addr, accept_task) =
+            spawn_tls_server::<S>(None, TlsAlpn::default(), None, TlsClientCertVerify::Ignore).await?;
+
+        let connect_task = tokio::spawn(async move {
+            let target = Target::new_resolved_tls(
+                addr, // Raw IP
+                TlsParameters {
+                    root_cert: TlsCert::SystemPlus(vec![load_test_ca()]),
                     ..Default::default()
                 },
             );
