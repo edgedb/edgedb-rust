@@ -1938,6 +1938,7 @@ impl Config {
 
     pub(crate) fn tls(&self) -> Result<TlsParameters, Error> {
         let mut tls = TlsParameters::default();
+        tls.root_cert = TlsCert::Webpki;
         match &self.0.pem_certificates {
             Some(pem_certificates) => {
                 tls.root_cert = TlsCert::Custom(read_root_cert_pem(&pem_certificates)?);
