@@ -29,7 +29,6 @@ struct Globals {
     int_val: i32,
 }
 
-#[cfg(feature = "derive")]
 #[tokio::test]
 async fn global_struct() -> anyhow::Result<()> {
     let client = Client::new(&SERVER.config);
