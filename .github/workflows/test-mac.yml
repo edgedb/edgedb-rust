@@ -25,7 +25,7 @@ jobs:
           echo "PATH=$PATH" >> $GITHUB_ENV
           gel server install --nightly
           mkdir -p ~/.local/bin/
-          echo "#!/bin/bash\n$(gel server info --channel=nightly --get bin-path) \"$@\"\n" > ~/.local/bin/edgedb-server
+          echo "#!/bin/bash\n\"$(gel server info --channel=nightly --get bin-path)\" \"$@\"\n" > ~/.local/bin/edgedb-server
           chmod +x ~/.local/bin/edgedb-server
         shell: bash
 
