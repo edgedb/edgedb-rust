@@ -201,6 +201,7 @@ macro_rules! tls_test (
 
 tls_test! {
     /// The certificate is not valid for 127.0.0.1, so the connection should fail.
+    #[cfg(not(target_vendor = "apple"))]
     #[tokio::test]
     #[ntest::timeout(30_000)]
     async fn test_target_tcp_tls_verify_full_fails<C: TlsDriver, S: TlsDriver>() -> Result<(), ConnectionError> {
@@ -229,7 +230,6 @@ tls_test! {
     }
 
     /// The certificate is not valid for 127.0.0.1, so the connection should fail.
-    #[cfg(not(target_vendor = "apple"))]
     #[tokio::test]
     #[ntest::timeout(30_000)]
     async fn test_target_tcp_tls_verify_full_fails_name<C: TlsDriver, S: TlsDriver>() -> Result<(), ConnectionError> {
