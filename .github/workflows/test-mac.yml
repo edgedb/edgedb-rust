@@ -22,6 +22,7 @@ jobs:
         run: |
           bash <(curl --proto '=https' --tlsv1.2 -sSf https://sh.edgedb.com) --nightly -y
           . ~/.bash_profile
+          echo "PATH=$PATH" >> $GITHUB_ENV
           gel server install --nightly
           mkdir -p ~/.local/bin/
           ln -s "$(gel server info --channel=nightly --get bin-path)" ~/.local/bin/edgedb-server
