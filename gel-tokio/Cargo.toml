@@ -16,7 +16,7 @@ gel-protocol = { path = "../gel-protocol", version = "0.8", features = [
     "with-serde",
 ] }
 gel-errors = { path = "../gel-errors", version = "0.5" }
-gel-derive = { path = "../gel-derive", version = "0.6", optional = true }
+gel-derive = { path = "../gel-derive", version = "0.7", optional = true }
 gel-stream = { path = "../gel-stream", version = "0.1", features = ["client", "tokio", "rustls", "hickory", "keepalive"] }
 gel-auth = { path = "../gel-auth", version = "0.1" }
 tokio = { workspace = true, features = ["net", "time", "sync", "macros"] }
