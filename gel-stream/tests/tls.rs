@@ -228,7 +228,7 @@ tls_test! {
 
         Ok(())
     }
-    
+
     /// The certificate is not valid for 127.0.0.1, so the connection should fail.
     #[tokio::test]
     #[ntest::timeout(30_000)]
