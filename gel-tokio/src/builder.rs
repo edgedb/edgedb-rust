@@ -1815,7 +1815,11 @@ impl Config {
             "password": self.0.password,
             "secretKey": self.0.secret_key,
             "tlsCAData": self.0.pem_certificates,
-            "tlsSecurity": format!("{:?}", self.0.compute_tls_security().unwrap()),
+            "tlsSecurity": match self.0.compute_tls_security().unwrap() {
+                gel_stream::TlsServerCertVerify::Insecure => "insecure",
+                gel_stream::TlsServerCertVerify::IgnoreHostname => "no_host_verification",
+                gel_stream::TlsServerCertVerify::VerifyFull => "strict",
+            },
             "tlsServerName": self.0.tls_server_name,
             "serverSettings": self.0.extra_dsn_query_args,
             "waitUntilAvailable": self.0.wait.as_micros() as i64,
