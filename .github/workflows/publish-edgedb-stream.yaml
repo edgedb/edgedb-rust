@@ -28,8 +28,8 @@ jobs:
       - run: |
           set -x
           cargo_version="$(cargo metadata --format-version 1 \
-            | jq -r '.packages[] | select(.name==$PROJECT_NAME) | .version')"
-          test "$cargo_version" = "$VERSION"
+            | jq -r '.packages[] | select(.name==${{ env.PROJECT_NAME }}) | .version')"
+          test "$cargo_version" = "${{ env.VERSION }}"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
