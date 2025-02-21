@@ -23,6 +23,7 @@ jobs:
 
       - name: Install EdgeDB
         run: |
+          . ~/.bash_profile
           echo $PATH
           gel server install --nightly
 
