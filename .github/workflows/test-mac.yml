@@ -23,7 +23,7 @@ jobs:
           bash <(curl --proto '=https' --tlsv1.2 -sSf https://sh.edgedb.com) --nightly -y
           . ~/.bash_profile
           gel server install --nightly
-          gel server info --channel=nightly --get bin-path
+          ls -l "$(gel server info --channel=nightly --get bin-path)"
           ln -s "$(gel server info --channel=nightly --get bin-path)" ~/.local/bin/edgedb-server
         shell: bash
 
