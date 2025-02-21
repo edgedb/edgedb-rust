@@ -126,6 +126,7 @@ pub fn sasl_normalize_password(s: &str) -> Cow<str> {
     Cow::Owned(normalized)
 }
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! __process_ranges {
     (

@@ -1,3 +1,5 @@
+//! MD5 password hashing.
+
 /// Computes the MD5 password hash used in PostgreSQL authentication.
 ///
 /// This function implements the MD5 password hashing algorithm as specified in the
