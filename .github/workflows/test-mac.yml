@@ -30,7 +30,7 @@ jobs:
         run: |
           mkdir -p ~/.local/bin
           ls -l ~/.local/bin
-          echo `gel server info --channel=nightly --get bin-path`
+          ls -l `gel server info --channel=nightly --get bin-path`
           ln -s `gel server info --channel=nightly --get bin-path` ~/.local/bin/edgedb-server
         shell: bash -l {0}
 
