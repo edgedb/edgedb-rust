@@ -23,6 +23,7 @@ jobs:
 
       - name: Install EdgeDB
         run: gel server install --nightly
+        shell: bash
 
       - name: Link nightly
         run: ln -s `edgedb server info --channel=nightly --get bin-path` ~/.local/bin/edgedb-server
