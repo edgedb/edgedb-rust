@@ -21,16 +21,10 @@ jobs:
       - name: Install EdgeDB CLI
         run: |
           bash <(curl --proto '=https' --tlsv1.2 -sSf https://sh.edgedb.com) --nightly -y
-
-      - name: Install EdgeDB
-        run: gel server install --nightly
-        shell: bash -l {0}
-
-      - name: Link nightly
-        run: |
-          ls -l "$(gel server info --channel=nightly --get bin-path)" ~/.local/bin/edgedb-server
+          . ~/.bash_profile
+          gel server install --nightly
           ln -s "$(gel server info --channel=nightly --get bin-path)" ~/.local/bin/edgedb-server
-        shell: bash -l {0}
+        shell: bash
 
       - name: Show binaries
         run: ls -l ~/.local/bin
