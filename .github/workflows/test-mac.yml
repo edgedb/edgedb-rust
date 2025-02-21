@@ -29,9 +29,8 @@ jobs:
       - name: Link nightly
         run: |
           mkdir -p ~/.local/bin
-          ls -l ~/.local/bin
-          ls -l `gel server info --channel=nightly --get bin-path`
-          ln -s `gel server info --channel=nightly --get bin-path` ~/.local/bin/edgedb-server
+          ls -l $(gel server info --channel=nightly --get bin-path)
+          ln -s $(gel server info --channel=nightly --get bin-path) ~/.local/bin/edgedb-server
         shell: bash -l {0}
 
       - name: Show binaries
