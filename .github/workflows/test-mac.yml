@@ -1,0 +1,46 @@
+on: [pull_request]
+
+name: CI
+
+jobs:
+  build_and_test:
+    name: Tests
+    runs-on: macOS-latest
+    strategy:
+      matrix:
+        rust_version: [default]
+      fail-fast: false
+    timeout-minutes: 30
+    permissions:
+      id-token: "write"
+      contents: "read"
+    steps:
+      - name: checkout and env setup
+        uses: actions/checkout@v3
+
+      - name: Install EdgeDB CLI
+        run: bash <(curl --proto '=https' --tlsv1.2 -sSf https://sh.edgedb.com) --nightly -y
+
+      - name: Install EdgeDB
+        run: edgedb server install --nightly
+
+      - name: Link nightly
+        run: ln -s `edgedb server info --channel=nightly --get bin-path` ~/.local/bin/edgedb-server
+
+      - name: Show binaries
+        run: ls -l ~/.local/bin
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust_version == 'default' && 'stable' || matrix.rust_version }}
+          components: rustfmt, clippy
+
+      - name: setup rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install just
+        run: cargo install just
+
+      - name: Test all features
+        run: just test
