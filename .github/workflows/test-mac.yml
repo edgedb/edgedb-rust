@@ -4,7 +4,7 @@ name: CI
 
 jobs:
   build_and_test:
-    name: Tests
+    name: Tests (Mac)
     runs-on: macOS-latest
     strategy:
       matrix:
@@ -22,7 +22,7 @@ jobs:
         run: bash <(curl --proto '=https' --tlsv1.2 -sSf https://sh.edgedb.com) --nightly -y
 
       - name: Install EdgeDB
-        run: edgedb server install --nightly
+        run: gel server install --nightly
 
       - name: Link nightly
         run: ln -s `edgedb server info --channel=nightly --get bin-path` ~/.local/bin/edgedb-server
