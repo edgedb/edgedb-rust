@@ -16,11 +16,13 @@ docs can currently be found on docs.rs:
 Running Tests
 =============
 
-See [justfile](./justfile) for all commands to run the complete test suite.
+`cargo test --all-features` will test most features of the creates in this
+repository, however some feature combinations will not be tested. See
+[justfile](./justfile) for all commands to run the complete feature matrix test
+suite.
 
 License
 =======
-
 
 Licensed under either of
 

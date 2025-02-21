@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::cmp::min;
 use std::collections::HashMap;
 use std::error::Error as _;
@@ -8,7 +7,6 @@ use std::str;
 use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
-use gel_stream::{CommonError, ConnectionError, Connector, Target};
 use log::warn;
 use rand::{rng, Rng};
 use tokio::io::ReadBuf;
@@ -16,16 +14,15 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio::time::{sleep, timeout_at, Instant};
 
-use gel_protocol::client_message::{ClientHandshake, ClientMessage};
+use gel_auth::{handshake::{ClientAuthDrive, ClientAuthResponse}, AuthType, CredentialData};
+use gel_stream::{CommonError, ConnectionError, Connector, Target};
+use gel_protocol::client_message::{ClientHandshake, ClientMessage, SaslInitialResponse, SaslResponse};
 use gel_protocol::encoding::{Input, Output};
 use gel_protocol::features::ProtocolVersion;
-use gel_protocol::server_message::{
-    Authentication, ErrorResponse, ServerHandshake, ServerMessage,
-};
-use gel_protocol::server_message::{
-    MessageSeverity, ParameterStatus, RawTypedesc, TransactionState,
-};
 use gel_protocol::value::Value;
+use gel_protocol::server_message::{
+    Authentication, ErrorResponse, MessageSeverity, ParameterStatus, RawTypedesc, ServerHandshake, ServerMessage, TransactionState
+};
 
 use crate::builder::Config;
 use crate::errors::{
@@ -355,41 +352,92 @@ async fn connect4(cfg: &Config, mut stream: gel_stream::RawStream) -> Result<Con
         // TODO(tailhook) record extensions
         msg = wait_message(&mut stream, &mut in_buf, &proto).await?;
     }
-    match msg {
-        ServerMessage::Authentication(Authentication::Ok) => {}
-        ServerMessage::Authentication(Authentication::Sasl { methods }) => {
-            if methods.iter().any(|x| x == "SCRAM-SHA-256") {
-                if let Some(password) = &cfg.0.password {
-                    scram(
-                        &mut stream,
-                        &mut in_buf,
-                        &mut out_buf,
-                        &proto,
-                        &cfg.0.user,
-                        password,
-                    )
-                    .await?;
+
+    let credentials = match &cfg.0.password {
+        Some(password) => CredentialData::Plain(password.clone()),
+        None => CredentialData::Trust,
+    };
+    let mut client_auth = gel_auth::handshake::ClientAuth::new(cfg.0.user.clone(), credentials);
+
+    while !client_auth.is_complete() {
+        let resp;
+        match msg {
+            ServerMessage::Authentication(Authentication::Ok) => {
+                resp = client_auth.drive(ClientAuthDrive::Ok).map_err(AuthenticationError::with_source)?;
+            }
+            ServerMessage::Authentication(Authentication::Sasl { ref methods }) => {
+                if methods.iter().any(|x| x == "SCRAM-SHA-256") {
+                    if cfg.0.password.is_some() {
+                        resp = client_auth.drive(ClientAuthDrive::Scram).map_err(AuthenticationError::with_source)?;
+                    } else {
+                        return Err(PasswordRequired::with_message(
+                            "Password required for the specified user/host",
+                        ));
+                    }
                 } else {
-                    return Err(PasswordRequired::with_message(
-                        "Password required for the specified user/host",
-                    ));
+                    return Err(AuthenticationError::with_message(format!(
+                        "No supported authentication \
+                        methods: {:?}",
+                        methods
+                    )));
                 }
-            } else {
-                return Err(AuthenticationError::with_message(format!(
-                    "No supported authentication \
-                    methods: {:?}",
-                    methods
+            }
+            ServerMessage::Authentication(Authentication::SaslContinue { ref data }) => {
+                resp = client_auth.drive(ClientAuthDrive::ScramResponse(&data)).map_err(AuthenticationError::with_source)?;
+            }
+            ServerMessage::Authentication(Authentication::SaslFinal { ref data }) => {
+                resp = client_auth.drive(ClientAuthDrive::ScramResponse(&data)).map_err(AuthenticationError::with_source)?;
+            }
+            ServerMessage::ErrorResponse(err) => {
+                return Err(err.into());
+            }
+            msg => {
+                return Err(ProtocolError::with_message(format!(
+                    "Error authenticating, unexpected message {:?}",
+                    msg
                 )));
             }
         }
-        ServerMessage::ErrorResponse(err) => {
-            return Err(err.into());
-        }
-        msg => {
-            return Err(ProtocolError::with_message(format!(
-                "Error authenticating, unexpected message {:?}",
-                msg
-            )));
+
+        match resp {
+            ClientAuthResponse::Initial(AuthType::ScramSha256, message) => {
+                send_messages(
+                    &mut stream,
+                    &mut out_buf,
+                    &mut proto,
+                    &[ClientMessage::AuthenticationSaslInitialResponse(
+                        SaslInitialResponse {
+                            method: "SCRAM-SHA-256".into(),
+                            data: Bytes::from(message),
+                        },
+                    )],
+                )
+                .await?;
+            },
+            ClientAuthResponse::Initial(..) => {
+                return Err(ProtocolError::with_message(format!(
+                    "Unexpected authentication response",
+                )));
+            }
+            ClientAuthResponse::Waiting | ClientAuthResponse::Complete => {
+                continue;
+            }
+            ClientAuthResponse::Continue(message) => {
+                send_messages(
+                    &mut stream,
+                    &mut out_buf,
+                    &mut proto,
+                    &[ClientMessage::AuthenticationSaslResponse(
+                        SaslResponse {
+                            data: Bytes::from(message),
+                        },
+                    )],
+                )
+                .await?;
+            }
+            ClientAuthResponse::Error(e) => {
+                return Err(AuthenticationError::with_source(e));
+            }
         }
     }
 
@@ -468,104 +516,6 @@ async fn connect4(cfg: &Config, mut stream: gel_stream::RawStream) -> Result<Con
         stream,
         ping_interval: PingInterval::Unknown,
     })
-}
-
-async fn scram(
-    stream: &mut gel_stream::RawStream,
-    in_buf: &mut BytesMut,
-    out_buf: &mut BytesMut,
-    proto: &ProtocolVersion,
-    user: &str,
-    password: &str,
-) -> Result<(), Error> {
-    use gel_protocol::client_message::SaslInitialResponse;
-    use gel_protocol::client_message::SaslResponse;
-
-    let mut scram = gel_auth::scram::ClientTransaction::new(Cow::Owned(user.to_string()));
-    struct Env<'a>(&'a str);
-    impl <'a> gel_auth::scram::ClientEnvironment for Env<'a> {
-        fn get_salted_password(&self, salt: &[u8], iterations: usize) -> gel_auth::scram::Sha256Out {
-            gel_auth::scram::generate_salted_password(self.0.as_bytes(), salt, iterations)
-        }
-        fn generate_nonce(&self) -> String {
-            gel_auth::scram::generate_nonce()
-        }
-    }
-
-    let env = Env(password);
-    let msg = scram.process_message(&[], &env).map_err(AuthenticationError::with_source)?;
-    send_messages(
-        stream,
-        out_buf,
-        proto,
-        &[ClientMessage::AuthenticationSaslInitialResponse(
-            SaslInitialResponse {
-                method: "SCRAM-SHA-256".into(),
-                data: Bytes::from(msg.unwrap_or_default()),
-            },
-        )],
-    )
-    .await?;
-    let msg = wait_message(stream, in_buf, proto).await?;
-    let data = match msg {
-        ServerMessage::Authentication(Authentication::SaslContinue { data }) => data,
-        ServerMessage::ErrorResponse(err) => {
-            return Err(err.into());
-        }
-        msg => {
-            return Err(ProtocolError::with_message(format!(
-                "Bad auth response: {:?}",
-                msg
-            )));
-        }
-    };
-
-    let data = scram.process_message(&data, &env).map_err(AuthenticationError::with_source)?;
-    send_messages(
-        stream,
-        out_buf,
-        proto,
-        &[ClientMessage::AuthenticationSaslResponse(SaslResponse {
-            data: Bytes::from(data.unwrap_or_default()),
-        })],
-    )
-    .await?;
-    let msg = wait_message(stream, in_buf, proto).await?;
-    let data = match msg {
-        ServerMessage::Authentication(Authentication::SaslFinal { data }) => data,
-        ServerMessage::ErrorResponse(err) => {
-            return Err(err.into());
-        }
-        msg => {
-            return Err(ProtocolError::with_message(format!(
-                "auth response: {:?}",
-                msg
-            )));
-        }
-    };
-    let data = scram.process_message(&data, &env).map_err(AuthenticationError::with_source)?;
-    if data.is_some() || !scram.success() {
-        return Err(AuthenticationError::with_message("Authentication failed"));
-    }
-    loop {
-        let msg = wait_message(stream, in_buf, proto).await?;
-        match msg {
-            ServerMessage::Authentication(Authentication::Ok) => break,
-            ServerMessage::ErrorResponse(ErrorResponse {
-                severity,
-                code,
-                message,
-                attributes,
-            }) => {
-                log::warn!("Error received from server: {message}. Severity: {severity:?}. Code: {code:#x}");
-                log::debug!("Error details: {attributes:?}");
-            }
-            msg => {
-                log::warn!("unsolicited message {msg:?}");
-            }
-        };
-    }
-    Ok(())
 }
 
 fn handle_system_config(
