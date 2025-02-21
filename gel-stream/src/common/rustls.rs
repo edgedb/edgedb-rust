@@ -512,9 +512,13 @@ impl ErrorFilteringVerifier {
             // On macOS, the system verifier returns `certificate is not standards compliant: -67901`
             // for self-signed certificates that have too long of a validity period.
             #[cfg(target_vendor = "apple")]
-            Err(rustls::Error::Other(e)) if e.to_string().contains("-67901") => Err(
-                rustls::Error::InvalidCertificate(rustls::CertificateError::UnknownIssuer),
-            ),
+            Err(rustls::Error::InvalidCertificate(rustls::CertificateError::Other(e)))
+                if e.to_string().contains("-67901") =>
+            {
+                Err(rustls::Error::InvalidCertificate(
+                    rustls::CertificateError::UnknownIssuer,
+                ))
+            }
             Err(e) => Err(e),
         }
     }
