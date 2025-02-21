@@ -509,8 +509,11 @@ impl ErrorFilteringVerifier {
     fn filter_err<T>(res: Result<T, rustls::Error>) -> Result<T, rustls::Error> {
         match res {
             Ok(res) => Ok(res),
-            // On macOS, the system verifier returns `certificate is not standards compliant: -67901`
-            // for self-signed certificates that have too long of a validity period.
+            // On macOS, the system verifier returns `certificate is not
+            // standards compliant: -67901` for self-signed certificates that
+            // have too long of a validity period. It's probably better if we
+            // eventually have the WebPki verifier handle certs as a fallback to
+            // ensure a better error is returned.
             #[cfg(target_vendor = "apple")]
             Err(rustls::Error::InvalidCertificate(rustls::CertificateError::Other(e)))
                 if e.to_string().contains("-67901") =>
