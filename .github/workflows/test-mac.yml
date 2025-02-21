@@ -22,8 +22,9 @@ jobs:
         run: bash <(curl --proto '=https' --tlsv1.2 -sSf https://sh.edgedb.com) --nightly -y
 
       - name: Install EdgeDB
-        run: gel server install --nightly
-        shell: bash
+        run: |
+          echo $PATH
+          gel server install --nightly
 
       - name: Link nightly
         run: ln -s `edgedb server info --channel=nightly --get bin-path` ~/.local/bin/edgedb-server
