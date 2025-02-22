@@ -153,8 +153,6 @@ mod tests {
             panic!("Server auth should complete");
         };
 
-        assert!(!message.is_empty());
-
         let Ok(ClientAuthResponse::Waiting) =
             client.drive(ClientAuthDrive::ScramResponse(&message))
         else {

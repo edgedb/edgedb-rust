@@ -92,14 +92,11 @@ impl ClientAuth {
                     }
                 }
             }
-            (ClientAuthState::Sasl(..), _) => Err(ClientAuthError::InvalidState),
-
             // Handle "Ok" drive (authentication successful).
-            (_, ClientAuthDrive::Ok) => {
+            (ClientAuthState::Waiting, ClientAuthDrive::Ok) => {
                 self.state = ClientAuthState::Complete;
                 Ok(ClientAuthResponse::Complete)
             }
-
             // Invalid state/drive combination.
             (_, drive) => {
                 error!("Received invalid drive {drive:?} in state {:?}", self.state);
