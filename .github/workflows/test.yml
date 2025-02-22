@@ -18,14 +18,16 @@ jobs:
       - name: checkout and env setup
         uses: actions/checkout@v3
 
-      - name: Install EdgeDB CLI
+      - name: Install Gel CLI
         run: bash <(curl --proto '=https' --tlsv1.2 -sSf https://sh.edgedb.com) --nightly -y
 
-      - name: Install EdgeDB
-        run: edgedb server install --nightly
+      - name: Install Gel
+        run: gel server install --nightly
 
       - name: Link nightly
-        run: ln -s `edgedb server info --channel=nightly --get bin-path` ~/.local/bin/edgedb-server
+        run: |
+          ln -s `gel server info --channel=nightly --get bin-path` ~/.local/bin/edgedb-server
+          ln -s `gel server info --channel=nightly --get bin-path` ~/.local/bin/gel-server
 
       - name: Show binaries
         run: ls -l ~/.local/bin
