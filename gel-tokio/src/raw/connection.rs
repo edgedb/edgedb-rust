@@ -418,9 +418,10 @@ async fn connect4(cfg: &Config, mut stream: gel_stream::RawStream) -> Result<Con
                     "Unexpected authentication response",
                 )));
             }
-            ClientAuthResponse::Waiting | ClientAuthResponse::Complete => {
-                continue;
+            ClientAuthResponse::Complete => {
+                break;
             }
+            ClientAuthResponse::Waiting => {}
             ClientAuthResponse::Continue(message) => {
                 send_messages(
                     &mut stream,
@@ -438,6 +439,7 @@ async fn connect4(cfg: &Config, mut stream: gel_stream::RawStream) -> Result<Con
                 return Err(AuthenticationError::with_source(e));
             }
         }
+        msg = wait_message(&mut stream, &mut in_buf, &proto).await?;
     }
 
     let mut server_params = ServerParams::new();
