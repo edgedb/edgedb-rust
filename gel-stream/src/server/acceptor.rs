@@ -1,6 +1,6 @@
 use crate::{
     common::tokio_stream::TokioListenerStream, ConnectionError, LocalAddress, ResolvedTarget,
-    RewindStream, Ssl, SslError, StreamUpgrade, TlsDriver, TlsServerParameterProvider,
+    RewindStream, Ssl, SslError, StreamUpgrade, Target, TlsDriver, TlsServerParameterProvider,
     UpgradableStream,
 };
 use futures::{FutureExt, StreamExt};
@@ -44,27 +44,45 @@ impl Acceptor {
         }
     }
 
-    #[cfg(unix)]
     pub fn new_unix_path(path: impl AsRef<Path>) -> Result<Self, std::io::Error> {
-        Ok(Self {
-            resolved_target: ResolvedTarget::from(std::os::unix::net::SocketAddr::from_pathname(
-                path,
-            )?),
-            tls_provider: None,
-            should_upgrade: false,
-        })
+        #[cfg(unix)]
+        {
+            Ok(Self {
+                resolved_target: ResolvedTarget::from(
+                    std::os::unix::net::SocketAddr::from_pathname(path)?,
+                ),
+                tls_provider: None,
+                should_upgrade: false,
+            })
+        }
+        #[cfg(not(unix))]
+        {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "Unix domain sockets are not supported on this platform",
+            ))
+        }
     }
 
-    #[cfg(any(target_os = "linux", target_os = "android"))]
     pub fn new_unix_domain(domain: impl AsRef<[u8]>) -> Result<Self, std::io::Error> {
-        use std::os::linux::net::SocketAddrExt;
-        Ok(Self {
-            resolved_target: ResolvedTarget::from(
-                std::os::unix::net::SocketAddr::from_abstract_name(domain)?,
-            ),
-            tls_provider: None,
-            should_upgrade: false,
-        })
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        {
+            use std::os::linux::net::SocketAddrExt;
+            Ok(Self {
+                resolved_target: ResolvedTarget::from(
+                    std::os::unix::net::SocketAddr::from_abstract_name(domain)?,
+                ),
+                tls_provider: None,
+                should_upgrade: false,
+            })
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "android")))]
+        {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "Unix domain sockets are not supported on this platform",
+            ))
+        }
     }
 
     pub async fn bind(
