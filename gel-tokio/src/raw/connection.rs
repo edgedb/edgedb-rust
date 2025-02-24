@@ -1,6 +1,5 @@
 use std::cmp::min;
 use std::collections::HashMap;
-use std::error::Error as _;
 use std::future::{self, Future};
 use std::io;
 use std::str;
@@ -268,7 +267,7 @@ async fn connect(cfg: &Config) -> Result<Connection, Error> {
                 }
             }
             Err(e) => {
-                log::debug!("Connection error: {:#}", e);
+                log::error!("Connection error: {:#}", e);
                 return Err(e)?;
             }
             Ok(conn) => break conn,
@@ -680,33 +679,40 @@ where
     })
 }
 
-fn is_temporary(e: &Error) -> bool {
-    use io::ErrorKind::{
-        AddrNotAvailable, ConnectionAborted, ConnectionRefused, ConnectionReset, NotFound,
-        TimedOut, UnexpectedEof,
-    };
+fn is_io_error_temporary(e: &io::Error) -> bool {
+    use io::ErrorKind::*;
 
+    matches!(e.kind(), 
+        | ConnectionRefused
+        | ConnectionReset
+        | ConnectionAborted
+        | NotFound  // For unix sockets
+        | TimedOut
+        | UnexpectedEof     // For Docker server which is starting up
+        | AddrNotAvailable  // Docker exposed ports not yet bound
+    )
+}
+
+// Walk the source chain for all errors to see if we can find an io::Error
+// that is temporary.
+fn is_temporary(e: &Error) -> bool {
     if e.is::<ClientConnectionFailedTemporarilyError>() {
         return true;
     }
-    // todo(tailhook) figure out whether TLS api errors are properly unpacked
+    if e.is::<ClientConnectionEosError>() {
+        return true;
+    }
     if e.is::<ClientConnectionError>() {
-        let io_err = e.source().and_then(|src| {
-            src.downcast_ref::<io::Error>()
-                .or_else(|| src.downcast_ref::<Box<io::Error>>().map(|b| &**b))
-        });
-        if let Some(e) = io_err {
-            match e.kind() {
-                | ConnectionRefused
-                | ConnectionReset
-                | ConnectionAborted
-                | NotFound  // For unix sockets
-                | TimedOut
-                | UnexpectedEof     // For Docker server which is starting up
-                | AddrNotAvailable  // Docker exposed ports not yet bound
-                => return true,
-                _ => {},
+        let mut e: &dyn std::error::Error = &e;
+        while let Some(src) = e.source() {
+            if let Some(io_err) = src.downcast_ref::<io::Error>() {
+                if is_io_error_temporary(io_err) {
+                    return true;
+                } else {
+                    return false;
+                }
             }
+            e = src;
         }
     }
     false
