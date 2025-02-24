@@ -23,23 +23,41 @@ impl std::fmt::Debug for TargetName {
 
 impl TargetName {
     /// Create a new target for a Unix socket.
-    #[cfg(unix)]
     pub fn new_unix_path(path: impl AsRef<Path>) -> Result<Self, std::io::Error> {
-        let path = ResolvedTarget::from(std::os::unix::net::SocketAddr::from_pathname(path)?);
-        Ok(Self {
-            inner: MaybeResolvedTarget::Resolved(path),
-        })
+        #[cfg(unix)]
+        {
+            let path = ResolvedTarget::from(std::os::unix::net::SocketAddr::from_pathname(path)?);
+            Ok(Self {
+                inner: MaybeResolvedTarget::Resolved(path),
+            })
+        }
+        #[cfg(not(unix))]
+        {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "Unix sockets are not supported on this platform",
+            ))
+        }
     }
 
     /// Create a new target for a Unix socket.
-    #[cfg(any(target_os = "linux", target_os = "android"))]
     pub fn new_unix_domain(domain: impl AsRef<[u8]>) -> Result<Self, std::io::Error> {
-        use std::os::linux::net::SocketAddrExt;
-        let domain =
-            ResolvedTarget::from(std::os::unix::net::SocketAddr::from_abstract_name(domain)?);
-        Ok(Self {
-            inner: MaybeResolvedTarget::Resolved(domain),
-        })
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        {
+            use std::os::linux::net::SocketAddrExt;
+            let domain =
+                ResolvedTarget::from(std::os::unix::net::SocketAddr::from_abstract_name(domain)?);
+            Ok(Self {
+                inner: MaybeResolvedTarget::Resolved(domain),
+            })
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "android")))]
+        {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "Unix domain sockets are not supported on this platform",
+            ))
+        }
     }
 
     /// Create a new target for a TCP socket.
@@ -109,23 +127,41 @@ impl Target {
     }
 
     /// Create a new target for a Unix socket.
-    #[cfg(unix)]
     pub fn new_unix_path(path: impl AsRef<Path>) -> Result<Self, std::io::Error> {
-        let path = ResolvedTarget::from(std::os::unix::net::SocketAddr::from_pathname(path)?);
-        Ok(Self {
-            inner: TargetInner::NoTls(path.into()),
-        })
+        #[cfg(unix)]
+        {
+            let path = ResolvedTarget::from(std::os::unix::net::SocketAddr::from_pathname(path)?);
+            Ok(Self {
+                inner: TargetInner::NoTls(path.into()),
+            })
+        }
+        #[cfg(not(unix))]
+        {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "Unix sockets are not supported on this platform",
+            ))
+        }
     }
 
     /// Create a new target for a Unix socket.
-    #[cfg(any(target_os = "linux", target_os = "android"))]
     pub fn new_unix_domain(domain: impl AsRef<[u8]>) -> Result<Self, std::io::Error> {
-        use std::os::linux::net::SocketAddrExt;
-        let domain =
-            ResolvedTarget::from(std::os::unix::net::SocketAddr::from_abstract_name(domain)?);
-        Ok(Self {
-            inner: TargetInner::NoTls(domain.into()),
-        })
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        {
+            use std::os::linux::net::SocketAddrExt;
+            let domain =
+                ResolvedTarget::from(std::os::unix::net::SocketAddr::from_abstract_name(domain)?);
+            Ok(Self {
+                inner: TargetInner::NoTls(domain.into()),
+            })
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "android")))]
+        {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "Unix domain sockets are not supported on this platform",
+            ))
+        }
     }
 
     /// Create a new target for a TCP socket.
