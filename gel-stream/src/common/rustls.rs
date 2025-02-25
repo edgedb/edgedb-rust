@@ -229,6 +229,24 @@ impl TlsDriver for RustlsDriver {
     }
 }
 
+fn make_roots(
+    root_certs: &[CertificateDer<'static>],
+    webpki: bool,
+) -> Result<RootCertStore, crate::SslError> {
+    let mut roots = RootCertStore::empty();
+    if webpki {
+        let webpki_roots = webpki_roots::TLS_SERVER_ROOTS;
+        roots.extend(webpki_roots.iter().cloned());
+    }
+    let (loaded, ignored) = roots.add_parsable_certificates(root_certs.iter().cloned());
+    if !root_certs.is_empty() && (loaded == 0 || ignored > 0) {
+        return Err(
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid certificate").into(),
+        );
+    }
+    Ok(roots)
+}
+
 fn make_verifier(
     server_cert_verify: &TlsServerCertVerify,
     root_cert: &TlsCert,
@@ -242,22 +260,12 @@ fn make_verifier(
         root_cert,
         TlsCert::Webpki | TlsCert::WebpkiPlus(_) | TlsCert::Custom(_)
     ) {
-        let mut roots = RootCertStore::empty();
-        if matches!(root_cert, TlsCert::Webpki | TlsCert::WebpkiPlus(_)) {
-            let webpki_roots = webpki_roots::TLS_SERVER_ROOTS;
-            roots.extend(webpki_roots.iter().cloned());
-        }
-
-        if let TlsCert::Custom(root) = root_cert {
-            let (loaded, ignored) = roots.add_parsable_certificates(root.iter().cloned());
-            if loaded == 0 || ignored > 0 {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "Invalid certificate",
-                )
-                .into());
-            }
-        }
+        let roots = match root_cert {
+            TlsCert::Webpki => make_roots(&[], true),
+            TlsCert::Custom(roots) => make_roots(roots, false),
+            TlsCert::WebpkiPlus(roots) => make_roots(roots, true),
+            _ => unreachable!(),
+        }?;
 
         let verifier = WebPkiServerVerifier::builder(Arc::new(roots))
             .with_crls(crls)
@@ -268,17 +276,25 @@ fn make_verifier(
         return Ok(verifier);
     }
 
-    let verifier = if let TlsCert::SystemPlus(roots) = root_cert {
-        Verifier::new_with_extra_roots(roots.iter().cloned())?
+    // We need to work around macOS returning `certificate is not standards compliant: -67901`
+    // when using the system verifier.
+    let verifier: Arc<dyn ServerCertVerifier> = if let TlsCert::SystemPlus(roots) = root_cert {
+        let roots = make_roots(roots, false)?;
+        let v1 = WebPkiServerVerifier::builder(Arc::new(roots))
+            .with_crls(crls)
+            .build()?;
+        let v2 = Arc::new(Verifier::new());
+        Arc::new(ChainingVerifier::new(v1, v2))
     } else {
-        Verifier::new()
+        Arc::new(ErrorFilteringVerifier::new(Arc::new(Verifier::new())))
     };
 
-    let verifier = if *server_cert_verify == TlsServerCertVerify::IgnoreHostname {
-        Arc::new(IgnoreHostnameVerifier::new(Arc::new(verifier))) as Arc<dyn ServerCertVerifier>
-    } else {
-        Arc::new(verifier)
-    };
+    let verifier: Arc<dyn ServerCertVerifier> =
+        if *server_cert_verify == TlsServerCertVerify::IgnoreHostname {
+            Arc::new(IgnoreHostnameVerifier::new(verifier))
+        } else {
+            verifier
+        };
 
     Ok(verifier)
 }
@@ -336,6 +352,98 @@ impl ServerCertVerifier for IgnoreHostnameVerifier {
 }
 
 #[derive(Debug)]
+struct ChainingVerifier {
+    verifier1: Arc<dyn ServerCertVerifier>,
+    verifier2: Arc<dyn ServerCertVerifier>,
+}
+
+impl ChainingVerifier {
+    fn new(verifier1: Arc<dyn ServerCertVerifier>, verifier2: Arc<dyn ServerCertVerifier>) -> Self {
+        Self {
+            verifier1,
+            verifier2,
+        }
+    }
+}
+
+impl ServerCertVerifier for ChainingVerifier {
+    fn verify_server_cert(
+        &self,
+        end_entity: &CertificateDer<'_>,
+        intermediates: &[CertificateDer<'_>],
+        server_name: &ServerName,
+        ocsp_response: &[u8],
+        now: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        let res = self.verifier1.verify_server_cert(
+            end_entity,
+            intermediates,
+            server_name,
+            ocsp_response,
+            now,
+        );
+        if let Ok(res) = res {
+            return Ok(res);
+        }
+
+        let res2 = self.verifier2.verify_server_cert(
+            end_entity,
+            intermediates,
+            server_name,
+            ocsp_response,
+            now,
+        );
+        if let Ok(res) = res2 {
+            return Ok(res);
+        }
+
+        res
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        let res = self.verifier1.verify_tls12_signature(message, cert, dss);
+        if let Ok(res) = res {
+            return Ok(res);
+        }
+
+        let res2 = self.verifier2.verify_tls12_signature(message, cert, dss);
+        if let Ok(res) = res2 {
+            return Ok(res);
+        }
+
+        res
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        let res = self.verifier1.verify_tls13_signature(message, cert, dss);
+        if let Ok(res) = res {
+            return Ok(res);
+        }
+
+        let res2 = self.verifier2.verify_tls13_signature(message, cert, dss);
+        if let Ok(res) = res2 {
+            return Ok(res);
+        }
+
+        res
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        self.verifier1.supported_verify_schemes()
+    }
+}
+
+#[derive(Debug)]
 struct NullVerifier;
 
 impl ServerCertVerifier for NullVerifier {
@@ -385,5 +493,77 @@ impl ServerCertVerifier for NullVerifier {
             ED25519,
             ED448,
         ]
+    }
+}
+
+#[derive(Debug)]
+struct ErrorFilteringVerifier {
+    verifier: Arc<dyn ServerCertVerifier>,
+}
+
+impl ErrorFilteringVerifier {
+    fn new(verifier: Arc<dyn ServerCertVerifier>) -> Self {
+        Self { verifier }
+    }
+
+    fn filter_err<T>(res: Result<T, rustls::Error>) -> Result<T, rustls::Error> {
+        match res {
+            Ok(res) => Ok(res),
+            // On macOS, the system verifier returns `certificate is not
+            // standards compliant: -67901` for self-signed certificates that
+            // have too long of a validity period. It's probably better if we
+            // eventually have the WebPki verifier handle certs as a fallback to
+            // ensure a better error is returned.
+            #[cfg(target_vendor = "apple")]
+            Err(rustls::Error::InvalidCertificate(rustls::CertificateError::Other(e)))
+                if e.to_string().contains("-67901") =>
+            {
+                Err(rustls::Error::InvalidCertificate(
+                    rustls::CertificateError::UnknownIssuer,
+                ))
+            }
+            Err(e) => Err(e),
+        }
+    }
+}
+
+impl ServerCertVerifier for ErrorFilteringVerifier {
+    fn verify_server_cert(
+        &self,
+        end_entity: &CertificateDer<'_>,
+        intermediates: &[CertificateDer<'_>],
+        server_name: &ServerName,
+        ocsp_response: &[u8],
+        now: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        Self::filter_err(self.verifier.verify_server_cert(
+            end_entity,
+            intermediates,
+            server_name,
+            ocsp_response,
+            now,
+        ))
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        Self::filter_err(self.verifier.verify_tls12_signature(message, cert, dss))
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        Self::filter_err(self.verifier.verify_tls13_signature(message, cert, dss))
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        self.verifier.supported_verify_schemes()
     }
 }
