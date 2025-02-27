@@ -287,15 +287,48 @@ async fn connect2(
 
     // Allow plaintext reconnection if and only if ClientSecurity is InsecureDevMode and
     // the server replied with something that looks like TLS handshake failure.
-    if let Err(ConnectionError::SslError(e)) = &res {
-        if e.common_error() == Some(CommonError::InvalidTlsProtocolData) && cfg.0.client_security == ClientSecurity::InsecureDevMode {
-            target.try_remove_tls();
-            warn!("TLS handshake failed, trying again without TLS");
-            *warned = true;
-
-            let mut connector = Connector::new(target.clone()).map_err(ClientConnectionError::with_source)?;
-            connector.set_keepalive(cfg.0.tcp_keepalive);
-            res = connector.connect().await;
+    if let Err(ConnectionError::SslError(e)) = res {
+        match e.common_error() {
+            Some(CommonError::InvalidTlsProtocolData) => {
+                if cfg.0.client_security == ClientSecurity::InsecureDevMode {
+                    target.try_remove_tls();
+                    warn!("TLS handshake failed, trying again without TLS");
+                    *warned = true;
+                    let mut connector = Connector::new(target.clone()).map_err(ClientConnectionError::with_source)?;
+                    connector.set_keepalive(cfg.0.tcp_keepalive);
+                    res = connector.connect().await;
+                } else {
+                    return Err(ClientConnectionError::with_source(e).context(format!(
+                        "TLS handshake failed while connecting to ({:?}) because
+                        the server did not seem to support TLS. \
+                        Check client and server TLS options and try again or \
+                        use `GEL_CLIENT_SECURITY=insecure_dev_mode` to try an \
+                        unencrypted connection.",
+                        target
+                    )));
+                }
+            }
+            Some(CommonError::InvalidCertificateForName) => {
+                return Err(ClientConnectionError::with_source(e).context(format!(
+                    "The server's certificate does not match the requested host name ({:?}).\
+                    Use `GEL_CLIENT_TLS_SECURITY=no-host-verification` or\
+                    `--tls-security no-host-verification` to bypass this check.",
+                target.host().unwrap_or_default())));
+            }
+            Some(e) => {
+                return Err(ClientConnectionError::with_source(e).context(format!(
+                    "TLS handshake failed while connecting to ({:?}) ({e:?}). \
+                    Check client and server TLS options and try again.",
+                    target
+                )));
+            }
+            None => {
+                return Err(ClientConnectionError::with_source(e).context(format!(
+                    "TLS handshake failed while connecting to ({:?}). \
+                    Check client and server TLS options and try again.",
+                    target
+                )));
+            }
         }
     }
 
