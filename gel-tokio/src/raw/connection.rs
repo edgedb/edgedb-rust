@@ -298,7 +298,14 @@ async fn connect2(
                     connector.set_keepalive(cfg.0.tcp_keepalive);
                     res = connector.connect().await;
                 } else {
-                    res = Err(ConnectionError::SslError(e));
+                    return Err(ClientConnectionError::with_source(e).context(format!(
+                        "TLS handshake failed while connecting to ({:?}) because
+                        the server did not seem to support TLS. \
+                        Check client and server TLS options and try again or \
+                        use `GEL_CLIENT_SECURITY=insecure_dev_mode` to try an \
+                        unencrypted connection.",
+                        target
+                    )));
                 }
             }
             Some(CommonError::InvalidCertificateForName) => {
@@ -309,10 +316,18 @@ async fn connect2(
                 target.host().unwrap_or_default())));
             }
             Some(e) => {
-                return Err(ClientConnectionError::with_source(e).context(format!("TLS handshake failed while connecting to ({:?}) ({e:?}). Check client and server TLS options and try again.", target)));
+                return Err(ClientConnectionError::with_source(e).context(format!(
+                    "TLS handshake failed while connecting to ({:?}) ({e:?}). \
+                    Check client and server TLS options and try again.",
+                    target
+                )));
             }
             None => {
-                res = Err(ConnectionError::SslError(e));
+                return Err(ClientConnectionError::with_source(e).context(format!(
+                    "TLS handshake failed while connecting to ({:?}). \
+                    Check client and server TLS options and try again.",
+                    target
+                )));
             }
         }
     }
