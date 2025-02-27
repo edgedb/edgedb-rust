@@ -100,29 +100,35 @@ pub enum TlsServerCertVerify {
     VerifyFull,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Clone, derive_more::Debug, Default, PartialEq, Eq)]
 pub enum TlsCert {
     /// Use the system's default certificate.
     #[default]
     System,
     /// Use the system's default certificate and a set of custom root
     /// certificates.
+    #[debug("SystemPlus([{} cert(s)])", _0.len())]
     SystemPlus(Vec<CertificateDer<'static>>),
     /// Use the webpki-roots default certificate.
     Webpki,
     /// Use the webpki-roots default certificate and a set of custom root
     /// certificates.
+    #[debug("WebpkiPlus([{} cert(s)])", _0.len())]
     WebpkiPlus(Vec<CertificateDer<'static>>),
     /// Use a custom root certificate only.
+    #[debug("Custom([{} cert(s)])", _0.len())]
     Custom(Vec<CertificateDer<'static>>),
 }
 
-#[derive(Default, Debug, PartialEq, Eq)]
+#[derive(Default, derive_more::Debug, PartialEq, Eq)]
 pub struct TlsParameters {
     pub server_cert_verify: TlsServerCertVerify,
+    #[debug("{}", cert.as_ref().map(|_| "Some(...)").unwrap_or("None"))]
     pub cert: Option<CertificateDer<'static>>,
+    #[debug("{}", key.as_ref().map(|_| "Some(...)").unwrap_or("None"))]
     pub key: Option<PrivateKeyDer<'static>>,
     pub root_cert: TlsCert,
+    #[debug("{}", if crl.is_empty() { "[]".to_string() } else { format!("[{} item(s)]", crl.len()) })]
     pub crl: Vec<CertificateRevocationListDer<'static>>,
     pub min_protocol_version: Option<SslVersion>,
     pub max_protocol_version: Option<SslVersion>,
@@ -213,10 +219,38 @@ pub struct TlsServerParameters {
     pub alpn: TlsAlpn,
 }
 
-#[derive(Debug, Default, Eq, PartialEq)]
+#[derive(Default, Eq, PartialEq)]
 pub struct TlsAlpn {
     /// The split form (ie: ["AB", "ABCD"])
     alpn_parts: Cow<'static, [Cow<'static, [u8]>]>,
+}
+
+impl std::fmt::Debug for TlsAlpn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.alpn_parts.is_empty() {
+            write!(f, "[]")
+        } else {
+            for (i, part) in self.alpn_parts.iter().enumerate() {
+                if i == 0 {
+                    write!(f, "[")?;
+                } else {
+                    write!(f, ", ")?;
+                }
+                // Print as binary literal with appropriate escaping
+                let mut s = String::new();
+                s.push_str("b\"");
+                for &b in part.iter() {
+                    for c in b.escape_ascii() {
+                        s.push(c as char);
+                    }
+                }
+                s.push_str("\"");
+                write!(f, "{}", s)?;
+            }
+            write!(f, "]")?;
+            Ok(())
+        }
+    }
 }
 
 impl TlsAlpn {
@@ -264,4 +298,86 @@ pub struct TlsHandshake {
     pub alpn: Option<Cow<'static, [u8]>>,
     pub sni: Option<Cow<'static, str>>,
     pub cert: Option<CertificateDer<'static>>,
+}
+
+#[cfg(test)]
+mod tests {
+    use rustls_pki_types::PrivatePkcs1KeyDer;
+
+    use super::*;
+
+    #[test]
+    fn test_tls_parameters_debug() {
+        let params = TlsParameters::default();
+        assert_eq!(
+            format!("{:?}", params),
+            "TlsParameters { server_cert_verify: VerifyFull, cert: None, key: None, \
+            root_cert: System, crl: [], min_protocol_version: None, max_protocol_version: None, \
+            enable_keylog: false, sni_override: None, alpn: [] }"
+        );
+        let params = TlsParameters {
+            server_cert_verify: TlsServerCertVerify::Insecure,
+            cert: Some(CertificateDer::from_slice(&[1, 2, 3])),
+            key: Some(PrivateKeyDer::Pkcs1(PrivatePkcs1KeyDer::from(vec![
+                1, 2, 3,
+            ]))),
+            root_cert: TlsCert::SystemPlus(vec![CertificateDer::from_slice(&[1, 2, 3])]),
+            crl: vec![CertificateRevocationListDer::from(vec![1, 2, 3])],
+            min_protocol_version: None,
+            max_protocol_version: None,
+            enable_keylog: false,
+            sni_override: None,
+            alpn: TlsAlpn::new_str(&["h2", "http/1.1"]),
+        };
+        assert_eq!(
+            format!("{:?}", params),
+            "TlsParameters { server_cert_verify: Insecure, cert: Some(...), key: Some(...), \
+            root_cert: SystemPlus([1 cert(s)]), crl: [1 item(s)], min_protocol_version: None, \
+            max_protocol_version: None, enable_keylog: false, sni_override: None, \
+            alpn: [b\"h2\", b\"http/1.1\"] }"
+        );
+    }
+
+    #[test]
+    fn test_tls_alpn() {
+        let alpn = TlsAlpn::new_str(&["h2", "http/1.1"]);
+        assert_eq!(
+            alpn.as_bytes(),
+            vec![2, b'h', b'2', 8, b'h', b't', b't', b'p', b'/', b'1', b'.', b'1']
+        );
+        assert_eq!(
+            alpn.as_vec_vec(),
+            vec![b"h2".to_vec(), b"http/1.1".to_vec()]
+        );
+        assert!(!alpn.is_empty());
+        assert_eq!(format!("{:?}", alpn), "[b\"h2\", b\"http/1.1\"]");
+
+        let empty_alpn = TlsAlpn::default();
+        assert!(empty_alpn.is_empty());
+        assert_eq!(empty_alpn.as_bytes(), Vec::<u8>::new());
+        assert_eq!(empty_alpn.as_vec_vec(), Vec::<Vec<u8>>::new());
+        assert_eq!(format!("{:?}", empty_alpn), "[]");
+    }
+
+    #[test]
+    fn test_tls_handshake() {
+        let handshake = TlsHandshake {
+            alpn: Some(Cow::Borrowed(b"h2")),
+            sni: Some(Cow::Borrowed("example.com")),
+            cert: None,
+        };
+        assert_eq!(handshake.alpn, Some(Cow::Borrowed(b"h2".as_slice())));
+        assert_eq!(handshake.sni, Some(Cow::Borrowed("example.com")));
+        assert_eq!(handshake.cert, None);
+
+        assert_eq!(
+            format!("{:?}", handshake),
+            "TlsHandshake { alpn: Some([104, 50]), sni: Some(\"example.com\"), cert: None }"
+        );
+
+        let default_handshake = TlsHandshake::default();
+        assert_eq!(default_handshake.alpn, None);
+        assert_eq!(default_handshake.sni, None);
+        assert_eq!(default_handshake.cert, None);
+    }
 }

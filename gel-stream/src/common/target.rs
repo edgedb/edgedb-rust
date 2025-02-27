@@ -83,9 +83,19 @@ impl TargetName {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Target {
     inner: TargetInner,
+}
+
+impl std::fmt::Debug for Target {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.inner {
+            TargetInner::NoTls(target) => write!(f, "{:?}", target),
+            TargetInner::Tls(target, _) => write!(f, "{:?} (TLS)", target),
+            TargetInner::StartTls(target, _) => write!(f, "{:?} (STARTTLS)", target),
+        }
+    }
 }
 
 #[allow(private_bounds)]
@@ -512,6 +522,36 @@ mod tests {
         #[cfg(any(target_os = "linux", target_os = "android"))]
         {
             let target = TargetName::new_unix_domain("test").unwrap();
+            assert_eq!(format!("{target:?}"), "@test");
+        }
+    }
+
+    #[test]
+    fn test_target_debug() {
+        let target = Target::new_tcp(("localhost", 5432));
+        assert_eq!(format!("{target:?}"), "localhost:5432");
+
+        let target = Target::new_tcp_tls(("localhost", 5432), TlsParameters::default());
+        assert_eq!(format!("{target:?}"), "localhost:5432 (TLS)");
+
+        let target = Target::new_tcp_starttls(("localhost", 5432), TlsParameters::default());
+        assert_eq!(format!("{target:?}"), "localhost:5432 (STARTTLS)");
+
+        let target = Target::new_tcp(("127.0.0.1", 5432));
+        assert_eq!(format!("{target:?}"), "127.0.0.1:5432");
+
+        let target = Target::new_tcp(("::1", 5432));
+        assert_eq!(format!("{target:?}"), "[::1]:5432");
+
+        #[cfg(unix)]
+        {
+            let target = Target::new_unix_path("/tmp/test.sock").unwrap();
+            assert_eq!(format!("{target:?}"), "/tmp/test.sock");
+        }
+
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        {
+            let target = Target::new_unix_domain("test").unwrap();
             assert_eq!(format!("{target:?}"), "@test");
         }
     }
