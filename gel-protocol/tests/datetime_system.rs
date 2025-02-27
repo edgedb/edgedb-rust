@@ -109,7 +109,7 @@ fn datetime(input: &str, micros: i64, formatted: &str) {
     // assert_eq!(format!("{:?}", edgedb), formatted);
 
     let mut buf = BytesMut::new();
-    let val = Value::Datetime(edgedb.clone());
+    let val = Value::Datetime(edgedb);
     codec::Datetime.encode(&mut buf, &val).unwrap();
     let serialized_micros = buf.get_i64();
 
@@ -191,7 +191,7 @@ fn datetime_pre_1970(input: StdDuration, micros: i64, output: StdDuration) {
     // assert_eq!(format!("{:?}", edgedb), formatted);
 
     let mut buf = BytesMut::new();
-    let val = Value::Datetime(edgedb.clone());
+    let val = Value::Datetime(edgedb);
     codec::Datetime.encode(&mut buf, &val).unwrap();
     let serialized_micros = buf.get_i64();
 
@@ -253,7 +253,7 @@ fn duration(input: StdDuration, micros: i64, output: StdDuration) {
     let edgedb: Duration = input.try_into().unwrap();
 
     let mut buf = BytesMut::new();
-    let val = Value::Duration(edgedb.clone());
+    let val = Value::Duration(edgedb);
     codec::Duration.encode(&mut buf, &val).unwrap();
     let serialized_micros = buf.get_i64();
 

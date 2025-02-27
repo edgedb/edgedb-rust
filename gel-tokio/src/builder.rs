@@ -230,7 +230,7 @@ impl CertCheck {
     pub fn new_fn<F: Future<Output = Result<(), gel_errors::Error>> + Send + Sync + 'static>(function: impl for <'a> Fn(&'a [u8]) -> F + Send + Sync + 'static) -> Self {
         let function = Arc::new(move |cert: &'_[u8]| { 
             let fut = function(cert);
-            Box::pin(async move { fut.await }) as _
+            Box::pin(fut) as _
         });
 
         Self { function }
@@ -1404,21 +1404,19 @@ impl Builder {
                 instance
             ))
         })?;
-        if matches!(instance, InstanceName::Cloud { .. }) {
-            if cfg.secret_key.is_none() && cfg.cloud_profile.is_none() {
-                let path = stash_path.join("cloud-profile");
-                let profile = fs::read_to_string(&path)
-                    .await
-                    .map_err(|e| {
-                        ClientError::with_source(e).context(format!(
-                            "error reading project settings {:?}: {:?}",
-                            project_dir, path
-                        ))
-                    })?
-                    .trim()
-                    .into();
-                cfg.cloud_profile = Some(profile);
-            }
+        if matches!(instance, InstanceName::Cloud { .. }) && cfg.secret_key.is_none() && cfg.cloud_profile.is_none() {
+            let path = stash_path.join("cloud-profile");
+            let profile = fs::read_to_string(&path)
+                .await
+                .map_err(|e| {
+                    ClientError::with_source(e).context(format!(
+                        "error reading project settings {:?}: {:?}",
+                        project_dir, path
+                    ))
+                })?
+                .trim()
+                .into();
+            cfg.cloud_profile = Some(profile);
         }
         read_instance(cfg, &instance).await?;
         let path = stash_path.join("database");
@@ -1941,7 +1939,7 @@ impl Config {
         tls.root_cert = TlsCert::Webpki;
         match &self.0.pem_certificates {
             Some(pem_certificates) => {
-                tls.root_cert = TlsCert::Custom(read_root_cert_pem(&pem_certificates)?);
+                tls.root_cert = TlsCert::Custom(read_root_cert_pem(pem_certificates)?);
             }
             None => {
                 if let Some(cloud_certs) = self.0.cloud_certs {
@@ -1967,11 +1965,7 @@ impl Config {
                             Some(Cow::from(host))
                         }
                     } else {
-                        if let Some(host) = self.0.address.host() {
-                            Some(Cow::from(host.to_string()))
-                        } else {
-                            None
-                        }
+                        self.0.address.host().map(|host| Cow::from(host.to_string()))
                     }
                 } else {
                     None

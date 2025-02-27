@@ -329,7 +329,7 @@ impl Duration {
                     if seen.contains(&u) {
                         Err(ParseDurationError::new("specified more than once").pos(start))
                     } else {
-                        seen.push(u.clone());
+                        seen.push(u);
                         Ok(u)
                     }
                 })

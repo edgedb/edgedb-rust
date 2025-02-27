@@ -8,19 +8,15 @@ use gel_errors::{ErrorKind, UserError};
 struct CounterError;
 
 fn check_val0(val: i64) -> anyhow::Result<()> {
-    if val % 3 == 0 {
-        if rng().random_bool(0.9) {
-            Err(CounterError)?;
-        }
+    if val % 3 == 0 && rng().random_bool(0.9) {
+        Err(CounterError)?;
     }
     Ok(())
 }
 
 fn check_val1(val: i64) -> Result<(), CounterError> {
-    if val % 3 == 1 {
-        if rng().random_bool(0.1) {
-            Err(CounterError)?;
-        }
+    if val % 3 == 1 && rng().random_bool(0.1) {
+        Err(CounterError)?;
     }
     Ok(())
 }

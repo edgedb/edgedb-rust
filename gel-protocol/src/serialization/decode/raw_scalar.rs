@@ -145,7 +145,7 @@ impl ScalarArg for Uuid {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
-        Ok(Value::Uuid(self.clone()))
+        Ok(Value::Uuid(*self))
     }
 }
 
@@ -174,7 +174,7 @@ impl ScalarArg for bool {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
-        Ok(Value::Bool(self.clone()))
+        Ok(Value::Bool(*self))
     }
 }
 
@@ -195,7 +195,7 @@ impl ScalarArg for i16 {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
-        Ok(Value::Int16(self.clone()))
+        Ok(Value::Int16(*self))
     }
 }
 
@@ -216,7 +216,7 @@ impl ScalarArg for i32 {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
-        Ok(Value::Int32(self.clone()))
+        Ok(Value::Int32(*self))
     }
 }
 
@@ -244,7 +244,7 @@ impl ScalarArg for i64 {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
-        Ok(Value::Int64(self.clone()))
+        Ok(Value::Int64(*self))
     }
 }
 
@@ -265,7 +265,7 @@ impl ScalarArg for f32 {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
-        Ok(Value::Float32(self.clone()))
+        Ok(Value::Float32(*self))
     }
 }
 
@@ -286,7 +286,7 @@ impl ScalarArg for f64 {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
-        Ok(Value::Float64(self.clone()))
+        Ok(Value::Float64(*self))
     }
 }
 
@@ -338,7 +338,7 @@ impl ScalarArg for ConfigMemory {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
-        Ok(Value::ConfigMemory(self.clone()))
+        Ok(Value::ConfigMemory(*self))
     }
 }
 
@@ -497,7 +497,7 @@ impl ScalarArg for Duration {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
-        Ok(Value::Duration(self.clone()))
+        Ok(Value::Duration(*self))
     }
 }
 
@@ -534,7 +534,7 @@ impl ScalarArg for RelativeDuration {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
-        Ok(Value::RelativeDuration(self.clone()))
+        Ok(Value::RelativeDuration(*self))
     }
 }
 
@@ -547,7 +547,7 @@ impl<'t> RawCodec<'t> for SystemTime {
 
 impl ScalarArg for SystemTime {
     fn encode(&self, encoder: &mut Encoder) -> Result<(), Error> {
-        let val = self.clone().try_into().map_err(|e| {
+        let val = (*self).try_into().map_err(|e| {
             ClientEncodingError::with_source(e).context("cannot serialize SystemTime value")
         })?;
         codec::encode_datetime(encoder.buf, &val).map_err(ClientEncodingError::with_source)
@@ -556,7 +556,7 @@ impl ScalarArg for SystemTime {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
-        let val = self.clone().try_into().map_err(|e| {
+        let val = (*self).try_into().map_err(|e| {
             ClientEncodingError::with_source(e).context("cannot serialize SystemTime value")
         })?;
         Ok(Value::Datetime(val))
@@ -578,7 +578,7 @@ impl ScalarArg for Datetime {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
-        Ok(Value::Datetime(self.clone()))
+        Ok(Value::Datetime(*self))
     }
 }
 
@@ -597,7 +597,7 @@ impl ScalarArg for LocalDatetime {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
-        Ok(Value::LocalDatetime(self.clone()))
+        Ok(Value::LocalDatetime(*self))
     }
 }
 
@@ -616,7 +616,7 @@ impl ScalarArg for LocalDate {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
-        Ok(Value::LocalDate(self.clone()))
+        Ok(Value::LocalDate(*self))
     }
 }
 
@@ -641,7 +641,7 @@ impl ScalarArg for DateDuration {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
-        Ok(Value::DateDuration(self.clone()))
+        Ok(Value::DateDuration(*self))
     }
 }
 
@@ -653,7 +653,7 @@ impl ScalarArg for LocalTime {
         check_scalar(ctx, pos, Self::uuid(), Self::typename())
     }
     fn to_value(&self) -> Result<Value, Error> {
-        Ok(Value::LocalTime(self.clone()))
+        Ok(Value::LocalTime(*self))
     }
 }
 

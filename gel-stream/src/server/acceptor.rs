@@ -1,6 +1,6 @@
 use crate::{
     common::tokio_stream::TokioListenerStream, ConnectionError, LocalAddress, ResolvedTarget,
-    RewindStream, Ssl, SslError, StreamUpgrade, Target, TlsDriver, TlsServerParameterProvider,
+    RewindStream, Ssl, SslError, StreamUpgrade, TlsDriver, TlsServerParameterProvider,
     UpgradableStream,
 };
 use futures::{FutureExt, StreamExt};

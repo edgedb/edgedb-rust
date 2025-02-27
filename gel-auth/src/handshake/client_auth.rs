@@ -83,7 +83,7 @@ impl ClientAuth {
             }
             // SCRAM authentication: Handle SCRAM protocol messages.
             (ClientAuthState::Sasl(tx, env), ClientAuthDrive::ScramResponse(message)) => {
-                let response = tx.process_message(&message, env)?;
+                let response = tx.process_message(message, env)?;
                 match response {
                     Some(response) => Ok(ClientAuthResponse::Continue(response)),
                     None => {

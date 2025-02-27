@@ -70,8 +70,8 @@ impl std::fmt::Display for Warning {
             .as_ref()
             .map(|f| format!("{f}:"))
             .unwrap_or_default();
-        let line = line.clone().unwrap_or(1);
-        let col = col.clone().unwrap_or(1);
+        let line = (*line).unwrap_or(1);
+        let col = (*col).unwrap_or(1);
 
         write!(f, "{type} at {filename}{line}:{col} {message}")
     }

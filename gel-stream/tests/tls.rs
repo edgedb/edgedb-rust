@@ -99,7 +99,7 @@ async fn spawn_tls_server<S: TlsDriver>(
         assert_eq!(handshake.sni.as_deref(), expected_hostname.as_deref());
         if validate_cert {
             assert!(handshake.cert.is_some());
-            let cert = parse_cert(&handshake.cert.as_ref().unwrap());
+            let cert = parse_cert(handshake.cert.as_ref().unwrap());
             let subject = cert.subject().to_string();
             assert!(
                 subject.to_ascii_lowercase().contains("ssl_user"),
@@ -713,6 +713,6 @@ tls_client_test! {
 fn parse_cert<'a>(
     cert: &'a rustls_pki_types::CertificateDer<'a>,
 ) -> x509_parser::prelude::X509Certificate<'a> {
-    let (_, cert) = x509_parser::parse_x509_certificate(&cert).unwrap();
+    let (_, cert) = x509_parser::parse_x509_certificate(cert).unwrap();
     cert
 }
