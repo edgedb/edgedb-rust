@@ -302,7 +302,11 @@ async fn connect2(
                 }
             }
             Some(CommonError::InvalidCertificateForName) => {
-                return Err(ClientConnectionError::with_source(e).context(format!("The server's certificate does not match the requested host name ({:?}). Use `--tls-security no-host-verification` to bypass this check.", target.host().unwrap_or_default())));
+                return Err(ClientConnectionError::with_source(e).context(format!(
+                    "The server's certificate does not match the requested host name ({:?}).\
+                    Use `GEL_CLIENT_TLS_SECURITY=no-host-verification` or\
+                    `--tls-security no-host-verification` to bypass this check.",
+                target.host().unwrap_or_default())));
             }
             Some(e) => {
                 return Err(ClientConnectionError::with_source(e).context(format!("TLS handshake failed while connecting to ({:?}) ({e:?}). Check client and server TLS options and try again.", target)));
