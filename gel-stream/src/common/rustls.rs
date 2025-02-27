@@ -315,17 +315,28 @@ impl ServerCertVerifier for IgnoreHostnameVerifier {
         &self,
         end_entity: &CertificateDer<'_>,
         intermediates: &[CertificateDer<'_>],
-        _server_name: &ServerName,
+        server_name: &ServerName,
         ocsp_response: &[u8],
         now: UnixTime,
     ) -> Result<ServerCertVerified, rustls::Error> {
-        self.verifier.verify_server_cert(
+        match self.verifier.verify_server_cert(
             end_entity,
             intermediates,
-            &ServerName::DnsName(DnsName::try_from("").unwrap()),
+            server_name,
             ocsp_response,
             now,
-        )
+        ) {
+            Ok(res) => Ok(res),
+            // This works because the name check is the last step in the verify process
+            Err(e)
+                if e == rustls::Error::InvalidCertificate(
+                    rustls::CertificateError::NotValidForName,
+                ) =>
+            {
+                Ok(ServerCertVerified::assertion())
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn verify_tls12_signature(
