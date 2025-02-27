@@ -6,7 +6,7 @@ use std::str;
 use std::time::Duration;
 
 use bytes::{Bytes, BytesMut};
-use log::warn;
+use log::{debug, warn};
 use rand::{rng, Rng};
 use tokio::io::ReadBuf;
 use tokio::io::{AsyncRead, AsyncReadExt};
@@ -248,19 +248,22 @@ impl Connection {
 async fn connect(cfg: &Config) -> Result<Connection, Error> {
     let mut target = cfg.0.address.clone();
     let tls = cfg.tls()?;
+    debug!("Connecting to {:?}, TLS: {:?}", target, tls);
     target.try_set_tls(tls);
 
     let start = Instant::now();
     let wait = cfg.0.wait;
     let warned = &mut false;
+    let mut retry = 0;
     let conn = loop {
         match connect_timeout(cfg, connect2(cfg, target.clone(), warned)).await {
             Err(e) if is_temporary(&e) => {
                 log::debug!("Temporary connection error: {:#}", e);
                 if wait > start.elapsed() {
-                    sleep(connect_sleep()).await;
+                    sleep(connect_sleep(retry)).await;
+                    retry += 1;
                     continue;
-                } else if wait > Duration::new(0, 0) {
+                } else if wait > Duration::ZERO {
                     return Err(e.context(format!("cannot establish connection for {wait:?}")));
                 } else {
                     return Err(e);
@@ -693,8 +696,13 @@ async fn _wait_message<'x>(
     Ok(result)
 }
 
-fn connect_sleep() -> Duration {
-    Duration::from_millis(rng().random_range(10u64..200u64))
+fn connect_sleep(retry: usize) -> Duration {
+    let rand = rng().random_range(10u64..200u64);
+    if retry > 0 {
+        Duration::from_millis(rand * retry as u64)
+    } else {
+        Duration::from_millis(rand)
+    }
 }
 
 async fn connect_timeout<F, T>(cfg: &Config, f: F) -> Result<T, Error>

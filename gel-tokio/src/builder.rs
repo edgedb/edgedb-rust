@@ -14,6 +14,7 @@ use std::future::Future;
 
 use base64::Engine;
 use gel_stream::{Target, TlsAlpn, TlsCert, TlsParameters};
+use log::debug;
 use serde_json::from_slice;
 use sha1::Digest;
 use tokio::fs;
@@ -1945,9 +1946,9 @@ impl Config {
                 if let Some(cloud_certs) = self.0.cloud_certs {
                     tls.root_cert = TlsCert::WebpkiPlus(read_root_cert_pem(cloud_certs.root())?);
                 }
-                tls.server_cert_verify = self.0.compute_tls_security()?;
             }
         }
+        tls.server_cert_verify = self.0.compute_tls_security()?;
         tls.alpn = TlsAlpn::new_str(&["edgedb-binary", "gel-binary"]);
         tls.sni_override = match &self.0.tls_server_name {
             Some(server_name) => Some(Cow::from(server_name.clone())),
@@ -1980,7 +1981,7 @@ impl ConfigInner {
     pub(crate) fn compute_tls_security(&self) -> Result<gel_stream::TlsServerCertVerify, Error> {
         use gel_stream::TlsServerCertVerify::*;
 
-        match (self.client_security, self.tls_security) {
+        let res = match (self.client_security, self.tls_security) {
             (ClientSecurity::Strict, TlsSecurity::Insecure | TlsSecurity::NoHostVerification) => {
                 Err(ClientError::with_message(format!(
                     "client_security=strict and tls_security={} don't comply",
@@ -1994,7 +1995,11 @@ impl ConfigInner {
             (_, TlsSecurity::Insecure) => Ok(Insecure),
             (_, TlsSecurity::NoHostVerification) => Ok(IgnoreHostname),
             (_, TlsSecurity::Strict) => Ok(VerifyFull),
-        }
+        };
+
+        debug!("compute_tls_security(client_security={:?}, tls_security={:?}, has_pem={:?}) = {:?}", self.client_security, self.tls_security, self.pem_certificates.is_some(), res);
+
+        res
     }
 }
 

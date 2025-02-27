@@ -472,6 +472,40 @@ tls_test! {
         Ok(())
     }
 
+    /// Test that we can override the SNI.
+    #[tokio::test]
+    #[ntest::timeout(30_000)]
+    async fn test_target_tcp_tls_sni_override_ignore_hostname<C: TlsDriver, S: TlsDriver>() -> Result<(), ConnectionError> {
+        let (addr, accept_task) = spawn_tls_server::<S>(
+            Some("www.google.com"),
+            TlsAlpn::default(),
+            None,
+            TlsClientCertVerify::Ignore,
+        )
+        .await?;
+
+        let connect_task = tokio::spawn(async move {
+            let target = Target::new_resolved_tls(
+                addr,
+                TlsParameters {
+                    root_cert: TlsCert::Custom(vec![load_test_ca()]),
+                    server_cert_verify: TlsServerCertVerify::IgnoreHostname,
+                    sni_override: Some(Cow::Borrowed("www.google.com")),
+                    ..Default::default()
+                },
+            );
+            let mut stm = Connector::<C>::new_explicit(target).unwrap().connect().await.unwrap();
+            stm.write_all(b"Hello, world!").await.unwrap();
+            stm.shutdown().await?;
+            Ok::<_, std::io::Error>(())
+        });
+
+        accept_task.await.unwrap().unwrap();
+        connect_task.await.unwrap().unwrap();
+
+        Ok(())
+    }
+
     /// Test that we can set the ALPN.
     #[tokio::test]
     async fn test_target_tcp_tls_alpn<C: TlsDriver, S: TlsDriver>() -> Result<(), ConnectionError> {
