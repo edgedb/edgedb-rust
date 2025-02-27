@@ -21,7 +21,7 @@ tokio = { version = "1.43" }
 tracing = { version = "0.1" }
 
 [workspace.package]
-rust-version = "1.75" # keep in sync with flake.nix
+rust-version = "1.81" # keep in sync with flake.nix
 
 [workspace.lints.clippy]
 useless_format = 'allow'

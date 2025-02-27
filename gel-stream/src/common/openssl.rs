@@ -171,7 +171,7 @@ impl TlsDriver for OpensslDriver {
                 let webpki_roots = WEBPKI_ROOTS.get_or_init(|| {
                     let webpki_roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS;
                     let mut roots = Vec::new();
-                    for root in webpki_roots.iter().cloned() {
+                    for root in webpki_roots {
                         // Don't expect the roots to fail to load
                         if let Ok(root) = openssl::x509::X509::from_der(root.as_ref()) {
                             roots.push(root);
@@ -352,7 +352,7 @@ impl TlsDriver for OpensslDriver {
             .peer_certificate()
             .map(|cert| cert.to_der())
             .transpose()?;
-        let cert = cert.map(|cert| CertificateDer::from(cert));
+        let cert = cert.map(CertificateDer::from);
         Ok((
             TlsStream(stream),
             TlsHandshake {

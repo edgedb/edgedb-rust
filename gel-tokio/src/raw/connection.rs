@@ -288,16 +288,14 @@ async fn connect2(
     // Allow plaintext reconnection if and only if ClientSecurity is InsecureDevMode and
     // the server replied with something that looks like TLS handshake failure.
     if let Err(ConnectionError::SslError(e)) = &res {
-        if e.common_error() == Some(CommonError::InvalidTlsProtocolData) {
-            if cfg.0.client_security == ClientSecurity::InsecureDevMode {
-                target.try_remove_tls();
-                warn!("TLS handshake failed, trying again without TLS");
-                *warned = true;
+        if e.common_error() == Some(CommonError::InvalidTlsProtocolData) && cfg.0.client_security == ClientSecurity::InsecureDevMode {
+            target.try_remove_tls();
+            warn!("TLS handshake failed, trying again without TLS");
+            *warned = true;
 
-                let mut connector = Connector::new(target.clone()).map_err(ClientConnectionError::with_source)?;
-                connector.set_keepalive(cfg.0.tcp_keepalive);
-                res = connector.connect().await;
-            }
+            let mut connector = Connector::new(target.clone()).map_err(ClientConnectionError::with_source)?;
+            connector.set_keepalive(cfg.0.tcp_keepalive);
+            res = connector.connect().await;
         }
     }
 
@@ -310,7 +308,7 @@ async fn connect4(cfg: &Config, mut stream: gel_stream::RawStream) -> Result<Con
     if let Some(cert_check) = &cfg.0.cert_check {
         if let Some(handshake) = stream.handshake() {
             if let Some(cert) = &handshake.cert {
-                cert_check.call(&cert).await?;
+                cert_check.call(cert).await?;
             }
         }
     }
@@ -382,10 +380,10 @@ async fn connect4(cfg: &Config, mut stream: gel_stream::RawStream) -> Result<Con
                 }
             }
             ServerMessage::Authentication(Authentication::SaslContinue { ref data }) => {
-                resp = client_auth.drive(ClientAuthDrive::ScramResponse(&data)).map_err(AuthenticationError::with_source)?;
+                resp = client_auth.drive(ClientAuthDrive::ScramResponse(data)).map_err(AuthenticationError::with_source)?;
             }
             ServerMessage::Authentication(Authentication::SaslFinal { ref data }) => {
-                resp = client_auth.drive(ClientAuthDrive::ScramResponse(&data)).map_err(AuthenticationError::with_source)?;
+                resp = client_auth.drive(ClientAuthDrive::ScramResponse(data)).map_err(AuthenticationError::with_source)?;
             }
             ServerMessage::ErrorResponse(err) => {
                 return Err(err.into());
@@ -414,9 +412,7 @@ async fn connect4(cfg: &Config, mut stream: gel_stream::RawStream) -> Result<Con
                 .await?;
             },
             ClientAuthResponse::Initial(..) => {
-                return Err(ProtocolError::with_message(format!(
-                    "Unexpected authentication response",
-                )));
+                return Err(ProtocolError::with_message("Unexpected authentication response".to_string()));
             }
             ClientAuthResponse::Complete => {
                 break;
@@ -708,11 +704,7 @@ fn is_temporary(e: &Error) -> bool {
         let mut e: &dyn std::error::Error = &e;
         while let Some(src) = e.source() {
             if let Some(io_err) = src.downcast_ref::<io::Error>() {
-                if is_io_error_temporary(io_err) {
-                    return true;
-                } else {
-                    return false;
-                }
+                return is_io_error_temporary(io_err)
             }
             e = src;
         }

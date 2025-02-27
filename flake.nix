@@ -55,7 +55,7 @@
           devShells.minimum = pkgs.mkShell {
             buildInputs = [
               (fenix_pkgs.toolchainOf {
-                channel = "1.75"; # keep in sync with ./Cargo.toml rust-version
+                channel = "1.81"; # keep in sync with ./Cargo.toml rust-version
                 sha256 = "sha256-SXRtAuO4IqNOQq+nLbrsDFbVk+3aVA8NNpSZsKlVH/8=";
               }).defaultToolchain
             ] ++ common;

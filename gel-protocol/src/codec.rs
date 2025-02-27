@@ -426,7 +426,7 @@ pub fn scalar_codec(uuid: &UuidVal) -> Result<Arc<dyn Codec>, CodecError> {
         POSTGIS_GEOGRAPHY => Ok(Arc::new(PostGisGeography {})),
         POSTGIS_BOX_2D => Ok(Arc::new(PostGisBox2d {})),
         POSTGIS_BOX_3D => Ok(Arc::new(PostGisBox3d {})),
-        _ => errors::UndefinedBaseScalar { uuid: uuid.clone() }.fail()?,
+        _ => errors::UndefinedBaseScalar { uuid: *uuid }.fail()?,
     }
 }
 

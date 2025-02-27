@@ -117,7 +117,7 @@ impl SslError {
                 _ => None,
             },
             #[cfg(feature = "openssl")]
-            SslError::OpenSslErrorStack(e) => match e.errors().get(0).map(|err| err.code()) {
+            SslError::OpenSslErrorStack(e) => match e.errors().first().map(|err| err.code()) {
                 // SSL_R_WRONG_VERSION_NUMBER
                 Some(0xa00010b) => Some(CommonError::InvalidTlsProtocolData),
                 // SSL_R_PACKET_LENGTH_TOO_LONG
@@ -130,7 +130,7 @@ impl SslError {
                 openssl_sys::SSL_ERROR_SSL => {
                     match e
                         .ssl_error()
-                        .and_then(|e| e.errors().get(0))
+                        .and_then(|e| e.errors().first())
                         .map(|err| err.code())
                     {
                         // SSL_R_WRONG_VERSION_NUMBER
