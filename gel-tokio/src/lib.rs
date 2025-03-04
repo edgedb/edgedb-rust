@@ -126,11 +126,11 @@ macro_rules! unstable_pub_mods {
 // If the unstable feature is not enabled, the modules will be private.
 unstable_pub_mods! {
     mod builder;
-    mod credentials;
     mod raw;
     mod server_params;
-    mod env;
 }
+
+pub use gel_dsn::gel::{Builder, Config};
 
 mod client;
 mod errors;
@@ -138,15 +138,12 @@ mod options;
 mod query_executor;
 mod sealed;
 pub mod state;
-mod tls;
 mod transaction;
 pub mod tutorial;
 
 pub use gel_derive::{ConfigDelta, GlobalsDelta, Queryable};
 
-pub use builder::{Builder, ClientSecurity, Config, InstanceName, TcpKeepalive};
 pub use client::Client;
-pub use credentials::TlsSecurity;
 pub use errors::Error;
 pub use options::{RetryCondition, RetryOptions, TransactionOptions};
 pub use query_executor::{QueryExecutor, ResultVerbose};
@@ -159,8 +156,6 @@ pub const PROJECT_FILES: &[&str] = &["gel.toml", "edgedb.toml"];
 /// The default project filename.
 pub const DEFAULT_PROJECT_FILE: &str = PROJECT_FILES[0];
 
-#[cfg(feature = "unstable")]
-pub use builder::{get_project_path, get_stash_path};
 #[cfg(feature = "unstable")]
 pub use transaction::RawTransaction;
 
@@ -177,7 +172,7 @@ pub use transaction::RawTransaction;
 /// the source of this function.
 #[cfg(feature = "env")]
 pub async fn create_client() -> Result<Client, Error> {
-    let pool = Client::new(&Builder::new().build_env().await?);
+    let pool = Client::new(&Builder::default().build().into_result()?);
     pool.ensure_connected().await?;
     Ok(pool)
 }

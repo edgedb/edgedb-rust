@@ -49,5 +49,10 @@ tempfile = "3"
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(use_libpq)'] }
 
 [[test]]
+name = "gel"
+path = "tests/gel/test.rs"
+harness = false
+
+[[test]]
 name = "postgres"
 path = "tests/postgres/test.rs"

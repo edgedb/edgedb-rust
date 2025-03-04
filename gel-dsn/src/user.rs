@@ -27,3 +27,21 @@ impl UserProfile for () {
         None
     }
 }
+
+impl UserProfile for SystemUserProfile {
+    fn username(&self) -> Option<Cow<str>> {
+        whoami::fallible::username().ok().map(Cow::Owned)
+    }
+
+    fn homedir(&self) -> Option<Cow<Path>> {
+        dirs::home_dir().map(Cow::Owned)
+    }
+
+    fn config_dir(&self) -> Option<Cow<Path>> {
+        dirs::config_dir().map(Cow::Owned)
+    }
+
+    fn data_local_dir(&self) -> Option<Cow<Path>> {
+        dirs::data_local_dir().map(Cow::Owned)
+    }
+}

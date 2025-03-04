@@ -15,12 +15,12 @@ use std::time::Duration;
 use bytes::{Bytes, BytesMut};
 use tokio::sync::{self, Semaphore};
 
+use gel_dsn::gel::{Config, DEFAULT_POOL_SIZE};
 use gel_protocol::common::{Capabilities, RawTypedesc};
 use gel_protocol::features::ProtocolVersion;
 use gel_protocol::server_message::CommandDataDescription1;
 use gel_protocol::server_message::TransactionState;
 
-use crate::builder::Config;
 use crate::errors::{ClientError, Error, ErrorKind};
 use crate::server_params::ServerParams;
 
@@ -97,10 +97,9 @@ impl gel_errors::Field for Description {
 impl Pool {
     pub fn new(config: &Config) -> Pool {
         let concurrency = config
-            .0
             .max_concurrency
             // TODO(tailhook) use 1 and get concurrency from the connection
-            .unwrap_or(crate::builder::DEFAULT_POOL_SIZE);
+            .unwrap_or(DEFAULT_POOL_SIZE);
         Pool(Arc::new(PoolInner {
             semaphore: Arc::new(Semaphore::new(concurrency)),
             queue: BlockingMutex::new(VecDeque::with_capacity(concurrency)),

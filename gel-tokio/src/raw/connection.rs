@@ -13,6 +13,7 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio::time::{sleep, timeout_at, Instant};
 
+use gel_dsn::gel::{ClientSecurity, Config};
 use gel_auth::{handshake::{ClientAuthDrive, ClientAuthResponse}, AuthType, CredentialData};
 use gel_stream::{CommonError, ConnectionError, Connector, Target};
 use gel_protocol::client_message::{ClientHandshake, ClientMessage, SaslInitialResponse, SaslResponse};
@@ -23,7 +24,6 @@ use gel_protocol::server_message::{
     Authentication, ErrorResponse, MessageSeverity, ParameterStatus, RawTypedesc, ServerHandshake, ServerMessage, TransactionState
 };
 
-use crate::builder::Config;
 use crate::errors::{
     AuthenticationError, ClientConnectionEosError, ClientConnectionError,
     ClientConnectionFailedError, ClientConnectionFailedTemporarilyError, ClientEncodingError,
@@ -33,7 +33,6 @@ use crate::errors::{
 use crate::raw::queries::Guard;
 use crate::raw::{Connection, PingInterval};
 use crate::server_params::{ServerParam, ServerParams, SystemConfig};
-use crate::ClientSecurity;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum Mode {
@@ -246,13 +245,12 @@ impl Connection {
 }
 
 async fn connect(cfg: &Config) -> Result<Connection, Error> {
-    let mut target = cfg.0.address.clone();
-    let tls = cfg.tls()?;
-    debug!("Connecting to {:?}, TLS: {:?}", target, tls);
-    target.try_set_tls(tls);
+    let target = cfg.host.target_name().map_err(ClientConnectionError::with_source)?;
+    let target = Target::new_tls(target, cfg.to_tls());
+    debug!("Connecting to {target:?}...");
 
     let start = Instant::now();
-    let wait = cfg.0.wait;
+    let wait = cfg.wait_until_available;
     let warned = &mut false;
     let mut retry = 0;
     let conn = loop {
@@ -285,7 +283,7 @@ async fn connect2(
     warned: &mut bool,
 ) -> Result<Connection, Error> {
     let mut connector = Connector::new(target.clone()).map_err(ClientConnectionError::with_source)?;
-    connector.set_keepalive(cfg.0.tcp_keepalive);
+    connector.set_keepalive(cfg.tcp_keepalive.as_keepalive());
     let mut res = connector.connect().await;
 
     // Allow plaintext reconnection if and only if ClientSecurity is InsecureDevMode and
@@ -293,12 +291,12 @@ async fn connect2(
     if let Err(ConnectionError::SslError(e)) = res {
         match e.common_error() {
             Some(CommonError::InvalidTlsProtocolData) => {
-                if cfg.0.client_security == ClientSecurity::InsecureDevMode {
+                if cfg.client_security == ClientSecurity::InsecureDevMode {
                     target.try_remove_tls();
                     warn!("TLS handshake failed, trying again without TLS");
                     *warned = true;
                     let mut connector = Connector::new(target.clone()).map_err(ClientConnectionError::with_source)?;
-                    connector.set_keepalive(cfg.0.tcp_keepalive);
+                    connector.set_keepalive(cfg.tcp_keepalive.as_keepalive());
                     res = connector.connect().await;
                 } else {
                     return Err(ClientConnectionError::with_source(e).context(format!(
@@ -341,24 +339,28 @@ async fn connect2(
 
 async fn connect4(cfg: &Config, mut stream: gel_stream::RawStream) -> Result<Connection, Error> {
     // Allow the client to check the certificate
-    if let Some(cert_check) = &cfg.0.cert_check {
-        if let Some(handshake) = stream.handshake() {
-            if let Some(cert) = &handshake.cert {
-                cert_check.call(cert).await?;
-            }
-        }
-    }
+    // if let Some(cert_check) = &cfg.cert_check {
+    //     if let Some(handshake) = stream.handshake() {
+    //         if let Some(cert) = &handshake.cert {
+    //             cert_check.call(cert).await?;
+    //         }
+    //     }
+    // }
 
     let mut proto = ProtocolVersion::current();
     let mut out_buf = BytesMut::with_capacity(8192);
     let mut in_buf = BytesMut::with_capacity(8192);
 
     let mut params = HashMap::new();
-    params.insert(String::from("user"), cfg.0.user.clone());
-    params.insert(String::from("database"), cfg.0.database.clone());
-    params.insert(String::from("branch"), cfg.0.branch.clone());
-    if let Some(secret_key) = cfg.0.secret_key.clone() {
-        params.insert(String::from("secret_key"), secret_key);
+    params.insert(String::from("user"), cfg.user.clone());
+    if let Some(database) = cfg.db.database() {
+        params.insert(String::from("database"), database.to_string());
+    }
+    if let Some(branch) = cfg.db.branch() {
+        params.insert(String::from("branch"), branch.to_string());
+    }
+    if let Some(secret_key) = cfg.authentication.secret_key() {
+        params.insert(String::from("secret_key"), secret_key.to_string());
     }
     let (major_ver, minor_ver) = proto.version_tuple();
     send_messages(
@@ -386,11 +388,11 @@ async fn connect4(cfg: &Config, mut stream: gel_stream::RawStream) -> Result<Con
         msg = wait_message(&mut stream, &mut in_buf, &proto).await?;
     }
 
-    let credentials = match &cfg.0.password {
-        Some(password) => CredentialData::Plain(password.clone()),
+    let credentials = match cfg.authentication.password() {
+        Some(password) => CredentialData::Plain(password.to_string()),
         None => CredentialData::Trust,
     };
-    let mut client_auth = gel_auth::handshake::ClientAuth::new(cfg.0.user.clone(), credentials);
+    let mut client_auth = gel_auth::handshake::ClientAuth::new(cfg.user.clone(), credentials);
 
     while !client_auth.is_complete() {
         let resp;
@@ -400,7 +402,7 @@ async fn connect4(cfg: &Config, mut stream: gel_stream::RawStream) -> Result<Con
             }
             ServerMessage::Authentication(Authentication::Sasl { ref methods }) => {
                 if methods.iter().any(|x| x == "SCRAM-SHA-256") {
-                    if cfg.0.password.is_some() {
+                    if cfg.authentication.password().is_some() {
                         resp = client_auth.drive(ClientAuthDrive::Scram).map_err(AuthenticationError::with_source)?;
                     } else {
                         return Err(PasswordRequired::with_message(
@@ -437,7 +439,7 @@ async fn connect4(cfg: &Config, mut stream: gel_stream::RawStream) -> Result<Con
                 send_messages(
                     &mut stream,
                     &mut out_buf,
-                    &mut proto,
+                    &proto,
                     &[ClientMessage::AuthenticationSaslInitialResponse(
                         SaslInitialResponse {
                             method: "SCRAM-SHA-256".into(),
@@ -458,7 +460,7 @@ async fn connect4(cfg: &Config, mut stream: gel_stream::RawStream) -> Result<Con
                 send_messages(
                     &mut stream,
                     &mut out_buf,
-                    &mut proto,
+                    &proto,
                     &[ClientMessage::AuthenticationSaslResponse(
                         SaslResponse {
                             data: Bytes::from(message),
@@ -711,7 +713,7 @@ where
 {
     use tokio::time::timeout;
 
-    timeout(cfg.0.connect_timeout, f).await.unwrap_or_else(|_| {
+    timeout(cfg.connect_timeout, f).await.unwrap_or_else(|_| {
         Err(ClientConnectionFailedTemporarilyError::with_source(
             io::Error::from(io::ErrorKind::TimedOut),
         ))
