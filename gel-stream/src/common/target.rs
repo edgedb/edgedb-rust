@@ -81,6 +81,58 @@ impl TargetName {
         }
         Ok(result)
     }
+
+    pub(crate) fn maybe_resolved(&self) -> &MaybeResolvedTarget {
+        &self.inner
+    }
+
+    pub(crate) fn maybe_resolved_mut(&mut self) -> &mut MaybeResolvedTarget {
+        &mut self.inner
+    }
+
+    /// Check if the target is a TCP connection.
+    pub fn is_tcp(&self) -> bool {
+        self.maybe_resolved().port().is_some()
+    }
+
+    /// Get the port of the target. If the target type does not include a port,
+    /// this will return None.
+    pub fn port(&self) -> Option<u16> {
+        self.maybe_resolved().port()
+    }
+
+    /// Set the port of the target. If the target type does not include a port,
+    /// this will return None. Otherwise, it will return the old port.
+    pub fn try_set_port(&mut self, port: u16) -> Option<u16> {
+        self.maybe_resolved_mut().set_port(port)
+    }
+
+    /// Get the path of the target. If the target type does not include a path,
+    /// this will return None.
+    pub fn path(&self) -> Option<&Path> {
+        self.maybe_resolved().path()
+    }
+
+    /// Get the host of the target. For resolved IP addresses, this is the
+    /// string representation of the IP address. For unresolved hostnames, this
+    /// is the hostname. If the target type does not include a host, this will
+    /// return None.
+    pub fn host(&self) -> Option<Cow<str>> {
+        self.maybe_resolved().host()
+    }
+
+    /// Get the name of the target. For resolved IP addresses, this is the
+    /// string representation of the IP address. For unresolved hostnames, this
+    /// is the hostname.
+    pub fn name(&self) -> Option<ServerName> {
+        self.maybe_resolved().name()
+    }
+
+    /// Get the host and port of the target. If the target type does not include
+    /// a host or port, this will return None.
+    pub fn tcp(&self) -> Option<(Cow<str>, u16)> {
+        self.maybe_resolved().tcp()
+    }
 }
 
 #[derive(Clone)]

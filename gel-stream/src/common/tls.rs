@@ -154,6 +154,49 @@ pub enum SslVersion {
     Tls1_3,
 }
 
+impl std::fmt::Display for SslVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            SslVersion::Tls1 => "TLSv1",
+            SslVersion::Tls1_1 => "TLSv1.1",
+            SslVersion::Tls1_2 => "TLSv1.2",
+            SslVersion::Tls1_3 => "TLSv1.3",
+        };
+        f.write_str(s)
+    }
+}
+
+#[derive(Debug, Clone, derive_more::Error, derive_more::Display, Eq, PartialEq)]
+pub struct SslVersionParseError(#[error(not(source))] pub String);
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for SslVersion {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(match self {
+            SslVersion::Tls1 => "TLSv1",
+            SslVersion::Tls1_1 => "TLSv1.1",
+            SslVersion::Tls1_2 => "TLSv1.2",
+            SslVersion::Tls1_3 => "TLSv1.3",
+        })
+    }
+}
+
+impl<'a> TryFrom<Cow<'a, str>> for SslVersion {
+    type Error = SslVersionParseError;
+    fn try_from(value: Cow<str>) -> Result<SslVersion, Self::Error> {
+        Ok(match value.to_lowercase().as_ref() {
+            "tls_1" | "tlsv1" => SslVersion::Tls1,
+            "tls_1.1" | "tlsv1.1" => SslVersion::Tls1_1,
+            "tls_1.2" | "tlsv1.2" => SslVersion::Tls1_2,
+            "tls_1.3" | "tlsv1.3" => SslVersion::Tls1_3,
+            _ => return Err(SslVersionParseError(value.to_string())),
+        })
+    }
+}
+
 #[derive(Default, Debug, PartialEq, Eq)]
 pub enum TlsClientCertVerify {
     /// Do not verify the client's certificate, just ignore it.
@@ -244,7 +287,7 @@ impl std::fmt::Debug for TlsAlpn {
                         s.push(c as char);
                     }
                 }
-                s.push_str("\"");
+                s.push('"');
                 write!(f, "{}", s)?;
             }
             write!(f, "]")?;
