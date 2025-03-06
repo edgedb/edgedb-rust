@@ -1,0 +1,58 @@
+[package]
+name = "gel-dsn"
+license = "MIT/Apache-2.0"
+version = "0.1.0"
+authors = ["MagicStack Inc. <hello@magic.io>"]
+edition = "2021"
+description = "Data-source name (DSN) parser for Gel and PostgreSQL databases."
+readme = "README.md"
+rust-version.workspace = true
+
+[features]
+gel = ["serde", "dirs"]
+postgres = []
+serde = ["dep:serde"]
+
+[dependencies]
+percent-encoding = "2"
+url = "2"
+thiserror = "2"
+derive_more = { version = "2", features = ["display", "error"] }
+serde = { version = "1", optional = true, features = ["derive"] }
+serde_json = "1"
+crc16 = "0.4.0"
+base64 = "0.22.0"
+paste = "1"
+rustls-pki-types = "1"
+rustls-pemfile = "2"
+sha1 = "0.10"
+dirs = { version = "6.0.0", optional = true }
+whoami = "1.5"
+
+gel-stream = { path = "../gel-stream", version = "0" }
+gel-auth = { path = "../gel-auth", version = "0" }
+gel-errors = { path = "../gel-errors", version = "0" }
+
+[dev-dependencies]
+rstest = "0.24"
+pretty_assertions = "1"
+libc = "0.2"
+paste = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+gel-dsn = { path = ".", features = ["gel", "postgres"] }
+tempfile = "3"
+
+[lib]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(use_libpq)'] }
+
+[[test]]
+name = "gel"
+path = "tests/gel/test.rs"
+harness = false
+
+[[test]]
+name = "postgres"
+path = "tests/postgres/test.rs"
