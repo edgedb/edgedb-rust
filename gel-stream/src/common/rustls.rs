@@ -328,11 +328,7 @@ impl ServerCertVerifier for IgnoreHostnameVerifier {
         ) {
             Ok(res) => Ok(res),
             // This works because the name check is the last step in the verify process
-            Err(e)
-                if e == rustls::Error::InvalidCertificate(
-                    rustls::CertificateError::NotValidForName,
-                ) =>
-            {
+            Err(rustls::Error::InvalidCertificate(rustls::CertificateError::NotValidForName)) => {
                 Ok(ServerCertVerified::assertion())
             }
             Err(e) => Err(e),
