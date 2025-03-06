@@ -11,7 +11,7 @@ rust-version.workspace = true
 [features]
 gel = ["serde", "dirs"]
 postgres = []
-serde = ["dep:serde"]
+serde = ["dep:serde", "gel-stream/serde"]
 
 [dependencies]
 percent-encoding = "2"
@@ -47,11 +47,6 @@ tempfile = "3"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(use_libpq)'] }
-
-[[test]]
-name = "gel"
-path = "tests/gel/test.rs"
-harness = false
 
 [[test]]
 name = "postgres"

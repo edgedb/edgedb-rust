@@ -1,7 +1,5 @@
 mod env;
 mod file;
-#[cfg(feature = "gel")]
-pub mod gel;
 mod host;
 #[cfg(feature = "postgres")]
 pub mod postgres;
