@@ -898,9 +898,7 @@ fn parse_dsn(dsn: &str, context: &mut impl BuildContext) -> Result<Params, Parse
         return Err(ParseError::InvalidDsn(InvalidDsnError::BranchAndDatabase));
     }
 
-    {
-        Ok(explicit)
-    }
+    Ok(explicit)
 }
 
 fn parse_credentials(
@@ -960,9 +958,7 @@ fn parse_env(context: &mut impl BuildContext) -> Result<Params, ParseError> {
         return Err(ParseError::ExclusiveOptions);
     }
 
-    {
-        Ok(explicit)
-    }
+    Ok(explicit)
 }
 
 /// Parse the early environment variables, ensuring that we always read the
@@ -974,9 +970,7 @@ fn parse_env_early(context: &mut impl BuildContext) -> Result<Params, ParseError
         ..Default::default()
     };
 
-    {
-        Ok(explicit)
-    }
+    Ok(explicit)
 }
 
 fn parse_instance(local: &str, context: &mut impl BuildContext) -> Result<Params, ParseError> {
@@ -1007,9 +1001,7 @@ fn parse_cloud(profile: &str, context: &mut impl BuildContext) -> Result<Params,
     };
     explicit.secret_key = Param::Unparsed(cloud_credentials.secret_key);
 
-    {
-        Ok(explicit)
-    }
+    Ok(explicit)
 }
 
 /// An opaque type representing a credentials file.
