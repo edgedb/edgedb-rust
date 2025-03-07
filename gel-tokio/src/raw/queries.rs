@@ -408,6 +408,8 @@ impl Connection {
         let out_desc = desc.output().map_err(ProtocolEncodingError::with_source)?;
         ResponseStream::new(self, &out_desc, guard).await
     }
+
+    #[allow(clippy::too_many_arguments)]
     pub async fn try_execute_stream<R, A>(
         &mut self,
         opts: &CompilationOptions,
@@ -572,6 +574,7 @@ impl Connection {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn query<R, A>(
         &mut self,
         query: &str,

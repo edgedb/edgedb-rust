@@ -1,13 +1,13 @@
 use std::future::Future;
 use std::sync::Arc;
 
+use gel_dsn::gel::Config;
 use gel_protocol::common::{Capabilities, Cardinality, IoFormat};
 use gel_protocol::model::Json;
 use gel_protocol::query_arg::QueryArgs;
 use gel_protocol::QueryResult;
 use tokio::time::sleep;
 
-use crate::builder::Config;
 use crate::errors::InvalidArgumentError;
 use crate::errors::NoDataError;
 use crate::errors::{Error, ErrorKind, SHOULD_RETRY};

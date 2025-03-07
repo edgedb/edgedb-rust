@@ -1,0 +1,3 @@
+[submodule "gel-dsn/tests/gel/shared-client-testcases"]
+	path = gel-dsn/tests/gel/shared-client-testcases
+	url = https://github.com/geldata/shared-client-testcases.git
