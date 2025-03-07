@@ -7,7 +7,7 @@ use std::{
 };
 
 use gel_dsn::{
-    gel::{Builder, ConnectionOptions, Params},
+    gel::{Builder, ConnectionOptions, Params, Traces, Warnings},
     EnvVar, FileAccess, UserProfile,
 };
 use serde::{Deserialize, Serialize};
@@ -263,35 +263,30 @@ fn main() {
             }
         }
 
-        let (result, warnings) = 'block: {
+        let warnings = Warnings::default();
+        let traces = Traces::default();
+
+        let result = 'block: {
             let params = testcase.opts.clone().unwrap_or_default();
             let params: Params = match params.try_into() {
                 Ok(params) => params,
                 Err(e) => {
-                    break 'block (
-                        Err(TestError {
-                            r#type: e.error_type().to_string(),
-                        }),
-                        Vec::new(),
-                    );
+                    break 'block Err(TestError {
+                        r#type: e.error_type().to_string(),
+                    });
                 }
             };
-            let traces_clone = traces.clone();
             let result = Builder::default()
                 .params(params)
                 .with_system_impl(&testcase)
                 .with_auto_project_cwd()
-                .with_tracing(move |s| traces_clone.lock().unwrap().push(s.to_string()))
-                .build();
-            let warnings = result.warnings().iter().cloned().collect::<Vec<_>>();
-            let result = if let Some(error) = result.parse_error() {
-                Err(TestError {
-                    r#type: error.error_type().to_string(),
-                })
-            } else {
-                Ok(result.unwrap())
-            };
-            (result, warnings)
+                .with_tracing(traces.clone().trace_fn())
+                .with_warning(warnings.clone().warn_fn())
+                .build_parse_error()
+                .map_err(|e| TestError {
+                    r#type: e.error_type().to_string(),
+                });
+            result
         };
 
         let actual = match &result {
@@ -319,22 +314,16 @@ fn main() {
 
         if actual == expected || fuzzy_match {
             passed += 1;
-            traces
-                .lock()
-                .unwrap()
-                .push(format!("Passed: {}", testcase.name));
+            traces.trace(&format!("Passed: {}", testcase.name));
         } else {
             failed += 1;
-            traces
-                .lock()
-                .unwrap()
-                .push(format!("Failed: {}", testcase.name));
+            traces.trace(&format!("Failed: {}", testcase.name));
 
             println!("---------------------------------------------");
-            for trace in traces.lock().unwrap().iter() {
+            for trace in traces.into_vec() {
                 println!("{}", trace);
             }
-            for warning in warnings {
+            for warning in warnings.into_vec() {
                 println!("{}", warning);
             }
             println!(

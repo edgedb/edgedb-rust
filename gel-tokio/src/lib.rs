@@ -172,7 +172,15 @@ pub use transaction::RawTransaction;
 /// the source of this function.
 #[cfg(feature = "env")]
 pub async fn create_client() -> Result<Client, Error> {
-    let pool = Client::new(&Builder::default().build().into_result()?);
+    use gel_errors::{ClientConnectionError, ErrorKind};
+    use tokio::task::spawn_blocking;
+
+    // Run the builder in a blocking context (it's unlikely to pause much but
+    // better to be safe)
+    let config = spawn_blocking(|| Builder::default().build())
+        .await
+        .map_err(|e| ClientConnectionError::with_source(e))??;
+    let pool = Client::new(&config);
     pool.ensure_connected().await?;
     Ok(pool)
 }

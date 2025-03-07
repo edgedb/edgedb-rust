@@ -12,6 +12,10 @@ rust-version.workspace = true
 gel = ["serde", "dirs"]
 postgres = []
 serde = ["dep:serde", "gel-stream/serde"]
+log = ["dep:log"]
+# If true, automatically enables the log and warning listeners in the parsers
+auto-log-trace = ["log"]
+auto-log-warning = ["log"]
 
 [dependencies]
 percent-encoding = "2"
@@ -28,6 +32,7 @@ rustls-pemfile = "2"
 sha1 = "0.10"
 dirs = { version = "6.0.0", optional = true }
 whoami = "1.5"
+log = { optional = true, version = "0.4" }
 
 gel-stream = { path = "../gel-stream", version = "0" }
 gel-auth = { path = "../gel-auth", version = "0" }

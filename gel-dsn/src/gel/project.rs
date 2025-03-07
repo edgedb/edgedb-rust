@@ -198,11 +198,11 @@ impl Project {
 
 #[cfg(test)]
 mod tests {
-    use crate::{file::SystemFileAccess, gel::BuildContextImpl};
-    use std::{
-        collections::HashMap,
-        sync::{Arc, Mutex},
+    use crate::{
+        file::SystemFileAccess,
+        gel::{BuildContextImpl, Traces},
     };
+    use std::collections::HashMap;
 
     use super::*;
 
@@ -215,20 +215,17 @@ mod tests {
             "instance-name"),
         ]);
 
-        let traces = Arc::new(Mutex::new(Vec::new()));
-        let traces_clone = traces.clone();
+        let traces = Traces::default();
 
         let mut context = BuildContextImpl::new_with((), files);
-        context.tracing = Some(Box::new(move |s| {
-            traces_clone.lock().unwrap().push(s.to_string())
-        }));
+        context.logging.tracing = Some(traces.clone().trace_fn());
         context.config_dir = Some(vec![PathBuf::from("/home/edgedb/.config/edgedb")]);
         let res = find_project_file(
             &mut context,
             ProjectDir::Search(PathBuf::from("/home/edgedb/test")),
         );
 
-        for trace in traces.lock().unwrap().iter() {
+        for trace in traces.into_vec() {
             eprintln!("{}", trace);
         }
         let res = res.unwrap().unwrap();

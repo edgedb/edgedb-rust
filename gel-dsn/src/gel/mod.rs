@@ -9,13 +9,17 @@ mod param;
 mod params;
 mod project;
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+};
 
 use crate::{
     env::SystemEnvVars, file::SystemFileAccess, user::SystemUserProfile, EnvVar, FileAccess,
     UserProfile,
 };
 pub use config::*;
+use error::Warning;
 pub use instance_name::*;
 pub use param::*;
 pub use params::*;
@@ -52,14 +56,114 @@ fn config_dirs<U: UserProfile>(user: &U) -> Vec<PathBuf> {
     dirs
 }
 
-type TracingFn = Box<dyn Fn(&str) + 'static>;
+type LoggingFn = Box<dyn Fn(&str) + 'static>;
+type WarningFn = Box<dyn Fn(Warning) + 'static>;
 
+#[derive(Default)]
+struct Logging {
+    tracing: Option<LoggingFn>,
+    warning: Option<WarningFn>,
+    #[cfg(feature = "log")]
+    log_trace: bool,
+    #[cfg(feature = "log")]
+    log_warning: bool,
+}
+
+impl Logging {
+    fn trace(&self, message: impl Fn(&dyn Fn(&str))) {
+        let mut needs_trace = false;
+
+        #[cfg(feature = "log")]
+        {
+            if self.log_trace || cfg!(feature = "auto-log-trace") {
+                needs_trace = true;
+            }
+        }
+
+        if self.tracing.is_some() {
+            needs_trace = true;
+        }
+
+        if needs_trace {
+            message(&|message| {
+                #[cfg(feature = "log")]
+                {
+                    if self.log_trace || cfg!(feature = "auto-log-trace") {
+                        log::trace!("{}", message);
+                    }
+                }
+                {
+                    if let Some(tracing) = &self.tracing {
+                        tracing(message);
+                    }
+                }
+            });
+        }
+    }
+
+    fn warn(&self, warning: Warning) {
+        #[cfg(feature = "log")]
+        {
+            if self.log_warning || cfg!(feature = "auto-log-warning") {
+                log::warn!("{}", warning);
+            }
+        }
+        if let Some(warning_fn) = &self.warning {
+            warning_fn(warning);
+        }
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct Warnings {
+    warnings: Arc<Mutex<Vec<Warning>>>,
+}
+
+impl Warnings {
+    pub fn into_vec(self) -> Vec<Warning> {
+        match Arc::try_unwrap(self.warnings) {
+            Ok(mutex) => mutex.into_inner().unwrap(),
+            Err(arc) => arc.lock().unwrap().clone(),
+        }
+    }
+
+    pub fn warn(&self, warning: Warning) {
+        let mut warnings = self.warnings.lock().unwrap();
+        warnings.push(warning);
+    }
+
+    pub fn warn_fn(self) -> WarningFn {
+        Box::new(move |warning| self.warn(warning))
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct Traces {
+    traces: Arc<Mutex<Vec<String>>>,
+}
+
+impl Traces {
+    pub fn into_vec(self) -> Vec<String> {
+        match Arc::try_unwrap(self.traces) {
+            Ok(mutex) => mutex.into_inner().unwrap(),
+            Err(arc) => arc.lock().unwrap().clone(),
+        }
+    }
+
+    pub fn trace(&self, message: &str) {
+        let mut traces = self.traces.lock().unwrap();
+        traces.push(message.to_string());
+    }
+
+    pub fn trace_fn(self) -> LoggingFn {
+        Box::new(move |message| self.trace(message))
+    }
+}
 struct BuildContextImpl<E: EnvVar = SystemEnvVars, F: FileAccess = SystemFileAccess> {
     env: E,
     files: F,
     pub config_dir: Option<Vec<PathBuf>>,
-    pub(crate) warnings: error::Warnings,
-    pub(crate) tracing: Option<TracingFn>,
+    pub(crate) logging: Logging,
 }
 
 impl Default for BuildContextImpl<SystemEnvVars, SystemFileAccess> {
@@ -75,8 +179,7 @@ impl BuildContextImpl<SystemEnvVars, SystemFileAccess> {
             env: SystemEnvVars,
             files: SystemFileAccess,
             config_dir: Some(config_dirs(&SystemUserProfile)),
-            warnings: error::Warnings::default(),
-            tracing: None,
+            logging: Logging::default(),
         }
     }
 }
@@ -89,8 +192,7 @@ impl<E: EnvVar, F: FileAccess> BuildContextImpl<E, F> {
             env,
             files,
             config_dir: Some(config_dir),
-            warnings: error::Warnings::default(),
-            tracing: None,
+            logging: Logging::default(),
         }
     }
 
@@ -101,8 +203,7 @@ impl<E: EnvVar, F: FileAccess> BuildContextImpl<E, F> {
             env,
             files,
             config_dir: None,
-            warnings: error::Warnings::default(),
-            tracing: None,
+            logging: Logging::default(),
         }
     }
 }
@@ -121,7 +222,6 @@ pub(crate) trait BuildContext {
     fn cwd(&self) -> Option<PathBuf>;
     fn files(&self) -> &impl FileAccess;
     fn warn(&mut self, warning: error::Warning);
-    fn ok<T>(&self, value: T) -> Result<T, error::ParseError>;
     fn read_config_file<T: FromParamStr>(
         &mut self,
         path: impl AsRef<Path>,
@@ -152,11 +252,7 @@ impl<E: EnvVar, F: FileAccess> BuildContext for BuildContextImpl<E, F> {
     }
 
     fn warn(&mut self, warning: error::Warning) {
-        self.warnings.warn(warning);
-    }
-
-    fn ok<T>(&self, value: T) -> Result<T, error::ParseError> {
-        Ok(value)
+        self.logging.warn(warning);
     }
 
     fn read_config_file<T: FromParamStr>(
@@ -202,9 +298,7 @@ impl<E: EnvVar, F: FileAccess> BuildContext for BuildContextImpl<E, F> {
     }
 
     fn trace(&self, message: impl Fn(&dyn Fn(&str))) {
-        if let Some(tracing) = &self.tracing {
-            message(&|message| tracing(message));
-        }
+        self.logging.trace(message);
     }
 }
 
@@ -224,7 +318,7 @@ mod tests {
             .build();
 
         assert_eq!(
-            cfg.result.unwrap(),
+            cfg.unwrap(),
             Config {
                 host: Host::new(
                     HostType::try_from_str("hostname").unwrap(),

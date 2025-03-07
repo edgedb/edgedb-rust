@@ -198,7 +198,7 @@ pub fn get_envs(
 
 #[cfg(test)]
 mod tests {
-    use crate::gel::error::Warning;
+    use crate::gel::{error::Warning, Warnings};
     use std::{collections::HashMap, convert::Infallible};
 
     use super::define_env;
@@ -233,12 +233,14 @@ mod tests {
     fn test_define_env() {
         let map = HashMap::from([("GEL_HOST", "localhost"), ("EDGEDB_HOST", "localhost")]);
         let mut context = BuildContextImpl::new_with(&map, ());
+        let warnings = Warnings::default();
+        context.logging.warning = Some(warnings.clone().warn_fn());
         assert_eq!(
             Env::host(&mut context).unwrap(),
             Some("localhost".to_string())
         );
         assert_eq!(
-            context.warnings.into_vec(),
+            warnings.into_vec(),
             vec![Warning::MultipleEnvironmentVariables(vec![
                 "GEL_HOST=localhost".to_string(),
                 "EDGEDB_HOST=localhost".to_string(),

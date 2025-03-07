@@ -14,9 +14,9 @@ use super::{
     env::Env,
     error::*,
     project::{find_project_file, ProjectDir},
-    BuildContext, BuildContextImpl, ClientSecurity, CloudCerts, Config, ConfigResult,
-    DatabaseBranch, FromParamStr, InstanceName, Param, TcpKeepalive, TlsSecurity, TracingFn,
-    DEFAULT_CONNECT_TIMEOUT, DEFAULT_PORT, DEFAULT_WAIT,
+    BuildContext, BuildContextImpl, ClientSecurity, CloudCerts, Config, DatabaseBranch,
+    FromParamStr, InstanceName, Logging, Param, TcpKeepalive, TlsSecurity, DEFAULT_CONNECT_TIMEOUT,
+    DEFAULT_PORT, DEFAULT_WAIT,
 };
 use crate::{
     env::SystemEnvVars,
@@ -224,7 +224,7 @@ impl Builder {
     /// signature for compatibility.
     #[deprecated(note = "Use `build` instead")]
     pub async fn build_env(self) -> Result<Config, gel_errors::Error> {
-        self.with_system().build().into_result()
+        self.with_system().build()
     }
 
     /// Prepare the builder for building the config without any system access
@@ -236,10 +236,10 @@ impl Builder {
         BuilderPrepare {
             params: self.params,
             project_dir: None,
-            env: (),
-            fs: (),
-            user: (),
-            tracing: None,
+            env: Default::default(),
+            fs: Default::default(),
+            user: Default::default(),
+            logging: Default::default(),
             _phantom: std::marker::PhantomData,
         }
     }
@@ -296,7 +296,7 @@ impl Builder {
     /// Build the [`Config`] from the parameters and the local system
     /// environment, including environment variables and credentials assumed
     /// from the current working directory.
-    pub fn build(self) -> ConfigResult {
+    pub fn build(self) -> Result<Config, gel_errors::Error> {
         self.with_system().build()
     }
 }
@@ -361,7 +361,7 @@ pub struct BuilderPrepare<E: BuilderEnv, F: BuilderFs, U: BuilderUser, P: Builde
     env: E::Env,
     fs: F::File,
     user: U::UserProfile,
-    tracing: Option<TracingFn>,
+    logging: Logging,
     _phantom: std::marker::PhantomData<(E, F, P)>,
 }
 
@@ -376,7 +376,7 @@ impl<E: BuilderEnv, F: BuilderFs, U: BuilderUser, P: BuilderProject> BuilderPrep
             env,
             fs: self.fs,
             user: self.user,
-            tracing: self.tracing,
+            logging: self.logging,
             _phantom: std::marker::PhantomData,
         }
     }
@@ -390,7 +390,7 @@ impl<E: BuilderEnv, F: BuilderFs, U: BuilderUser, P: BuilderProject> BuilderPrep
             env: self.env,
             fs,
             user: self.user,
-            tracing: self.tracing,
+            logging: self.logging,
             _phantom: std::marker::PhantomData,
         }
     }
@@ -404,7 +404,24 @@ impl<E: BuilderEnv, F: BuilderFs, U: BuilderUser, P: BuilderProject> BuilderPrep
             env: self.env,
             fs: self.fs,
             user,
-            tracing: self.tracing,
+            logging: self.logging,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+
+    #[doc(hidden)]
+    #[allow(deprecated, private_interfaces)]
+    fn set_project_dir(
+        self,
+        project_dir: Option<ProjectDir>,
+    ) -> BuilderPrepare<E, F, U, WithProject> {
+        BuilderPrepare {
+            params: self.params,
+            project_dir,
+            env: self.env,
+            fs: self.fs,
+            user: self.user,
+            logging: self.logging,
             _phantom: std::marker::PhantomData,
         }
     }
@@ -429,7 +446,20 @@ impl<E: BuilderEnv, F: BuilderFs, U: BuilderUser, P: BuilderProject> BuilderPrep
 
     /// Enable tracing of the build process.
     pub fn with_tracing(mut self, f: impl Fn(&str) + 'static) -> BuilderPrepare<E, F, U, P> {
-        self.tracing = Some(Box::new(f));
+        self.logging.tracing = Some(Box::new(f));
+        self
+    }
+
+    pub fn with_warning(mut self, f: impl Fn(Warning) + 'static) -> BuilderPrepare<E, F, U, P> {
+        self.logging.warning = Some(Box::new(f));
+        self
+    }
+
+    /// Enable logging for build warnings and traces.
+    #[cfg(feature = "log")]
+    pub fn with_logging(mut self) -> BuilderPrepare<E, F, U, P> {
+        self.logging.log_warning = true;
+        self.logging.log_trace = true;
         self
     }
 }
@@ -443,15 +473,7 @@ impl<E: BuilderEnv, F: FileAccess, U: UserProfile, P: BuilderProject>
     /// configuration, the project will not be loaded.
     #[allow(deprecated)]
     pub fn with_auto_project_cwd(self) -> BuilderPrepare<E, WithFs<F>, WithUser<U>, WithProject> {
-        BuilderPrepare {
-            params: self.params,
-            project_dir: Some(ProjectDir::SearchCwd),
-            env: self.env,
-            fs: self.fs,
-            user: self.user,
-            tracing: self.tracing,
-            _phantom: std::marker::PhantomData,
-        }
+        self.set_project_dir(Some(ProjectDir::SearchCwd))
     }
 
     /// Configure the project directory to be the given directory. If no project
@@ -462,15 +484,7 @@ impl<E: BuilderEnv, F: FileAccess, U: UserProfile, P: BuilderProject>
         self,
         project_dir: impl AsRef<Path>,
     ) -> BuilderPrepare<E, WithFs<F>, WithUser<U>, WithProject> {
-        BuilderPrepare {
-            params: self.params,
-            project_dir: Some(ProjectDir::Search(project_dir.as_ref().to_path_buf())),
-            env: self.env,
-            fs: self.fs,
-            user: self.user,
-            tracing: self.tracing,
-            _phantom: std::marker::PhantomData,
-        }
+        self.set_project_dir(Some(ProjectDir::Search(project_dir.as_ref().to_path_buf())))
     }
 
     /// Configure the project directory to be the given directory. Does not
@@ -481,15 +495,9 @@ impl<E: BuilderEnv, F: FileAccess, U: UserProfile, P: BuilderProject>
         self,
         project_dir: impl AsRef<Path>,
     ) -> BuilderPrepare<E, WithFs<F>, WithUser<U>, WithProject> {
-        BuilderPrepare {
-            params: self.params,
-            project_dir: Some(ProjectDir::NoSearch(project_dir.as_ref().to_path_buf())),
-            env: self.env,
-            fs: self.fs,
-            user: self.user,
-            tracing: self.tracing,
-            _phantom: std::marker::PhantomData,
-        }
+        self.set_project_dir(Some(ProjectDir::NoSearch(
+            project_dir.as_ref().to_path_buf(),
+        )))
     }
 }
 
@@ -517,23 +525,17 @@ impl<E: BuilderEnv, P: BuilderProject> BuilderPrepare<E, WithoutFs, WithoutUser,
 impl<E: BuilderEnv, F: BuilderFs, U: BuilderUser, P: BuilderProject> BuilderPrepare<E, F, U, P> {
     /// Build the [`Config`] from the parameters, with optional environment,
     /// file system access, and project directory potentially configured.
-    pub fn build(self) -> ConfigResult {
+    pub fn build(self) -> Result<Config, gel_errors::Error> {
+        self.build_parse_error().map_err(|e| e.gel_error())
+    }
+
+    #[doc(hidden)]
+    pub fn build_parse_error(self) -> Result<Config, ParseError> {
         let params = self.params;
 
         let mut context = BuildContextImpl::new_with_user_profile(self.env, self.fs, self.user);
-        context.tracing = self.tracing;
-        let result = parse(params, &mut context, self.project_dir);
-
-        match result {
-            Ok(config) => ConfigResult {
-                result: Ok(config),
-                warnings: context.warnings,
-            },
-            Err(e) => ConfigResult {
-                result: Err(e.gel_error()),
-                warnings: context.warnings,
-            },
-        }
+        context.logging = self.logging;
+        parse(params, &mut context, self.project_dir)
     }
 }
 
@@ -598,7 +600,7 @@ impl Params {
                 e
             }
         })? {
-            let file = parse_credentials(&file, context)?;
+            let file = parse_credentials(file, context)?;
             context_trace!(context, "Credentials: {:?}", file);
             explicit.merge(file);
         }
@@ -759,22 +761,25 @@ impl Params {
 
         let user = user.unwrap_or_else(|| "edgedb".to_string());
 
-        context.ok(Some(Config {
-            host,
-            db,
-            user,
-            authentication,
-            client_security,
-            tls_security,
-            tls_ca,
-            tls_server_name,
-            wait_until_available: wait_until_available.unwrap_or(DEFAULT_WAIT),
-            server_settings,
-            connect_timeout: connect_timeout.unwrap_or(DEFAULT_CONNECT_TIMEOUT),
-            max_concurrency,
-            tcp_keepalive: tcp_keepalive.unwrap_or(TcpKeepalive::Default),
-            cloud_certs,
-        }))
+        {
+            let value = Some(Config {
+                host,
+                db,
+                user,
+                authentication,
+                client_security,
+                tls_security,
+                tls_ca,
+                tls_server_name,
+                wait_until_available: wait_until_available.unwrap_or(DEFAULT_WAIT),
+                server_settings,
+                connect_timeout: connect_timeout.unwrap_or(DEFAULT_CONNECT_TIMEOUT),
+                max_concurrency,
+                tcp_keepalive: tcp_keepalive.unwrap_or(TcpKeepalive::Default),
+                cloud_certs,
+            });
+            Ok(value)
+        }
     }
 }
 
@@ -893,11 +898,13 @@ fn parse_dsn(dsn: &str, context: &mut impl BuildContext) -> Result<Params, Parse
         return Err(ParseError::InvalidDsn(InvalidDsnError::BranchAndDatabase));
     }
 
-    context.ok(explicit)
+    {
+        Ok(explicit)
+    }
 }
 
 fn parse_credentials(
-    credentials: &CredentialsFile,
+    credentials: CredentialsFile,
     context: &mut impl BuildContext,
 ) -> Result<Params, ParseError> {
     let explicit = Params {
@@ -913,7 +920,11 @@ fn parse_credentials(
         ..Default::default()
     };
 
-    context.ok(explicit)
+    for warning in credentials.warnings() {
+        context.warn(warning.clone());
+    }
+
+    Ok(explicit)
 }
 
 fn parse_env(context: &mut impl BuildContext) -> Result<Params, ParseError> {
@@ -949,7 +960,9 @@ fn parse_env(context: &mut impl BuildContext) -> Result<Params, ParseError> {
         return Err(ParseError::ExclusiveOptions);
     }
 
-    context.ok(explicit)
+    {
+        Ok(explicit)
+    }
 }
 
 /// Parse the early environment variables, ensuring that we always read the
@@ -961,7 +974,9 @@ fn parse_env_early(context: &mut impl BuildContext) -> Result<Params, ParseError
         ..Default::default()
     };
 
-    context.ok(explicit)
+    {
+        Ok(explicit)
+    }
 }
 
 fn parse_instance(local: &str, context: &mut impl BuildContext) -> Result<Params, ParseError> {
@@ -971,9 +986,12 @@ fn parse_instance(local: &str, context: &mut impl BuildContext) -> Result<Params
             return Err(ParseError::CredentialsFileNotFound);
         }
     }) else {
-        return context.ok(Params::default());
+        return {
+            let value = Params::default();
+            Ok(value)
+        };
     };
-    parse_credentials(&credentials, context)
+    parse_credentials(credentials, context)
 }
 
 fn parse_cloud(profile: &str, context: &mut impl BuildContext) -> Result<Params, ParseError> {
@@ -982,11 +1000,16 @@ fn parse_cloud(profile: &str, context: &mut impl BuildContext) -> Result<Params,
     let Some(cloud_credentials): Option<CloudCredentialsFile> =
         context.read_config_file(format!("cloud-credentials/{profile}.json"))?
     else {
-        return context.ok(Params::default());
+        return {
+            let value = Params::default();
+            Ok(value)
+        };
     };
     explicit.secret_key = Param::Unparsed(cloud_credentials.secret_key);
 
-    context.ok(explicit)
+    {
+        Ok(explicit)
+    }
 }
 
 /// An opaque type representing a credentials file.
