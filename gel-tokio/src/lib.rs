@@ -179,7 +179,7 @@ pub async fn create_client() -> Result<Client, Error> {
     // better to be safe)
     let config = spawn_blocking(|| Builder::default().build())
         .await
-        .map_err(|e| ClientConnectionError::with_source(e))??;
+        .map_err(ClientConnectionError::with_source)??;
     let pool = Client::new(&config);
     pool.ensure_connected().await?;
     Ok(pool)
