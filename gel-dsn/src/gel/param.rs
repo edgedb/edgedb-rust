@@ -191,6 +191,10 @@ where
         }
     }
 
+    pub fn take(&mut self) -> Param<T> {
+        std::mem::take(self)
+    }
+
     pub fn cast<U: Clone>(self) -> Result<Param<U>, Self> {
         match self {
             Self::None => Ok(Param::None),

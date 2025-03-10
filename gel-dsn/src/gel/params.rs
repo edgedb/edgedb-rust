@@ -91,6 +91,45 @@ macro_rules! define_params {
                     self.server_settings.entry(key).or_insert(value);
                 }
             }
+
+            /// Compute the parameters.
+            fn to_computed(self, context: &mut impl BuildContext) -> (Computed, Vec<ParseError>) {
+                let mut errors = Vec::new();
+                let computed = Computed {
+                    $(
+                        $name: self.$name.get(context).unwrap_or_else(|e| {
+                            errors.push(e);
+                            None
+                        }),
+                    )*
+
+                    server_settings: self.server_settings.clone(),
+                };
+                (computed, errors)
+            }
+        }
+
+        /// The parameters used to build the [`Config`].
+        #[derive(Clone, Default)]
+        pub struct Computed {
+            $(
+                $(#[doc = $doc])*
+                pub $name: Option<$type>,
+            )*
+
+            pub server_settings: HashMap<String, String>,
+        }
+
+        impl Debug for Computed {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let mut s = f.debug_struct("Computed");
+                $(
+                    if let Some(value) = &self.$name {
+                        s.field(stringify!($name), &value);
+                    }
+                )*
+                s.finish()
+            }
         }
 
         impl Builder {
@@ -199,6 +238,12 @@ define_params!(
     /// The connection timeout.
     connect_timeout: Duration,
 );
+
+impl Computed {
+    pub fn is_complete(&self) -> bool {
+        self.host.is_some() || self.port.is_some()
+    }
+}
 
 impl Builder {
     /// Create a new builder with default parameters.
@@ -315,6 +360,13 @@ impl Builder {
     /// from the current working directory.
     pub fn build(self) -> Result<Config, gel_errors::Error> {
         self.with_system().build()
+    }
+
+    /// Build the [`Computed`] parameters from the parameters and the local
+    /// system environment, including environment variables and credentials
+    /// assumed from the current working directory.
+    pub fn compute(self) -> Result<(Computed, Vec<ParseError>), ParseError> {
+        self.with_system().compute()
     }
 }
 
@@ -546,6 +598,18 @@ impl<E: BuilderEnv, F: BuilderFs, U: BuilderUser, P: BuilderProject> BuilderPrep
         self.build_parse_error().map_err(|e| e.gel_error())
     }
 
+    /// Build the [`Computed`] parameters from the parameters, with optional
+    /// environment, file system access, and project directory potentially configured.
+    ///
+    /// This is a best-effort attempt to make sense of the provided options.
+    pub fn compute(self) -> Result<(Computed, Vec<ParseError>), ParseError> {
+        let params = self.params;
+
+        let mut context = BuildContextImpl::new_with_user_profile(self.env, self.fs, self.user);
+        context.logging = self.logging;
+        compute(params, &mut context, self.project_dir)
+    }
+
     #[doc(hidden)]
     pub fn build_parse_error(self) -> Result<Config, ParseError> {
         let params = self.params;
@@ -579,12 +643,11 @@ impl Params {
         sources
     }
 
-    /// Try to build the config. Returns `None` if the config is incomplete.
-    pub(crate) fn try_build(
+    pub(crate) fn try_compute(
         &self,
         context: &mut impl BuildContext,
         phase: BuildPhase,
-    ) -> Result<Option<Config>, ParseError> {
+    ) -> Result<(Computed, Vec<ParseError>), ParseError> {
         // Step 0: Check for compound option overlap. If there is, return an error.
         let compound_sources = self.check_overlap();
         if compound_sources.len() > 1 {
@@ -600,7 +663,13 @@ impl Params {
 
         context_trace!(context, "Start: {:?}", explicit);
 
-        if let Some(dsn) = self.dsn.get(context)? {
+        // Take and compute the compound options first since they may have
+        // special handling.
+        let dsn = explicit.dsn.take().get(context);
+        let instance = explicit.instance.take().get(context);
+        let credentials = explicit.credentials.take().get(context);
+
+        if let Some(dsn) = dsn? {
             let res = parse_dsn(&dsn, context);
             if let Err(e) = &res {
                 context_trace!(context, "DSN error: {:?}", e);
@@ -610,7 +679,7 @@ impl Params {
             explicit.merge(dsn);
         }
 
-        if let Some(file) = self.credentials.get(context).map_err(|e| {
+        if let Some(file) = credentials.map_err(|e| {
             // Special case: map FileNotFound to InvalidCredentialsFile
             if e == ParseError::FileNotFound {
                 ParseError::InvalidCredentialsFile(InvalidCredentialsFileError::FileNotFound)
@@ -623,7 +692,7 @@ impl Params {
             explicit.merge(file);
         }
 
-        let instance_name = if let Some(instance) = self.instance.get(context)? {
+        if let Some(instance) = instance? {
             match &instance {
                 InstanceName::Local(local) => {
                     let instance = parse_instance(&local, context)?;
@@ -659,20 +728,34 @@ impl Params {
                     }
                 }
             }
-            Some(instance)
-        } else {
-            None
-        };
+        }
 
         context_trace!(context, "Merged: {:?}", explicit);
 
+        let (computed, errors) = explicit.to_computed(context);
+        Ok((computed, errors))
+    }
+
+    /// Try to build the config. Returns `None` if the config is incomplete.
+    pub(crate) fn try_build(
+        &self,
+        context: &mut impl BuildContext,
+        phase: BuildPhase,
+    ) -> Result<Option<Config>, ParseError> {
+        let (computed, errors) = self.try_compute(context, phase)?;
+        if !errors.is_empty() {
+            return Err(errors.into_iter().next().unwrap());
+        }
+
+        context_trace!(context, "Computed: {:?}", computed);
+
         // Step 2: Resolve host. If we have no host yet, exit.
-        let port = explicit.port.get(context)?;
+        let port = computed.port;
         if port == Some(0) {
             return Err(ParseError::InvalidPort);
         }
 
-        let host = if let Some(unix_path) = explicit.unix_path.get(context)? {
+        let host = if let Some(unix_path) = computed.unix_path {
             match port {
                 Some(port) => Host::new(
                     HostType::from_unix_path(unix_path),
@@ -686,7 +769,7 @@ impl Params {
                 ),
             }
         } else {
-            let host = match (explicit.host.get(context)?, port) {
+            let host = match (computed.host, port) {
                 (Some(host), Some(port)) => Host::new(host, port, HostTarget::Gel),
                 (Some(host), None) => Host::new(host, DEFAULT_PORT, HostTarget::Gel),
                 (None, Some(port)) => Host::new(
@@ -707,17 +790,17 @@ impl Params {
             host
         };
 
-        let authentication = if let Some(password) = explicit.password.get(context)? {
+        let authentication = if let Some(password) = computed.password {
             Authentication::Password(password)
-        } else if let Some(secret_key) = explicit.secret_key.get(context)? {
+        } else if let Some(secret_key) = computed.secret_key {
             Authentication::SecretKey(secret_key)
         } else {
             Authentication::None
         };
 
-        let user = explicit.user.get(context)?;
-        let database = explicit.database.get(context)?;
-        let branch = explicit.branch.get(context)?;
+        let user = computed.user;
+        let database = computed.database;
+        let branch = computed.branch;
 
         for (param, error) in [
             (&user, ParseError::InvalidUser),
@@ -741,22 +824,22 @@ impl Params {
             (None, None) => DatabaseBranch::Default,
         };
 
-        let tls_ca = if let Some(certs) = explicit.tls_ca.get(context)? {
+        let tls_ca = if let Some(certs) = computed.tls_ca {
             Some(certs)
         } else {
             None
         };
 
-        let client_security = explicit.client_security.get(context)?.unwrap_or_default();
-        let tls_security = explicit.tls_security.get(context)?.unwrap_or_default();
-        let tls_server_name = explicit.tls_server_name.get(context)?;
-        let wait_until_available = explicit.wait_until_available.get(context)?;
-        let cloud_certs = explicit.cloud_certs.get(context)?;
-        let tcp_keepalive = explicit.tcp_keepalive.get(context)?;
-        let max_concurrency = explicit.max_concurrency.get(context)?;
-        let connect_timeout = explicit.connect_timeout.get(context)?;
+        let client_security = computed.client_security.unwrap_or_default();
+        let tls_security = computed.tls_security.unwrap_or_default();
+        let tls_server_name = computed.tls_server_name;
+        let wait_until_available = computed.wait_until_available;
+        let cloud_certs = computed.cloud_certs;
+        let tcp_keepalive = computed.tcp_keepalive;
+        let max_concurrency = computed.max_concurrency;
+        let connect_timeout = computed.connect_timeout;
 
-        let server_settings = explicit.server_settings;
+        let server_settings = computed.server_settings;
 
         // If we have a client security option, we need to check if it's compatible with the TLS security option.
         let tls_security = match (client_security, tls_security) {
@@ -782,7 +865,7 @@ impl Params {
             db,
             user,
             authentication,
-            instance_name,
+            instance_name: computed.instance,
             client_security,
             tls_security,
             tls_ca,
@@ -1261,6 +1344,51 @@ pub(crate) fn parse(
     }
 
     Err(ParseError::NoOptionsOrToml)
+}
+
+pub(crate) fn compute(
+    mut explicit: Params,
+    context: &mut impl BuildContext,
+    project: Option<ProjectDir>,
+) -> Result<(Computed, Vec<ParseError>), ParseError> {
+    // We always want to read the early environment variables.
+    let env_params = parse_env_early(context)?;
+    explicit.merge(env_params);
+
+    let (computed, mut errors) = explicit.try_compute(context, BuildPhase::Options)?;
+    if computed.is_complete() {
+        return Ok((computed, errors));
+    }
+
+    let env_params = parse_env(context)?;
+    explicit.merge(env_params);
+
+    let (computed, env_errors) = explicit.try_compute(context, BuildPhase::Environment)?;
+    errors.extend(env_errors);
+    if computed.is_complete() {
+        return Ok((computed, errors));
+    }
+
+    if let Some(project) = project {
+        if let Ok(Some(project)) = find_project_file(context, project) {
+            if let Some(project) = project.project {
+                explicit.merge(Params {
+                    cloud_profile: Param::from_unparsed(project.cloud_profile),
+                    instance: Param::from_parsed(Some(project.instance_name)),
+                    database: Param::from_unparsed(project.database),
+                    branch: Param::from_unparsed(project.branch),
+                    ..Default::default()
+                });
+            } else {
+                return Err(ParseError::ProjectNotInitialised);
+            }
+        }
+    }
+
+    let (computed, project_errors) = explicit.try_compute(context, BuildPhase::Project)?;
+    errors.extend(project_errors);
+
+    Ok((computed, errors))
 }
 
 #[cfg(test)]
