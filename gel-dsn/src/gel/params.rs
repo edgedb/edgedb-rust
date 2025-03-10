@@ -93,7 +93,7 @@ macro_rules! define_params {
             }
 
             /// Compute the parameters.
-            fn to_computed(self, context: &mut impl BuildContext) -> (Computed, Vec<ParseError>) {
+            fn into_computed(self, context: &mut impl BuildContext) -> (Computed, Vec<ParseError>) {
                 let mut errors = Vec::new();
                 let computed = Computed {
                     $(
@@ -124,7 +124,7 @@ macro_rules! define_params {
         /// The parameters used to build the [`Config`].
         #[derive(Clone, Default)]
         #[cfg(not(feature = "unstable"))]
-        struct Computed {
+        pub(crate) struct Computed {
             $(
                 $(#[doc = $doc])*
                 pub $name: Option<$type>,
@@ -710,7 +710,7 @@ impl Params {
         if let Some(instance) = instance? {
             match &instance {
                 InstanceName::Local(local) => {
-                    let instance = parse_instance(&local, context)?;
+                    let instance = parse_instance(local, context)?;
                     context_trace!(context, "Instance: {:?}", instance);
                     explicit.merge(instance);
                 }
@@ -747,7 +747,7 @@ impl Params {
 
         context_trace!(context, "Merged: {:?}", explicit);
 
-        let (computed, errors) = explicit.to_computed(context);
+        let (computed, errors) = explicit.into_computed(context);
         Ok((computed, errors))
     }
 
@@ -839,11 +839,7 @@ impl Params {
             (None, None) => DatabaseBranch::Default,
         };
 
-        let tls_ca = if let Some(certs) = computed.tls_ca {
-            Some(certs)
-        } else {
-            None
-        };
+        let tls_ca = computed.tls_ca;
 
         let client_security = computed.client_security.unwrap_or_default();
         let tls_security = computed.tls_security.unwrap_or_default();

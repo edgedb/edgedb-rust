@@ -157,7 +157,7 @@ mod chrono {
         assert_eq!(format!("{:?}", edgedb), formatted);
 
         let mut buf = BytesMut::new();
-        let val = Value::Datetime(edgedb.clone());
+        let val = Value::Datetime(edgedb);
         codec::Datetime.encode(&mut buf, &val).unwrap();
         let serialized_micros = buf.get_i64();
 
@@ -314,7 +314,7 @@ mod chrono {
         assert_eq!(format!("{:?}", edgedb), formatted);
 
         let mut buf = BytesMut::new();
-        let val = Value::LocalDatetime(edgedb.clone());
+        let val = Value::LocalDatetime(edgedb);
         codec::LocalDatetime.encode(&mut buf, &val).unwrap();
         let serialized_micros = buf.get_i64();
 
@@ -388,7 +388,7 @@ mod chrono {
         assert_eq!(format!("{:?}", edgedb), formatted);
 
         let mut buf = BytesMut::new();
-        let val = Value::LocalTime(edgedb.clone());
+        let val = Value::LocalTime(edgedb);
         codec::LocalTime.encode(&mut buf, &val).unwrap();
         let serialized_micros = buf.get_i64();
 

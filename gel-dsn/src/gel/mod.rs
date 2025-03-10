@@ -291,7 +291,7 @@ impl<E: EnvVar, F: FileAccess> BuildContext for BuildContextImpl<E, F> {
     fn find_config_path(&self, path: impl AsRef<Path>) -> std::io::Result<PathBuf> {
         for config_dir in self.config_dir.iter().flatten() {
             context_trace!(self, "Checking config path: {}", config_dir.display());
-            if matches!(self.files.exists_dir(&config_dir), Ok(true)) {
+            if matches!(self.files.exists_dir(config_dir), Ok(true)) {
                 return Ok(config_dir.join(path));
             }
         }

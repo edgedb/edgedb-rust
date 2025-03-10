@@ -147,20 +147,19 @@ pub mod credentials {
         pub tls_security: TlsSecurity,
         pub tls_server_name: Option<String>,
     }
-
-    impl Into<gel_dsn::gel::Params> for Credentials {
-        fn into(self) -> gel_dsn::gel::Params {
+    impl From<Credentials> for gel_dsn::gel::Params {
+        fn from(credentials: Credentials) -> Self {
             use gel_dsn::gel::Param;
             let mut params = gel_dsn::gel::Params::default();
-            params.user = Param::Unparsed(self.user);
-            params.host = Param::from_unparsed(self.host);
-            params.port = Param::from_parsed(self.port);
-            params.password = Param::from_unparsed(self.password);
-            params.database = Param::from_unparsed(self.database);
-            params.branch = Param::from_unparsed(self.branch);
-            params.tls_ca = Param::from_unparsed(self.tls_ca);
-            params.tls_security = Param::Parsed(self.tls_security);
-            params.tls_server_name = Param::from_unparsed(self.tls_server_name);
+            params.user = Param::Unparsed(credentials.user);
+            params.host = Param::from_unparsed(credentials.host);
+            params.port = Param::from_parsed(credentials.port);
+            params.password = Param::from_unparsed(credentials.password);
+            params.database = Param::from_unparsed(credentials.database);
+            params.branch = Param::from_unparsed(credentials.branch);
+            params.tls_ca = Param::from_unparsed(credentials.tls_ca);
+            params.tls_security = Param::Parsed(credentials.tls_security);
+            params.tls_server_name = Param::from_unparsed(credentials.tls_server_name);
             params
         }
     }
@@ -181,7 +180,7 @@ pub mod credentials {
                 database: self.db.name().map(|s| s.to_string()),
                 branch: self.db.branch().map(|s| s.to_string()),
                 tls_ca: self.tls_ca_pem(),
-                tls_security: self.tls_security.clone(),
+                tls_security: self.tls_security,
                 tls_server_name: self.tls_server_name.clone(),
             })
         }
