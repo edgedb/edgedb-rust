@@ -111,6 +111,7 @@ macro_rules! define_params {
 
         /// The parameters used to build the [`Config`].
         #[derive(Clone, Default)]
+        #[cfg(feature = "unstable")]
         pub struct Computed {
             $(
                 $(#[doc = $doc])*
@@ -120,6 +121,18 @@ macro_rules! define_params {
             pub server_settings: HashMap<String, String>,
         }
 
+        /// The parameters used to build the [`Config`].
+        #[derive(Clone, Default)]
+        #[cfg(not(feature = "unstable"))]
+        struct Computed {
+            $(
+                $(#[doc = $doc])*
+                pub $name: Option<$type>,
+            )*
+
+            pub server_settings: HashMap<String, String>,
+        }
+        
         impl Debug for Computed {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 let mut s = f.debug_struct("Computed");
@@ -365,6 +378,7 @@ impl Builder {
     /// Build the [`Computed`] parameters from the parameters and the local
     /// system environment, including environment variables and credentials
     /// assumed from the current working directory.
+    #[cfg(feature = "unstable")]
     pub fn compute(self) -> Result<(Computed, Vec<ParseError>), ParseError> {
         self.with_system().compute()
     }
@@ -602,6 +616,7 @@ impl<E: BuilderEnv, F: BuilderFs, U: BuilderUser, P: BuilderProject> BuilderPrep
     /// environment, file system access, and project directory potentially configured.
     ///
     /// This is a best-effort attempt to make sense of the provided options.
+    #[cfg(feature = "unstable")]
     pub fn compute(self) -> Result<(Computed, Vec<ParseError>), ParseError> {
         let params = self.params;
 

@@ -13,6 +13,7 @@ use super::{BuildContext, BuildContextImpl, InstanceName};
 pub const PROJECT_FILES: &[&str] = &["gel.toml", "edgedb.toml"];
 
 #[derive(Debug)]
+#[allow(unused)]
 pub struct ProjectSearchResult {
     /// The path to the project file (gel.toml or edgedb.toml)
     pub project_path: PathBuf,
@@ -39,7 +40,7 @@ pub enum ProjectDir {
     /// Check the given path.
     NoSearch(PathBuf),
     /// Assume the given path is a valid project file.
-    Assume(PathBuf),
+    Exact(PathBuf),
 }
 
 impl ProjectDir {
@@ -47,7 +48,7 @@ impl ProjectDir {
         match self {
             ProjectDir::Search(_) => true,
             ProjectDir::NoSearch(_) => false,
-            ProjectDir::Assume(_) => false,
+            ProjectDir::Exact(_) => false,
             ProjectDir::SearchCwd => true,
         }
     }
@@ -58,8 +59,15 @@ pub fn find_project_file(
     context: &mut impl BuildContext,
     start_path: ProjectDir,
 ) -> io::Result<Option<ProjectSearchResult>> {
-    let project_path = if let ProjectDir::Assume(path) = start_path {
-        path
+    let project_path = if let ProjectDir::Exact(path) = start_path {
+        match context.files().exists(&path) {
+            Ok(true) => path,
+            Ok(false) => return Ok(None),
+            Err(e) => {
+                context_trace!(context, "Error checking if project file exists: {e:?}");
+                return Err(e);
+            }
+        }
     } else {
         let search_parents = start_path.search_parents();
         let dir = match start_path {
@@ -72,7 +80,7 @@ pub fn find_project_file(
             }
             ProjectDir::Search(path) => path,
             ProjectDir::NoSearch(path) => path,
-            ProjectDir::Assume(..) => unreachable!(),
+            ProjectDir::Exact(..) => unreachable!(),
         };
         let Some(project_path) = search_directory(context, &dir, search_parents)? else {
             context_trace!(context, "No project file found");
