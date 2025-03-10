@@ -1,3 +1,4 @@
+use rustls_pki_types::CertificateDer;
 use std::{
     num::NonZeroU16,
     path::{Path, PathBuf},
@@ -119,6 +120,23 @@ impl FromParamStr for Url {
                 }
             }
         }
+    }
+}
+
+impl FromParamStr for Vec<CertificateDer<'static>> {
+    type Err = ParseError;
+    fn from_param_str(s: &str, _context: &mut impl BuildContext) -> Result<Self, Self::Err> {
+        let mut cursor = std::io::Cursor::new(s);
+        let mut certs = Vec::new();
+        for cert in rustls_pemfile::read_all(&mut cursor) {
+            match cert.map_err(|_| ParseError::InvalidCertificate)? {
+                rustls_pemfile::Item::X509Certificate(data) => {
+                    certs.push(data);
+                }
+                _ => return Err(ParseError::InvalidCertificate),
+            }
+        }
+        Ok(certs)
     }
 }
 

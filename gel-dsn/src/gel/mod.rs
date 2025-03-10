@@ -24,6 +24,12 @@ pub use instance_name::*;
 pub use param::*;
 pub use params::*;
 
+#[cfg(feature = "unstable")]
+pub use env::define_env;
+
+#[cfg(feature = "unstable")]
+pub use project::{Project, ProjectDir, ProjectSearchResult};
+
 /// Internal helper to parse a duration string into a `std::time::Duration`.
 #[doc(hidden)]
 pub fn parse_duration(s: &str) -> Result<std::time::Duration, Box<dyn std::error::Error>> {

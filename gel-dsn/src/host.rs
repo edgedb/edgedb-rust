@@ -31,8 +31,9 @@ impl HostTarget {
 /// A pointer to a host and port which may be a hostname, IP address or unix
 /// socket.
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, derive_more::Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
+#[debug("{}", self)]
 pub struct Host(pub(crate) HostType, pub(crate) u16, pub(crate) HostTarget);
 
 impl Host {
@@ -81,6 +82,31 @@ impl Host {
             self.0 .0,
             HostTypeInner::Path(_) | HostTypeInner::Abstract(_)
         )
+    }
+}
+
+impl std::fmt::Display for Host {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let port = self.1;
+        match &self.0 .0 {
+            HostTypeInner::Hostname(hostname) => write!(f, "{}:{}", hostname, port),
+            HostTypeInner::IP(ip, Some(interface)) => write!(f, "[{}%{}]:{}", ip, interface, port),
+            HostTypeInner::IP(ip, None) => write!(f, "[{}]:{}", ip, port),
+            HostTypeInner::Path(path) => {
+                if let Some(target_name) = self.2.target_name(port) {
+                    write!(f, "{}/{}", path.display(), target_name)
+                } else {
+                    write!(f, "{}", path.display())
+                }
+            }
+            HostTypeInner::Abstract(name) => {
+                if let Some(target_name) = self.2.target_name(port) {
+                    write!(f, "@{}/{}", name, target_name)
+                } else {
+                    write!(f, "@{}", name)
+                }
+            }
+        }
     }
 }
 
@@ -208,5 +234,21 @@ impl From<Ipv6Addr> for HostType {
 impl From<Ipv4Addr> for HostType {
     fn from(ip: Ipv4Addr) -> Self {
         HostType(HostTypeInner::IP(IpAddr::V4(ip), None))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+
+    #[test]
+    fn test_host_display() {
+        let host = Host::new(
+            HostType::from_str("localhost").unwrap(),
+            5656,
+            HostTarget::Gel,
+        );
+        assert_eq!(host.to_string(), "localhost:5656");
     }
 }

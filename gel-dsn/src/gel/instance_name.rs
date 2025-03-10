@@ -6,25 +6,67 @@ use super::error::*;
 const DOMAIN_LABEL_MAX_LENGTH: usize = 63;
 const CLOUD_INSTANCE_NAME_MAX_LENGTH: usize = DOMAIN_LABEL_MAX_LENGTH - 2 + 1; // "--" -> "/"
 
-/// Parsed Gel instance name.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum InstanceName {
-    /// Instance configured locally
-    Local(String),
-    /// Instance running on the Gel Cloud
-    Cloud {
-        /// Organization name
-        org_slug: String,
-        /// Instance name within the organization
-        name: String,
-    },
+impl From<CloudName> for InstanceName {
+    fn from(cloud_name: CloudName) -> Self {
+        InstanceName::Cloud(cloud_name)
+    }
 }
 
-impl InstanceName {
-    pub fn cloud_address(&self, secret_key: &str) -> Result<Option<String>, ParseError> {
-        let InstanceName::Cloud { org_slug, name } = self else {
-            return Ok(None);
+impl From<&CloudName> for InstanceName {
+    fn from(cloud_name: &CloudName) -> Self {
+        InstanceName::Cloud(cloud_name.clone())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CloudName {
+    /// Organization name
+    pub org_slug: String,
+    /// Instance name within the organization
+    pub name: String,
+}
+
+impl fmt::Display for CloudName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}/{}", self.org_slug, self.name)
+    }
+}
+
+impl FromStr for CloudName {
+    type Err = ParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let Some((org_slug, name)) = s.split_once('/') else {
+            return Err(ParseError::InvalidInstanceName(
+                InstanceNameError::InvalidCloudInstanceName,
+            ));
         };
+        if !is_valid_cloud_instance_name(name) {
+            return Err(ParseError::InvalidInstanceName(
+                InstanceNameError::InvalidCloudInstanceName,
+            ));
+        }
+        if !is_valid_cloud_org_name(org_slug) {
+            return Err(ParseError::InvalidInstanceName(
+                InstanceNameError::InvalidCloudOrgName,
+            ));
+        }
+        if name.len() > CLOUD_INSTANCE_NAME_MAX_LENGTH {
+            return Err(ParseError::InvalidInstanceName(
+                InstanceNameError::InvalidCloudInstanceName,
+            ));
+        }
+        Ok(CloudName {
+            org_slug: org_slug.into(),
+            name: name.into(),
+        })
+    }
+}
+
+impl CloudName {
+    pub fn cloud_address(&self, secret_key: &str) -> Result<String, ParseError> {
+        let Self { org_slug, name } = self;
 
         #[derive(Debug, serde::Deserialize)]
         struct Claims {
@@ -52,10 +94,43 @@ impl InstanceName {
         let msg = format!("{}/{}", org_slug, name);
         let checksum = crc16::State::<crc16::XMODEM>::calculate(msg.as_bytes());
         let dns_bucket = format!("c-{:02}", checksum % 100);
-        Ok(Some(format!(
-            "{}--{}.{}.i.{}",
+        Ok(format!(
+            "{}-{}.{}.i.{}",
             name, org_slug, dns_bucket, dns_zone
-        )))
+        ))
+    }
+}
+
+/// Parsed Gel instance name.
+#[derive(Clone, Debug, PartialEq, Eq, derive_more::Display)]
+pub enum InstanceName {
+    /// Instance configured locally
+    Local(String),
+    /// Instance running on the Gel Cloud
+    Cloud(CloudName),
+}
+
+impl InstanceName {
+    pub fn local(&self) -> Option<&str> {
+        match self {
+            InstanceName::Local(name) => Some(name),
+            InstanceName::Cloud(_) => None,
+        }
+    }
+
+    pub fn cloud(&self) -> Option<&CloudName> {
+        match self {
+            InstanceName::Local(_) => None,
+            InstanceName::Cloud(cloud_name) => Some(cloud_name),
+        }
+    }
+
+    pub fn cloud_address(&self, secret_key: &str) -> Result<Option<String>, ParseError> {
+        let InstanceName::Cloud(cloud_name) = self else {
+            return Ok(None);
+        };
+
+        Ok(Some(cloud_name.cloud_address(secret_key)?))
     }
 }
 
@@ -143,15 +218,6 @@ fn is_valid_cloud_org_name(name: &str) -> bool {
     !was_dash
 }
 
-impl fmt::Display for InstanceName {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            InstanceName::Local(name) => name.fmt(f),
-            InstanceName::Cloud { org_slug, name } => write!(f, "{}/{}", org_slug, name),
-        }
-    }
-}
-
 impl FromStr for InstanceName {
     type Err = ParseError;
 
@@ -172,10 +238,10 @@ impl FromStr for InstanceName {
                     InstanceNameError::InvalidCloudInstanceName,
                 ));
             }
-            Ok(InstanceName::Cloud {
+            Ok(InstanceName::Cloud(CloudName {
                 org_slug: org_slug.into(),
                 name: instance_name.into(),
-            })
+            }))
         } else {
             if !is_valid_local_instance_name(name) {
                 return Err(ParseError::InvalidInstanceName(
@@ -240,7 +306,7 @@ mod tests {
         ] {
             match InstanceName::from_str(inst_name) {
                 Ok(InstanceName::Local(name)) => assert_eq!(name, inst_name),
-                Ok(InstanceName::Cloud { org_slug, name }) => {
+                Ok(InstanceName::Cloud(CloudName { org_slug, name })) => {
                     let (o, i) = inst_name
                         .split_once('/')
                         .expect("test case must have one slash");

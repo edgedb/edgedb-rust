@@ -24,6 +24,7 @@ use gel_protocol::server_message::{
     Authentication, ErrorResponse, MessageSeverity, ParameterStatus, RawTypedesc, ServerHandshake, ServerMessage, TransactionState
 };
 
+use crate::builder::CertCheck;
 use crate::errors::{
     AuthenticationError, ClientConnectionEosError, ClientConnectionError,
     ClientConnectionFailedError, ClientConnectionFailedTemporarilyError, ClientEncodingError,
@@ -81,7 +82,16 @@ impl Connection {
         }
     }
     pub async fn connect(config: &Config) -> Result<Self, Error> {
-        connect(config).await.map_err(|e| {
+        connect(config, None).await.map_err(|e| {
+            if e.is::<ClientConnectionError>() {
+                e.refine_kind::<ClientConnectionFailedError>()
+            } else {
+                e
+            }
+        })
+    }
+    pub async fn connect_with_cert_check(config: &Config, cert_check: CertCheck) -> Result<Self, Error> {
+        connect(config, Some(cert_check)).await.map_err(|e| {
             if e.is::<ClientConnectionError>() {
                 e.refine_kind::<ClientConnectionFailedError>()
             } else {
@@ -244,7 +254,7 @@ impl Connection {
     }
 }
 
-async fn connect(cfg: &Config) -> Result<Connection, Error> {
+async fn connect(cfg: &Config, cert_check: Option<CertCheck>) -> Result<Connection, Error> {
     let target = cfg.host.target_name().map_err(ClientConnectionError::with_source)?;
     let target = Target::new_tls(target, cfg.to_tls());
     debug!("Connecting to {target:?}...");
@@ -254,7 +264,7 @@ async fn connect(cfg: &Config) -> Result<Connection, Error> {
     let warned = &mut false;
     let mut retry = 0;
     let conn = loop {
-        match connect_timeout(cfg, connect2(cfg, target.clone(), warned)).await {
+        match connect_timeout(cfg, connect2(cfg, target.clone(), warned, cert_check.clone())).await {
             Err(e) if is_temporary(&e) => {
                 log::debug!("Temporary connection error: {:#}", e);
                 if wait > start.elapsed() {
@@ -281,6 +291,7 @@ async fn connect2(
     cfg: &Config,
     mut target: Target,
     warned: &mut bool,
+    cert_check: Option<CertCheck>,
 ) -> Result<Connection, Error> {
     let mut connector = Connector::new(target.clone()).map_err(ClientConnectionError::with_source)?;
     connector.set_keepalive(cfg.tcp_keepalive.as_keepalive());
@@ -334,18 +345,18 @@ async fn connect2(
     }
 
     let stream = res.map_err(ClientConnectionError::with_source)?;
-    connect4(cfg, stream).await
+    connect4(cfg, stream, cert_check).await
 }
 
-async fn connect4(cfg: &Config, mut stream: gel_stream::RawStream) -> Result<Connection, Error> {
+async fn connect4(cfg: &Config, mut stream: gel_stream::RawStream, cert_check: Option<CertCheck>) -> Result<Connection, Error> {
     // Allow the client to check the certificate
-    // if let Some(cert_check) = &cfg.cert_check {
-    //     if let Some(handshake) = stream.handshake() {
-    //         if let Some(cert) = &handshake.cert {
-    //             cert_check.call(cert).await?;
-    //         }
-    //     }
-    // }
+    if let Some(cert_check) = &cert_check {
+        if let Some(handshake) = stream.handshake() {
+            if let Some(cert) = &handshake.cert {
+                cert_check.call(cert).await?;
+            }
+        }
+    }
 
     let mut proto = ProtocolVersion::current();
     let mut out_buf = BytesMut::with_capacity(8192);

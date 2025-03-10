@@ -7,7 +7,7 @@ use std::{
 
 use crate::{gel::context_trace, FileAccess};
 
-use super::{BuildContext, InstanceName};
+use super::{BuildContext, BuildContextImpl, InstanceName};
 
 /// The ordered list of project filenames supported.
 pub const PROJECT_FILES: &[&str] = &["gel.toml", "edgedb.toml"];
@@ -16,13 +16,28 @@ pub const PROJECT_FILES: &[&str] = &["gel.toml", "edgedb.toml"];
 pub struct ProjectSearchResult {
     #[allow(unused)]
     pub project_path: PathBuf,
+    pub stash_path: PathBuf,
     pub project: Option<Project>,
 }
 
+impl ProjectSearchResult {
+    /// Find a project in the given directory.
+    pub fn find(dir: ProjectDir) -> std::io::Result<Option<Self>> {
+        let mut context = BuildContextImpl::new();
+        let project = find_project_file(&mut context, dir)?;
+        Ok(project)
+    }
+}
+
 pub enum ProjectDir {
+    /// Search the current directory.
     SearchCwd,
+    /// Search the given path.
     Search(PathBuf),
+    /// Check the given path.
     NoSearch(PathBuf),
+    /// Assume the given path is a project directory.
+    Assume(PathBuf),
 }
 
 impl ProjectDir {
@@ -30,6 +45,7 @@ impl ProjectDir {
         match self {
             ProjectDir::Search(_) => true,
             ProjectDir::NoSearch(_) => false,
+            ProjectDir::Assume(_) => false,
             ProjectDir::SearchCwd => true,
         }
     }
@@ -40,29 +56,36 @@ pub fn find_project_file(
     context: &mut impl BuildContext,
     start_path: ProjectDir,
 ) -> io::Result<Option<ProjectSearchResult>> {
-    let search_parents = start_path.search_parents();
-    let dir = match start_path {
-        ProjectDir::SearchCwd => {
-            let Some(cwd) = context.cwd() else {
-                context_trace!(context, "No current directory, skipping project search");
-                return Ok(None);
-            };
-            cwd.to_path_buf()
-        }
-        ProjectDir::Search(path) => path,
-        ProjectDir::NoSearch(path) => path,
-    };
-    let Some(project_path) = search_directory(context, &dir, search_parents)? else {
-        context_trace!(context, "No project file found");
-        return Ok(None);
+    let project_path = if let ProjectDir::Assume(path) = start_path {
+        path
+    } else {
+        let search_parents = start_path.search_parents();
+        let dir = match start_path {
+            ProjectDir::SearchCwd => {
+                let Some(cwd) = context.cwd() else {
+                    context_trace!(context, "No current directory, skipping project search");
+                    return Ok(None);
+                };
+                cwd.to_path_buf()
+            }
+            ProjectDir::Search(path) => path,
+            ProjectDir::NoSearch(path) => path,
+            ProjectDir::Assume(..) => unreachable!(),
+        };
+        let Some(project_path) = search_directory(context, &dir, search_parents)? else {
+            context_trace!(context, "No project file found");
+            return Ok(None);
+        };
+        project_path
     };
     context_trace!(context, "Project path: {:?}", project_path);
-    let stash = get_stash_path(context, project_path.parent().unwrap_or(&project_path))?;
-    context_trace!(context, "Stash path: {:?}", stash);
-    let project = stash.and_then(|path| Project::load(&path, context));
+    let stash_path = get_stash_path(context, project_path.parent().unwrap_or(&project_path))?;
+    context_trace!(context, "Stash path: {:?}", stash_path);
+    let project = Project::load(&stash_path, context);
     context_trace!(context, "Project: {:?}", project);
     Ok(Some(ProjectSearchResult {
         project_path,
+        stash_path,
         project,
     }))
 }
@@ -135,26 +158,23 @@ fn search_directory(
 }
 
 /// Computes the path to the project's stash file based on the canonical path.
-fn get_stash_path(
-    context: &mut impl BuildContext,
-    project_dir: &Path,
-) -> io::Result<Option<PathBuf>> {
+fn get_stash_path(context: &mut impl BuildContext, project_dir: &Path) -> io::Result<PathBuf> {
     let canonical = context
         .files()
         .canonicalize(project_dir)
         .unwrap_or(project_dir.to_path_buf());
     let stash_name = stash_name(&canonical);
     let path = Path::new("projects").join(stash_name);
-    Ok(Some(path))
+    Ok(path)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Project {
-    pub cloud_profile: Option<String>,
-    pub instance_name: InstanceName,
-    pub project_path: Option<PathBuf>,
-    pub branch: Option<String>,
-    pub database: Option<String>,
+pub struct Project {
+    pub(crate) cloud_profile: Option<String>,
+    pub(crate) instance_name: InstanceName,
+    pub(crate) project_path: Option<PathBuf>,
+    pub(crate) branch: Option<String>,
+    pub(crate) database: Option<String>,
 }
 
 impl Project {
@@ -169,7 +189,7 @@ impl Project {
         }
     }
 
-    pub fn load(path: &Path, context: &mut impl BuildContext) -> Option<Self> {
+    pub(crate) fn load(path: &Path, context: &mut impl BuildContext) -> Option<Self> {
         let cloud_profile = context
             .read_config_file::<String>(&path.join("cloud-profile"))
             .unwrap_or_default();

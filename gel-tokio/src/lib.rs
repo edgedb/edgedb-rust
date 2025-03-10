@@ -130,7 +130,63 @@ unstable_pub_mods! {
     mod server_params;
 }
 
-pub use gel_dsn::gel::{Builder, Config};
+pub use gel_dsn::gel::{Builder, CloudName, Config, InstanceName};
+pub mod credentials {
+    pub use gel_dsn::gel::TlsSecurity;
+
+    #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+    pub struct Credentials {
+        pub user: String,
+        pub host: Option<String>,
+        pub port: Option<u16>,
+        pub password: Option<String>,
+        pub database: Option<String>,
+        pub branch: Option<String>,
+        pub tls_ca: Option<String>,
+        #[serde(default)]
+        pub tls_security: TlsSecurity,
+        pub tls_server_name: Option<String>,
+    }
+
+    impl Into<gel_dsn::gel::Params> for Credentials {
+        fn into(self) -> gel_dsn::gel::Params {
+            use gel_dsn::gel::Param;
+            let mut params = gel_dsn::gel::Params::default();
+            params.user = Param::Unparsed(self.user);
+            params.host = Param::from_unparsed(self.host);
+            params.port = Param::from_parsed(self.port);
+            params.password = Param::from_unparsed(self.password);
+            params.database = Param::from_unparsed(self.database);
+            params.branch = Param::from_unparsed(self.branch);
+            params.tls_ca = Param::from_unparsed(self.tls_ca);
+            params.tls_security = Param::Parsed(self.tls_security);
+            params.tls_server_name = Param::from_unparsed(self.tls_server_name);
+            params
+        }
+    }
+
+    pub trait AsCredentials {
+        fn as_credentials(&self) -> anyhow::Result<Credentials>;
+    }
+
+    impl AsCredentials for gel_dsn::gel::Config {
+        fn as_credentials(&self) -> anyhow::Result<Credentials> {
+            let target = self.host.target_name()?;
+            let tcp = target.tcp().ok_or(anyhow::anyhow!("no TCP address"))?;
+            Ok(Credentials {
+                user: self.user.clone(),
+                host: Some(tcp.0.to_string()),
+                port: Some(tcp.1),
+                password: self.authentication.password().map(|s| s.to_string()),
+                database: self.db.name().map(|s| s.to_string()),
+                branch: self.db.branch().map(|s| s.to_string()),
+                tls_ca: self.tls_ca_pem(),
+                tls_security: self.tls_security.clone(),
+                tls_server_name: self.tls_server_name.clone(),
+            })
+        }
+    }
+}
 
 mod client;
 mod errors;

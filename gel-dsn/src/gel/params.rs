@@ -7,6 +7,7 @@ use std::{
     time::Duration,
 };
 
+use rustls_pki_types::CertificateDer;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -111,7 +112,7 @@ macro_rules! define_params {
                     }
 
                     $(#[doc = $doc])*
-                    #[doc = "\n\nWill be loaded from the provided environment variableand parsed as [`"]
+                    #[doc = "\n\nWill be loaded from the provided environment variable and parsed as [`"]
                     #[doc = stringify!($type)]
                     #[doc = "`]."]
                     pub fn [<$name _env>](mut self, value: impl AsRef<str>) -> Self {
@@ -119,9 +120,25 @@ macro_rules! define_params {
                         self
                     }
                 );
+
+                define_params!(__maybe_string__ $(#[doc = $doc])* $name: $type);
             )*
         }
-    }
+    };
+    (__maybe_string__ $(#[doc = $doc:expr])* $name:ident: String) => {
+    };
+    (__maybe_string__ $(#[doc = $doc:expr])* $name:ident: $type:ty) => {
+        paste::paste!(
+            $(#[doc = $doc])*
+            #[doc = "\n\nWill be loaded from the provided string and parsed as [`"]
+            #[doc = stringify!($type)]
+            #[doc = "`]."]
+            pub fn [<$name _string>](mut self, value: impl AsRef<str>) -> Self {
+                self.params.$name = Param::Env(value.as_ref().to_string());
+                self
+            }
+        );
+    };
 }
 
 define_params!(
@@ -162,7 +179,7 @@ define_params!(
     /// The client security.
     client_security: ClientSecurity,
     /// The TLS CA.
-    tls_ca: String,
+    tls_ca: Vec<CertificateDer<'static>>,
     /// The TLS security.
     tls_security: TlsSecurity,
     /// The TLS server name.
@@ -211,9 +228,9 @@ impl Builder {
 
     /// Set the allowed certificate as a PEM file.
     #[deprecated(note = "Use `tls_ca` instead")]
-    pub fn pem_certificates(&mut self, cert_data: &str) -> &mut Self {
+    pub fn pem_certificates(mut self, cert_data: &str) -> Result<Self, gel_errors::Error> {
         self.params.tls_ca = Param::Unparsed(cert_data.to_string());
-        self
+        Ok(self)
     }
 
     /// Build the [`Config`] from the parameters and the local system
@@ -592,6 +609,7 @@ impl Params {
             context_trace!(context, "DSN: {:?}", dsn);
             explicit.merge(dsn);
         }
+
         if let Some(file) = self.credentials.get(context).map_err(|e| {
             // Special case: map FileNotFound to InvalidCredentialsFile
             if e == ParseError::FileNotFound {
@@ -604,8 +622,9 @@ impl Params {
             context_trace!(context, "Credentials: {:?}", file);
             explicit.merge(file);
         }
-        if let Some(instance) = self.instance.get(context)? {
-            match instance {
+
+        let instance_name = if let Some(instance) = self.instance.get(context)? {
+            match &instance {
                 InstanceName::Local(local) => {
                     let instance = parse_instance(&local, context)?;
                     context_trace!(context, "Instance: {:?}", instance);
@@ -640,7 +659,10 @@ impl Params {
                     }
                 }
             }
-        }
+            Some(instance)
+        } else {
+            None
+        };
 
         context_trace!(context, "Merged: {:?}", explicit);
 
@@ -715,17 +737,7 @@ impl Params {
             (None, None) => DatabaseBranch::Default,
         };
 
-        let tls_ca = if let Some(tls_ca) = explicit.tls_ca.get(context)? {
-            let mut cursor = std::io::Cursor::new(tls_ca);
-            let mut certs = Vec::new();
-            for cert in rustls_pemfile::read_all(&mut cursor) {
-                match cert.map_err(|_| ParseError::InvalidCertificate)? {
-                    rustls_pemfile::Item::X509Certificate(data) => {
-                        certs.push(data);
-                    }
-                    _ => return Err(ParseError::InvalidCertificate),
-                }
-            }
+        let tls_ca = if let Some(certs) = explicit.tls_ca.get(context)? {
             Some(certs)
         } else {
             None
@@ -761,25 +773,24 @@ impl Params {
 
         let user = user.unwrap_or_else(|| "edgedb".to_string());
 
-        {
-            let value = Some(Config {
-                host,
-                db,
-                user,
-                authentication,
-                client_security,
-                tls_security,
-                tls_ca,
-                tls_server_name,
-                wait_until_available: wait_until_available.unwrap_or(DEFAULT_WAIT),
-                server_settings,
-                connect_timeout: connect_timeout.unwrap_or(DEFAULT_CONNECT_TIMEOUT),
-                max_concurrency,
-                tcp_keepalive: tcp_keepalive.unwrap_or(TcpKeepalive::Default),
-                cloud_certs,
-            });
-            Ok(value)
-        }
+        let value = Some(Config {
+            host,
+            db,
+            user,
+            authentication,
+            instance_name,
+            client_security,
+            tls_security,
+            tls_ca,
+            tls_server_name,
+            wait_until_available: wait_until_available.unwrap_or(DEFAULT_WAIT),
+            server_settings,
+            connect_timeout: connect_timeout.unwrap_or(DEFAULT_CONNECT_TIMEOUT),
+            max_concurrency,
+            tcp_keepalive: tcp_keepalive.unwrap_or(TcpKeepalive::Default),
+            cloud_certs,
+        });
+        Ok(value)
     }
 }
 
@@ -872,7 +883,7 @@ fn parse_dsn(dsn: &str, context: &mut impl BuildContext) -> Result<Params, Parse
             "user" => explicit.user = param,
             "password" => explicit.password = param,
             "secret_key" => explicit.secret_key = param,
-            "tls_ca" => explicit.tls_ca = param,
+            "tls_ca" => explicit.tls_ca = param.cast().unwrap(),
             "tls_server_name" => explicit.tls_server_name = param,
             "database" => explicit.database = param,
             "branch" => explicit.branch = param,
@@ -937,7 +948,7 @@ fn parse_env(context: &mut impl BuildContext) -> Result<Params, ParseError> {
         user: Param::from_parsed(context.read_env(Env::user)?),
         password: Param::from_parsed(context.read_env(Env::password)?),
         tls_security: Param::from_parsed(context.read_env(Env::client_tls_security)?),
-        tls_ca: Param::from_parsed(context.read_env(Env::tls_ca)?),
+        tls_ca: Param::from_unparsed(context.read_env(Env::tls_ca)?),
         tls_server_name: Param::from_parsed(context.read_env(Env::tls_server_name)?),
         client_security: Param::from_parsed(context.read_env(Env::client_security)?),
         secret_key: Param::from_parsed(context.read_env(Env::secret_key)?),
@@ -1007,7 +1018,7 @@ fn parse_cloud(profile: &str, context: &mut impl BuildContext) -> Result<Params,
 /// An opaque type representing a credentials file.
 ///
 /// Use [`std::str::FromStr`] to parse a credentials file from a string.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CredentialsFile {
     pub(crate) user: String,

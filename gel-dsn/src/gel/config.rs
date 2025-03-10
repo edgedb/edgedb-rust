@@ -1,4 +1,4 @@
-use super::{error::*, Param, Params};
+use super::{error::*, BuildContextImpl, FromParamStr, InstanceName, Param, Params};
 use crate::{
     gel::parse_duration,
     host::{Host, HostType},
@@ -6,7 +6,13 @@ use crate::{
 };
 use rustls_pki_types::CertificateDer;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt, str::FromStr, time::Duration};
+use std::{
+    collections::HashMap,
+    fmt,
+    path::{Path, PathBuf},
+    str::FromStr,
+    time::Duration,
+};
 
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub const DEFAULT_WAIT: Duration = Duration::from_secs(30);
@@ -73,6 +79,9 @@ pub struct Config {
     pub db: DatabaseBranch,
     pub user: String,
 
+    /// If the configuration was loaded from an instance name, this will be present.
+    pub instance_name: Option<InstanceName>,
+
     pub authentication: Authentication,
 
     pub client_security: ClientSecurity,
@@ -97,6 +106,7 @@ impl Default for Config {
             host: Host::new(DEFAULT_HOST.clone(), DEFAULT_PORT, HostTarget::Gel),
             db: DatabaseBranch::Default,
             user: DEFAULT_USER.to_string(),
+            instance_name: None,
             authentication: Authentication::None,
             client_security: ClientSecurity::Default,
             tls_security: TlsSecurity::Strict,
@@ -112,10 +122,136 @@ impl Default for Config {
     }
 }
 
+fn to_pem(certs: &[CertificateDer<'static>]) -> String {
+    use base64::Engine;
+    let prefix = "-----BEGIN CERTIFICATE-----\n";
+    let suffix = "-----END CERTIFICATE-----\n";
+    let mut pem = String::new();
+    for cert in certs {
+        pem.push_str(prefix);
+        let mut b64 = vec![0; cert.len() * 4 / 3 + 4];
+        let len = base64::prelude::BASE64_STANDARD
+            .encode_slice(cert.as_ref(), &mut b64)
+            .unwrap();
+        b64.truncate(len);
+        let lines = b64.chunks(64);
+        for line in lines {
+            pem.push_str(std::str::from_utf8(line).unwrap());
+            pem.push('\n');
+        }
+        pem.push_str(suffix);
+    }
+    pem
+}
+
 impl Config {
+    pub fn instance_name(&self) -> Option<&InstanceName> {
+        self.instance_name.as_ref()
+    }
+
+    pub fn local_instance_name(&self) -> Option<&str> {
+        self.instance_name.as_ref().and_then(InstanceName::local)
+    }
+
+    pub fn admin(&self) -> bool {
+        self.host.is_unix()
+    }
+
+    pub fn user(&self) -> &str {
+        &self.user
+    }
+
+    pub fn port(&self) -> u16 {
+        self.host.1
+    }
+
+    pub fn display_addr(&self) -> impl fmt::Display + '_ {
+        self.host.to_string()
+    }
+
+    pub fn database(&self) -> Option<&str> {
+        self.db.database()
+    }
+
+    pub fn branch(&self) -> Option<&str> {
+        self.db.branch()
+    }
+
+    pub fn secret_key(&self) -> Option<&str> {
+        self.authentication.secret_key()
+    }
+
+    pub fn tls_ca_pem(&self) -> Option<String> {
+        self.tls_ca.as_ref().map(|v| to_pem(v))
+    }
+
+    /// Return HTTP(s) url to server if not connected via unix socket.
+    pub fn http_url(&self, tls: bool) -> Option<String> {
+        if let Some((host, port)) = self.host.target_name().ok()?.tcp() {
+            let s = if tls { "s" } else { "" };
+            Some(format!("http{}://{}:{}", s, host, port))
+        } else {
+            None
+        }
+    }
+
+    pub fn with_unix_path(&self, path: &Path) -> Self {
+        Self {
+            host: Host::new(
+                HostType::from_unix_path(PathBuf::from(path)),
+                DEFAULT_PORT,
+                HostTarget::Raw,
+            ),
+            ..self.clone()
+        }
+    }
+
+    pub fn with_branch(&self, branch: &str) -> Self {
+        Self {
+            db: DatabaseBranch::Branch(branch.to_string()),
+            ..self.clone()
+        }
+    }
+
+    pub fn with_db(&self, db: DatabaseBranch) -> Self {
+        Self { db, ..self.clone() }
+    }
+
+    pub fn with_password(&self, password: &str) -> Self {
+        Self {
+            authentication: Authentication::Password(password.to_string()),
+            ..self.clone()
+        }
+    }
+
+    pub fn with_wait_until_available(&self, dur: Duration) -> Self {
+        Self {
+            wait_until_available: dur,
+            ..self.clone()
+        }
+    }
+
+    pub fn with_tls_ca(&self, certs: &[CertificateDer<'static>]) -> Self {
+        Self {
+            tls_ca: Some(certs.to_vec()),
+            ..self.clone()
+        }
+    }
+
+    #[deprecated = "use with_tls_ca instead"]
+    pub fn with_pem_certificates(&self, certs: &str) -> Result<Self, ParseError> {
+        let certs = <Vec<CertificateDer<'static>> as FromParamStr>::from_param_str(
+            certs,
+            &mut BuildContextImpl::default(),
+        )?;
+        Ok(Self {
+            tls_ca: Some(certs),
+            ..self.clone()
+        })
+    }
+
     #[cfg(feature = "serde")]
-    pub fn to_json(&self) -> impl serde::Serialize {
-        use base64::Engine;
+    pub fn to_json(&self) -> impl serde::Serialize + std::fmt::Display {
         use serde::Serialize;
         use std::collections::BTreeMap;
 
@@ -135,25 +271,10 @@ impl Config {
             waitUntilAvailable: String,
         }
 
-        fn to_pem(certs: &[CertificateDer<'static>]) -> String {
-            let prefix = "-----BEGIN CERTIFICATE-----\n";
-            let suffix = "-----END CERTIFICATE-----\n";
-            let mut pem = String::new();
-            for cert in certs {
-                pem.push_str(prefix);
-                let mut b64 = vec![0; cert.len() * 4 / 3 + 4];
-                let len = base64::prelude::BASE64_STANDARD
-                    .encode_slice(cert.as_ref(), &mut b64)
-                    .unwrap();
-                b64.truncate(len);
-                let lines = b64.chunks(64);
-                for line in lines {
-                    pem.push_str(std::str::from_utf8(line).unwrap());
-                    pem.push('\n');
-                }
-                pem.push_str(suffix);
+        impl std::fmt::Display for ConfigJson {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{}", serde_json::to_string(self).unwrap())
             }
-            pem
         }
 
         ConfigJson {
@@ -263,6 +384,17 @@ pub enum DatabaseBranch {
     Ambiguous(String),
 }
 
+impl std::fmt::Display for DatabaseBranch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Database(database) => write!(f, "database '{}'", database),
+            Self::Branch(branch) => write!(f, "branch '{}'", branch),
+            Self::Ambiguous(ambiguous) => write!(f, "'{}'", ambiguous),
+            Self::Default => write!(f, "default database/branch"),
+        }
+    }
+}
+
 impl DatabaseBranch {
     pub fn database(&self) -> Option<&str> {
         match self {
@@ -281,6 +413,15 @@ impl DatabaseBranch {
             Self::Database(database) => Some(database),
             Self::Ambiguous(ambiguous) => Some(ambiguous),
             Self::Default => Some("__default__"),
+        }
+    }
+
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            Self::Database(database) => Some(database),
+            Self::Branch(branch) => Some(branch),
+            Self::Ambiguous(ambiguous) => Some(ambiguous),
+            Self::Default => None,
         }
     }
 }
@@ -342,16 +483,23 @@ impl CloudCerts {
                 static CERT: std::sync::OnceLock<Vec<CertificateDer<'static>>> =
                     std::sync::OnceLock::new();
                 CERT.get_or_init(|| {
-                    Self::read_static_certs(include_bytes!("certs/letsencrypt_staging.pem"))
+                    Self::read_static_certs(Self::Staging.certificates_pem().as_bytes())
                 })
             }
             Self::Local => {
                 static CERT: std::sync::OnceLock<Vec<CertificateDer<'static>>> =
                     std::sync::OnceLock::new();
                 CERT.get_or_init(|| {
-                    Self::read_static_certs(include_bytes!("certs/nebula_development.pem"))
+                    Self::read_static_certs(Self::Local.certificates_pem().as_bytes())
                 })
             }
+        }
+    }
+
+    pub fn certificates_pem(&self) -> &'static str {
+        match self {
+            Self::Staging => include_str!("certs/letsencrypt_staging.pem"),
+            Self::Local => include_str!("certs/nebula_development.pem"),
         }
     }
 

@@ -16,6 +16,8 @@ log = ["dep:log"]
 # If true, automatically enables the log and warning listeners in the parsers
 auto-log-trace = ["log"]
 auto-log-warning = ["log"]
+# Some CLI-private features that may change
+unstable = []
 
 [dependencies]
 percent-encoding = "2"

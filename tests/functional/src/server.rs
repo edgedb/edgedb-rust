@@ -36,7 +36,7 @@ fn start_server() -> ServerGuard {
         .expect("cert file should be readable");
     let config = Builder::new()
         .port(instance.info.port)
-        .tls_ca(&cert_data)
+        .tls_ca_string(&cert_data)
         .without_system()
         .build()
         .unwrap();

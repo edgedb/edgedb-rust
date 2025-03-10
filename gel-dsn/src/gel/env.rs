@@ -2,6 +2,7 @@ use super::{
     error::*, BuildContext, ClientSecurity, CloudCerts, FromParamStr, InstanceName, TlsSecurity,
 };
 use crate::host::HostType;
+use crate::EnvVar;
 use std::{borrow::Cow, fmt::Debug, num::NonZeroU16, path::PathBuf, time::Duration};
 
 define_env!(
@@ -95,7 +96,7 @@ fn ignore_docker_tcp_port(
     }
 }
 
-use crate::EnvVar;
+/// Helper to define environment variables.
 pub use crate::__UNEXPORTED_define_env as define_env;
 
 #[doc(hidden)]
