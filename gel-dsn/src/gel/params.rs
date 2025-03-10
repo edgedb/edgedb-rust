@@ -134,7 +134,7 @@ macro_rules! define_params {
             #[doc = stringify!($type)]
             #[doc = "`]."]
             pub fn [<$name _string>](mut self, value: impl AsRef<str>) -> Self {
-                self.params.$name = Param::Env(value.as_ref().to_string());
+                self.params.$name = Param::Unparsed(value.as_ref().to_string());
                 self
             }
         );
@@ -674,7 +674,11 @@ impl Params {
 
         let host = if let Some(unix_path) = explicit.unix_path.get(context)? {
             match port {
-                Some(port) => Host::new(HostType::from_unix_path(unix_path), port, HostTarget::Gel),
+                Some(port) => Host::new(
+                    HostType::from_unix_path(unix_path),
+                    port,
+                    HostTarget::GelAdmin,
+                ),
                 None => Host::new(
                     HostType::from_unix_path(unix_path),
                     DEFAULT_PORT,

@@ -50,7 +50,7 @@ impl FromParamStr for std::time::Duration {
     type Err = ParseError;
     fn from_param_str(s: &str, _context: &mut impl BuildContext) -> Result<Self, Self::Err> {
         duration::Duration::from_str(s)
-            .map_err(|_| ParseError::EnvNotFound)
+            .map_err(|_| ParseError::InvalidDuration)
             .map(|d| std::time::Duration::from_micros(d.to_micros() as u64))
     }
 }
@@ -214,7 +214,9 @@ where
                     .env()
                     .read(key)
                     .map(|s| s.to_string())
-                    .map_err(|_| ParseError::EnvNotFound)?
+                    .map_err(|_| {
+                        ParseError::EnvNotFound(EnvironmentSource::Param, key.to_string())
+                    })?
             }
             Self::File(path) => {
                 context_trace!(context, "Reading file: {path:?}");
@@ -231,7 +233,9 @@ where
                 let env = context
                     .env()
                     .read(key)
-                    .map_err(|_| ParseError::EnvNotFound)?
+                    .map_err(|_| {
+                        ParseError::EnvNotFound(EnvironmentSource::Param, key.to_string())
+                    })?
                     .to_string();
                 context_trace!(context, "Reading file: {env}");
                 let res = context

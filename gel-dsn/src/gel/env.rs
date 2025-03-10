@@ -171,7 +171,7 @@ where
 pub fn get_envs(
     names: &'static [&'static str],
     context: &mut impl BuildContext,
-) -> Result<Option<(&'static str, Cow<'static, str>)>, std::env::VarError> {
+) -> Result<Option<(&'static str, Cow<'static, str>)>, ParseError> {
     let mut value = None;
     let mut found_vars = Vec::new();
 
@@ -185,7 +185,10 @@ pub fn get_envs(
             }
             Err(std::env::VarError::NotPresent) => continue,
             Err(err @ std::env::VarError::NotUnicode(_)) => {
-                return Err(err);
+                return Err(ParseError::EnvNotFound(
+                    EnvironmentSource::Explicit,
+                    err.to_string(),
+                ));
             }
         }
     }
@@ -200,30 +203,13 @@ pub fn get_envs(
 #[cfg(test)]
 mod tests {
     use crate::gel::{error::Warning, Warnings};
-    use std::{collections::HashMap, convert::Infallible};
+    use std::collections::HashMap;
 
-    use super::define_env;
+    use super::*;
     use crate::gel::BuildContextImpl;
 
-    #[derive(Debug)]
-    pub enum Error {
-        VarError,
-    }
-
-    impl From<Infallible> for Error {
-        fn from(_: Infallible) -> Self {
-            unreachable!()
-        }
-    }
-
-    impl From<std::env::VarError> for Error {
-        fn from(_error: std::env::VarError) -> Self {
-            Error::VarError
-        }
-    }
-
     define_env! {
-        type Error = Error;
+        type Error = ParseError;
 
         #[doc="The host to connect to."]
         #[env(GEL_HOST, EDGEDB_HOST)]

@@ -46,38 +46,66 @@ pub enum InvalidDsnError {
     BranchAndDatabase,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display, PartialOrd, Ord)]
+pub enum EnvironmentSource {
+    #[display("Explicit")]
+    Explicit,
+    #[display("Param::Env")]
+    Param,
+}
+
 #[derive(Debug, derive_more::Error, derive_more::Display, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ParseError {
+    #[display("Credentials file not found")]
     CredentialsFileNotFound,
-    EnvNotFound,
+    #[display("Environment variable not found: {_1} ({_0})")]
+    EnvNotFound(EnvironmentSource, #[error(not(source))] String),
+    #[display("Exclusive options")]
     ExclusiveOptions,
+    #[display("File not found")]
     FileNotFound,
+    #[display("Invalid credentials file: {_0}")]
     InvalidCredentialsFile(#[error(not(source))] InvalidCredentialsFileError),
+    #[display("Invalid database")]
     InvalidDatabase,
+    #[display("Invalid DSN: {_0}")]
     InvalidDsn(#[error(not(source))] InvalidDsnError),
+    #[display("Invalid DSN or instance name")]
     InvalidDsnOrInstanceName,
+    #[display("Invalid host")]
     InvalidHost,
+    #[display("Invalid instance name: {_0}")]
     InvalidInstanceName(#[error(not(source))] InstanceNameError),
+    #[display("Invalid port")]
     InvalidPort,
+    #[display("Invalid secret key")]
     InvalidSecretKey(#[error(not(source))] InvalidSecretKeyError),
+    #[display("Invalid TLS security")]
     InvalidTlsSecurity(#[error(not(source))] TlsSecurityError),
+    #[display("Invalid user")]
     InvalidUser,
+    #[display("Invalid certificate")]
     InvalidCertificate,
+    #[display("Invalid duration")]
     InvalidDuration,
-    #[display("{:?}", _0)]
+    #[display("Multiple compound environment variables: {:?}", _0)]
     MultipleCompoundEnv(#[error(not(source))] Vec<CompoundSource>),
-    #[display("{:?}", _0)]
+    #[display("Multiple compound options: {:?}", _0)]
     MultipleCompoundOpts(#[error(not(source))] Vec<CompoundSource>),
+    #[display("No options or .toml file")]
     NoOptionsOrToml,
+    #[display("Project not initialised")]
     ProjectNotInitialised,
+    #[display("Secret key not found")]
     SecretKeyNotFound,
+    #[display("Unix socket unsupported")]
     UnixSocketUnsupported,
 }
 
 impl ParseError {
     pub fn error_type(&self) -> &str {
         match self {
-            Self::EnvNotFound => "env_not_found",
+            Self::EnvNotFound(..) => "env_not_found",
             Self::CredentialsFileNotFound => "credentials_file_not_found",
             Self::ExclusiveOptions => "exclusive_options",
             Self::FileNotFound => "file_not_found",
@@ -106,7 +134,7 @@ impl ParseError {
         use gel_errors::ErrorKind;
 
         match self {
-            Self::EnvNotFound
+            Self::EnvNotFound(..)
             | Self::CredentialsFileNotFound
             | Self::ExclusiveOptions
             | Self::FileNotFound
@@ -150,15 +178,6 @@ impl From<ParseIntError> for ParseError {
 impl From<HostParseError> for ParseError {
     fn from(_: HostParseError) -> Self {
         ParseError::InvalidHost
-    }
-}
-
-impl From<std::env::VarError> for ParseError {
-    fn from(error: std::env::VarError) -> Self {
-        match error {
-            std::env::VarError::NotPresent => ParseError::EnvNotFound,
-            std::env::VarError::NotUnicode(_) => ParseError::EnvNotFound,
-        }
     }
 }
 

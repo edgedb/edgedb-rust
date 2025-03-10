@@ -256,7 +256,7 @@ impl Connection {
 
 async fn connect(cfg: &Config, cert_check: Option<CertCheck>) -> Result<Connection, Error> {
     let target = cfg.host.target_name().map_err(ClientConnectionError::with_source)?;
-    let target = Target::new_tls(target, cfg.to_tls());
+    let target = if target.is_tcp() { Target::new_tls(target, cfg.to_tls()) } else { Target::new(target)};
     debug!("Connecting to {target:?}...");
 
     let start = Instant::now();
