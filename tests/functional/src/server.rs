@@ -36,10 +36,9 @@ fn start_server() -> ServerGuard {
         .expect("cert file should be readable");
     let config = Builder::new()
         .port(instance.info.port)
-        .unwrap()
-        .pem_certificates(&cert_data)
-        .unwrap()
-        .constrained_build() // if this method is not found, you need --features=unstable
+        .tls_ca_string(&cert_data)
+        .without_system()
+        .build()
         .unwrap();
     ServerGuard { instance, config }
 }

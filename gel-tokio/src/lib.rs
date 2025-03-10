@@ -126,10 +126,65 @@ macro_rules! unstable_pub_mods {
 // If the unstable feature is not enabled, the modules will be private.
 unstable_pub_mods! {
     mod builder;
-    mod credentials;
     mod raw;
     mod server_params;
-    mod env;
+}
+
+pub use gel_dsn::gel::{Builder, CloudName, Config, InstanceName};
+pub mod credentials {
+    pub use gel_dsn::gel::TlsSecurity;
+
+    #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+    pub struct Credentials {
+        pub user: String,
+        pub host: Option<String>,
+        pub port: Option<u16>,
+        pub password: Option<String>,
+        pub database: Option<String>,
+        pub branch: Option<String>,
+        pub tls_ca: Option<String>,
+        #[serde(default)]
+        pub tls_security: TlsSecurity,
+        pub tls_server_name: Option<String>,
+    }
+    impl From<Credentials> for gel_dsn::gel::Params {
+        fn from(credentials: Credentials) -> Self {
+            use gel_dsn::gel::Param;
+            let mut params = gel_dsn::gel::Params::default();
+            params.user = Param::Unparsed(credentials.user);
+            params.host = Param::from_unparsed(credentials.host);
+            params.port = Param::from_parsed(credentials.port);
+            params.password = Param::from_unparsed(credentials.password);
+            params.database = Param::from_unparsed(credentials.database);
+            params.branch = Param::from_unparsed(credentials.branch);
+            params.tls_ca = Param::from_unparsed(credentials.tls_ca);
+            params.tls_security = Param::Parsed(credentials.tls_security);
+            params.tls_server_name = Param::from_unparsed(credentials.tls_server_name);
+            params
+        }
+    }
+
+    pub trait AsCredentials {
+        fn as_credentials(&self) -> anyhow::Result<Credentials>;
+    }
+
+    impl AsCredentials for gel_dsn::gel::Config {
+        fn as_credentials(&self) -> anyhow::Result<Credentials> {
+            let target = self.host.target_name()?;
+            let tcp = target.tcp().ok_or(anyhow::anyhow!("no TCP address"))?;
+            Ok(Credentials {
+                user: self.user.clone(),
+                host: Some(tcp.0.to_string()),
+                port: Some(tcp.1),
+                password: self.authentication.password().map(|s| s.to_string()),
+                database: self.db.name().map(|s| s.to_string()),
+                branch: self.db.branch().map(|s| s.to_string()),
+                tls_ca: self.tls_ca_pem(),
+                tls_security: self.tls_security,
+                tls_server_name: self.tls_server_name.clone(),
+            })
+        }
+    }
 }
 
 mod client;
@@ -138,15 +193,12 @@ mod options;
 mod query_executor;
 mod sealed;
 pub mod state;
-mod tls;
 mod transaction;
 pub mod tutorial;
 
 pub use gel_derive::{ConfigDelta, GlobalsDelta, Queryable};
 
-pub use builder::{Builder, ClientSecurity, Config, InstanceName, TcpKeepalive};
 pub use client::Client;
-pub use credentials::TlsSecurity;
 pub use errors::Error;
 pub use options::{RetryCondition, RetryOptions, TransactionOptions};
 pub use query_executor::{QueryExecutor, ResultVerbose};
@@ -159,8 +211,6 @@ pub const PROJECT_FILES: &[&str] = &["gel.toml", "edgedb.toml"];
 /// The default project filename.
 pub const DEFAULT_PROJECT_FILE: &str = PROJECT_FILES[0];
 
-#[cfg(feature = "unstable")]
-pub use builder::{get_project_path, get_stash_path};
 #[cfg(feature = "unstable")]
 pub use transaction::RawTransaction;
 
@@ -177,7 +227,15 @@ pub use transaction::RawTransaction;
 /// the source of this function.
 #[cfg(feature = "env")]
 pub async fn create_client() -> Result<Client, Error> {
-    let pool = Client::new(&Builder::new().build_env().await?);
+    use gel_errors::{ClientConnectionError, ErrorKind};
+    use tokio::task::spawn_blocking;
+
+    // Run the builder in a blocking context (it's unlikely to pause much but
+    // better to be safe)
+    let config = spawn_blocking(|| Builder::default().build())
+        .await
+        .map_err(ClientConnectionError::with_source)??;
+    let pool = Client::new(&config);
     pool.ensure_connected().await?;
     Ok(pool)
 }

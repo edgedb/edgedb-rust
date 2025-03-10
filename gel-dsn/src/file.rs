@@ -30,6 +30,8 @@ pub trait FileAccess {
         }
     }
 
+    fn exists_dir(&self, path: &Path) -> Result<bool, std::io::Error>;
+
     fn canonicalize(&self, path: &Path) -> Result<PathBuf, std::io::Error> {
         Ok(path.to_path_buf())
     }
@@ -44,6 +46,10 @@ impl FileAccess for &[(&Path, &str)] {
                 std::io::ErrorKind::NotFound,
                 "File not found",
             ))
+    }
+
+    fn exists_dir(&self, path: &Path) -> Result<bool, std::io::Error> {
+        Ok(self.iter().any(|(key, _)| key.starts_with(path)))
     }
 }
 
@@ -60,6 +66,10 @@ where
                 "File not found",
             ))
     }
+
+    fn exists_dir(&self, path: &Path) -> Result<bool, std::io::Error> {
+        Ok(self.iter().any(|(key, _)| key.borrow().starts_with(path)))
+    }
 }
 
 impl FileAccess for () {
@@ -68,6 +78,10 @@ impl FileAccess for () {
             std::io::ErrorKind::NotFound,
             "File not found",
         ))
+    }
+
+    fn exists_dir(&self, _: &Path) -> Result<bool, std::io::Error> {
+        Ok(false)
     }
 }
 
@@ -86,6 +100,10 @@ impl FileAccess for SystemFileAccess {
 
     fn exists(&self, path: &Path) -> Result<bool, std::io::Error> {
         std::fs::exists(path)
+    }
+
+    fn exists_dir(&self, path: &Path) -> Result<bool, std::io::Error> {
+        std::fs::metadata(path).map(|metadata| metadata.is_dir())
     }
 
     fn canonicalize(&self, path: &Path) -> Result<PathBuf, std::io::Error> {

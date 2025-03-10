@@ -706,8 +706,8 @@ tls_client_test! {
         let target = Target::new_tcp_tls(("www.google.com", 443), TlsParameters::default());
         let mut stm = Connector::<C>::new_explicit(target).unwrap().connect().await.unwrap();
         let handshake = stm.handshake().unwrap();
-        assert!(!handshake.cert.is_none());
-        let cert = parse_cert(&handshake.cert.as_ref().unwrap());
+        assert!(handshake.cert.is_some());
+        let cert = parse_cert(handshake.cert.as_ref().unwrap());
         let subject = cert.subject().to_string();
         assert!(subject.to_ascii_lowercase().contains("google"));
         stm.write_all(b"GET / HTTP/1.0\r\n\r\n").await.unwrap();
@@ -726,7 +726,6 @@ tls_client_test! {
         let addr = "www.google.com:443"
             .to_socket_addrs()
             .unwrap()
-            .into_iter()
             .next()
             .unwrap();
         let target = Target::new_tcp_tls(

@@ -62,6 +62,7 @@ impl ResolvedTarget {
             #[cfg(unix)]
             ResolvedTarget::UnixSocketAddr(path) => {
                 let stm = std::os::unix::net::UnixStream::connect_addr(path)?;
+                stm.set_nonblocking(true)?;
                 let stream = UnixStream::from_std(stm)?;
                 Ok(TokioStream::Unix(stream))
             }
