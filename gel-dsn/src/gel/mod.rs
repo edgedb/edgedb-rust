@@ -49,14 +49,14 @@ fn config_dirs<U: UserProfile>(user: &U) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     if cfg!(unix) {
         if let Some(dir) = user.config_dir() {
-            dirs.push(dir.join("gel"));
             dirs.push(dir.join("edgedb"));
+            dirs.push(dir.join("gel"));
         }
     }
     if cfg!(windows) {
         if let Some(dir) = user.data_local_dir() {
-            dirs.push(dir.join("Gel").join("config"));
             dirs.push(dir.join("EdgeDB").join("config"));
+            dirs.push(dir.join("Gel").join("config"));
         }
     }
     dirs
@@ -165,6 +165,7 @@ impl Traces {
         Box::new(move |message| self.trace(message))
     }
 }
+
 struct BuildContextImpl<E: EnvVar = SystemEnvVars, F: FileAccess = SystemFileAccess> {
     env: E,
     files: F,
@@ -232,6 +233,7 @@ pub(crate) trait BuildContext {
         &mut self,
         path: impl AsRef<Path>,
     ) -> Result<Option<T>, T::Err>;
+    fn find_config_path(&self, path: impl AsRef<Path>) -> std::io::Result<PathBuf>;
     fn read_env<'a, 'b, 'c, T: FromParamStr>(
         &'c mut self,
         env: impl Fn(&'b mut Self) -> Result<Option<T>, error::ParseError>,
@@ -284,6 +286,25 @@ impl<E: EnvVar, F: FileAccess> BuildContext for BuildContextImpl<E, F> {
         }
 
         Ok(None)
+    }
+
+    fn find_config_path(&self, path: impl AsRef<Path>) -> std::io::Result<PathBuf> {
+        for config_dir in self.config_dir.iter().flatten() {
+            context_trace!(self, "Checking config path: {}", config_dir.display());
+            if matches!(self.files.exists_dir(&config_dir), Ok(true)) {
+                return Ok(config_dir.join(path));
+            }
+        }
+
+        // If we couldn't find an existing one, use the first config dir
+        if let Some(config_dir) = self.config_dir.iter().flatten().next() {
+            return Ok(config_dir.join(path));
+        }
+
+        Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "Config file not found",
+        ))
     }
 
     fn read_env<'a, 'b, 'c, T: FromParamStr>(
@@ -402,7 +423,7 @@ mod tests {
             .build()
             .unwrap();
         let host = cfg.host.target_name().unwrap();
-        assert_eq!(host.path(), Some(Path::new("/test/.s.EDGEDB.8888")));
+        assert_eq!(host.path(), Some(Path::new("/test/.s.EDGEDB.admin.8888")));
     }
 
     /// Test that the hidden CloudCerts env var is parsed correctly.

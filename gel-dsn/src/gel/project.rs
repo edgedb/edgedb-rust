@@ -14,9 +14,11 @@ pub const PROJECT_FILES: &[&str] = &["gel.toml", "edgedb.toml"];
 
 #[derive(Debug)]
 pub struct ProjectSearchResult {
-    #[allow(unused)]
+    /// The path to the project file (gel.toml or edgedb.toml)
     pub project_path: PathBuf,
+    /// The path to the project's stash file (~/.config/{edgedb,gel}/projects/<name>-<hash>)
     pub stash_path: PathBuf,
+    /// The project metadata
     pub project: Option<Project>,
 }
 
@@ -36,7 +38,7 @@ pub enum ProjectDir {
     Search(PathBuf),
     /// Check the given path.
     NoSearch(PathBuf),
-    /// Assume the given path is a project directory.
+    /// Assume the given path is a valid project file.
     Assume(PathBuf),
 }
 
@@ -76,10 +78,24 @@ pub fn find_project_file(
             context_trace!(context, "No project file found");
             return Ok(None);
         };
+        context_trace!(context, "Project file path: {:?}", project_path);
         project_path
     };
     context_trace!(context, "Project path: {:?}", project_path);
-    let stash_path = get_stash_path(context, project_path.parent().unwrap_or(&project_path))?;
+    let stash_path = match get_stash_path(context, project_path.parent().unwrap_or(&project_path)) {
+        Ok(stash_path) => stash_path,
+        Err(e) => {
+            // Special handling -- NotFound is mapped to Ok(None)
+            if e.kind() == io::ErrorKind::NotFound {
+                return Ok(None);
+            }
+            context_trace!(
+                context,
+                "Error getting the stash path: {e:?} for project path: {project_path:?}"
+            );
+            return Err(e);
+        }
+    };
     context_trace!(context, "Stash path: {:?}", stash_path);
     let project = Project::load(&stash_path, context);
     context_trace!(context, "Project: {:?}", project);
@@ -164,8 +180,9 @@ fn get_stash_path(context: &mut impl BuildContext, project_dir: &Path) -> io::Re
         .canonicalize(project_dir)
         .unwrap_or(project_dir.to_path_buf());
     let stash_name = stash_name(&canonical);
+    context_trace!(context, "Stash name: {:?}", stash_name);
     let path = Path::new("projects").join(stash_name);
-    Ok(path)
+    context.find_config_path(path)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -270,8 +287,11 @@ mod tests {
 
         let gel_path = base.join("gel.toml");
         let edgedb_path = base.join("edgedb.toml");
+        let config_dir = base.join("config");
+        std::fs::create_dir_all(config_dir.join("projects")).unwrap();
 
         let mut context = BuildContextImpl::new_with((), SystemFileAccess);
+        context.config_dir = Some(vec![config_dir]);
 
         // Test gel.toml only
         fs::write(&gel_path, "test1").unwrap();

@@ -125,6 +125,17 @@ impl FileAccess for &ConnectionTestcase {
         ))
     }
 
+    fn exists_dir(&self, path: &Path) -> Result<bool, std::io::Error> {
+        if let Some(fs) = &self.fs {
+            if let Some(files) = &fs.files {
+                return Ok(files
+                    .iter()
+                    .any(|(key, _)| Path::new(key).starts_with(path)));
+            }
+        }
+        Ok(false)
+    }
+
     fn cwd(&self) -> Option<PathBuf> {
         if let Some(fs) = &self.fs {
             if let Some(cwd) = &fs.cwd {
