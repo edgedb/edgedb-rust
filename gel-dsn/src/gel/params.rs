@@ -132,7 +132,7 @@ macro_rules! define_params {
 
             pub server_settings: HashMap<String, String>,
         }
-        
+
         impl Debug for Computed {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 let mut s = f.debug_struct("Computed");
